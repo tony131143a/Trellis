@@ -214,7 +214,7 @@ Behavior:
 trellis channel spawn <name>
   [--scope project|global]
   [--agent <agent-name>]                  # loads .trellis/agents/<name>.md
-  [--provider claude|codex]               # overrides agent file
+  [--provider claude|codex|star]          # overrides agent file
   [--as <worker-name>]                    # default: agent name
   [--cwd <path>]
   [--model <id>]
@@ -237,7 +237,7 @@ trellis channel spawn <name>
 Behavior:
 - Provider is validated against the adapter registry
   (`packages/cli/src/commands/channel/adapters/`); current: `claude`,
-  `codex`.
+  `codex`, `star`.
 - Worker stays inbox-idle until the first `send --to <worker>`.
 - Records a `spawned` event with `pid`, `provider`, `agent`, `files`,
   `manifests`.
@@ -251,7 +251,7 @@ Behavior:
 ```bash
 trellis channel run [name?]
   [--agent <name>]
-  [--provider claude|codex]
+  [--provider claude|codex|star]
   [--as <worker-name>]
   [--cwd <path>]
   [--model <id>]

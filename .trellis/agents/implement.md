@@ -3,6 +3,8 @@ name: implement
 description: |
   Code implementation expert for the Trellis channel runtime. Understands specs and task artifacts, then implements features. No git commit allowed.
 provider: claude
+# provider: star          # StarFactory worker (Claude Code-compatible fork; `star` must be on PATH)
+# model: <provider model id>   # optional; passed to the worker CLI as --model
 labels: [trellis, implement]
 ---
 

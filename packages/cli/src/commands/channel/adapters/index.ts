@@ -1,7 +1,7 @@
 /**
  * Worker adapter factory.
  *
- * Each provider (claude, codex, future: opencode, gemini, …) implements a
+ * Each provider (claude, codex, star, future: opencode, gemini, …) implements a
  * `WorkerAdapter` describing how to:
  *
  *   - launch the worker CLI (`buildArgs`)
@@ -130,6 +130,43 @@ const claudeAdapter: WorkerAdapter<undefined> = {
   },
 };
 
+/**
+ * StarFactory adapter — `star` is a Claude Code-compatible fork (verified on
+ * star 1.0.49): same `-p --input-format/--output-format stream-json` wire
+ * protocol, same `system.init` / `assistant` / `result` message shapes, and the
+ * same `--append-system-prompt(-file)` flags. `--append-system-prompt-file` is
+ * registered with `hideHelp()` so `star --help` does not list it, but a probe
+ * with a missing path returns `Error: Append system prompt file not found`,
+ * i.e. the flag is parsed and honoured. Only the binary name differs, so the
+ * adapter reuses Claude's arg builder, parser, and encoders verbatim.
+ */
+const starAdapter: WorkerAdapter<undefined> = {
+  provider: "star",
+  buildArgs(view) {
+    return buildClaudeArgs({
+      resumeSessionId: view.resume,
+      model: view.model,
+      systemPrompt: view.systemPrompt,
+      systemPromptFile: view.systemPromptFile,
+    });
+  },
+  createCtx() {
+    return undefined;
+  },
+  isReady() {
+    return true;
+  },
+  parseLine(line) {
+    return parseClaudeLine(line);
+  },
+  encodeUserMessage(text) {
+    return encodeClaudeUserMessage(text);
+  },
+  encodeInterruptMessage(text) {
+    return encodeClaudeInterruptMessage(text);
+  },
+};
+
 /** Codex adapter — JSON-RPC 2.0 via `app-server`, requires handshake. */
 const codexAdapter: WorkerAdapter<CodexCtx> = {
   provider: "codex",
@@ -194,6 +231,7 @@ const codexAdapter: WorkerAdapter<CodexCtx> = {
 const REGISTRY = {
   claude: claudeAdapter,
   codex: codexAdapter,
+  star: starAdapter,
 } as const;
 
 export type Provider = keyof typeof REGISTRY;
