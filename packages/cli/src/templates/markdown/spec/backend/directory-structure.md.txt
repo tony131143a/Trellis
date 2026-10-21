@@ -1,3 +1,6 @@
+---
+sources: []
+---
 # Directory Structure
 
 > How backend code is organized in this project.

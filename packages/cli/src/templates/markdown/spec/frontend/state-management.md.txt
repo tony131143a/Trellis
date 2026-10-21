@@ -1,3 +1,6 @@
+---
+sources: []
+---
 # State Management
 
 > How state is managed in this project.

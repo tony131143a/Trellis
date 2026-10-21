@@ -22,6 +22,31 @@ This directory contains guidelines for backend development. Fill in each file wi
 
 ---
 
+## Pre-Development Checklist
+
+Before writing backend code, read the relevant guidelines based on your task:
+
+- Module layout, where a new file goes → [directory-structure.md](./directory-structure.md)
+- Database access, queries, migrations → [database-guidelines.md](./database-guidelines.md)
+- Error handling → [error-handling.md](./error-handling.md)
+- Logging → [logging-guidelines.md](./logging-guidelines.md)
+- Code standards, forbidden patterns → [quality-guidelines.md](./quality-guidelines.md)
+- To fill: one pointer per recurring task type in this project (e.g. "Adding an API endpoint → ...")
+
+---
+
+## Quality Check
+
+After writing code, verify against these guidelines:
+
+1. Run `git diff --name-only` to see what you changed
+2. Read the relevant guidelines above for each changed area
+3. Always check [quality-guidelines.md](./quality-guidelines.md)
+4. Check whether tests need to be added or updated
+5. Run the project's lint and typecheck commands — To fill: list the exact commands here
+
+---
+
 ## How to Fill These Guidelines
 
 For each guideline file:

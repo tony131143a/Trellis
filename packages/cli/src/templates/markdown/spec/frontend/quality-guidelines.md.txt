@@ -1,3 +1,6 @@
+---
+sources: []
+---
 # Quality Guidelines
 
 > Code quality standards for frontend development.

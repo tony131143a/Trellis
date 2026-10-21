@@ -87,6 +87,29 @@ For triggered tasks, include all sections below:
 
 ---
 
+## Spec Metadata
+
+Layer code-spec docs (`<layer>/*.md`, not `index.md` or `guides/`) open with a frontmatter block:
+
+```markdown
+---
+sources:
+  - src/commands/example.ts
+last_verified: 2026-10-21
+---
+```
+
+- `sources`: repo-relative paths or globs of the code this doc describes. Keep it narrow — the doc is reported `stale` when any source has a commit newer than `last_verified`.
+- `last_verified`: when the doc was last re-checked against its sources. Do not hand-edit it. After you update or re-verify a doc, stamp it:
+
+```bash
+{{PYTHON_CMD}} ./.trellis/scripts/spec.py verify .trellis/spec/<layer>/<doc>.md
+```
+
+`{{PYTHON_CMD}} ./.trellis/scripts/spec.py lint` (also run in `{{CMD_REF:finish-work}}` Step 1) reports `missing-metadata`, `dead-source`, `broken-link`, `stale`, `placeholder`, `missing-section`, and `unlisted-doc` findings. `spec.py init-meta <doc>` seeds the block on a doc that lacks one. All of it is advisory — fix what the finding names, it never blocks.
+
+---
+
 ## Update Process
 
 ### Step 1: Identify What You Learned
