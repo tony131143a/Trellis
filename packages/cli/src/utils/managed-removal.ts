@@ -166,6 +166,7 @@ export function buildStructuredFileSpecs(): Map<string, StructuredFileSpec> {
     ...(
       [
         ".claude/settings.json",
+        ".starFactory/settings.json",
         ".gemini/settings.json",
         ".factory/settings.json",
         ".codebuddy/settings.json",

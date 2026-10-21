@@ -373,4 +373,49 @@ describe("uninstall() integration", () => {
       }
     }
   });
+
+  it("#9 .starFactory/settings.json keeps user fields and survives uninstall", async () => {
+    await init({ yes: true, star: true, force: true });
+
+    // StarFactory is a Claude Code fork, so its settings.json is Claude-shaped
+    // and must be scrubbed rather than deleted — otherwise a user's own model /
+    // permissions / hooks are discarded on uninstall.
+    const settingsPath = path.join(tmpDir, ".starFactory", "settings.json");
+    expect(fs.existsSync(settingsPath)).toBe(true);
+
+    const original = JSON.parse(
+      fs.readFileSync(settingsPath, "utf-8"),
+    ) as Record<string, unknown>;
+    const augmented: Record<string, unknown> = {
+      ...original,
+      model: "star-model",
+      permissions: { allow: ["Bash(git:*)"] },
+    };
+    const hooks = augmented.hooks as Record<string, unknown> | undefined;
+    const sessionStart = hooks?.SessionStart;
+    if (Array.isArray(sessionStart) && sessionStart.length > 0) {
+      const block = sessionStart[0] as Record<string, unknown>;
+      if (Array.isArray(block.hooks)) {
+        (block.hooks as unknown[]).push({
+          type: "command",
+          command: "python3 .starFactory/hooks/my-user-hook.py",
+          timeout: 5,
+        });
+      }
+    }
+    fs.writeFileSync(settingsPath, JSON.stringify(augmented, null, 2));
+
+    await uninstall({ yes: true });
+
+    expect(fs.existsSync(settingsPath)).toBe(true);
+    const afterText = fs.readFileSync(settingsPath, "utf-8");
+    const after = JSON.parse(afterText) as Record<string, unknown>;
+    expect(after.model).toBe("star-model");
+    expect(after.permissions).toEqual({ allow: ["Bash(git:*)"] });
+    expect(afterText).toContain(".starFactory/hooks/my-user-hook.py");
+    expect(afterText).not.toContain(".starFactory/hooks/session-start.py");
+    expect(afterText).not.toContain(
+      ".starFactory/hooks/inject-workflow-state.py",
+    );
+  });
 });
