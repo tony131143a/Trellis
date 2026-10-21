@@ -1,0 +1,21 @@
+packages/cli/test/commands/uninstall.integration.test.ts
+  s_658dc99cddf834::t_d98b11bf0c2965 376-420
+packages/cli/src/utils/managed-removal.ts
+  s_658dc99cddf834::t_08022086b8d9fe 169
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "6cef32e26870c0b8a97e30ed95ecf15aec1733db",
+  "prompts": {},
+  "sessions": {
+    "s_658dc99cddf834": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3f28ccbe-b406-418c-b1e6-b5904b36f332",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
