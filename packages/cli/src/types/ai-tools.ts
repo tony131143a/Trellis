@@ -29,7 +29,8 @@ export type AITool =
   | "omp"
   | "grok"
   | "kimi"
-  | "snow";
+  | "snow"
+  | "star";
 
 /**
  * Template directory categories
@@ -57,7 +58,8 @@ export type TemplateDir =
   | "omp"
   | "grok"
   | "kimi"
-  | "snow";
+  | "snow"
+  | "star";
 
 /**
  * CLI flag names for platform selection (e.g., --claude, --cursor, --kilo, --kiro, --gemini, --antigravity)
@@ -85,7 +87,8 @@ export type CliFlag =
   | "omp"
   | "grok"
   | "kimi"
-  | "snow";
+  | "snow"
+  | "star";
 
 /**
  * Template context for placeholder resolution.
@@ -634,6 +637,45 @@ export const AI_TOOLS: Record<AITool, AIToolConfig> = {
       agentCapable: true,
       hasHooks: true,
       cliFlag: "snow",
+    },
+  },
+  /**
+   * StarFactory CLI — class-1 platform, verified against star 1.0.49.
+   *
+   * StarFactory is a Claude Code-compatible fork: its hook payloads carry
+   * Claude's `session_id` / `transcript_path` / `hook_event_name` fields, its
+   * settings keys match, and it consumes `.claude-plugin` marketplaces. The
+   * user-level config dir is `~/.starFactory/` (mounted via
+   * `CLAUDE_CONFIG_DIR`), but the **project-level** dir is `.starFactory/`:
+   * a live probe showed `.starFactory/settings.json` SessionStart hooks fire
+   * and `.starFactory/{commands,skills,agents}/` load, while the same files
+   * under `.claude/` are ignored entirely.
+   *
+   * - Skills: `.starFactory/skills/<name>/SKILL.md` (invocable as slash commands)
+   * - Commands: `.starFactory/commands/trellis/*.md` -> `/trellis:<name>`
+   * - Agents: `.starFactory/agents/*.md` (project agents, Claude-compatible frontmatter)
+   * - Hooks: `.starFactory/hooks/` + `.starFactory/settings.json`
+   *   (SessionStart / UserPromptSubmit / PreToolUse all verified to fire)
+   *
+   * supportsAgentSkills is false: a probe confirmed StarFactory does NOT read
+   * the shared `.agents/skills/` root ("Unknown skill"), and Codex/Gemini/Pi/
+   * Kimi already write that path — enabling it would duplicate skills and
+   * contend for the same template-hash keys.
+   */
+  star: {
+    name: "StarFactory",
+    templateDirs: ["common", "star"],
+    configDir: ".starFactory",
+    cliFlag: "star",
+    defaultChecked: false,
+    hasPythonHooks: true,
+    templateContext: {
+      cmdRefPrefix: "/trellis:",
+      executorAI: "Bash scripts or Task calls",
+      userActionLabel: "Slash commands",
+      agentCapable: true,
+      hasHooks: true,
+      cliFlag: "star",
     },
   },
 };

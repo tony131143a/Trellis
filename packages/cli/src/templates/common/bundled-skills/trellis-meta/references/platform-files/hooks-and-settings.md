@@ -28,8 +28,9 @@ Common files:
 | Factory Droid | `.factory/settings.json` |
 | Pi Agent | `.pi/settings.json`, `.pi/extensions/trellis/` |
 | Trae IDE | `.trae/hooks.json` |
+| StarFactory | `.starFactory/settings.json` |
 
-Reasonix is a pull-based platform whose agent files contain prelude instructions to read context after startup. ZCode uses `.zcode/config.json` with shared hooks, including PreToolUse for sub-agent prompt injection. Kimi Code is likewise pull-based and has no project-level settings/hooks file Trellis writes (hooks live only in the user-level `~/.kimi-code/config.toml`), so its agent prompts ship as skills and `.kimi-code/agents/` sub-agent definitions with the same prelude.
+Reasonix is a pull-based platform whose agent files contain prelude instructions to read context after startup. ZCode uses `.zcode/config.json` with shared hooks, including PreToolUse for sub-agent prompt injection. Kimi Code is likewise pull-based and has no project-level settings/hooks file Trellis writes (hooks live only in the user-level `~/.kimi-code/config.toml`), so its agent prompts ship as skills and `.kimi-code/agents/` sub-agent definitions with the same prelude. StarFactory is a Claude Code-compatible fork that writes `.starFactory/settings.json` — note that its project-level config dir is `.starFactory/`, not `.claude/`, and a project-level `.claude/` is ignored by the CLI.
 
 Whether these files exist in a project depends on which `trellis init --<platform>` flags the user ran.
 

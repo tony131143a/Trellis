@@ -112,6 +112,16 @@ const PLATFORM_HOOK_CONFIGS = [
     unit: "s",
   },
   {
+    platform: "star",
+    path: "star/settings.json",
+    schema: "nested",
+    sessionStartEvent: "SessionStart",
+    sessionStartTimeoutField: "timeout",
+    userPromptEvent: "UserPromptSubmit",
+    userPromptTimeoutField: "timeout",
+    unit: "s",
+  },
+  {
     platform: "codex",
     path: "codex/hooks.json",
     schema: "nested",

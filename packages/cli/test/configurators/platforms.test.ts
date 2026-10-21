@@ -1030,6 +1030,106 @@ describe("configurePlatform", () => {
     );
   });
 
+  it("configurePlatform('star') writes class-1 hooks, skills, commands, and agents under .starFactory/", async () => {
+    await configurePlatform("star", tmpDir);
+
+    const starFactory = (p: string) => path.join(tmpDir, ".starFactory", p);
+
+    // hasHooks=true → trellis-start is filtered out (session inject replaces it)
+    expect(fs.existsSync(starFactory("commands/trellis/start.md"))).toBe(false);
+    expect(
+      fs.existsSync(starFactory("skills/trellis-start/SKILL.md")),
+    ).toBe(false);
+    expect(fs.existsSync(starFactory("commands/trellis/continue.md"))).toBe(
+      true,
+    );
+    expect(fs.existsSync(starFactory("commands/trellis/finish-work.md"))).toBe(
+      true,
+    );
+    expect(fs.existsSync(starFactory("skills/trellis-check/SKILL.md"))).toBe(
+      true,
+    );
+
+    for (const name of ["implement", "check", "research"]) {
+      const agentPath = starFactory(`agents/trellis-${name}.md`);
+      expect(fs.existsSync(agentPath)).toBe(true);
+      // class-1: no class-2 pull-based prelude
+      expect(fs.readFileSync(agentPath, "utf-8")).not.toContain(
+        "Load Trellis Context First",
+      );
+    }
+
+    for (const hook of [
+      "session-start.py",
+      "inject-workflow-state.py",
+      "inject-subagent-context.py",
+      "inject-shell-session-context.py",
+    ]) {
+      expect(fs.existsSync(starFactory(`hooks/${hook}`))).toBe(true);
+    }
+
+    const settings = JSON.parse(
+      fs.readFileSync(starFactory("settings.json"), "utf-8"),
+    ) as {
+      hooks: Record<
+        string,
+        { matcher?: string; hooks: { command: string }[] }[]
+      >;
+    };
+    // Claude-compatible event names, with the Bash ticket wired for session
+    // identity (StarFactory exports no session id into shell children).
+    expect(settings.hooks.SessionStart[0].hooks[0].command).toContain(
+      ".starFactory/hooks/session-start.py",
+    );
+    expect(
+      settings.hooks.PreToolUse.find((e) => e.matcher === "Bash")?.hooks[0]
+        .command,
+    ).toContain(".starFactory/hooks/inject-shell-session-context.py");
+    expect(settings.hooks.UserPromptSubmit[0].hooks[0].command).toContain(
+      ".starFactory/hooks/inject-workflow-state.py",
+    );
+
+    // A native StarFactory directory without Trellis-owned files is not a
+    // configured platform.
+    const emptyDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "trellis-star-det-"),
+    );
+    try {
+      fs.mkdirSync(path.join(emptyDir, ".starFactory"), { recursive: true });
+      fs.writeFileSync(
+        path.join(emptyDir, ".starFactory", "settings.json"),
+        "{}",
+      );
+      expect(getConfiguredPlatforms(emptyDir).has("star")).toBe(false);
+      fs.mkdirSync(path.join(emptyDir, ".starFactory", "commands"), {
+        recursive: true,
+      });
+      expect(getConfiguredPlatforms(emptyDir).has("star")).toBe(false);
+    } finally {
+      fs.rmSync(emptyDir, { recursive: true, force: true });
+    }
+
+    const templates = collectPlatformTemplates("star");
+    expect(templates?.has(".starFactory/settings.json")).toBe(true);
+    expect(templates?.has(".starFactory/commands/trellis/start.md")).toBe(
+      false,
+    );
+    expect(templates?.has(".starFactory/agents/trellis-implement.md")).toBe(
+      true,
+    );
+    expect(
+      templates?.has(".starFactory/hooks/inject-subagent-context.py"),
+    ).toBe(true);
+    // .claude/ belongs to the claude-code platform; star must not write it.
+    expect([...(templates?.keys() ?? [])].some((k) => k.startsWith(".claude/"))).toBe(
+      false,
+    );
+
+    expect(AI_TOOLS.star.templateContext.hasHooks).toBe(true);
+    expect(AI_TOOLS.star.hasPythonHooks).toBe(true);
+    expect(AI_TOOLS.star.supportsAgentSkills ?? false).toBe(false);
+  });
+
   it("configurePlatform('dsh') writes shared + dsh-private skills and the operator guide", async () => {
     await configurePlatform("dsh", tmpDir);
 

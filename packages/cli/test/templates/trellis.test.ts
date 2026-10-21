@@ -179,7 +179,7 @@ describe("trellis template constants", () => {
     const implement = stepSection("2.1");
     const hookAutoBlock = platformBlock(
       implement,
-      "[Claude Code, Cursor, OpenCode, codex-sub-agent, CodeBuddy, Droid, Pi, ZCode, Snow, Oh My Pi]",
+      "[Claude Code, Cursor, OpenCode, codex-sub-agent, CodeBuddy, Droid, Pi, ZCode, Snow, Oh My Pi, StarFactory]",
     );
     const pullBasedMarker =
       "[Gemini, Qoder, Copilot, Reasonix, Trae, Grok, Kimi Code]";

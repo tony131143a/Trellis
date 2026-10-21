@@ -186,6 +186,9 @@ smoke_test/
 # Snow CLI generated project configuration and local runtime data
 /.snow/
 
+# StarFactory generated project configuration and local runtime data
+/.starFactory/
+
 tmp/
 tmp1/
 .playwright-mcp

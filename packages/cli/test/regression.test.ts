@@ -2213,6 +2213,7 @@ describe("regression: update only configured platforms (beta.16)", () => {
       "omp",
       "grok",
       "kimi",
+      "star",
     ] as const;
     for (const id of withTracking) {
       const result = collectPlatformTemplates(id);
@@ -9111,6 +9112,31 @@ describe("regression: cli_adapter platform support (beta.9, beta.13, beta.16)", 
     expect(commonCliAdapter).toContain(
       'return f".kimi-code/skills/trellis-{name}/SKILL.md"',
     );
+  });
+
+  it("[star] StarFactory is registered as a class-1 Claude-compatible platform", () => {
+    expect(AI_TOOLS).toHaveProperty("star");
+    expect(AI_TOOLS.star.name).toBe("StarFactory");
+    // StarFactory is a Claude Code fork whose project-level config dir is
+    // .starFactory/ — .claude/ at project level is ignored by the CLI.
+    expect(AI_TOOLS.star.configDir).toBe(".starFactory");
+    expect(AI_TOOLS.star.cliFlag).toBe("star");
+    expect(AI_TOOLS.star.hasPythonHooks).toBe(true);
+    expect(AI_TOOLS.star.supportsAgentSkills ?? false).toBe(false);
+    expect(AI_TOOLS.star.templateContext.agentCapable).toBe(true);
+    expect(AI_TOOLS.star.templateContext.hasHooks).toBe(true);
+    expect(AI_TOOLS.star.templateContext.cmdRefPrefix).toBe("/trellis:");
+  });
+
+  it("[star] cli_adapter.py supports star platform", () => {
+    expect(commonCliAdapter).toContain('"star"');
+    expect(commonCliAdapter).toContain(".starFactory");
+    expect(commonCliAdapter).toContain('cmd = ["star", "-p"]');
+    expect(commonCliAdapter).toContain(
+      'return ["star", "--resume", session_id]',
+    );
+    expect(commonCliAdapter).toContain('elif self.platform == "star":');
+    expect(commonCliAdapter).toContain('return "star"');
   });
 
   it("[droid] cli_adapter.py treats droid as commands-only (no CLI run/resume yet)", () => {

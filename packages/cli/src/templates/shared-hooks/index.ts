@@ -41,7 +41,8 @@ export type SharedHookPlatform =
   | "droid"
   | "kiro"
   | "trae"
-  | "zcode";
+  | "zcode"
+  | "star";
 
 /**
  * Which shared hooks each platform actually invokes. Single source of truth
@@ -141,6 +142,21 @@ export const SHARED_HOOKS_BY_PLATFORM: Record<
     "inject-workflow-state.py",
   ],
   zcode: [
+    "session-start.py",
+    "inject-shell-session-context.py",
+    "inject-workflow-state.py",
+    "inject-subagent-context.py",
+  ],
+  // StarFactory is a Claude Code-compatible fork and ships the same trio as
+  // Claude Code. Verified on star 1.0.49: SessionStart, UserPromptSubmit, and
+  // PreToolUse (matcher Agent|Task) all fire, and PreToolUse can mutate the
+  // sub-agent prompt, so StarFactory is class-1 and takes the subagent-context
+  // hook. It also takes inject-shell-session-context.py: unlike Claude Code,
+  // StarFactory exports no session id into its shell children (a live probe of
+  // a Bash child found only CLAUDECODE / CLAUDE_CONFIG_DIR / STARFACTORY_*),
+  // so PreToolUse matcher Bash is its only route to session identity — the
+  // same position ZCode is in.
+  star: [
     "session-start.py",
     "inject-shell-session-context.py",
     "inject-workflow-state.py",

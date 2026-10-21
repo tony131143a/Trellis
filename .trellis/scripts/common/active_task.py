@@ -57,6 +57,7 @@ _KNOWN_PLATFORMS = {
     "zcode",
     "snow",
     "dsh",
+    "star",
 }
 
 # Every name below records how it was checked. Do NOT add a name by analogy
@@ -157,6 +158,11 @@ _CONTEXT_KEY_PLATFORM_ALIASES = {
     # platform after the directory it was installed in reports "factory". Its
     # sibling hooks report "droid". One runtime filename either way.
     "factory": "droid",
+    # StarFactory has the same split: `.starFactory/` makes the shell-ticket
+    # hook (which derives its name from the install path) report "starFactory",
+    # while the shared hooks' script-path table reports "star". Both must land
+    # on one runtime filename or every turn reports no_task.
+    "starFactory": "star",
 }
 
 

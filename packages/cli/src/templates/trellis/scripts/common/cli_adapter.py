@@ -23,6 +23,7 @@ Supported platforms:
 - omp: Oh My Pi
 - grok: Grok Build (pull-based skills/agents; no hook context injection)
 - kimi: Kimi Code (pull-based skills; commands delivered as skills; no hook context injection)
+- star: StarFactory (Claude Code-compatible fork; project config dir is .starFactory)
 
 Usage:
     from common.cli_adapter import CLIAdapter
@@ -61,6 +62,7 @@ Platform = Literal[
     "omp",
     "grok",
     "kimi",
+    "star",
 ]
 
 
@@ -143,6 +145,8 @@ class CLIAdapter:
             return ".grok"
         elif self.platform == "kimi":
             return ".kimi-code"
+        elif self.platform == "star":
+            return ".starFactory"
         else:
             return ".claude"
 
@@ -457,6 +461,27 @@ class CLIAdapter:
             # built-in coder/explore/plan agents dispatched in-session.
             cmd = ["kimi", "-p", prompt, "--yolo"]
 
+        elif self.platform == "star":
+            # StarFactory exposes Claude Code's CLI surface (verified: -p/--print,
+            # --agent, --session-id, --dangerously-skip-permissions,
+            # --output-format, --verbose).
+            cmd = ["star", "-p"]
+            cmd.extend(["--agent", mapped_agent])
+
+            if session_id:
+                cmd.extend(["--session-id", session_id])
+
+            if skip_permissions:
+                cmd.append("--dangerously-skip-permissions")
+
+            if json_output:
+                cmd.extend(["--output-format", "stream-json"])
+
+            if verbose:
+                cmd.append("--verbose")
+
+            cmd.append(prompt)
+
         else:  # claude
             cmd = ["claude", "-p"]
             cmd.extend(["--agent", mapped_agent])
@@ -534,6 +559,8 @@ class CLIAdapter:
             return ["grok", "-c"]
         elif self.platform == "kimi":
             return ["kimi", "--session", session_id]
+        elif self.platform == "star":
+            return ["star", "--resume", session_id]
         else:
             return ["claude", "--resume", session_id]
 
@@ -616,6 +643,8 @@ class CLIAdapter:
             return "grok"
         elif self.platform == "kimi":
             return "kimi"
+        elif self.platform == "star":
+            return "star"
         else:
             return "claude"
 
@@ -634,6 +663,7 @@ class CLIAdapter:
             "pi",
             "grok",
             "kimi",
+            "star",
         )
 
     @property
@@ -643,7 +673,7 @@ class CLIAdapter:
         Claude Code, OpenCode, iFlow: require agent .md files (--agent flag).
         Codex: auto-discovers agents from .codex/agents/*.toml, no --agent flag.
         """
-        return self.platform in ("claude", "opencode", "iflow")
+        return self.platform in ("claude", "opencode", "iflow", "star")
 
     # =========================================================================
     # Session ID Handling
@@ -656,8 +686,9 @@ class CLIAdapter:
         Claude Code: Yes (--session-id)
         OpenCode: No (auto-generated, extract from logs)
         iFlow: No (no session ID support)
+        StarFactory: Yes (--session-id, Claude Code-compatible)
         """
-        return self.platform == "claude"
+        return self.platform in ("claude", "star")
 
     def extract_session_id_from_log(self, log_content: str) -> str | None:
         """Extract session ID from log output (OpenCode only).
@@ -723,9 +754,10 @@ def get_cli_adapter(platform: str = "claude") -> CLIAdapter:
         "omp",
         "grok",
         "kimi",
+        "star",
     ):
         raise ValueError(
-            f"Unsupported platform: {platform} (must be 'claude', 'opencode', 'cursor', 'iflow', 'codex', 'kilo', 'kiro', 'gemini', 'antigravity', 'devin', 'qoder', 'codebuddy', 'copilot', 'droid', 'pi', 'trae', 'omp', 'grok', or 'kimi')"
+            f"Unsupported platform: {platform} (must be 'claude', 'opencode', 'cursor', 'iflow', 'codex', 'kilo', 'kiro', 'gemini', 'antigravity', 'devin', 'qoder', 'codebuddy', 'copilot', 'droid', 'pi', 'trae', 'omp', 'grok', 'kimi', or 'star')"
         )
 
     return CLIAdapter(platform=platform)  # type: ignore
@@ -752,6 +784,7 @@ _ALL_PLATFORM_CONFIG_DIRS = (
     ".omp",
     ".grok",
     ".kimi-code",
+    ".starFactory",
 )
 """Platform-specific config directory names used by detect_platform exclusion
 checks. `.agents/skills/` is NOT listed here: it is a shared cross-platform
@@ -789,7 +822,8 @@ def detect_platform(project_root: Path) -> Platform:
     14. .factory directory exists → droid
     15. .pi directory exists → pi
     16. .trae directory exists → trae
-    17. Default → claude
+    17. .starFactory directory exists → star
+    18. Default → claude
 
     Args:
         project_root: Project root directory
@@ -824,6 +858,7 @@ def detect_platform(project_root: Path) -> Platform:
         "omp",
         "grok",
         "kimi",
+        "star",
     ):
         return env_platform  # type: ignore
 
@@ -915,6 +950,11 @@ def detect_platform(project_root: Path) -> Platform:
     # Check for .kimi-code directory (Kimi Code-specific)
     if (project_root / ".kimi-code").is_dir():
         return "kimi"
+
+    # Check for .starFactory directory (StarFactory-specific). StarFactory is a
+    # Claude Code-compatible fork but owns its own project-level config dir.
+    if (project_root / ".starFactory").is_dir():
+        return "star"
 
     # Fallback: checkout only has the Codex shared-skills layer
     # (.agents/skills/trellis-* dirs) and no explicit platform config dir.

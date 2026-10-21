@@ -691,6 +691,58 @@ describe("init() integration", () => {
     expect(trackedPaths).toEqual(expect.arrayContaining(expectedKimiPaths));
   });
 
+  it("#3n star platform writes .starFactory hooks, commands, agents, and tracked templates", async () => {
+    await init({ yes: true, star: true });
+
+    const starFactory = (p: string) => path.join(tmpDir, ".starFactory", p);
+
+    // Class-1: SessionStart injects the workflow, so trellis-start is filtered.
+    expect(fs.existsSync(starFactory("settings.json"))).toBe(true);
+    expect(fs.existsSync(starFactory("commands/trellis/start.md"))).toBe(false);
+    expect(fs.existsSync(starFactory("commands/trellis/finish-work.md"))).toBe(
+      true,
+    );
+    for (const hook of [
+      "session-start.py",
+      "inject-workflow-state.py",
+      "inject-subagent-context.py",
+      "inject-shell-session-context.py",
+    ]) {
+      expect(fs.existsSync(starFactory(`hooks/${hook}`))).toBe(true);
+    }
+    for (const name of [
+      "trellis-implement",
+      "trellis-check",
+      "trellis-research",
+    ]) {
+      expect(fs.existsSync(starFactory(`agents/${name}.md`))).toBe(true);
+    }
+
+    // The project-level .claude/ dir is a different platform; star never writes it.
+    expect(fs.existsSync(path.join(tmpDir, ".claude"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".agents", "skills"))).toBe(false);
+
+    const hashFile = path.join(
+      tmpDir,
+      DIR_NAMES.WORKFLOW,
+      ".template-hashes.json",
+    );
+    const hashesFile = JSON.parse(fs.readFileSync(hashFile, "utf-8")) as {
+      __version?: number;
+      hashes?: Record<string, string>;
+    };
+    const hashes = hashesFile.hashes ?? {};
+    const trackedPaths = Object.keys(hashes).map((p) => p.replace(/\\/g, "/"));
+    const starTemplates = collectPlatformTemplates("star");
+    expect(starTemplates).toBeInstanceOf(Map);
+    if (!starTemplates) {
+      throw new Error("Expected StarFactory templates to be collectable");
+    }
+    expect(trackedPaths).toEqual(
+      expect.arrayContaining([...starTemplates.keys()]),
+    );
+  });
+
   it("#3l trae platform writes hooks, commands, agents, and tracked templates", async () => {
     await init({ yes: true, trae: true });
 

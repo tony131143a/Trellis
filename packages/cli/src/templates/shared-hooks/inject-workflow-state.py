@@ -119,6 +119,9 @@ def _detect_platform(input_data: dict) -> str | None:
         "KIRO_PROJECT_DIR": "kiro",
         "COPILOT_PROJECT_DIR": "copilot",
         "TRAE_PROJECT_DIR": "trae",
+        # StarFactory is a Claude Code fork: it exports CLAUDE_PROJECT_DIR too,
+        # so its own vendor key must win before the shared alias below.
+        "STARFACTORY_PROJECT_DIR": "star",
         # Last: the shared alias, only meaningful once no vendor key matched.
         "CLAUDE_PROJECT_DIR": "claude",
     }
@@ -146,6 +149,8 @@ def _detect_platform(input_data: dict) -> str | None:
         return "trae"
     if ".zcode" in script_parts:
         return "zcode"
+    if ".starFactory" in script_parts:
+        return "star"
     return None
 
 

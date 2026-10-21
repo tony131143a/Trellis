@@ -157,6 +157,7 @@ _PLATFORM_MARKER_LABELS: dict[str, str] = {
     "kimi": "Kimi Code",
     "omp": "Oh My Pi",
     "dsh": "DeepSeek Harness",
+    "star": "StarFactory",
 }
 
 

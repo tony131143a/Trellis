@@ -1,6 +1,6 @@
 # Platform Integration Guide
 
-How to add support for a new AI CLI platform. The 21 currently registered are Claude Code, Cursor, OpenCode, Codex, Kilo, Kiro, Gemini CLI, Antigravity, Devin, Qoder, CodeBuddy, Copilot, Factory Droid, Pi, Reasonix, ZCode, Trae, OMP, Grok, Kimi, and Snow — `PLATFORM_IDS` in `configurators/index.ts` is the list that counts.
+How to add support for a new AI CLI platform. The 22 currently registered are Claude Code, Cursor, OpenCode, Codex, Kilo, Kiro, Gemini CLI, Antigravity, Devin, Qoder, CodeBuddy, Copilot, Factory Droid, Pi, Reasonix, ZCode, Trae, OMP, Grok, Kimi, Snow, and StarFactory — `PLATFORM_IDS` in `configurators/index.ts` is the list that counts.
 
 ---
 
@@ -2314,6 +2314,16 @@ Note this is *only* about `{{…}}` placeholders. The separate `python3` → `py
 **Fix**: Wire the trigger into BOTH (a) the main-dispatch block near the end of `init()` AND (b) `handleReinit`'s `doAddDeveloper` / `doAddPlatforms` branch, whichever is relevant. Capture any pre-init filesystem state (e.g., `.developer` existence) in each path separately, before scripts that mutate it run.
 
 **Prevention**: Integration tests must cover the default path WITHOUT `force: true`. Any test using `force: true` bypasses `handleReinit` and is not testing real-user behavior. See "Bootstrap & Joiner Task Auto-Generation" above for the canonical two-point wiring pattern.
+
+### Edited workflow.md's platform lists without bumping the marketplace mirror
+
+**Symptom**: `test/templates/trellis.test.ts > marketplace native workflow mirror matches the bundled workflow` fails, and the diff contains nothing but the platform list you just edited. `git status` shows no changes under `marketplace/`. If the submodule was never initialized the same test instead fails with `ENOENT: ... marketplace/workflows/native/workflow.md`.
+
+**Cause**: `marketplace/workflows/native/workflow.md` must stay byte-identical to `packages/cli/src/templates/trellis/workflow.md`, but it lives in the separate `mindfold-ai/marketplace` repo, checked out here as a git submodule. Adding a platform to the `[A, B, ...]` / `[/A, B, ...]` routing lists — a required step, since otherwise the new platform's sessions read no routing guidance — leaves the mirror behind. The submodule pointer only moves in a follow-up `chore(marketplace): bump native workflow mirror` commit, so the test legitimately stays red in between (see `6358c00b` → `4012a75b`).
+
+**Fix**: Land the mirror edit in `mindfold-ai/marketplace` first, then bump the submodule pointer in a follow-up commit. Run `git submodule update --init marketplace` before believing an `ENOENT` here — an uninitialized submodule produces the same failing test for an unrelated reason.
+
+**Prevention**: Treat the `workflow.md` routing lists as a two-repo change. Platform PRs also update the dogfood copy at `.trellis/workflow.md` in the same commit (see `bfa7f99d`, `8484838c`, `3dc7ba07`); that copy is not parity-checked, so drift there fails no test but still misroutes the repo's own sessions.
 
 ---
 
