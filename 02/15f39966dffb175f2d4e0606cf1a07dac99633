@@ -1,0 +1,23 @@
+.trellis/tasks/archive/2026-10/10-21-spec-freshness/check.jsonl
+  s_658dc99cddf834::t_5dcbd417bb5881 1-5
+.trellis/tasks/archive/2026-10/10-21-spec-freshness/implement.jsonl
+  s_658dc99cddf834::t_47966579f82dfc 1-7
+.trellis/tasks/archive/2026-10/10-21-spec-freshness/prd.md
+  s_658dc99cddf834::t_c5e3eb2201a1c7 1-141
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "0215f39966dffb175f2d4e0606cf1a07dac99633",
+  "prompts": {},
+  "sessions": {
+    "s_658dc99cddf834": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3f28ccbe-b406-418c-b1e6-b5904b36f332",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
