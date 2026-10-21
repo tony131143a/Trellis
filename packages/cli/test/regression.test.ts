@@ -9290,6 +9290,10 @@ describe("regression: cli_adapter platform support (beta.9, beta.13, beta.16)", 
     expect(taskStore as string).toContain('".zcode"');
     expect(taskStore as string).toContain('".grok"');
     expect(taskStore as string).toContain('".kimi-code"');
+    // StarFactory is class-1 (native agents + PreToolUse injection) and
+    // ignores a project-level .claude/, so a star-only project must still
+    // get implement.jsonl / check.jsonl seeded on `task.py create`.
+    expect(taskStore as string).toContain('".starFactory"');
     expect(taskStore as string).toContain('_CODEX_CONFIG_DIR = ".codex"');
     expect(taskStore as string).toContain(
       'get_codex_dispatch_mode(repo_root) == "auto"',
