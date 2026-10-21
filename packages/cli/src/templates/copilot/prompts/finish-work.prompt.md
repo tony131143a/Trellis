@@ -24,6 +24,14 @@ This prints:
 
 If `--mode record` surfaces other completed tasks not tied to the current session, surface them to the user with a one-shot confirmation: "These N tasks look done — archive them too in this round? [y/N]". Default is no; the current active task is always archived in Step 3 regardless.
 
+Then run the spec freshness lint:
+
+```bash
+python3 ./.trellis/scripts/spec.py lint
+```
+
+This is advisory: report its findings to the user in one line (stale, broken, or unlisted spec docs) and continue — it never blocks this command.
+
 ## Step 2: Sanity check — classify dirty paths
 
 Run:

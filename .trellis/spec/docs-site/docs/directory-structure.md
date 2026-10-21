@@ -1,3 +1,7 @@
+---
+sources: []
+last_verified: 2026-06-18
+---
 # Directory Structure
 
 > File organization and naming conventions for this Mintlify documentation project.

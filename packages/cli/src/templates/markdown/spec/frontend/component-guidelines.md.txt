@@ -1,3 +1,6 @@
+---
+sources: []
+---
 # Component Guidelines
 
 > How components are built in this project.

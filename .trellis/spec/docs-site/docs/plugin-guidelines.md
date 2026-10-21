@@ -1,3 +1,7 @@
+---
+sources: []
+last_verified: 2026-03-09
+---
 # Plugin Guidelines
 
 > Claude Code plugin manifest patterns and conventions.

@@ -1,3 +1,7 @@
+---
+sources: []
+last_verified: 2026-08-06
+---
 # Directory Structure
 
 > How backend/CLI code is organized in this project.

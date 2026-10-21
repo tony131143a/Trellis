@@ -49,6 +49,11 @@ class TaskData(TypedDict, total=False):
     relatedFiles: list[str]
     notes: str
     meta: dict
+    # Written by `task.py archive` (derived) and `task.py add-spec-change`
+    # (manual); absent on tasks created before 0.6.18. Readers treat absence
+    # as [] / "none".
+    spec_changes: list[str]
+    spec_changes_source: str
 
 
 # =============================================================================

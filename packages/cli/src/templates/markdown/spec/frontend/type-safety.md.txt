@@ -1,3 +1,6 @@
+---
+sources: []
+---
 # Type Safety
 
 > Type safety patterns in this project.

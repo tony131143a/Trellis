@@ -1,3 +1,7 @@
+---
+sources: []
+last_verified: 2026-03-09
+---
 # Error Handling
 
 > How errors are handled in this CLI project.

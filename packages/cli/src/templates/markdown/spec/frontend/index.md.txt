@@ -23,6 +23,32 @@ This directory contains guidelines for frontend development. Fill in each file w
 
 ---
 
+## Pre-Development Checklist
+
+Before writing frontend code, read the relevant guidelines based on your task:
+
+- Module layout, where a new file goes → [directory-structure.md](./directory-structure.md)
+- Building or changing a component → [component-guidelines.md](./component-guidelines.md)
+- Custom hooks, data fetching → [hook-guidelines.md](./hook-guidelines.md)
+- Local / global / server state → [state-management.md](./state-management.md)
+- Type patterns, validation → [type-safety.md](./type-safety.md)
+- Code standards, forbidden patterns → [quality-guidelines.md](./quality-guidelines.md)
+- To fill: one pointer per recurring task type in this project (e.g. "Adding a page → ...")
+
+---
+
+## Quality Check
+
+After writing code, verify against these guidelines:
+
+1. Run `git diff --name-only` to see what you changed
+2. Read the relevant guidelines above for each changed area
+3. Always check [quality-guidelines.md](./quality-guidelines.md)
+4. Check whether tests need to be added or updated
+5. Run the project's lint and typecheck commands — To fill: list the exact commands here
+
+---
+
 ## How to Fill These Guidelines
 
 For each guideline file:

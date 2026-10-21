@@ -1,3 +1,7 @@
+---
+sources: []
+last_verified: 2026-07-11
+---
 # Migration System
 
 智能迁移系统，用于处理模板文件重命名和删除。

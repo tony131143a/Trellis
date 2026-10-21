@@ -597,6 +597,8 @@ Load the `trellis-update-spec` skill and review whether this task produced new k
 
 Update the docs under `.trellis/spec/` accordingly. Even if the conclusion is "nothing to update", walk through the judgment.
 
+After editing a spec doc, stamp it as re-checked: `python3 ./.trellis/scripts/spec.py verify <doc>`. Run `python3 ./.trellis/scripts/spec.py lint` to see stale, broken, or unlisted spec docs — advisory, it never blocks.
+
 #### 3.4 Commit changes `[required · once]`
 
 **Spec-sync preamble**: before drafting commits, ask: did this task fix a bug or surface non-obvious knowledge that should land in `.trellis/spec/` so future-you (or future-AI) doesn't repeat the mistake? If yes, return to Phase 3.3 first — spec writes belong in the same task's commit batch, not as a forgotten follow-up.

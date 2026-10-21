@@ -1,3 +1,6 @@
+---
+sources: []
+---
 # Database Guidelines
 
 > Database patterns and conventions for this project.

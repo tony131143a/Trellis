@@ -1,3 +1,7 @@
+---
+sources: []
+last_verified: 2026-03-09
+---
 # Configuration Guidelines
 
 > docs.json configuration patterns and conventions.

@@ -1,3 +1,7 @@
+---
+sources: []
+last_verified: 2026-07-22
+---
 # Trellis Core SDK
 
 > Package boundary and coding rules for `@mindfoldhq/trellis-core` and the CLI.

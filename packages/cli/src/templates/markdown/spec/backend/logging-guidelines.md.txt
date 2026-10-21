@@ -1,3 +1,6 @@
+---
+sources: []
+---
 # Logging Guidelines
 
 > How logging is done in this project.

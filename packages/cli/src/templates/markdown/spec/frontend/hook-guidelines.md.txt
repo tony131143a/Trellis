@@ -1,3 +1,6 @@
+---
+sources: []
+---
 # Hook Guidelines
 
 > How hooks are used in this project.

@@ -1,3 +1,7 @@
+---
+sources: []
+last_verified: 2026-08-27
+---
 # Filesystem Safety — Atomic Writes & Destructive-Op Guards
 
 > Cross-cutting contract for any code that **writes, deletes, moves, or

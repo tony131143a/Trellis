@@ -1,3 +1,8 @@
+---
+sources:
+  - packages/cli/src/cli/index.ts
+last_verified: 2026-07-30
+---
 # `trellis platforms` Command
 
 Machine-readable report of which AI platforms are configured (active) in the

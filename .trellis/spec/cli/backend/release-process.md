@@ -1,3 +1,7 @@
+---
+sources: []
+last_verified: 2026-08-06
+---
 # Release Process
 
 > Release, versioning, docs, and npm publishing rules for the Trellis monorepo.

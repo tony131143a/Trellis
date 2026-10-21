@@ -117,13 +117,18 @@ def write_json(path: Path, data: dict) -> bool:
     return write_text_atomic(path, json.dumps(data, indent=2, ensure_ascii=False))
 
 
-def write_text_atomic(path: Path, text: str) -> bool:
+def write_text_atomic(path: Path, text: str, newline: str | None = None) -> bool:
     """Write text to a file atomically (temp in same dir, then replace).
 
     The same never-truncate-in-place guarantee as :func:`write_json`, for the
     Markdown state files that hold durable session state (journal files,
     index.md). A crash or Ctrl-C mid-write leaves the previous content intact
     instead of a half-written record that no retry can classify.
+
+    ``newline`` goes straight to the text wrapper. The default translates
+    ``\\n`` to ``os.linesep`` like ``Path.write_text``; pass ``""`` to write
+    ``text`` byte-for-byte when rewriting a file in the line endings it was
+    read with (``spec.py verify``).
 
     Returns True on success, False on error.
     """
@@ -136,7 +141,7 @@ def write_text_atomic(path: Path, text: str) -> bool:
 
     try:
         try:
-            f = os.fdopen(fd, "w", encoding="utf-8")
+            f = os.fdopen(fd, "w", encoding="utf-8", newline=newline)
         except OSError:
             # fdopen never took ownership of fd; close it ourselves.
             os.close(fd)

@@ -1,3 +1,8 @@
+---
+sources:
+  - packages/cli/src/commands/uninstall.ts
+last_verified: 2026-08-27
+---
 # `trellis uninstall` Command
 
 Source: `packages/cli/src/commands/uninstall.ts`

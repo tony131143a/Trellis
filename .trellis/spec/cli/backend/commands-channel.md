@@ -1,3 +1,8 @@
+---
+sources:
+  - packages/cli/src/commands/channel/**/*.ts
+last_verified: 2026-08-21
+---
 # `trellis channel` — Multi-Agent Collaboration Runtime (Code Spec)
 
 Executable contracts for `packages/cli/src/commands/channel/`. Read this

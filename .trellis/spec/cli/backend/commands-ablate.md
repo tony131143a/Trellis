@@ -1,3 +1,10 @@
+---
+sources:
+  - packages/cli/src/commands/ablate.ts
+  - packages/cli/src/utils/ablation-store.ts
+  - packages/cli/src/utils/managed-removal.ts
+last_verified: 2026-08-27
+---
 # `trellis ablate` and `trellis restore`
 
 Sources:
