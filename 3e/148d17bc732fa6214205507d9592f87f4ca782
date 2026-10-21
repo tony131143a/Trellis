@@ -1,0 +1,21 @@
+.trellis/workflow.md
+  s_25e8f76f782e22::t_9196dddfbfc880 55-58,124,185-192,676
+.trellis/.template-hashes.json
+  s_25e8f76f782e22::t_9196dddfbfc880 105
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "3e148d17bc732fa6214205507d9592f87f4ca782",
+  "prompts": {},
+  "sessions": {
+    "s_25e8f76f782e22": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8293918a-adf2-4786-b4d9-b5aedc5ccfbf",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
