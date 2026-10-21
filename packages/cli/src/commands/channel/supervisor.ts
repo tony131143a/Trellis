@@ -1,5 +1,5 @@
 /**
- * Supervisor process: owns a single worker (claude or codex) and bridges
+ * Supervisor process: owns a single worker (claude, codex, or star) and bridges
  * worker ↔ channel events.jsonl.
  *
  * Run as: `trellis channel __supervisor <channel> <worker> <config-path>`
@@ -125,7 +125,7 @@ export async function finalizeSupervisorExit(args: {
 /**
  * Resolve the real launch target for npm `.cmd` shims on Windows.
  *
- * @param provider CLI basename for the provider, such as `codex` or `claude`.
+ * @param provider CLI basename for the provider, such as `claude`, `codex`, or `star`.
  * @param cwd Worker launch directory, used to check local `node_modules/.bin` first.
  * @returns Command and prefix arguments that can be passed directly to `spawn()`.
  */

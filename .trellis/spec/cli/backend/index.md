@@ -34,7 +34,7 @@ This directory contains guidelines for backend development. Fill in each file wi
 | [`trellis uninstall` Command](./commands-uninstall.md) | Uninstall orchestration: plan composition, structured-file dispatch, execute phases, `.trellis/` removal | Done |
 | [`trellis ablate` / `restore` Commands](./commands-ablate.md) | Reversible full project subtraction, external transactions, conflict-safe exact restore | Done |
 | [Uninstall Scrubbers](./uninstall-scrubbers.md) | Pure scrubber contract for structured config files (`settings.json`, `hooks.json`, `package.json`, `config.toml`) | Done |
-| [`trellis channel` Command](./commands-channel.md) | Multi-agent collaboration runtime: events.jsonl protocol, per-worker supervisor, provider adapters (claude / codex), project buckets, ephemeral / run lifecycle, ShutdownController state machine | Done |
+| [`trellis channel` Command](./commands-channel.md) | Multi-agent collaboration runtime: events.jsonl protocol, per-worker supervisor, provider adapters (claude / codex / star), project buckets, ephemeral / run lifecycle, ShutdownController state machine | Done |
 | [`spec.py` Freshness Lint](./spec-lint.md) | Spec doc frontmatter (`sources`, `last_verified`), lint rules, `verify` / `init-meta` rewrites, archive-time `spec_changes` traceability | Done |
 ---
 

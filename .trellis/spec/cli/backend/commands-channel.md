@@ -18,7 +18,7 @@ integration via env wiring and storage layout).
 |---------|------------------------------------|
 | New top-level `channel` command tree (14 subcommands) | New CLI surface — signatures must be locked |
 | Event-stream protocol (events.jsonl, fixed kind taxonomy) | Cross-component contract: workers, supervisor, CLI all parse the same payloads |
-| Per-worker subprocess supervision (claude / codex) | Infra integration: process lifecycle + signal handling |
+| Per-worker subprocess supervision (claude / codex / star) | Infra integration: process lifecycle + signal handling |
 | Disk layout migration (legacy flat → project buckets) | Infra: irreversible filesystem move + cross-tool path conventions (claude code parity) |
 | Worker provider plugin (`WorkerAdapter`) | Extension contract: future providers depend on shape stability |
 | Env wiring (`TRELLIS_CHANNEL_ROOT/PROJECT/AS`) | Cross-process configuration |
@@ -72,7 +72,7 @@ trellis channel create <name> [opts]
 trellis channel spawn <name> [opts]
   --scope <scope>        : project | global
   --agent <name>         : load .trellis/agents/<name>.md (sets provider / as / system prompt)
-  --provider <p>         : claude | codex (overrides agent)
+  --provider <p>         : claude | codex | star (overrides agent)
   --as <worker-name>     : worker identifier (default = agent name)
   --cwd <path>           : worker cwd (default process.cwd())
   --model <id>           : model override
@@ -323,7 +323,7 @@ formatThreadList(states): string[]
 
 // adapters/index.ts
 interface WorkerAdapter {
-  readonly provider: Provider;                              // "claude" | "codex"
+  readonly provider: Provider;                              // "claude" | "codex" | "star"
   buildArgs(view: SupervisorView): string[];                // CLI args for spawn()
   createCtx(): AdapterCtx;                                  // per-worker state
   handshake?(args: {child, ctx, view}): Promise<void>;      // optional pre-traffic init
@@ -943,7 +943,7 @@ only applies to per-worker supervisor cleanup.
 | `spawn` with no `--provider` and no `--agent` providing it | throw `"Missing --provider (and the agent definition has no \`provider:\` frontmatter)"` |
 | `spawn` with no `--as` and no `--agent` providing fallback name | throw `"Missing --as (no agent name to fall back to)"` |
 | `spawn` and worker name already has a live pid | throw `"Worker '<as>' is already running in channel '<name>' (pid <N>)"` |
-| `spawn` and `--provider` not in REGISTRY | exit 1, stderr `"--provider must be one of: claude, codex"` |
+| `spawn` and `--provider` not in REGISTRY | exit 1, stderr `"--provider must be one of: claude, codex, star"` |
 | `send` with none of `--stdin`/`--text-file`/`[text]` | throw (missing body) |
 | `send`/`spawn`/`wait`/`messages`/`kill`/`rm` with channel in both project and global scopes but no `--scope` | throw `"Channel '<name>' exists in global and project scopes. Use --scope global or --scope project."` before writing |
 | `post` against a `chat` channel | throw `"Channel '<name>' is type 'chat'. 'post' requires a forum channel."` |
@@ -1130,7 +1130,7 @@ trellis channel send trellis-issue --scope global --as main --thread forum-mode 
 | `watchEvents` modes | integration | (a) default reads from EOF, (b) `fromStart:true` reads from byte 0, (c) `sinceSeq:N` skips events with seq ≤ N |
 | `matchesFilter` `to` semantics | unit | (a) event with no `to` passes when filter.to set (broadcast OK), (b) event with `to=X` only passes filter.to=X, (c) `filter.to="exclusive"` requires explicit `to` |
 | Spawn-fail path (ENOENT) | e2e | `PATH=/no/claude trellis channel spawn ...` → events.jsonl has ONE error event, no spawned, no killed; supervisor exited; pid file removed |
-| Happy turn (claude / codex) | e2e | spawn → send "hi" → wait done; assert events sequence is `create → spawned → message(to) → ...progress... → message(by:worker) → done` with no synthesised events |
+| Happy turn (claude / codex / star) | e2e | spawn → send "hi" → wait done; assert events sequence is `create → spawned → message(to) → ...progress... → message(by:worker) → done` with no synthesised events |
 | Codex streamed delta metadata | unit/fixture | `parseCodexLine` stores `item/started` metadata; deltas keep `text_delta`, add `kind`, add `stream_id` from `itemId`, and route interleaved `final_answer` / `commentary` streams into different lanes |
 | Cold-exit fallback synthesis | e2e | kill worker child PID directly (bypassing supervisor); assert `finalizeOnExit` synthesises terminal event with `by=workerName`, `synthesized:true` |
 | Kill ladder | e2e | `channel kill`, assert events.jsonl has `killed{reason:"explicit-kill", signal:"SIGTERM"}` AND supervisor process gone within 6s |
@@ -1272,7 +1272,7 @@ commands/channel/
 ├── guard.ts                  OOM-guard policy + spawn-time scan + idle cleanup
 ├── adapters/index.ts         WorkerAdapter REGISTRY + Provider type
 ├── adapters/types.ts         AdapterEvent / ParseResult shapes
-├── adapters/claude.ts        Claude stream-JSON adapter
+├── adapters/claude.ts        Claude stream-JSON adapter (also backs the `star` adapter — StarFactory is a Claude Code fork; `--append-system-prompt-file` is a hidden but honoured flag there)
 ├── adapters/codex.ts         Codex app-server JSON-RPC adapter
 ├── store/paths.ts            project bucket helpers + migration
 ├── store/events.ts           appendEvent + ChannelEvent kind taxonomy

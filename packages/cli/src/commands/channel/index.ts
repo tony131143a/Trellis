@@ -275,7 +275,7 @@ export function registerChannelCommand(program: Command): void {
   channel
     .command("spawn <name>")
     .description(
-      "Register a worker (claude/codex) into the channel — the worker stays idle until the first `channel send --to <worker>` arrives",
+      `Register a worker (${listProviders().join("/")}) into the channel — the worker stays idle until the first \`channel send --to <worker>\` arrives`,
     )
     .option("--scope <scope>", "channel scope: project | global")
     .option(
@@ -284,7 +284,7 @@ export function registerChannelCommand(program: Command): void {
     )
     .option(
       "--provider <provider>",
-      "worker provider: claude | codex (overrides agent)",
+      `worker provider: ${listProviders().join(" | ")} (overrides agent)`,
     )
     .option(
       "--as <name>",
@@ -400,7 +400,7 @@ export function registerChannelCommand(program: Command): void {
     )
     .option(
       "--provider <provider>",
-      "worker provider: claude | codex (overrides agent)",
+      `worker provider: ${listProviders().join(" | ")} (overrides agent)`,
     )
     .option("--as <name>", "worker name (default: agent name if --agent set)")
     .option("--cwd <path>", "worker working directory")

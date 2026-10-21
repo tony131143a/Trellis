@@ -1,8 +1,8 @@
 # Workers And Agent Cards
 
 Use workers when a peer agent should execute independently and report back
-through the channel event log. A worker is a registered child process (claude
-or codex) attached to a channel; the supervisor forwards inbox messages to it
+through the channel event log. A worker is a registered child process (claude,
+codex, or star) attached to a channel; the supervisor forwards inbox messages to it
 and translates its output back into channel events.
 
 ## Spawn
@@ -25,11 +25,11 @@ inbox-idle until a `send --to <worker>` (or a broadcast when
 Key `spawn` flags:
 
 - `--agent <name>` — load `.trellis/agents/<name>.md` (provider/model/as/system prompt defaults).
-- `--provider <claude|codex>` — overrides the agent card; validated against the adapter registry.
+- `--provider <claude|codex|star>` — overrides the agent card; validated against the adapter registry. `star` (StarFactory) is a Claude Code-compatible fork and shares the claude wire protocol; the `star` binary must be on PATH.
 - `--as <name>` — channel worker handle; defaults to the agent name.
 - `--cwd <path>` — worker working directory (also the jail root for `--file`/`--jsonl`).
 - `--model <id>` — model override.
-- `--resume <id>` — resume an existing claude session / codex thread.
+- `--resume <id>` — resume an existing claude/star session / codex thread.
 - `--timeout <duration>` — auto-kill after `30s` / `2m` / `1h`.
 - `--warn-before <duration>` — supervisor_warning lead time (default `5m`; `0ms` disables).
 - `--file <path>` (repeatable, glob-supported) — inject file content into the system prompt.
@@ -55,6 +55,8 @@ match `[A-Za-z0-9._-]+`. The default Trellis install ships two cards:
 name: check
 description: Code quality check expert.
 provider: claude
+# provider: star          # run this role on StarFactory instead
+# model: <provider model id>   # optional; passed to the worker CLI as --model
 ---
 ```
 
@@ -117,9 +119,10 @@ channel:
 ```bash
 trellis channel spawn cr-feature --agent check --as check-claude
 trellis channel spawn cr-feature --agent check --provider codex --as check-cx
+trellis channel spawn cr-feature --agent check --provider star --as check-star
 
 trellis channel wait cr-feature --as main \
-  --from check-claude,check-cx --kind done --all --timeout 15m
+  --from check-claude,check-cx,check-star --kind done --all --timeout 15m
 ```
 
 `--all` requires `--from` and blocks until every listed worker has produced a

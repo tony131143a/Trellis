@@ -3,6 +3,8 @@ name: check
 description: |
   Code quality auditor for the Trellis channel runtime. Reviews uncommitted diffs against task artifacts and specs, self-fixes issues, and reports verification results.
 provider: claude
+# provider: star          # StarFactory worker (Claude Code-compatible fork; `star` must be on PATH)
+# model: <provider model id>   # optional; passed to the worker CLI as --model
 labels: [trellis, check]
 ---
 

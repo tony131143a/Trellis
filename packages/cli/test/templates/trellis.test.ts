@@ -403,6 +403,16 @@ describe("getAllAgents", () => {
     expect(agents.get("check.md")).toBe(checkAgentTemplate);
   });
 
+  it("each agent card carries the commented provider/model hints", () => {
+    // Users switch a role to another worker CLI by editing these two lines;
+    // the hints must stay in the frontmatter so the option is discoverable.
+    const agents = getAllAgents();
+    for (const [file, content] of agents) {
+      expect(content, `${file} should hint provider: star`).toContain("# provider: star");
+      expect(content, `${file} should hint model:`).toContain("# model:");
+    }
+  });
+
   it("each agent body starts with `---` frontmatter and a matching name field", () => {
     const agents = getAllAgents();
     for (const [file, content] of agents) {

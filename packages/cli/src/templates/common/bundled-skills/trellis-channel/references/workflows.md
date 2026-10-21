@@ -86,9 +86,14 @@ trellis channel spawn cr-feature --agent check --provider codex --as check-cx \
   --jsonl "$TASK/check.jsonl" --file "$TASK/prd.md" --file "$TASK/design.md" \
   --timeout 15m
 
+trellis channel spawn cr-feature --agent check --provider star --as check-star \
+  --jsonl "$TASK/check.jsonl" --file "$TASK/prd.md" --file "$TASK/design.md" \
+  --timeout 15m
+
 trellis channel send cr-feature --as main --to check --text-file /tmp/cr-brief.md
 trellis channel send cr-feature --as main --to check-cx --text-file /tmp/cr-brief.md
-trellis channel wait cr-feature --as main --kind done --from check,check-cx --all --timeout 15m
+trellis channel send cr-feature --as main --to check-star --text-file /tmp/cr-brief.md
+trellis channel wait cr-feature --as main --kind done --from check,check-cx,check-star --all --timeout 15m
 ```
 
 `--all` means every listed worker must emit a matching event.
@@ -97,6 +102,7 @@ trellis channel wait cr-feature --as main --kind done --from check,check-cx --al
 
 ```bash
 trellis channel run --provider codex --message "say hi in 3 words" --timeout 1m
+trellis channel run --provider star --as star --message "say hi in 3 words" --timeout 1m
 trellis channel run --agent plan --message-file /tmp/plan-question.md --timeout 10m
 ```
 
