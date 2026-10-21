@@ -23,6 +23,7 @@ The channel runtime spans three local surfaces:
 | `~/.trellis/channels/_global/<channel>/...` | Channels created with `--scope global`. The project bucket is replaced by a shared key. |
 | `.trellis/agents/check.md` | Default Check Agent role definition consumed by `--agent check`. |
 | `.trellis/agents/implement.md` | Default Implement Agent role definition consumed by `--agent implement`. |
+| `.trellis/agents/research.md` | Code/tech research role consumed by `--agent research`. Reads and records, writes context files, no implementation. |
 | `.trellis/config.yaml` (`channel.*` block) | Worker guard thresholds and channel defaults. |
 
 The project bucket name is derived from the absolute project path (slashes flattened, non-alphanumerics replaced with `-`), matching Claude Code's `~/.claude/projects/<sanitized-cwd>/` convention. Override with `TRELLIS_CHANNEL_ROOT` (root directory) or `TRELLIS_CHANNEL_PROJECT` (bucket name) for testing or sandboxing.

@@ -45,10 +45,11 @@ The success event `spawned` records `pid`, `provider`, `agent`, the injected
 ## Agent Cards
 
 `--agent <name>` resolves to `.trellis/agents/<name>.md`. The card name must
-match `[A-Za-z0-9._-]+`. The default Trellis install ships two cards:
+match `[A-Za-z0-9._-]+`. The default Trellis install ships three cards:
 
-- `.trellis/agents/check.md` — code-quality reviewer.
 - `.trellis/agents/implement.md` — coding worker for implementation runs.
+- `.trellis/agents/check.md` — code-quality reviewer.
+- `.trellis/agents/research.md` — code/tech researcher (finds and records evidence; populates task context files).
 
 ```yaml
 ---
