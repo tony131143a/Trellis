@@ -1,0 +1,19 @@
+marketplace
+  s_658dc99cddf834::t_78239562df7cbf 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "6fb5bea7a7540f0fd23e87efc7737dc56e2cc3a9",
+  "prompts": {},
+  "sessions": {
+    "s_658dc99cddf834": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3f28ccbe-b406-418c-b1e6-b5904b36f332",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
