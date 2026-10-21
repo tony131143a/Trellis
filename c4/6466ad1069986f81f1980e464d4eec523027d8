@@ -1,0 +1,30 @@
+packages/cli/src/templates/trellis/agents/research.md
+  s_25e8f76f782e22::t_e030893560f38f 6-7
+  s_25e8f76f782e22::t_1c9c0f7f3923ff 1-5,8-275
+packages/cli/src/templates/common/bundled-skills/trellis-meta/references/local-architecture/multi-agent-channel.md
+  s_25e8f76f782e22::t_b2554f2222bff0 26
+packages/cli/src/templates/trellis/index.ts
+  s_25e8f76f782e22::t_0c1cc935054c52 90
+  s_25e8f76f782e22::t_3d16e2f9a62fd9 150
+packages/cli/src/templates/common/bundled-skills/trellis-meta/SKILL.md
+  s_25e8f76f782e22::t_b4d672d4c86a90 71
+packages/cli/src/templates/common/bundled-skills/trellis-channel/references/workers.md
+  s_25e8f76f782e22::t_e82d5bc5963ca9 48
+  s_25e8f76f782e22::t_c9862609f203e8 51-52
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "c46466ad1069986f81f1980e464d4eec523027d8",
+  "prompts": {},
+  "sessions": {
+    "s_25e8f76f782e22": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8293918a-adf2-4786-b4d9-b5aedc5ccfbf",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
