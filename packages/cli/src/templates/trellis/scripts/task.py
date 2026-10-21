@@ -21,6 +21,7 @@ Usage:
     python3 task.py list-archive [month]        # List archived tasks
     python3 task.py add-subtask <parent-dir> <child-dir>     # Link child to parent
     python3 task.py remove-subtask <parent-dir> <child-dir>  # Unlink child from parent
+    python3 task.py add-spec-change <dir> <path>  # Record a spec doc this task changed
 """
 
 from __future__ import annotations
@@ -67,6 +68,7 @@ from common.task_store import (
     cmd_set_meta,
     cmd_add_subtask,
     cmd_remove_subtask,
+    cmd_add_spec_change,
 )
 from common.task_context import (
     cmd_add_context,
@@ -760,6 +762,14 @@ def main() -> int:
     p_rmsub.add_argument("parent_dir", help="Parent task directory")
     p_rmsub.add_argument("child_dir", help="Child task directory")
 
+    # add-spec-change
+    p_specchg = subparsers.add_parser(
+        "add-spec-change",
+        help="Record a .trellis/spec doc this task changed (when git cannot attribute it)",
+    )
+    p_specchg.add_argument("dir", help="Task directory")
+    p_specchg.add_argument("path", help="Spec doc path under .trellis/spec/")
+
     # list-archive
     p_listarch = subparsers.add_parser("list-archive", help="List archived tasks")
     p_listarch.add_argument("month", nargs="?", help="Month (YYYY-MM)")
@@ -786,6 +796,7 @@ def main() -> int:
         "archive": cmd_archive,
         "add-subtask": cmd_add_subtask,
         "remove-subtask": cmd_remove_subtask,
+        "add-spec-change": cmd_add_spec_change,
         "list": cmd_list,
         "list-archive": cmd_list_archive,
     }

@@ -63,6 +63,9 @@ export const commonTrellisConfig = readTemplate(
   "scripts/common/trellis_config.py",
 );
 export const commonSafeCommit = readTemplate("scripts/common/safe_commit.py");
+export const commonSpecMeta = readTemplate("scripts/common/spec_meta.py");
+export const commonSpecLint = readTemplate("scripts/common/spec_lint.py");
+export const commonSpecTrace = readTemplate("scripts/common/spec_trace.py");
 
 // Python scripts - main
 export const getDeveloperScript = readTemplate("scripts/get_developer.py");
@@ -70,6 +73,7 @@ export const initDeveloperScript = readTemplate("scripts/init_developer.py");
 export const taskScript = readTemplate("scripts/task.py");
 export const getContextScript = readTemplate("scripts/get_context.py");
 export const addSessionScript = readTemplate("scripts/add_session.py");
+export const specScript = readTemplate("scripts/spec.py");
 
 // Configuration files
 export const workflowMdTemplate = readTemplate("workflow.md");
@@ -115,6 +119,9 @@ export function getAllScripts(): Map<string, string> {
   scripts.set("common/workflow_phase.py", commonWorkflowPhase);
   scripts.set("common/trellis_config.py", commonTrellisConfig);
   scripts.set("common/safe_commit.py", commonSafeCommit);
+  scripts.set("common/spec_meta.py", commonSpecMeta);
+  scripts.set("common/spec_lint.py", commonSpecLint);
+  scripts.set("common/spec_trace.py", commonSpecTrace);
 
   // Main
   scripts.set("get_developer.py", getDeveloperScript);
@@ -122,6 +129,7 @@ export function getAllScripts(): Map<string, string> {
   scripts.set("task.py", taskScript);
   scripts.set("get_context.py", getContextScript);
   scripts.set("add_session.py", addSessionScript);
+  scripts.set("spec.py", specScript);
 
   return scripts;
 }

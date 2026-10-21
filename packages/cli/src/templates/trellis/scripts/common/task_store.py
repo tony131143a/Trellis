@@ -60,6 +60,16 @@ from .safe_commit import (
     safe_archive_paths_to_add,
     safe_git_add,
 )
+from .spec_trace import (
+    SOURCE_BRANCH_DIFF,
+    SOURCE_MANUAL,
+    SOURCE_MIXED,
+    SOURCE_NONE,
+    SOURCE_SINCE_CREATED,
+    SPEC_PREFIX,
+    derive_spec_changes,
+    manual_spec_changes,
+)
 from .task_utils import (
     archive_destination_for,
     archive_task_complete,
@@ -1350,6 +1360,15 @@ def cmd_archive(args: argparse.Namespace) -> int:
 
             data["status"] = "completed"
             data["completedAt"] = today
+            # Traceability: which spec docs did this task change? Advisory —
+            # derivation can warn but must never change the archive outcome.
+            spec_changes, spec_source, spec_warning = _derive_spec_changes_safely(
+                data, repo_root
+            )
+            data["spec_changes"] = spec_changes
+            data["spec_changes_source"] = spec_source
+            if spec_warning:
+                print(colored(f"Warning: {spec_warning}", Colors.YELLOW), file=sys.stderr)
             if not write_json(task_json_path, data):
                 _report_write_failure(task_json_path)
                 print(
@@ -1458,6 +1477,85 @@ def cmd_archive(args: argparse.Namespace) -> int:
         return 0
 
     return 1
+
+
+def _derive_spec_changes_safely(
+    data: dict, repo_root: Path
+) -> tuple[list[str], str, str | None]:
+    """`derive_spec_changes` with a last-resort net around it.
+
+    The derivation already returns failures as warnings; this guard exists so
+    that even a bug in that module shows up as one yellow line on stderr and
+    never as a traceback that aborts `archive`.
+    """
+    try:
+        return derive_spec_changes(data, repo_root)
+    except Exception as exc:  # pragma: no cover - defensive
+        manual = manual_spec_changes(data)
+        return (
+            manual,
+            SOURCE_MANUAL if manual else SOURCE_NONE,
+            f"could not derive spec changes ({type(exc).__name__}: {exc})",
+        )
+
+
+def cmd_add_spec_change(args: argparse.Namespace) -> int:
+    """Record a spec doc this task changed that git cannot attribute to it."""
+    repo_root = get_repo_root()
+    target_dir = resolve_task_dir(args.dir, repo_root)
+    if target_dir is None:
+        return 1
+
+    task_json = target_dir / FILE_TASK_JSON
+    if not task_json.is_file():
+        print(colored(f"Error: task.json not found at {target_dir}", Colors.RED), file=sys.stderr)
+        return 1
+
+    raw = args.path
+    candidate = Path(raw)
+    if candidate.is_absolute():
+        try:
+            raw = candidate.resolve().relative_to(repo_root.resolve()).as_posix()
+        except ValueError:
+            print(colored(f"Error: {args.path} is outside the repository", Colors.RED), file=sys.stderr)
+            return 1
+    rel = raw.replace("\\", "/")
+    while rel.startswith("./"):
+        rel = rel[2:]
+    if not rel.startswith(SPEC_PREFIX) or len(rel) <= len(SPEC_PREFIX):
+        print(
+            colored(f"Error: {args.path} is not under {SPEC_PREFIX}", Colors.RED),
+            file=sys.stderr,
+        )
+        return 1
+    if not (repo_root / rel).exists():
+        print(colored(f"Error: {rel} does not exist", Colors.RED), file=sys.stderr)
+        return 1
+
+    data, reason = read_json_checked(task_json)
+    if data is None:
+        _report_read_failure(task_json, reason)
+        return 1
+
+    changes = manual_spec_changes(data)
+    if rel in changes:
+        print(f"Already recorded: {rel}")
+        return 0
+    changes.append(rel)
+    data["spec_changes"] = sorted(changes)
+
+    source = data.get("spec_changes_source") or SOURCE_NONE
+    if source == SOURCE_NONE:
+        source = SOURCE_MANUAL
+    elif source in (SOURCE_BRANCH_DIFF, SOURCE_SINCE_CREATED):
+        source = SOURCE_MIXED
+    data["spec_changes_source"] = source
+
+    if not write_json(task_json, data):
+        _report_write_failure(task_json)
+        return 1
+    print(colored(f"✓ Spec change recorded: {rel}", Colors.GREEN))
+    return 0
 
 
 def _auto_commit_archive(
