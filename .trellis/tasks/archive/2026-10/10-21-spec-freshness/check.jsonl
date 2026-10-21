@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/cli/backend/script-conventions.md", "reason": "verify byte identity of both script trees and Python 3.9 compatibility of new modules"}
+{"file": ".trellis/spec/cli/backend/filesystem-safety.md", "reason": "verify spec.py verify/init-meta never write outside .trellis/spec and use atomic writes"}
+{"file": ".trellis/spec/cli/backend/quality-guidelines.md", "reason": "review new code against forbidden patterns"}
+{"file": ".trellis/spec/cli/unit-test/conventions.md", "reason": "confirm the two new integration tests exist and enumerating tests were updated"}
+{"file": ".trellis/spec/cli/backend/migrations.md", "reason": "confirm no manifest entry is needed for additive script files and template-hash flow backfills them"}

@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/cli/backend/script-conventions.md", "reason": "Python 3.9+/stdlib-only rules, two-tree byte-identity contract, entry-shim layout for new spec.py and common/spec_*.py"}
+{"file": ".trellis/spec/cli/backend/filesystem-safety.md", "reason": "verify/init-meta rewrite spec docs: use atomic write (write_text_atomic) and path containment under .trellis/spec"}
+{"file": ".trellis/spec/cli/backend/directory-structure.md", "reason": "where templates/trellis/index.ts registers shipped scripts and how templates/markdown/spec templates are laid out"}
+{"file": ".trellis/spec/cli/backend/quality-guidelines.md", "reason": "code standards and forbidden patterns for new CLI/template code"}
+{"file": ".trellis/spec/cli/unit-test/conventions.md", "reason": "when a test is required: new scripts need integration tests under test/scripts; template text changes do not"}
+{"file": ".trellis/spec/cli/unit-test/integration-patterns.md", "reason": "temp-repo + spawnSync python3 fixture pattern for script integration tests"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "one-way rsync parity between .trellis/scripts and the template tree; reuse run_git/read_json/write_text_atomic instead of new helpers"}
