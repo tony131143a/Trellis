@@ -211,6 +211,36 @@ describe.skipIf(!hasPython())("task.py archive records spec_changes", () => {
     expect(data.spec_changes_source).toBe("branch-diff");
   });
 
+  it("branch-diff still finds the branch's spec changes after it was merged into base", () => {
+    // finish-work often runs after the feature branch is merged. Then the
+    // branch tip is an ancestor of base, `merge-base base branch` is the tip
+    // itself, and a plain tip..tip diff is empty. The fork point must come
+    // from the merge commit that brought the branch in.
+    makeTask(tmp, "feat-task", { branch: "feat", base_branch: "main" });
+    commitAll(tmp, "initial");
+    git(tmp, "checkout", "-q", "-b", "feat");
+    fs.writeFileSync(
+      path.join(tmp, ".trellis", "spec", "backend", "x.md"),
+      "# x changed\n",
+    );
+    commitAll(tmp, "spec x on feat");
+    git(tmp, "checkout", "-q", "main");
+    // A concurrent base-only spec change must not be attributed to the task.
+    fs.writeFileSync(
+      path.join(tmp, ".trellis", "spec", "backend", "y.md"),
+      "# y on main\n",
+    );
+    commitAll(tmp, "spec y on main");
+    git(tmp, "merge", "-q", "--no-ff", "-m", "merge feat", "feat");
+
+    const r = runTask(tmp, ["archive", "feat-task"]);
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stderr).not.toContain("could not derive spec changes");
+    const data = archivedTaskJson(tmp, "feat-task");
+    expect(data.spec_changes).toEqual([".trellis/spec/backend/x.md"]);
+    expect(data.spec_changes_source).toBe("branch-diff");
+  });
+
   it("AC5: shared branch -> since-created from commits after createdAt", () => {
     makeTask(tmp, "shared-task");
     commitAll(tmp, "initial");

@@ -108,6 +108,11 @@ Findings carry `path:line`; line `0` means the whole file.
   absence as `[]` / `"none"`.
 - `branch-diff`: task `branch` differs from `base_branch`. Tip is `branch` when the
   ref still exists locally, else `HEAD`; `git diff --name-only $(merge-base base tip) tip`.
+  When base already contains the tip (branch merged before archive), `merge-base` is
+  the tip itself, so the fork point is taken from the oldest merge commit on base whose
+  second parent contains the tip: `merge-base <merge>^1 tip`. A fast-forward merge has
+  no such commit and still yields `[]`; deleting the branch ref before archive loses the
+  tip entirely. Archive before deleting the branch.
 - `since-created`: otherwise; `git log --since=<createdAt>` over `.trellis/spec`.
   Approximate on shared branches, which is why the label is stored.
 - A derivation that succeeds with no hits still stores its method and `[]`.
@@ -145,7 +150,7 @@ Findings carry `path:line`; line `0` means the whole file.
 | Test file | Assertion points |
 |-----------|------------------|
 | `test/scripts/spec-lint.integration.test.ts` | each rule fires exactly once on its fixture with `path:line`; clean tree prints one summary line; `--json` shape; `--strict` exit 1; exit 2 cases; `verify` changes only the date bytes; `init-meta` seeds from a `Sources:` list; CRLF docs survive lint, `verify`, `init-meta` with zero bare `\n` |
-| `test/scripts/task-archive-spec-changes.integration.test.ts` | `branch-diff` on a feature branch and after HEAD returns to base; `since-created` on a shared branch; git removed from PATH → exit 0 + warning + `none`; `manual`; `mixed`; `create` writes neither field |
+| `test/scripts/task-archive-spec-changes.integration.test.ts` | `branch-diff` on a feature branch, after HEAD returns to base, and after the branch was merged into base (base-only spec edits excluded); `since-created` on a shared branch; git removed from PATH → exit 0 + warning + `none`; `manual`; `mixed`; `create` writes neither field |
 | `test/regression.test.ts` (existing) | both script trees byte-identical, including the four new files |
 | dogfood | `python3 .trellis/scripts/spec.py lint --strict` exits 0 on this repo |
 

@@ -81,6 +81,34 @@ def _git_or_raise(args: list[str], repo_root: Path, what: str) -> str:
     return out
 
 
+def _fork_point_of_merged_branch(base: str, tip: str, repo_root: Path) -> str | None:
+    """Return where ``tip`` forked from ``base`` when ``base`` already merged it.
+
+    Once the branch is merged, ``merge-base base tip`` is ``tip`` itself. The
+    oldest merge commit on ``base`` whose second parent contains ``tip`` is
+    the one that brought the branch in; its first parent is ``base`` as it
+    stood before the merge, so ``merge-base <merge>^1 tip`` is the original
+    fork point. Returns ``None`` for a fast-forward merge (no merge commit).
+    """
+    merges = _git_or_raise(
+        ["rev-list", "--merges", "--ancestry-path", "--reverse", f"{tip}..{base}"],
+        repo_root,
+        f"git rev-list --merges {tip}..{base}",
+    ).split()
+    for merge in merges:
+        rc, _, _ = run_git(
+            ["merge-base", "--is-ancestor", tip, f"{merge}^2"], cwd=repo_root
+        )
+        if rc == 0:
+            fork = _git_or_raise(
+                ["merge-base", f"{merge}^1", tip],
+                repo_root,
+                f"git merge-base {merge}^1 {tip}",
+            ).strip()
+            return fork or None
+    return None
+
+
 def _derive_from_git(data: dict, repo_root: Path) -> tuple[list[str], str]:
     branch = str(data.get("branch") or "").strip()
     base = str(data.get("base_branch") or "").strip()
@@ -95,6 +123,16 @@ def _derive_from_git(data: dict, repo_root: Path) -> tuple[list[str], str]:
         ).strip()
         if not merge_base:
             raise _DerivationError(f"git merge-base {base} {tip} returned nothing")
+        tip_sha = _git_or_raise(
+            ["rev-parse", "--verify", f"{tip}^{{commit}}"],
+            repo_root,
+            f"git rev-parse {tip}",
+        ).strip()
+        if merge_base == tip_sha:
+            # Base already contains the branch (merged before archive).
+            merge_base = (
+                _fork_point_of_merged_branch(base, tip, repo_root) or merge_base
+            )
         diff = _git_or_raise(
             ["diff", "--name-only", merge_base, tip, "--", f"{DIR_WORKFLOW}/{DIR_SPEC}"],
             repo_root,
