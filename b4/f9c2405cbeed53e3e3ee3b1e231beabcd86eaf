@@ -1,0 +1,142 @@
+packages/cli/src/templates/shared-hooks/inject-workflow-state.py
+  s_658dc99cddf834::t_77bdc562415142 152-153
+  s_658dc99cddf834::t_bbd2185b72e9d6 122-124
+packages/cli/src/templates/common/bundled-skills/trellis-meta/references/platform-files/overview.md
+  s_658dc99cddf834::t_29fa9e3d6db597 8
+packages/cli/src/templates/shared-hooks/inject-subagent-context.py
+  s_658dc99cddf834::t_7fd3b28a3d5772 113-115
+  s_658dc99cddf834::t_52f0b8af7cd5ad 139-140
+packages/cli/src/templates/common/bundled-skills/trellis-meta/references/platform-files/platform-map.md
+  s_658dc99cddf834::t_d5e3ddb104440a 30
+  s_658dc99cddf834::t_4cf75b17caa4d3 55
+packages/cli/src/templates/star/agents/trellis-research.md
+  s_658dc99cddf834::t_cf68393eecff5c 1-137
+packages/cli/test/templates/star.test.ts
+  s_658dc99cddf834::t_907ef1c12d91ad 1-175
+README_CN.md
+  s_658dc99cddf834::t_beade79ec0af1d 47
+packages/cli/src/templates/star/agents/trellis-check.md
+  s_658dc99cddf834::t_016b959f856e28 1-115
+packages/cli/src/configurators/index.ts
+  s_658dc99cddf834::t_c29670c9392225 112
+  s_658dc99cddf834::t_5af16fa7167279 47
+.trellis/scripts/common/cli_adapter.py
+  s_658dc99cddf834::t_8b79a311a8632f 26,65,148-149,464-484,562-563,646-647,666,676,689,691,757,760,787,825-826,861,954-957
+  s_658dc99cddf834::t_34fb058a0416de 958
+.trellis/scripts/common/workflow_phase.py
+  s_658dc99cddf834::t_8b79a311a8632f 160
+packages/cli/src/templates/trellis/workflow.md
+  s_658dc99cddf834::t_371d10b19394db 486
+  s_658dc99cddf834::t_397512699123ec 499
+  s_658dc99cddf834::t_5fee12787646b2 292,375,439,476,555
+  s_658dc99cddf834::t_773b6b9a2c50d9 286,367,394,472,541
+packages/cli/test/configurators/platforms.test.ts
+  s_658dc99cddf834::t_ea83d74c91517b 1033-1132
+packages/cli/test/regression.test.ts
+  s_658dc99cddf834::t_4965a256316dfb 9117-9141
+  s_658dc99cddf834::t_d7a76a9bdbee09 2216
+packages/cli/src/templates/common/bundled-skills/trellis-meta/references/platform-files/hooks-and-settings.md
+  s_658dc99cddf834::t_b20f8433471c3f 31,33
+.trellis/spec/cli/backend/platform-integration.md
+  s_658dc99cddf834::t_02d193f2362383 3
+  s_658dc99cddf834::t_b2e04995ed0bcf 2318-2327
+.gitignore
+  s_658dc99cddf834::t_0e4f3ae165d934 189-191
+packages/cli/src/templates/star/index.ts
+  s_658dc99cddf834::t_a2d756ba59c49f 35
+  s_658dc99cddf834::t_4f186c1273ff5f 1-34
+packages/cli/test/commands/update.integration.test.ts
+  s_658dc99cddf834::t_80fa7981eb5407 1574
+packages/cli/src/templates/trellis/scripts/common/workflow_phase.py
+  s_658dc99cddf834::t_eb13676c64fbd5 160
+packages/cli/src/commands/init.ts
+  s_658dc99cddf834::t_ae6b9792f988e7 1029
+packages/cli/test/templates/trellis.test.ts
+  s_658dc99cddf834::t_201f2b09d66723 182
+packages/cli/test/templates/hook-timeouts.test.ts
+  s_658dc99cddf834::t_feaf304932a49a 115-121
+  s_658dc99cddf834::t_2639baf4c43570 112-114
+packages/cli/src/templates/star/agents/trellis-implement.md
+  s_658dc99cddf834::t_4d163523014127 1-110
+packages/cli/src/templates/common/bundled-skills/trellis-meta/references/platform-files/skills-and-commands.md
+  s_658dc99cddf834::t_b15fcb131f0310 37
+packages/cli/src/cli/index.ts
+  s_658dc99cddf834::t_a202e0547ad5fd 97
+packages/cli/src/configurators/star.ts
+  s_658dc99cddf834::t_a2d756ba59c49f 63
+  s_658dc99cddf834::t_14360af28428dd 1-62
+packages/cli/src/templates/common/bundled-skills/trellis-meta/references/platform-files/agents.md
+  s_658dc99cddf834::t_e5d235827fe5a7 38
+packages/cli/src/types/ai-tools.ts
+  s_658dc99cddf834::t_a7737622f6b31d 90-91
+  s_658dc99cddf834::t_ddb4b642d265b3 61-62
+  s_658dc99cddf834::t_a5cba6a40bfb88 642-680
+  s_658dc99cddf834::t_b267d5bf95acea 32-33
+packages/cli/src/templates/star/settings.json
+  s_658dc99cddf834::t_5350aa3f3cc47f 58-67
+  s_658dc99cddf834::t_ba8c52b4bfd2ad 1-57,68-83
+packages/cli/src/templates/shared-hooks/index.ts
+  s_658dc99cddf834::t_7f49e28870697b 154-158,161
+  s_658dc99cddf834::t_9e9379f863a253 150-153,159-160,162-164
+  s_658dc99cddf834::t_1eee6aea30117d 44-45
+packages/cli/src/templates/trellis/scripts/common/cli_adapter.py
+  s_658dc99cddf834::t_10aeb81fbd2518 676
+  s_658dc99cddf834::t_9f8f58dd88860f 689,691
+  s_658dc99cddf834::t_b42c35b9be78e3 26
+  s_658dc99cddf834::t_fd461a52957433 562-563
+  s_658dc99cddf834::t_36f28c363fe15c 666
+  s_658dc99cddf834::t_85f6b122a52035 148-149
+  s_658dc99cddf834::t_e593dcfc988189 954-958
+  s_658dc99cddf834::t_c2687e83b01abc 646-647
+  s_658dc99cddf834::t_557ef69c497e00 787
+  s_658dc99cddf834::t_462a75a3e34e9f 757,760
+  s_658dc99cddf834::t_d024d591e3013f 65
+  s_658dc99cddf834::t_ef74755aef7e77 464-484
+  s_658dc99cddf834::t_dd314bb08b67b2 861
+  s_658dc99cddf834::t_6a1aa2cee09027 825-826
+packages/cli/test/commands/init.integration.test.ts
+  s_658dc99cddf834::t_aaeec132b34113 694-745
+packages/cli/src/templates/trellis/scripts/common/active_task.py
+  s_658dc99cddf834::t_3bd5450c713323 60
+  s_658dc99cddf834::t_46a88ecc641d74 161-165
+packages/cli/src/templates/shared-hooks/session-start.py
+  s_658dc99cddf834::t_62835458006163 269-270
+  s_658dc99cddf834::t_14c412f595789b 840
+  s_658dc99cddf834::t_5ae61bdcd41260 239-241
+README.md
+  s_658dc99cddf834::t_beade79ec0af1d 47
+.trellis/workflow.md
+  s_658dc99cddf834::t_323ea8bf03d10c 488
+  s_658dc99cddf834::t_320518e0ff5d5b 281,364,428,465,544
+  s_658dc99cddf834::t_004179b9ded906 475
+  s_658dc99cddf834::t_6af478a5a2935b 275,356,383,461,530
+.trellis/scripts/common/active_task.py
+  s_658dc99cddf834::t_8b79a311a8632f 60
+  s_658dc99cddf834::t_3e099ba15784f8 161-165
+packages/cli/src/templates/common/bundled-skills/trellis-meta/SKILL.md
+  s_44541f60a440a6::t_8b59cb4d290be6 15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "b4f9c2405cbeed53e3e3ee3b1e231beabcd86eaf",
+  "prompts": {},
+  "sessions": {
+    "s_44541f60a440a6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-acompact-1f36a015f1de623a",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_658dc99cddf834": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3f28ccbe-b406-418c-b1e6-b5904b36f332",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
