@@ -1,3 +1,8 @@
+---
+sources:
+  - packages/cli/src/templates/trellis/scripts/**/*.py
+last_verified: 2026-08-27
+---
 # Script Conventions
 
 > Standards for Python scripts in the `.trellis/scripts/` directory.

@@ -1,3 +1,8 @@
+---
+sources:
+  - packages/cli/src/commands/mem.ts
+last_verified: 2026-09-12
+---
 # `tl mem` — Cross-Platform AI Session Memory
 
 How Trellis indexes, searches, and extracts dialogue from on-disk session files

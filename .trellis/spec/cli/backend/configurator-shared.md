@@ -1,3 +1,7 @@
+---
+sources: []
+last_verified: 2026-08-06
+---
 # Configurator Shared Helpers
 
 How `packages/cli/src/configurators/shared.ts` is structured: what it exports, what each helper guarantees, and when a platform configurator should reach for shared logic vs. write its own.

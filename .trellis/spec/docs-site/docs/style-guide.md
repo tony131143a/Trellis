@@ -1,3 +1,7 @@
+---
+sources: []
+last_verified: 2026-05-03
+---
 # Style Guide
 
 > Writing style and content standards for documentation.

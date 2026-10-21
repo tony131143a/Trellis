@@ -1,3 +1,9 @@
+---
+sources:
+  - packages/cli/src/templates/shared-hooks/*.py
+  - packages/cli/src/templates/trellis/workflow.md
+last_verified: 2026-08-27
+---
 # Workflow-State Breadcrumb Contract
 
 > Runtime contract for the per-turn `<workflow-state>` breadcrumb that

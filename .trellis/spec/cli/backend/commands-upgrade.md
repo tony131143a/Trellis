@@ -1,3 +1,8 @@
+---
+sources:
+  - packages/cli/src/commands/upgrade.ts
+last_verified: 2026-06-15
+---
 # `trellis upgrade` Command
 
 How `trellis upgrade` upgrades the globally installed Trellis CLI package.

@@ -1,3 +1,7 @@
+---
+sources: []
+last_verified: 2026-04-30
+---
 # MDX Guidelines
 
 > MDX syntax, frontmatter, and component usage patterns.

@@ -1,3 +1,7 @@
+---
+sources: []
+last_verified: 2026-08-06
+---
 # Test Conventions
 
 > File naming, structure, and assertion patterns.

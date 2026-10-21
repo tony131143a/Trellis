@@ -1,3 +1,7 @@
+---
+sources: []
+last_verified: 2026-10-21
+---
 # Platform Integration Guide
 
 How to add support for a new AI CLI platform. The 22 currently registered are Claude Code, Cursor, OpenCode, Codex, Kilo, Kiro, Gemini CLI, Antigravity, Devin, Qoder, CodeBuddy, Copilot, Factory Droid, Pi, Reasonix, ZCode, Trae, OMP, Grok, Kimi, Snow, and StarFactory — `PLATFORM_IDS` in `configurators/index.ts` is the list that counts.

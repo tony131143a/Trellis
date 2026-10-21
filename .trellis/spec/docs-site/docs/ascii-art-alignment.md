@@ -1,3 +1,7 @@
+---
+sources: []
+last_verified: 2026-03-09
+---
 # ASCII-Art Diagram Alignment in Mintlify
 
 > How to make box-drawing diagrams render correctly in browser, especially with CJK text.

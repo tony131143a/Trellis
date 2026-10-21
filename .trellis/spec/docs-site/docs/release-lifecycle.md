@@ -1,3 +1,7 @@
+---
+sources: []
+last_verified: 2026-06-15
+---
 # Docs-Site Release Lifecycle
 
 > How `docs-site/` is structured across `release-only`, `release+beta`, `release+rc` states, and the three scripts that drive transitions.

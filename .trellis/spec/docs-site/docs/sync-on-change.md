@@ -1,3 +1,7 @@
+---
+sources: []
+last_verified: 2026-08-27
+---
 # Docs-Site Sync Matrix
 
 > When Trellis changes **workflow**, **platforms**, **commands**, or **skills**, which docs-site pages must update in lockstep. A concrete "Audit ALL Writers" checklist for documentation.

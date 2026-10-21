@@ -1,3 +1,7 @@
+---
+sources: []
+last_verified: 2026-03-09
+---
 # Logging Guidelines
 
 > How console output and logging is done in this CLI project.

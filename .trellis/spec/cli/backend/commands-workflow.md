@@ -1,3 +1,9 @@
+---
+sources:
+  - packages/cli/src/commands/workflow.ts
+  - packages/cli/src/utils/workflow-resolver.ts
+last_verified: 2026-07-30
+---
 # `trellis workflow` Command
 
 `trellis workflow` lists and switches the project's active `.trellis/workflow.md`

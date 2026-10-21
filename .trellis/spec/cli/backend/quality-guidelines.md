@@ -1,3 +1,7 @@
+---
+sources: []
+last_verified: 2026-08-06
+---
 # Quality Guidelines
 
 > Code quality standards for backend/CLI development.

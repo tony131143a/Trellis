@@ -1,3 +1,7 @@
+---
+sources: []
+last_verified: 2026-04-27
+---
 # Mock Strategies
 
 > Principles and patterns for mocking in tests.

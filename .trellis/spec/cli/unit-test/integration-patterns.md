@@ -1,3 +1,7 @@
+---
+sources: []
+last_verified: 2026-03-09
+---
 # Integration Test Patterns
 
 > Patterns for function-level integration tests of CLI commands.

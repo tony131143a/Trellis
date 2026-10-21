@@ -35,6 +35,7 @@ This directory contains guidelines for backend development. Fill in each file wi
 | [`trellis ablate` / `restore` Commands](./commands-ablate.md) | Reversible full project subtraction, external transactions, conflict-safe exact restore | Done |
 | [Uninstall Scrubbers](./uninstall-scrubbers.md) | Pure scrubber contract for structured config files (`settings.json`, `hooks.json`, `package.json`, `config.toml`) | Done |
 | [`trellis channel` Command](./commands-channel.md) | Multi-agent collaboration runtime: events.jsonl protocol, per-worker supervisor, provider adapters (claude / codex), project buckets, ephemeral / run lifecycle, ShutdownController state machine | Done |
+| [`spec.py` Freshness Lint](./spec-lint.md) | Spec doc frontmatter (`sources`, `last_verified`), lint rules, `verify` / `init-meta` rewrites, archive-time `spec_changes` traceability | Done |
 ---
 
 ## Pre-Development Checklist
@@ -61,6 +62,7 @@ Before writing backend code, read the relevant guidelines based on your task:
 - Editing `commands/uninstall.ts` or `utils/uninstall-scrubbers.ts` → [commands-uninstall.md](./commands-uninstall.md) + [uninstall-scrubbers.md](./uninstall-scrubbers.md)
 - Editing `commands/ablate.ts` or `utils/ablation-store.ts` → [commands-ablate.md](./commands-ablate.md) + [filesystem-safety.md](./filesystem-safety.md)
 - Editing `commands/channel/**` (events.jsonl protocol, supervisors, adapters, project buckets, channel-lifecycle commands) → [commands-channel.md](./commands-channel.md)
+- Editing `scripts/spec.py`, `scripts/common/spec_*.py`, the `spec_changes` fields in `task_store.py`, or the frontmatter format of spec docs → [spec-lint.md](./spec-lint.md)
 
 Also read [unit-test/conventions.md](../unit-test/conventions.md) — specifically the "When to Write Tests" section.
 
