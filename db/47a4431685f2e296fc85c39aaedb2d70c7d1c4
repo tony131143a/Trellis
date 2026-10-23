@@ -1,0 +1,223 @@
+.arbor/.template-hashes.json
+  s_8c637c07b91335::t_29c4137a38bf32 4-8,11-30,32-33,36-40,42,44-47,56,69,75-82
+.arbor/config.yaml
+  s_8c637c07b91335::t_056c5fb42f6139 109-138
+.arbor/scripts/common/git_context.py
+  s_eed1d77be7ebfe::t_7c7d35fcfaa3b7 66
+.arbor/scripts/common/workflow_phase.py
+  s_eed1d77be7ebfe::t_30d60f907bba0e 17,34-36,102,104-106,110,115
+.arbor/spec/cli/backend/dispatch.md
+  s_eed1d77be7ebfe::t_fba8ba7b182af5 1,3-6,10,12-16,18-19,21,23,26-29,32-37,39-40,42,44,46-49,51-55,57,59-63,65,67-71,73,75-78,80-85,87,89-94,96,98-100
+.arbor/spec/cli/backend/workflow-state-contract.md
+  s_eed1d77be7ebfe::t_cc546eec2290da 17,19-20,87-90,240,250-254,307-309,342-356,358-362,371-372,384
+.claude/settings.json
+  s_8c637c07b91335::t_1295bf0239d4e3 40,44,50,54-55
+.claude/skills/arbor-meta/references/customize-local/change-context-loading.md
+  s_8c637c07b91335::t_b13ccf0a03599a 12,33,35-36,55,59,61,63-64,84
+.claude/skills/arbor-meta/references/customize-local/change-hooks.md
+  s_8c637c07b91335::t_926000f8e5b2b1 3,7-8,19-20,51,56
+.claude/skills/arbor-meta/references/local-architecture/context-injection.md
+  s_8c637c07b91335::t_be0beaab34d690 13,17,24,26,34,36,38-39,55,63-65,69
+.claude/skills/arbor-meta/references/local-architecture/dispatch.md
+  s_8c637c07b91335::t_953ba37a19300b 1,3,5,7-11,13,15,17-20,22,24-26,28,30,32-36,39,41,43,45,47,49,51,53-54,57,59-65,67,69,71,73,75,77,79,81-86
+.claude/skills/arbor-meta/references/platform-files/agents.md
+  s_8c637c07b91335::t_cebbf3dca3d3b0 1,3,5,7,9-11,13,15,17-21,23,25,31-34,36,38,40-43
+.claude/skills/arbor-meta/references/platform-files/hooks-and-settings.md
+  s_8c637c07b91335::t_794f935aa612a5 3,5,7-13,15,17,23-27,31-34,38,40-44
+packages/cli/src/configurators/shared.ts
+  s_4a6f4b2a8330a2::t_f9083b33ed7dc2 223-224
+packages/cli/src/migrations/manifests/0.1.0.json
+  s_eed1d77be7ebfe::t_1f919c43ea6700 6-13
+packages/cli/src/templates/arbor/agents/check.md
+  s_ffad91a0f7c820::t_829c1a80b55f40 1,3,5,7,9,11,13,15,17-23,25,27-31,33,35-37,39,42,48,51,53-56
+packages/cli/src/templates/arbor/agents/implement.md
+  s_ffad91a0f7c820::t_ec7072359b1351 1,3,5,7,9,11,13,15,17-23,25,27-30,32,34-37,39,42,45,47,50-53,55-56
+packages/cli/src/templates/arbor/agents/research.md
+  s_ffad91a0f7c820::t_2692658fbea909 1,3,5,7,9,11,13,15,17-19,21,23,25-29,31,33-35,37,39,41-42,44-45,47,49,51,53-54,56,58,61,63,65-67,69,71,73,77,79-80,82-83,85-87
+packages/cli/src/templates/arbor/config.yaml
+  s_1fb7c2dee9d389::t_d81d2839795d3d 106-135
+packages/cli/src/templates/arbor/index.ts
+  s_eed1d77be7ebfe::t_39185ba317d529 68-70,127
+packages/cli/src/templates/arbor/scripts/common/config.py
+  s_1fb7c2dee9d389::t_cce2602a059e70 10,226-423
+packages/cli/src/templates/arbor/scripts/common/dispatch_context.py
+  s_eed1d77be7ebfe::t_f1c10bd1e8ca5e 4,6-10,12,14-17,19-24,27,31,33,37-39,42-46,48-54,58,62-83,85-87,89-101,103-136,138-151,153-171,173-174,176-199,203-204,206,208-209,213,217-219,223,266-270,275-276,306,367,432-444,454-456,463-466,500-504,516,540,548-549,583-616,619,628-629,633-639,642-648,651,653-656,658,661-663,665-674,676,678,680-682,684-694,697-699,703-704,707,726-727,738-739,742,773-774,796,815-817,819,875-877,880-889,892-901,904-905,907-915,917-920,922-924,926-928,930-938,940-945,947-952
+packages/cli/src/templates/arbor/scripts/common/git_context.py
+  s_8c637c07b91335::t_f0b68a10481cdc 66
+packages/cli/src/templates/arbor/scripts/common/task_store.py
+  s_1fb7c2dee9d389::t_30141f68e0bec8 541-550,648-661
+packages/cli/src/templates/arbor/scripts/common/workflow_phase.py
+  s_8c637c07b91335::t_7b601f8d0619a7 17,34-36,102,104-106,110,115
+packages/cli/src/templates/arbor/workflow.md
+  s_1fb7c2dee9d389::t_b1dd26e0cd1bc5 42,54-58,67,79,100-142,150-151,168,171-174,195,201-202,210,221-222,227-228,242-244,251-254,258-259,261,263,270-273,276-278,280-286,321,329,390,392-394,396,409,417,420,424-425,427,448,452,454,456-457,459-461,463,471,473,475,488,494,498-507,509,511,513-515,517,519,521-524,526,528,530,532,534,536,538-540,542,544,546,548-552,554,556,558-562,564,566,568,570,572,574,576,578,580-583,585,621,678,689-690,693-696
+packages/cli/src/templates/claude/settings.json
+  s_eed1d77be7ebfe::t_075a47b1129876 40,44,50,54-55
+packages/cli/src/templates/common/bundled-skills/arbor-meta/SKILL.md
+  s_1fb7c2dee9d389::t_ba8b754bc35446 3,8,10,14-16,18,23-24,32-34,36-40,44-47,52-58,63-72,78,80-83
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/customize-local/add-project-local-conventions.md
+  s_1fb7c2dee9d389::t_529a9c9360afbe 11,51,60
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/customize-local/change-agents.md
+  s_1fb7c2dee9d389::t_8b5f9efa359058 1,3,7-11,13,15-19,23,25-30,34-38
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/customize-local/change-skills-or-commands.md
+  s_1fb7c2dee9d389::t_3550671caf024f 1,3,7-8,15,25,55,58,65,80-83,94,105,107
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/customize-local/change-workflow.md
+  s_1fb7c2dee9d389::t_6b34441fe21ee5 3,8,26,42,44,61,65
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/customize-local/overview.md
+  s_1fb7c2dee9d389::t_bf610db814c982 3,12-14,20,35-36
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/local-architecture/bundled-skills.md
+  s_5c3206ff4e9ee1::t_af2ae5cb75b97a 3,5,7,11-12,14,19,21,23,25,27,29-33,35,37-41,43,45-47
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/local-architecture/dispatch.md
+  s_8c637c07b91335::t_ee8cbe4448a054 1,3,5,7-11,13,15,17-20,22-37,39,41,43,45,47,49,51,53-59,61-71,73,75,77,79,81-86
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/local-architecture/generated-files.md
+  s_1fb7c2dee9d389::t_626cc96e8c02d0 13,28,38,40-46,48,70-71
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/local-architecture/overview.md
+  s_5c3206ff4e9ee1::t_357763fd8adac6 7-10,16,19-21,23,33-34,53-55
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/local-architecture/spec-system.md
+  s_1fb7c2dee9d389::t_8873b26c077a2e 75
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/local-architecture/task-system.md
+  s_1fb7c2dee9d389::t_fdf69abe458c8c 74,90,127
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/local-architecture/workflow.md
+  s_1fb7c2dee9d389::t_24d3a0efc9e5c8 25,27,60,66,68-69,72
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/local-architecture/workspace-memory.md
+  s_1fb7c2dee9d389::t_dad0dce1b14fd4 3
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/platform-files/hooks-and-settings.md
+  s_8c637c07b91335::t_4e76f327a2f405 3,5,7-13,15,17,23-27,31-34,38,40-44
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/platform-files/overview.md
+  s_eed1d77be7ebfe::t_1c9f080e780175 3,5,7-8,10,14,16-20,22,24,26,28-30,32,37-38,42
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/platform-files/skills-and-commands.md
+  s_1f0fc0470143f7::t_2b648ecf5fe405 1,10,12,14,16-21,41,43,57-60,66
+packages/cli/src/templates/common/bundled-skills/arbor-spec-bootstrap/SKILL.md
+  s_1fb7c2dee9d389::t_9b6875358328cd 3,8,31
+packages/cli/src/templates/common/bundled-skills/arbor-spec-bootstrap/references/mcp-setup.md
+  s_1fb7c2dee9d389::t_6db6512a066712 3,26,67,85
+packages/cli/src/templates/common/bundled-skills/arbor-spec-bootstrap/references/spec-task-planning.md
+  s_1fb7c2dee9d389::t_9120c33fcb9739 3,53,61
+packages/cli/src/templates/common/commands/continue.md
+  s_ce841a2dbe0a92::t_6027be8dc96bbf 29-40,44-45
+packages/cli/src/templates/common/commands/dispatch-target.md
+  s_ce841a2dbe0a92::t_09aa01b6ad9fdb 1,3,5,7,9,11-13,15,17-19,21,23-24,27,29-30,33,35,37-40,42
+packages/cli/src/templates/common/commands/finish-work.md
+  s_fcdf7fe13f91fc::t_ffbe37e2f1e76a 61-62
+packages/cli/src/templates/common/commands/start.md
+  s_ce841a2dbe0a92::t_7a4f06c4a04284 41
+packages/cli/src/templates/common/skills/brainstorm.md
+  s_ce841a2dbe0a92::t_87e892fff88c35 165,191
+packages/cli/src/templates/markdown/agents.md
+  s_4a6f4b2a8330a2::t_0d7503c12fe958 4,6-8,10
+packages/cli/src/templates/markdown/claude.md
+  s_4a6f4b2a8330a2::t_a20a3c9d9ea084 1-22
+packages/cli/src/templates/shared-hooks/guard-builtin-agent.py
+  s_eed1d77be7ebfe::t_c55b6a84e6a77e 1-127
+packages/cli/src/templates/shared-hooks/index.ts
+  s_eed1d77be7ebfe::t_678208c4b83bf4 31-32,46-50,71-72,74,76-81,86-87
+packages/cli/src/templates/shared-hooks/inject-delegation-context.py
+  s_eed1d77be7ebfe::t_671093575c1c34 1-153
+packages/cli/src/templates/shared-hooks/inject-workflow-state.py
+  s_eed1d77be7ebfe::t_b69799431bea4d 119,122-126,136,140,144,146,151-153,244-260,266,274-275,277,344-351
+packages/cli/src/templates/shared-hooks/session-start.py
+  s_eed1d77be7ebfe::t_df8b06ff91759c 520-557,880-883
+packages/cli/src/templates/star/settings.json
+  s_eed1d77be7ebfe::t_34405f695dd594 40,44,50,54-55
+packages/cli/test/configurators/platforms.test.ts
+  s_eed1d77be7ebfe::t_cd50d30bc1c50d 355-356,409
+packages/cli/test/regression.test.ts
+  s_8c637c07b91335::t_98ab5b3dcd585a 1547,1573-1575,1635-1638,1649-1652,3218,5323,5325-5327,5339-5340,5416-5420,5434-5436,5769,5783,5801,5817,5944-5983,6073-6074,6077,6079,6119-6120,6123,6125,6127-6128,6133-6134,6136,6138,6153-6166,6744,6747-6750,7093-7094,7181-7195,7201,7207-7211,8565-8569
+packages/cli/test/scripts/context-injection-limits.integration.test.ts
+  s_eed1d77be7ebfe::t_91740ff01ba2b5 2,4,7,61-63,67-68,70,271,337,620,690
+packages/cli/test/scripts/dispatch-config.integration.test.ts
+  s_8c637c07b91335::t_dde2c56288541e 1-428
+packages/cli/test/templates/arbor.test.ts
+  s_eed1d77be7ebfe::t_68ae07482faac1 112-120,123-147,178,265-266,269-274
+packages/cli/test/templates/shared-hooks.test.ts
+  s_eed1d77be7ebfe::t_dcd260b8f6124e 18-19
+packages/cli/test/templates/star.test.ts
+  s_eed1d77be7ebfe::t_787f391f19bd9a 46-66,68-69,118-119
+packages/cli/test/commands/init.integration.test.ts
+  s_eed1d77be7ebfe::t_18c8ead463823e 176-177
+packages/cli/test/commands/uninstall.integration.test.ts
+  s_eed1d77be7ebfe::t_032feb98d1cd28 341-344
+packages/cli/test/scripts/prompt-injection-skip-keyword.integration.test.ts
+  s_eed1d77be7ebfe::t_4aeea136b6244e 9,301-314
+packages/cli/test/scripts/symlinked-workflow-dir.integration.test.ts
+  s_eed1d77be7ebfe::t_37d9b96e000002 8,56,60-61,63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "db47a4431685f2e296fc85c39aaedb2d70c7d1c4",
+  "prompts": {},
+  "sessions": {
+    "s_1f0fc0470143f7": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a169f5-1467-716b-9a5c-d2f6f6960021",
+        "model": "DeepSeek-V4.1-Flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_1fb7c2dee9d389": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a169f5-ad66-73ae-8c04-5d6648aeaceb",
+        "model": "DeepSeek-V4.1-Flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_4a6f4b2a8330a2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a3c00972-bdaa-4a6a-98c2-6b0a90dfe308",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_5c3206ff4e9ee1": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a16a02-78ed-768f-91de-0d252913d916",
+        "model": "DeepSeek-V4.1-Flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_8c637c07b91335": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a16a14-d293-774b-8cd0-3736dd62f23c",
+        "model": "DeepSeek-V4.1-Flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_ce841a2dbe0a92": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "43e546c7-2642-41bf-afbf-47c1f87c80ac",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_eed1d77be7ebfe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "105ce731-db64-4d05-a4a3-13ee995569a7",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_fcdf7fe13f91fc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ab669d4f-3698-41e4-9bbb-eb2d2fac5315",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_ffad91a0f7c820": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1260423e-2d7c-496d-bc7f-1f2da6cac5c5",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
