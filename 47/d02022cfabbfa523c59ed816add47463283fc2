@@ -1,0 +1,179 @@
+packages/cli/src/templates/trellis/orchestrator/briefs/finder.md
+  s_685f47e97c493e::t_3861c4277ec695 1-15
+packages/cli/src/templates/trellis/orchestrator/briefs/fix.md
+  s_685f47e97c493e::t_6f29d4a546e84e 1-23
+packages/cli/src/templates/trellis/orchestrator/briefs/gate-fix.md
+  s_685f47e97c493e::t_dc6b9e47afca40 1-17
+packages/cli/src/templates/trellis/orchestrator/briefs/implement.md
+  s_26cbf09cd5f71c::t_e698494faec184 1-25
+packages/cli/src/templates/trellis/orchestrator/briefs/resolve.md
+  s_685f47e97c493e::t_218687c8acc66c 1-18
+packages/cli/src/templates/trellis/orchestrator/briefs/scan.md
+  s_685f47e97c493e::t_bf97ab968da6a4 1-24
+packages/cli/src/templates/trellis/orchestrator/briefs/simplify.md
+  s_685f47e97c493e::t_c329d3d6e3cfe6 1-14
+packages/cli/src/templates/trellis/orchestrator/briefs/validate-fix.md
+  s_685f47e97c493e::t_3b7f144fcba327 1-15
+packages/cli/src/templates/trellis/orchestrator/briefs/verify.md
+  s_685f47e97c493e::t_c494e5d3b0d089 1-14
+packages/cli/src/templates/trellis/orchestrator/channel.py
+  s_1fb7c2dee9d389::t_cdb099677cf70c 1-402
+packages/cli/src/templates/trellis/orchestrator/conductor.md
+  s_5c3206ff4e9ee1::t_b882299f5a596e 1-150
+packages/cli/src/templates/trellis/orchestrator/gitops.py
+  s_1fb7c2dee9d389::t_732e57a3068ae9 1-322
+packages/cli/src/templates/trellis/orchestrator/guard.py
+  s_1fb7c2dee9d389::t_928cc72c30bee0 1-1112
+packages/cli/src/templates/trellis/orchestrator/inject.py
+  s_d75be2dc99f88e::t_67eeca6b476e2f 1-220
+packages/cli/src/templates/trellis/orchestrator/integration.py
+  s_eed1d77be7ebfe::t_17b6155f5216ad 1-597
+packages/cli/src/templates/trellis/orchestrator/ledger.py
+  s_685f47e97c493e::t_39e4e60e515018 1-570
+packages/cli/src/templates/trellis/orchestrator/orch.py
+  s_1fb7c2dee9d389::t_4ba868c50937f4 1-1123
+packages/cli/src/templates/trellis/orchestrator/pipeline.py
+  s_1fb7c2dee9d389::t_93dacae6ddade6 1-1961
+packages/cli/src/templates/trellis/orchestrator/plancheck.py
+  s_3d6a8d5a93cfd2::t_501a67d8a310f0 1-255
+packages/cli/src/templates/trellis/orchestrator/render.py
+  s_1fb7c2dee9d389::t_85c8ff4addb977 1-393
+packages/cli/src/templates/trellis/orchestrator/session.py
+  s_8b77404eee3d37::t_4661c9e3f4a364 1-240
+packages/cli/test/python/orchestrator/fakes.py
+  s_1fb7c2dee9d389::t_dfc84467aa9a53 1-440
+packages/cli/test/python/orchestrator/test_channel.py
+  s_1fb7c2dee9d389::t_64b76e89a4a701 1-314
+packages/cli/test/python/orchestrator/test_gitops.py
+  s_4130f4b1adb5f8::t_d6589ab660215a 1-195
+packages/cli/test/python/orchestrator/test_guard.py
+  s_1fb7c2dee9d389::t_c82e126a71c61c 1-874
+packages/cli/test/python/orchestrator/test_ledger.py
+  s_3d6a8d5a93cfd2::t_b0d38000d11d30 1-662
+packages/cli/test/python/orchestrator/test_orch.py
+  s_1fb7c2dee9d389::t_11ec480d923f29 1-762
+packages/cli/test/python/orchestrator/test_pipeline.py
+  s_1fb7c2dee9d389::t_1ef92591702279 1-2842
+packages/cli/test/python/orchestrator/test_plancheck.py
+  s_8ef761c712a63a::t_1c2f49f59fbc45 1-238
+packages/cli/test/python/orchestrator/test_render.py
+  s_5c3206ff4e9ee1::t_45b993f94e0ce2 1-395
+packages/cli/test/python/orchestrator/test_session.py
+  s_122146a8b0d4c0::t_e9a81ead0416eb 1-205
+packages/cli/test/scripts/orchestrator-unittest.test.ts
+  s_e000348fc0eb27::t_0a88043430fe32 1-85
+packages/cli/test/python/orchestrator/test_inject.py
+  s_bb1d12bc64f152::t_6b43a46b318332 1-276
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "47d02022cfabbfa523c59ed816add47463283fc2",
+  "prompts": {},
+  "sessions": {
+    "s_122146a8b0d4c0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3198bc2a-8b19-4ab1-aa8c-43164e8a6804",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_1fb7c2dee9d389": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a169f5-ad66-73ae-8c04-5d6648aeaceb",
+        "model": "DeepSeek-V4.1-Flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_26cbf09cd5f71c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3714100a-c100-4056-8c87-3590b0b447ca",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_3d6a8d5a93cfd2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fb5a417c-4c9f-41a2-a313-14e99c844fd0",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_4130f4b1adb5f8": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a16a06-febf-71d7-93ec-46dc0b46683c",
+        "model": "DeepSeek-V4.1-Flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_5c3206ff4e9ee1": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a16a02-78ed-768f-91de-0d252913d916",
+        "model": "DeepSeek-V4.1-Flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_685f47e97c493e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5401ee01-f9a2-461c-97a8-9fada2f5bc87",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_8b77404eee3d37": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a605d0ba-fa80-47c4-82a5-2c821c8721a8",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_8ef761c712a63a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "26b91962-d267-46b8-bed2-c91b57296655",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_bb1d12bc64f152": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "528387ec-3026-4d9c-97e1-f16da4b809ec",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_d75be2dc99f88e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "06b47edd-ba07-4822-be5d-b7e7eaafb100",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_e000348fc0eb27": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ddd3fd36-b4db-4d86-88ec-008c0153d6e2",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_eed1d77be7ebfe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "105ce731-db64-4d05-a4a3-13ee995569a7",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
