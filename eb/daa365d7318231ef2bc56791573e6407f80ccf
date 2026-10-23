@@ -1,0 +1,109 @@
+packages/cli/src/commands/init.ts
+  s_8882ff90439eb7::t_c7931212333f7e 41,43,46-51,1896-1907,1909-1932,2009-2019,2042,2044-2047
+packages/cli/src/commands/update.ts
+  s_ab85fb5d7becce::t_6d4bf5e422f0a9 47,67-72,751-807,957-960,1002-1019
+packages/cli/src/constants/orchestrator.ts
+  s_8c637c07b91335::t_a2921d1f83f6da 1-43
+packages/cli/src/templates/trellis/agents/review-finder.md
+  s_ab85fb5d7becce::t_e0b0c773272fc7 1-76
+packages/cli/src/templates/trellis/agents/review-verify.md
+  s_3d6a8d5a93cfd2::t_bd54ba86a399ff 1-55
+packages/cli/src/templates/trellis/agents/simplify.md
+  s_3d6a8d5a93cfd2::t_3e0b4e28efb59e 1-46
+packages/cli/src/templates/trellis/index.ts
+  s_bb1d12bc64f152::t_f7cbf09fe124e8 22,92-166
+packages/cli/src/templates/trellis/workflow-orchestrated.md
+  s_af317ad2d6d041::t_1996af83cf7366 1-689
+packages/cli/src/utils/orchestrator-assets.ts
+  s_8c637c07b91335::t_c1f4b66dc17710 1-711
+packages/cli/src/utils/template-hash.ts
+  s_bb1d12bc64f152::t_4fdb57b9f5f315 21,365-367,393-403
+packages/cli/src/utils/workflow-resolver.ts
+  s_8c637c07b91335::t_fe548a2bccc615 19-22,45-62,130-153,209-212,228,258-260
+packages/cli/test/commands/init.integration.test.ts
+  s_eed1d77be7ebfe::t_fefa1cce450c42 50,54-68,1672-1885
+packages/cli/test/commands/update.integration.test.ts
+  s_bb1d12bc64f152::t_fd355748b04e1d 62,1710-1798
+packages/cli/test/commands/workflow.integration.test.ts
+  s_eed1d77be7ebfe::t_37f83de7f1a8d9 39-52,314-541
+packages/cli/test/configurators/platforms.test.ts
+  s_8c637c07b91335::t_a48c309c291d91 1463-1481
+packages/cli/test/templates/orchestrated-assets.test.ts
+  s_eed1d77be7ebfe::t_34911cf83084c8 1-203
+packages/cli/test/utils/workflow-resolver.test.ts
+  s_ab85fb5d7becce::t_e00af577c306c7 12,17-20,36-45,176-187
+packages/cli/test/utils/orchestrator-assets.test.ts
+  s_b68c7e34828b4a::t_dc9dd00b7b034b 1-209
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "ebdaa365d7318231ef2bc56791573e6407f80ccf",
+  "prompts": {},
+  "sessions": {
+    "s_3d6a8d5a93cfd2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fb5a417c-4c9f-41a2-a313-14e99c844fd0",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_8882ff90439eb7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4c1c3951-c2b1-4573-ba1c-4d5fd77c8f5c",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_8c637c07b91335": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a16a14-d293-774b-8cd0-3736dd62f23c",
+        "model": "DeepSeek-V4.1-Flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_ab85fb5d7becce": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "576d460a-4a0a-4652-a7fa-314629fa70eb",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_af317ad2d6d041": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "27321f95-1d1a-4536-b179-4c2c3a492770",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_b68c7e34828b4a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-af57cb9796fb1c922",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_bb1d12bc64f152": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "528387ec-3026-4d9c-97e1-f16da4b809ec",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_eed1d77be7ebfe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "105ce731-db64-4d05-a4a3-13ee995569a7",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
