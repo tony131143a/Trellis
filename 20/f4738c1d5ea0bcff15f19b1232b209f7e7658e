@@ -1,0 +1,29 @@
+packages/cli/test/commands/init.integration.test.ts
+  s_59a97eb7812fe1::t_56151061f2e97f 74,76,103,145,155,158,162,181-182,727,749
+packages/cli/test/commands/update.integration.test.ts
+  s_27758f5c10210f::t_093f4f56609284 34,39,489,714-715,718,720,740,743
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "20f4738c1d5ea0bcff15f19b1232b209f7e7658e",
+  "prompts": {},
+  "sessions": {
+    "s_27758f5c10210f": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a169b9-e3c8-7072-8355-a02b8b31efe1",
+        "model": "DeepSeek-V4.1-Flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_59a97eb7812fe1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5ccce956-1860-4f5b-9071-5807bd2a6936",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
