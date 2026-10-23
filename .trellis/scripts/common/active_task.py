@@ -25,13 +25,6 @@ DIR_TASKS = "tasks"
 DIR_RUNTIME = ".runtime"
 DIR_SESSIONS = "sessions"
 DIR_SHELL_TICKETS = "shell-tickets"
-# Pre-0.6.13 name, when the bridge was Cursor-only. Still read so a session that
-# was mid-command across an upgrade does not silently degrade; never written.
-# Tickets are 30-second ephemera, so the old directory ages out by itself —
-# there is nothing to migrate, only a glob on a directory that is normally
-# absent. The alternative (ignore it) would land its one lost command on the
-# platform that works today.
-DIR_LEGACY_CURSOR_SHELL_TICKETS = "cursor-shell"
 SHELL_TICKET_TTL_SECONDS = 30
 TASK_SESSION_COMMANDS = {"start", "current", "finish"}
 
@@ -41,127 +34,30 @@ _TRANSCRIPT_KEYS = ("transcript_path", "transcriptPath", "transcript")
 _NESTED_KEYS = ("input", "properties", "event", "hook_input", "hookInput")
 _KNOWN_PLATFORMS = {
     "claude",
-    "codex",
-    "cursor",
-    "opencode",
-    "gemini",
-    "droid",
-    "qoder",
-    "codebuddy",
-    "kiro",
-    "copilot",
-    "pi",
-    "trae",
-    "grok",
-    "kimi",
-    "zcode",
-    "snow",
-    "dsh",
     "star",
 }
 
 # Every name below records how it was checked. Do NOT add a name by analogy
-# with a neighbour: a 2026-08-05 audit of all 21 platforms found 12 of the 21
-# declared names had never existed anywhere — they were pattern-guessed from a
-# `<PLATFORM>_SESSION_ID` shape no vendor agreed to, and the uniformity was the
-# only "evidence" behind them. A platform with no verified name belongs in no
-# table; it resolves through TRELLIS_CONTEXT_ID or its hook/plugin bridge.
+# with a neighbour: a 2026-08-05 audit found most pattern-guessed
+# `<PLATFORM>_SESSION_ID` names had never existed anywhere. A platform with no
+# verified name belongs in no table; it resolves through TRELLIS_CONTEXT_ID or
+# its hook/shell-ticket bridge.
 _ENV_SESSION_KEYS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    # REAL (reported 2026-08-13 against DSH 0.1.0-rc.6 by @SajoLuo, from a live
-    # run: DSH exports DSH_SESSION_ID plus DSH_SHELL=1 into its managed shell).
-    # MUST STAY FIRST. A DSH session can inherit an outer host's identity — a
-    # DSH launched from Codex still carries CODEX_THREAD_ID — and the untargeted
-    # lookup below walks this table in order, so any earlier entry would claim
-    # the session and write a foreign `codex_<thread>` pointer for DSH work.
-    # DSH_SESSION_ID is the only name here no other vendor sets, so first place
-    # is safe: it cannot mis-claim a non-DSH session.
-    ("dsh", ("DSH_SESSION_ID",)),
     # REAL, undocumented (verified 2026-08-05 in a live Claude Code 2.1.221 bash
     # child; absent from code.claude.com/docs/en/env-vars). CLAUDE_SESSION_ID
     # was removed here — verified absent from that same live environment.
     ("claude", ("CLAUDE_CODE_SESSION_ID",)),
-    # REAL, undocumented (verified 2026-08-05: injected by codex-cli 0.146.0
-    # into shell children, absent from the parent env; openai/codex#19937).
-    # CODEX_SESSION_ID was removed — absent from a live `codex exec` env.
-    ("codex", ("CODEX_THREAD_ID",)),
-    # REAL but HOOK-SCOPE ONLY (verified 2026-08-05): set by Gemini's
-    # hookRunner.ts. Its shell tool builds the child env in
-    # shellExecutionService.ts and adds only GEMINI_CLI/TERM/PAGER/GIT_PAGER, so
-    # this never reaches a bash child — it resolves only inside a hook process.
-    ("gemini", ("GEMINI_SESSION_ID",)),
-    # REAL but HOOK-SCOPE ONLY (verified 2026-08-05): docs.qoder.com/zh/
-    # extensions/hooks documents it as injected during hook execution by the
-    # Qoder *IDE plugin*. Absent from the Qoder CLI hook docs and from Lingma.
-    ("qoder", ("QODER_SESSION_ID",)),
-    # UNVERIFIED (2026-08-05): absent from kiro.dev/docs/hooks/, but Dynatrace
-    # dtctl, oh-my-agent and gastown all key agent detection on it and one notes
-    # it is "set in both interactive and --no-interactive". Kept because that is
-    # absence of evidence, not evidence of absence. To settle: run
-    # `env | grep KIRO` from a Kiro shell-tool call on a machine with Kiro.
-    ("kiro", ("KIRO_SESSION_ID",)),
-    # UNVERIFIED (2026-08-05): absent from docs.github.com/en/copilot/reference/
-    # hooks-reference and from the CLI programmatic reference. To settle: run
-    # `copilot help environment` (the authoritative list per those docs) — not
-    # runnable here, the CLI is not installed and copilot-cli ships no source.
-    ("copilot", ("COPILOT_SESSION_ID", "COPILOT_SESSIONID")),
-    # REASONED, UNVERIFIED (2026-08-05): ZCode is closed-source and not
-    # installable here. It mirrors Claude's naming elsewhere (CLAUDE_PLUGIN_ROOT
-    # / CLAUDE_PLUGIN_DATA compat aliases are in its docs), and the previously
-    # declared CLAUDE_SESSION_ID does not exist on Claude Code either — so the
-    # name ZCode would actually reuse is CLAUDE_CODE_SESSION_ID. Try that first,
-    # keep the historical name as a fallback: if neither exists nothing changes.
-    # Platform-scoped lookup (_iter_env_keys filters by platform name), so the
-    # entry only fires once the resolver detected "zcode" — no collision with
-    # the claude entry above.
-    ("zcode", ("CLAUDE_CODE_SESSION_ID", "CLAUDE_SESSION_ID")),
-    # REAL by vendor design (verified 2026-08-05): Snow's sessionIdentityEnv.ts
-    # exports SNOW_SESSION_ID into hook/terminal/sub-agent children and names
-    # Trellis in its source header. TRELLIS_CONTEXT_ID stays the preferred
-    # override — Snow sets that too.
-    ("snow", ("SNOW_SESSION_ID",)),
-)
-_ENV_CONVERSATION_KEYS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    # REAL in cursor-agent (CLI), undocumented (verified 2026-08-05: the value
-    # matches ~/.cursor/chats/<ws>/<id>). The Cursor *IDE* is unverified — a
-    # 2026-05 forum request for it drew no staff reply. The invented
-    # CURSOR_SESSION_ID was removed from the session table: empty in a live
-    # cursor-agent shell. Cursor's other path is the shell ticket below
-    # (_lookup_shell_ticket_context_key), which is not Cursor-specific.
-    ("cursor", ("CURSOR_CONVERSATION_ID", "CURSOR_CONVERSATIONID")),
-)
-_ENV_TRANSCRIPT_KEYS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    # REAL but HOOK-SCOPE ONLY (verified 2026-08-05): documented for Cursor hook
-    # scripts; empty in the agent's own shell env.
-    ("cursor", ("CURSOR_TRANSCRIPT_PATH",)),
-    # UNVERIFIED — never researched. The 2026-08-05 audit covered the session
-    # table only, so do not infer these are real *or* fake from that work
-    # (CLAUDE_/CODEX_TRANSCRIPT_PATH were removed because those two *were*
-    # checked: absent from docs and from live envs). To settle each: run
-    # `env | grep _TRANSCRIPT_PATH` inside a hook and inside a shell-tool call.
-    ("gemini", ("GEMINI_TRANSCRIPT_PATH",)),
-    ("droid", ("FACTORY_TRANSCRIPT_PATH", "DROID_TRANSCRIPT_PATH")),
-    ("qoder", ("QODER_TRANSCRIPT_PATH",)),
-    ("codebuddy", ("CODEBUDDY_TRANSCRIPT_PATH",)),
+    # StarFactory has no verified shell-scope session env var; it resolves
+    # through the shell-ticket bridge (_lookup_shell_ticket_context_key).
 )
 _ENV_PLATFORM_ALIASES = {
     "claude-code": "claude",
-    "factory": "droid",
-    "factory-ai": "droid",
-    "github-copilot": "copilot",
 }
-# ZCode intentionally reuses Claude's session env var name. Hooks know the host
-# is ZCode, while later shell commands see only the shared env name and resolve
-# it through the claude entry. Canonicalize both paths to one runtime filename.
 _CONTEXT_KEY_PLATFORM_ALIASES = {
-    "zcode": "claude",
-    # Factory Droid's config directory is `.factory/`, so a hook that names its
-    # platform after the directory it was installed in reports "factory". Its
-    # sibling hooks report "droid". One runtime filename either way.
-    "factory": "droid",
-    # StarFactory has the same split: `.starFactory/` makes the shell-ticket
-    # hook (which derives its name from the install path) report "starFactory",
-    # while the shared hooks' script-path table reports "star". Both must land
-    # on one runtime filename or every turn reports no_task.
+    # StarFactory's config directory is `.starFactory/`, so the shell-ticket
+    # hook (which derives its name from the install path) reports
+    # "starFactory", while the shared hooks' script-path table reports "star".
+    # Both must land on one runtime filename or every turn reports no_task.
     "starFactory": "star",
 }
 
@@ -306,8 +202,6 @@ def _detect_platform(platform_input: dict[str, Any] | None, platform: str | None
             value = _string_value(platform_input.get(key))
             if value:
                 return _sanitize_key(value) or "session"
-        if _string_value(platform_input.get("cursor_version")):
-            return "cursor"
     return "session"
 
 
@@ -359,18 +253,6 @@ def _lookup_env_context_key(platform_name: str | None) -> str | None:
             if value:
                 return _context_key(name, "session", value)
 
-    for name, keys in _iter_env_keys(_ENV_CONVERSATION_KEYS, env_platform_name):
-        for key in keys:
-            value = _string_value(os.environ.get(key))
-            if value:
-                return _context_key(name, "conversation", value)
-
-    for name, keys in _iter_env_keys(_ENV_TRANSCRIPT_KEYS, env_platform_name):
-        for key in keys:
-            value = _string_value(os.environ.get(key))
-            if value:
-                return _context_key(name, "transcript", value)
-
     return None
 
 
@@ -386,10 +268,7 @@ def _find_repo_root_from_cwd() -> Path | None:
 
 def _shell_ticket_dirs(repo_root: Path) -> tuple[Path, ...]:
     runtime_dir = repo_root / DIR_WORKFLOW / DIR_RUNTIME
-    return (
-        runtime_dir / DIR_SHELL_TICKETS,
-        runtime_dir / DIR_LEGACY_CURSOR_SHELL_TICKETS,
-    )
+    return (runtime_dir / DIR_SHELL_TICKETS,)
 
 
 def _remove_file(path: Path) -> bool:
@@ -472,8 +351,7 @@ def _matching_ticket_context_key(
 ) -> str | None:
     """Accept a ticket on its merits, never on which platform wrote it.
 
-    The `platform` field a ticket carries is debugging metadata; gating on it
-    was what kept this bridge invisible to every platform but Cursor.
+    The `platform` field a ticket carries is debugging metadata only.
     """
     ticket = _read_json(ticket_path)
     if ticket is None:
@@ -490,9 +368,9 @@ def _matching_ticket_context_key(
 def _lookup_shell_ticket_context_key() -> str | None:
     """Resolve session identity from a short-lived shell ticket.
 
-    No researched platform exports its session id into a shell child, but every
-    hook-capable one hands that id to a hook. So the hook that runs just before
-    a shell command writes a ticket, and this reads it back. A ticket counts
+    The host does not export its session id into a shell child, but it hands
+    that id to a hook. So the hook that runs just before a shell command writes
+    a ticket, and this reads it back. A ticket counts
     only when it is fresh, was written for this repo, and matches the `task.py`
     subcommand now running — and only when exactly one fresh context key
     matches. Two concurrent windows therefore both degrade rather than one
