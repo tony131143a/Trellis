@@ -1,0 +1,21 @@
+.trellis/workspace/tangxk/index.md
+  s_8bef5af4010cfd::t_f14c8685ffee22 11-12,22,32
+.trellis/workspace/tangxk/journal-1.md
+  s_8bef5af4010cfd::t_ca0283f3b6c5d3 88-126
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "8c792c38dc8751bc01ec73d90de008989a85edf8",
+  "prompts": {},
+  "sessions": {
+    "s_8bef5af4010cfd": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a1679d-c582-75fc-af65-e9a9aed9c907",
+        "model": "DeepSeek-V4.1-Flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
