@@ -20,7 +20,7 @@ import path from "node:path";
 
 const TEMPLATE_SCRIPTS = path.resolve(
   __dirname,
-  "../../src/templates/trellis/scripts",
+  "../../src/templates/arbor/scripts",
 );
 
 function hasPython(): boolean {
@@ -33,18 +33,18 @@ function hasPython(): boolean {
 }
 
 function setupRepo(tmp: string): void {
-  fs.mkdirSync(path.join(tmp, ".trellis", "scripts"), { recursive: true });
-  fs.cpSync(TEMPLATE_SCRIPTS, path.join(tmp, ".trellis", "scripts"), {
+  fs.mkdirSync(path.join(tmp, ".arbor", "scripts"), { recursive: true });
+  fs.cpSync(TEMPLATE_SCRIPTS, path.join(tmp, ".arbor", "scripts"), {
     recursive: true,
   });
   fs.writeFileSync(
-    path.join(tmp, ".trellis", "config.yaml"),
+    path.join(tmp, ".arbor", "config.yaml"),
     "session_auto_commit: false\n",
   );
   // `task.py create` refuses to run without a developer identity. Write the
   // `.developer` file rather than exporting an env var, so this fixture does
   // not depend on which identity sources the runtime happens to support.
-  fs.writeFileSync(path.join(tmp, ".trellis", ".developer"), "name=tester\n");
+  fs.writeFileSync(path.join(tmp, ".arbor", ".developer"), "name=tester\n");
 }
 
 function makeTask(
@@ -52,7 +52,7 @@ function makeTask(
   name: string,
   overrides: Record<string, unknown> = {},
 ): string {
-  const dir = path.join(repo, ".trellis", "tasks", name);
+  const dir = path.join(repo, ".arbor", "tasks", name);
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, "prd.md"), `${name} prd\n`);
   fs.writeFileSync(
@@ -78,24 +78,24 @@ function makeTask(
 }
 
 function runTask(repo: string, ...args: string[]) {
-  return spawnSync("python3", [".trellis/scripts/task.py", ...args], {
+  return spawnSync("python3", [".arbor/scripts/task.py", ...args], {
     cwd: repo,
     encoding: "utf-8",
-    env: { ...process.env, TRELLIS_DEVELOPER: "tester" },
+    env: { ...process.env, ARBOR_DEVELOPER: "tester" },
   });
 }
 
 function readChildren(repo: string, name: string): unknown {
   return JSON.parse(
     fs.readFileSync(
-      path.join(repo, ".trellis", "tasks", name, "task.json"),
+      path.join(repo, ".arbor", "tasks", name, "task.json"),
       "utf-8",
     ),
   ).children;
 }
 
 function setChildren(repo: string, name: string, value: unknown): void {
-  const file = path.join(repo, ".trellis", "tasks", name, "task.json");
+  const file = path.join(repo, ".arbor", "tasks", name, "task.json");
   const data = JSON.parse(fs.readFileSync(file, "utf-8"));
   data.children = value;
   fs.writeFileSync(file, JSON.stringify(data) + "\n");
@@ -107,7 +107,7 @@ describe.skipIf(!hasPython())("non-list `children` in a parent task.json", () =>
   let tmp: string;
 
   beforeEach(() => {
-    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "trellis-children-test-"));
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-children-test-"));
     setupRepo(tmp);
     makeTask(tmp, PARENT, { children: null });
   });
@@ -126,14 +126,14 @@ describe.skipIf(!hasPython())("non-list `children` in a parent task.json", () =>
       "--slug",
       "kid",
       "--parent",
-      `.trellis/tasks/${PARENT}`,
+      `.arbor/tasks/${PARENT}`,
       "--no-start",
     );
     expect(r.stderr).not.toContain("TypeError");
     expect(r.status).toBe(0);
 
     const created = fs
-      .readdirSync(path.join(tmp, ".trellis", "tasks"))
+      .readdirSync(path.join(tmp, ".arbor", "tasks"))
       .filter((d) => d.endsWith("-kid"));
     expect(created).toHaveLength(1);
 
@@ -142,7 +142,7 @@ describe.skipIf(!hasPython())("non-list `children` in a parent task.json", () =>
     expect(
       JSON.parse(
         fs.readFileSync(
-          path.join(tmp, ".trellis", "tasks", created[0], "task.json"),
+          path.join(tmp, ".arbor", "tasks", created[0], "task.json"),
           "utf-8",
         ),
       ).parent,
@@ -162,8 +162,8 @@ describe.skipIf(!hasPython())("non-list `children` in a parent task.json", () =>
     const r = runTask(
       tmp,
       "add-subtask",
-      `.trellis/tasks/${PARENT}`,
-      `.trellis/tasks/${child}`,
+      `.arbor/tasks/${PARENT}`,
+      `.arbor/tasks/${child}`,
     );
     expect(r.stderr).not.toContain("TypeError");
     expect(r.status).toBe(0);
@@ -178,8 +178,8 @@ describe.skipIf(!hasPython())("non-list `children` in a parent task.json", () =>
     const r = runTask(
       tmp,
       "remove-subtask",
-      `.trellis/tasks/${PARENT}`,
-      `.trellis/tasks/${child}`,
+      `.arbor/tasks/${PARENT}`,
+      `.arbor/tasks/${child}`,
     );
     expect(r.stderr).not.toContain("TypeError");
     expect(r.status).toBe(0);

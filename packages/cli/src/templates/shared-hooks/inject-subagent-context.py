@@ -12,7 +12,7 @@ Core Design Philosophy:
 
 Trigger: PreToolUse (before Task tool call)
 
-Context Source: Trellis active task resolver points to task directory
+Context Source: Arbor active task resolver points to task directory
 - implement.jsonl - Implement agent dedicated context
 - check.jsonl     - Check agent dedicated context
 - prd.md          - Requirements document
@@ -53,7 +53,7 @@ if sys.platform.startswith("win"):
 # Path Constants (change here to rename directories)
 # =============================================================================
 
-DIR_WORKFLOW = ".trellis"
+DIR_WORKFLOW = ".arbor"
 DIR_SPEC = "spec"
 FILE_TASK_JSON = "task.json"
 
@@ -61,9 +61,9 @@ FILE_TASK_JSON = "task.json"
 # Subagent Constants (change here to rename subagent types)
 # =============================================================================
 
-AGENT_IMPLEMENT = "trellis-implement"
-AGENT_CHECK = "trellis-check"
-AGENT_RESEARCH = "trellis-research"
+AGENT_IMPLEMENT = "arbor-implement"
+AGENT_CHECK = "arbor-check"
+AGENT_RESEARCH = "arbor-research"
 
 # Agents that require a task directory
 AGENTS_REQUIRE_TASK = (AGENT_IMPLEMENT, AGENT_CHECK)
@@ -229,9 +229,9 @@ def _read_file_bytes(base_path: str, file_path: str) -> bytes | None:
     full_path = os.path.join(base_path, file_path)
     try:
         root_real = os.path.realpath(base_path)
-        # `.trellis` may itself be a symlink into a store outside the repo
+        # `.arbor` may itself be a symlink into a store outside the repo
         # (#567); its real location is a second legitimate containment base.
-        workflow_real = os.path.realpath(os.path.join(base_path, ".trellis"))
+        workflow_real = os.path.realpath(os.path.join(base_path, ".arbor"))
         full_real = os.path.realpath(full_path)
         if not _real_path_contained(root_real, full_real) and not (
             _real_path_contained(workflow_real, full_real)
@@ -249,7 +249,7 @@ def _read_file_bytes(base_path: str, file_path: str) -> bytes | None:
 
 
 def _truncate_notice(path: str, cap: int) -> str:
-    return f"\n[Trellis: truncated at {cap} bytes — read {path} for the full content]"
+    return f"\n[Arbor: truncated at {cap} bytes — read {path} for the full content]"
 
 
 def _is_binary_content(data: bytes) -> bool:
@@ -265,14 +265,14 @@ def _is_binary_content(data: bytes) -> bool:
 
 def _binary_notice(path: str, size: int, reason: str) -> str:
     return (
-        f"[Trellis: not inlined (binary file) — "
+        f"[Arbor: not inlined (binary file) — "
         f"{path} ({size} bytes): {reason}]"
     )
 
 
 def _index_notice(path: str, size: int, reason: str) -> str:
     return (
-        f"[Trellis: not inlined (total context limit reached) — "
+        f"[Arbor: not inlined (total context limit reached) — "
         f"{path} ({size} bytes): {reason}]"
     )
 
@@ -365,7 +365,7 @@ def read_jsonl_entries(base_path: str, jsonl_path: str) -> list[dict]:
         {"file": "path/to/dir/", "type": "directory", "reason": "..."}
         {"_example": "..."}          # legacy placeholder — skipped (no `file` field)
 
-    Rows without a ``file`` field (e.g. the placeholder line older Trellis
+    Rows without a ``file`` field (e.g. the placeholder line older Arbor
     versions wrote at ``task.py create`` time) are skipped silently. If the
     resulting entry list is empty, a stderr warning is emitted so the operator
     can debug missing context.
@@ -463,9 +463,9 @@ def get_agent_context(
         # the prompt itself so the sub-agent compensates instead of assuming
         # the spec context was complete.
         return (
-            f"[Trellis] {agent_jsonl} has no curated entries, so no spec/research "
+            f"[Arbor] {agent_jsonl} has no curated entries, so no spec/research "
             "context was injected. Before working, read the guidelines relevant "
-            "to the code you will touch under .trellis/spec/, and treat the task "
+            "to the code you will touch under .arbor/spec/, and treat the task "
             "artifacts below as the only prepared context."
         )
     return "\n\n".join(blocks)
@@ -612,7 +612,7 @@ def get_finish_context(repo_root: str, task_dir: str) -> str:
 
 def build_implement_prompt(original_prompt: str, context: str) -> str:
     """Build complete prompt for Implement"""
-    return f"""<!-- trellis-hook-injected -->
+    return f"""<!-- arbor-hook-injected -->
 # Implement Agent Task
 
 You are the Implement Agent in the Multi-Agent Pipeline.
@@ -647,7 +647,7 @@ All the information you need has been prepared for you:
 
 def build_check_prompt(original_prompt: str, context: str) -> str:
     """Build complete prompt for Check"""
-    return f"""<!-- trellis-hook-injected -->
+    return f"""<!-- arbor-hook-injected -->
 # Check Agent Task
 
 You are the Check Agent in the Multi-Agent Pipeline (code and cross-layer checker).
@@ -682,7 +682,7 @@ All check specs and dev specs you need:
 
 def build_finish_prompt(original_prompt: str, context: str) -> str:
     """Build complete prompt for Finish (final check before PR)"""
-    return f"""<!-- trellis-hook-injected -->
+    return f"""<!-- arbor-hook-injected -->
 # Finish Agent Task
 
 You are performing the final check before creating a PR.
@@ -867,7 +867,7 @@ def _parse_hook_input(input_data: dict) -> tuple[str, str, dict]:
 
 
 def main():
-    if os.environ.get("TRELLIS_HOOKS") == "0" or os.environ.get("TRELLIS_DISABLE_HOOKS") == "1":
+    if os.environ.get("ARBOR_HOOKS") == "0" or os.environ.get("ARBOR_DISABLE_HOOKS") == "1":
         sys.exit(0)
 
     try:
@@ -902,15 +902,15 @@ def main():
             sys.exit(0)
         # Contain the pointer before reading anything through it. `task.py` now
         # refuses to store a ref that leaves the repo, but a session file
-        # written before that fix can still hold one, and `trellis update`
+        # written before that fix can still hold one, and `arbor update`
         # does not rewrite session files — so a poisoned pointer outlives the
         # upgrade that closed the writer. This is the last hop before the
         # task's prd.md/design.md reach the model prompt, so it checks again.
         try:
             root_real = os.path.realpath(repo_root)
-            # `.trellis` may itself be a symlink into a store outside the
+            # `.arbor` may itself be a symlink into a store outside the
             # repo (#567); its real location is a second legitimate base.
-            workflow_real = os.path.realpath(os.path.join(repo_root, ".trellis"))
+            workflow_real = os.path.realpath(os.path.join(repo_root, ".arbor"))
             task_dir_full = os.path.realpath(os.path.join(repo_root, task_dir))
             if not _real_path_contained(root_real, task_dir_full) and not (
                 _real_path_contained(workflow_real, task_dir_full)

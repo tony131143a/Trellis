@@ -83,8 +83,8 @@ function detectPythonVersion(command: string): PythonProbe {
 export function requireSupportedPython(command: string): string {
   // Final escape hatch — set when the user knows python3 is on PATH but
   // the probe keeps failing for environment-specific reasons.
-  if (process.env.TRELLIS_SKIP_PYTHON_CHECK === "1") {
-    return `version check skipped (TRELLIS_SKIP_PYTHON_CHECK=1)`;
+  if (process.env.ARBOR_SKIP_PYTHON_CHECK === "1") {
+    return `version check skipped (ARBOR_SKIP_PYTHON_CHECK=1)`;
   }
 
   const versionOutput = detectPythonVersion(command);
@@ -95,7 +95,7 @@ export function requireSupportedPython(command: string): string {
         `⚠ Python version check skipped — sandboxed environment blocked ` +
           `child_process spawn (EPERM/EACCES). Assuming "${command}" is on ` +
           `PATH. If init fails later, re-run on the host or set ` +
-          `TRELLIS_SKIP_PYTHON_CHECK=1.`,
+          `ARBOR_SKIP_PYTHON_CHECK=1.`,
       ),
     );
     return `version unknown (sandbox-restricted)`;
@@ -103,13 +103,13 @@ export function requireSupportedPython(command: string): string {
 
   if (!versionOutput) {
     throw new Error(
-      `Python command "${command}" not found. Trellis init requires Python ≥ 3.9.`,
+      `Python command "${command}" not found. Arbor init requires Python ≥ 3.9.`,
     );
   }
 
   if (!isSupportedPythonVersion(versionOutput)) {
     throw new Error(
-      `${versionOutput} detected via "${command}", but Trellis init requires Python ≥ 3.9.`,
+      `${versionOutput} detected via "${command}", but Arbor init requires Python ≥ 3.9.`,
     );
   }
 
@@ -122,7 +122,7 @@ export function requireSupportedPython(command: string): string {
  * Windows: `python` is the usual python.org installer choice, but Microsoft
  * Store ships `python3`, and the `py` launcher is `py -3`. We try all three
  * before giving up — fixes #236 where users with only `python3` (not
- * `python`) had `trellis init` fail outright.
+ * `python`) had `arbor init` fail outright.
  *
  * Non-Windows: `python3` is canonical; `python` is a fallback for systems
  * where Python 3 is the only Python and is named `python` (some Arch
@@ -136,8 +136,8 @@ const PYTHON_CANDIDATES: Record<"win32" | "other", readonly string[]> = {
 /**
  * Detect a working Python ≥ 3.9 command on the host platform.
  *
- * Honors `TRELLIS_PYTHON_CMD` (explicit override, no probe) and
- * `TRELLIS_SKIP_PYTHON_CHECK=1` (skip probe, trust platform default).
+ * Honors `ARBOR_PYTHON_CMD` (explicit override, no probe) and
+ * `ARBOR_SKIP_PYTHON_CHECK=1` (skip probe, trust platform default).
  *
  * Otherwise tries each candidate in `PYTHON_CANDIDATES` in order and returns
  * the first whose `--version` matches `Python ≥ 3.9`. Caches the result via
@@ -151,19 +151,19 @@ export function resolveSupportedPython(): {
   version: string;
 } {
   // Explicit override — user knows their environment.
-  const override = process.env.TRELLIS_PYTHON_CMD?.trim();
+  const override = process.env.ARBOR_PYTHON_CMD?.trim();
   if (override) {
     setResolvedPythonCommand(override);
-    return { command: override, version: "set via TRELLIS_PYTHON_CMD" };
+    return { command: override, version: "set via ARBOR_PYTHON_CMD" };
   }
 
   // Skip probe entirely.
-  if (process.env.TRELLIS_SKIP_PYTHON_CHECK === "1") {
+  if (process.env.ARBOR_SKIP_PYTHON_CHECK === "1") {
     const fallback = getPythonCommandForPlatform();
     setResolvedPythonCommand(fallback);
     return {
       command: fallback,
-      version: "version check skipped (TRELLIS_SKIP_PYTHON_CHECK=1)",
+      version: "version check skipped (ARBOR_SKIP_PYTHON_CHECK=1)",
     };
   }
 
@@ -181,7 +181,7 @@ export function resolveSupportedPython(): {
           `⚠ Python version check skipped — sandboxed environment blocked ` +
             `child_process spawn (EPERM/EACCES). Assuming "${candidate}" is ` +
             `on PATH. If init fails later, re-run on the host or set ` +
-            `TRELLIS_SKIP_PYTHON_CHECK=1.`,
+            `ARBOR_SKIP_PYTHON_CHECK=1.`,
         ),
       );
       setResolvedPythonCommand(candidate);
@@ -206,16 +206,16 @@ export function resolveSupportedPython(): {
   const installHint = isWindows
     ? `Install Python ≥ 3.9 from https://www.python.org/downloads/windows/ — make sure ` +
       `"Add Python to PATH" is checked in the installer. Or, if Python is ` +
-      `installed under a different name, set TRELLIS_PYTHON_CMD=<your-cmd> ` +
-      `before re-running init (e.g. \`set TRELLIS_PYTHON_CMD=py -3\`).`
+      `installed under a different name, set ARBOR_PYTHON_CMD=<your-cmd> ` +
+      `before re-running init (e.g. \`set ARBOR_PYTHON_CMD=py -3\`).`
     : `Install Python ≥ 3.9 from https://www.python.org/downloads/ or via your ` +
-      `package manager. Or set TRELLIS_PYTHON_CMD=<your-cmd> before re-running.`;
+      `package manager. Or set ARBOR_PYTHON_CMD=<your-cmd> before re-running.`;
 
   throw new Error(
     `No supported Python command found. Tried: ${candidates.join(", ")}.\n` +
       `Probe results:\n  ${probeFailures.join("\n  ")}\n\n` +
-      `Trellis init requires Python ≥ 3.9. ${installHint}\n` +
-      `Last-resort escape hatch: set TRELLIS_SKIP_PYTHON_CHECK=1 to skip the probe entirely.`,
+      `Arbor init requires Python ≥ 3.9. ${installHint}\n` +
+      `Last-resort escape hatch: set ARBOR_SKIP_PYTHON_CHECK=1 to skip the probe entirely.`,
   );
 }
 
@@ -238,7 +238,7 @@ function logPythonAdaptationNotice(command: string): void {
   const osName = getOsDisplayName();
   console.log(
     chalk.blue(
-      `📌 ${osName} detected: Trellis rendered Python commands as "${command}" in generated hooks, settings, and help text`,
+      `📌 ${osName} detected: Arbor rendered Python commands as "${command}" in generated hooks, settings, and help text`,
     ),
   );
 }
@@ -330,15 +330,15 @@ function getBootstrapRelatedFiles(
   packages?: DetectedPackage[],
 ): string[] {
   if (packages && packages.length > 0) {
-    return packages.map((pkg) => `.trellis/spec/${sanitizePkgName(pkg.name)}/`);
+    return packages.map((pkg) => `.arbor/spec/${sanitizePkgName(pkg.name)}/`);
   }
   if (projectType === "frontend") {
-    return [".trellis/spec/frontend/"];
+    return [".arbor/spec/frontend/"];
   }
   if (projectType === "backend") {
-    return [".trellis/spec/backend/"];
+    return [".arbor/spec/backend/"];
   }
-  return [".trellis/spec/backend/", ".trellis/spec/frontend/"];
+  return [".arbor/spec/backend/", ".arbor/spec/frontend/"];
 }
 
 function getBootstrapPrdContent(
@@ -355,14 +355,14 @@ function getBootstrapPrdContent(
 
 **You (the AI) are running this task. The developer does not read this file.**
 
-The developer just ran \`trellis init\` on this project for the first time.
-\`.trellis/\` now exists with empty spec scaffolding, and this bootstrap task
-exists under \`.trellis/tasks/\`. When they want to work on it, they should start
-this task from a session that provides Trellis session identity.
+The developer just ran \`arbor init\` on this project for the first time.
+\`.arbor/\` now exists with empty spec scaffolding, and this bootstrap task
+exists under \`.arbor/tasks/\`. When they want to work on it, they should start
+this task from a session that provides Arbor session identity.
 
-**Your job**: help them populate \`.trellis/spec/\` with the team's real
+**Your job**: help them populate \`.arbor/spec/\` with the team's real
 coding conventions. Every future AI session — this project's
-\`trellis-implement\` and \`trellis-check\` sub-agents — auto-loads spec files
+\`arbor-implement\` and \`arbor-check\` sub-agents — auto-loads spec files
 listed in per-task jsonl manifests. Empty spec = sub-agents write generic
 code. Real spec = sub-agents match the team's actual patterns.
 
@@ -387,11 +387,11 @@ ${checklistMarkdown}
 
 | File | What to document |
 |------|------------------|
-| \`.trellis/spec/backend/directory-structure.md\` | Where different file types go (routes, services, utils) |
-| \`.trellis/spec/backend/database-guidelines.md\` | ORM, migrations, query patterns, naming conventions |
-| \`.trellis/spec/backend/error-handling.md\` | How errors are caught, logged, and returned |
-| \`.trellis/spec/backend/logging-guidelines.md\` | Log levels, format, what to log |
-| \`.trellis/spec/backend/quality-guidelines.md\` | Code review standards, testing requirements |
+| \`.arbor/spec/backend/directory-structure.md\` | Where different file types go (routes, services, utils) |
+| \`.arbor/spec/backend/database-guidelines.md\` | ORM, migrations, query patterns, naming conventions |
+| \`.arbor/spec/backend/error-handling.md\` | How errors are caught, logged, and returned |
+| \`.arbor/spec/backend/logging-guidelines.md\` | Log levels, format, what to log |
+| \`.arbor/spec/backend/quality-guidelines.md\` | Code review standards, testing requirements |
 `;
 
   const frontendSection = `
@@ -400,19 +400,19 @@ ${checklistMarkdown}
 
 | File | What to document |
 |------|------------------|
-| \`.trellis/spec/frontend/directory-structure.md\` | Component/page/hook organization |
-| \`.trellis/spec/frontend/component-guidelines.md\` | Component patterns, props conventions |
-| \`.trellis/spec/frontend/hook-guidelines.md\` | Custom hook naming, patterns |
-| \`.trellis/spec/frontend/state-management.md\` | State library, patterns, what goes where |
-| \`.trellis/spec/frontend/type-safety.md\` | TypeScript conventions, type organization |
-| \`.trellis/spec/frontend/quality-guidelines.md\` | Linting, testing, accessibility |
+| \`.arbor/spec/frontend/directory-structure.md\` | Component/page/hook organization |
+| \`.arbor/spec/frontend/component-guidelines.md\` | Component patterns, props conventions |
+| \`.arbor/spec/frontend/hook-guidelines.md\` | Custom hook naming, patterns |
+| \`.arbor/spec/frontend/state-management.md\` | State library, patterns, what goes where |
+| \`.arbor/spec/frontend/type-safety.md\` | TypeScript conventions, type organization |
+| \`.arbor/spec/frontend/quality-guidelines.md\` | Linting, testing, accessibility |
 `;
 
   const footer = `
 
 ### Thinking guides (already populated)
 
-\`.trellis/spec/guides/\` contains general thinking guides pre-filled with
+\`.arbor/spec/guides/\` contains general thinking guides pre-filled with
 best practices. Customize only if something clearly doesn't fit this project.
 
 ---
@@ -422,7 +422,7 @@ best practices. Customize only if something clearly doesn't fit this project.
 ### Step 1: Import from existing convention files first (preferred)
 
 Search the repo for existing convention docs. If any exist, read them and
-extract the relevant rules into the matching \`.trellis/spec/\` files —
+extract the relevant rules into the matching \`.arbor/spec/\` files —
 usually much faster than documenting from scratch.
 
 | File / Directory | Tool |
@@ -460,14 +460,14 @@ is a separate conversation, not a bootstrap concern.
 
 ## Quick explainer of the runtime (share when they ask "why do we need spec at all")
 
-- Every AI coding task spawns two sub-agents: \`trellis-implement\` (writes
-  code) and \`trellis-check\` (verifies quality).
+- Every AI coding task spawns two sub-agents: \`arbor-implement\` (writes
+  code) and \`arbor-check\` (verifies quality).
 - Each task has \`implement.jsonl\` / \`check.jsonl\` manifests listing which
   spec files to load.
 - The platform hook auto-injects those spec files + the task's \`prd.md\`
   into every sub-agent prompt, so the sub-agent codes/reviews per team
   conventions without anyone pasting them manually.
-- Source of truth: \`.trellis/spec/\`. That's why filling it well now pays
+- Source of truth: \`.arbor/spec/\`. That's why filling it well now pays
   off forever.
 
 ---
@@ -478,8 +478,8 @@ When the developer confirms the checklist items above are done with real
 examples (not placeholders), guide them to run:
 
 \`\`\`bash
-${pythonCmd} ./.trellis/scripts/task.py finish
-${pythonCmd} ./.trellis/scripts/task.py archive 00-bootstrap-guidelines
+${pythonCmd} ./.arbor/scripts/task.py finish
+${pythonCmd} ./.arbor/scripts/task.py archive 00-bootstrap-guidelines
 \`\`\`
 
 After archive, every new developer who joins this project will get a
@@ -489,7 +489,7 @@ After archive, every new developer who joins this project will get a
 
 ## Suggested opening line
 
-"Welcome to Trellis! Your init just set me up to help you fill the project
+"Welcome to Arbor! Your init just set me up to help you fill the project
 spec — a one-time setup so every future AI session follows the team's
 conventions instead of writing generic code. Before we start, do you have
 any existing convention docs (CLAUDE.md, .cursorrules, CONTRIBUTING.md,
@@ -505,10 +505,10 @@ etc.) I can pull from, or should I scan the codebase from scratch?"
       const specName = sanitizePkgName(pkg.name);
       content += `\n### Package: ${pkg.name} (\`spec/${specName}/\`)\n`;
       if (pkgType !== "frontend") {
-        content += `\n- Backend guidelines: \`.trellis/spec/${specName}/backend/\`\n`;
+        content += `\n- Backend guidelines: \`.arbor/spec/${specName}/backend/\`\n`;
       }
       if (pkgType !== "backend") {
-        content += `\n- Frontend guidelines: \`.trellis/spec/${specName}/frontend/\`\n`;
+        content += `\n- Frontend guidelines: \`.arbor/spec/${specName}/frontend/\`\n`;
       }
     }
   } else if (projectType === "frontend") {
@@ -549,7 +549,7 @@ function getBootstrapTaskJson(
     assignee: developer,
     createdAt: today,
     relatedFiles,
-    notes: `First-time setup task created by trellis init (${projectType} project)`,
+    notes: `First-time setup task created by arbor init (${projectType} project)`,
   });
 }
 
@@ -582,9 +582,9 @@ function getJoinerTaskJson(developer: string, taskName: string): TaskJson {
   return emptyTaskJson({
     id: taskName,
     name: taskName,
-    title: `Joining: Onboard to this Trellis project (${developer})`,
+    title: `Joining: Onboard to this Arbor project (${developer})`,
     description:
-      "Onboard a new developer to an existing Trellis project: learn the workflow, conventions, and find assigned work",
+      "Onboard a new developer to an existing Arbor project: learn the workflow, conventions, and find assigned work",
     status: "in_progress",
     dev_type: "docs",
     priority: "P1",
@@ -592,7 +592,7 @@ function getJoinerTaskJson(developer: string, taskName: string): TaskJson {
     assignee: developer,
     createdAt: today,
     notes:
-      "Generated by trellis init for a new developer joining an existing Trellis project",
+      "Generated by arbor init for a new developer joining an existing Arbor project",
   });
 }
 
@@ -606,12 +606,12 @@ function getJoinerPrdContent(developer: string, pythonCmd: string): string {
 
 **You (the AI) are running this task. The developer does not read this file.**
 
-\`${developer}\` just ran \`trellis init\` on a fresh clone, saw "Developer
+\`${developer}\` just ran \`arbor init\` on a fresh clone, saw "Developer
 initialized", and will now start asking you questions in chat. This joiner task
-exists under \`.trellis/tasks/\`; when they want to work on it, they should
-start it from a session that provides Trellis session identity.
+exists under \`.arbor/tasks/\`; when they want to work on it, they should
+start it from a session that provides Arbor session identity.
 
-Your job is to orient them to Trellis. Don't dump all of this at them — open
+Your job is to orient them to Arbor. Don't dump all of this at them — open
 with a short greeting, ask where they want to start, and fill in the rest as
 they engage.
 
@@ -619,20 +619,20 @@ they engage.
 
 ## Topics to cover (adapt order to their questions)
 
-### 1. What Trellis is + the workflow
+### 1. What Arbor is + the workflow
 
-Trellis is a workflow layer over Claude Code / Cursor / etc. that keeps AI
+Arbor is a workflow layer over Claude Code / Cursor / etc. that keeps AI
 agents consistent with project-specific conventions instead of writing generic
 code every session.
 
 - **Three phases**: Plan (brainstorm → \`prd.md\`) → Execute (code + check) →
-  Finish (capture + wrap). Full reference: \`.trellis/workflow.md\`.
+  Finish (capture + wrap). Full reference: \`.arbor/workflow.md\`.
 - **Task lifecycle**: planning → in_progress → done → archive, under
-  \`.trellis/tasks/\`.
+  \`.arbor/tasks/\`.
 - **Core slash commands**:
-  - \`/trellis:continue\` — resume the current session's active task
-  - \`/trellis:finish-work\` — wrap up a finished task
-  - \`/trellis:start\` — session boot from scratch (not needed here; the
+  - \`/arbor:continue\` — resume the current session's active task
+  - \`/arbor:finish-work\` — wrap up a finished task
+  - \`/arbor:start\` — session boot from scratch (not needed here; the
     SessionStart hook does its job automatically)
 
 ### 2. Runtime mechanics (explain when they ask "how does it know what to do")
@@ -642,28 +642,28 @@ code every session.
   conversation at every session start.
 - **\`<workflow-state>\` tag** is auto-injected with every user message,
   carrying the current task + phase hint.
-- **\`/trellis:continue\`** loads the Phase Index, reads \`prd.md\` + recent
-  activity, and routes to the right skill (\`trellis-brainstorm\` for planning,
-  \`trellis-implement\` for coding, \`trellis-check\` for verification).
-- **\`trellis-implement\` sub-agent** is spawned when code needs to be written.
+- **\`/arbor:continue\`** loads the Phase Index, reads \`prd.md\` + recent
+  activity, and routes to the right skill (\`arbor-brainstorm\` for planning,
+  \`arbor-implement\` for coding, \`arbor-check\` for verification).
+- **\`arbor-implement\` sub-agent** is spawned when code needs to be written.
   The platform hook reads \`{TASK_DIR}/implement.jsonl\` and auto-injects those
   spec files + \`prd.md\` into the sub-agent's prompt so it codes per project
   conventions.
-- **\`trellis-check\` sub-agent** follows the same pattern with \`check.jsonl\`
+- **\`arbor-check\` sub-agent** follows the same pattern with \`check.jsonl\`
   — reviews changes against specs, auto-fixes issues, runs lint/typecheck.
 
 File layout (mention when they ask "where does what live"):
-- \`.trellis/.runtime/sessions/<session>.json\` — session active-task state, gitignored
-- \`.trellis/tasks/<task>/{implement,check}.jsonl\` — per-task context manifests
-- \`.trellis/spec/\` — project-wide conventions (source of truth)
-- \`.trellis/workspace/${developer}/journal-*.md\` — their session log,
+- \`.arbor/.runtime/sessions/<session>.json\` — session active-task state, gitignored
+- \`.arbor/tasks/<task>/{implement,check}.jsonl\` — per-task context manifests
+- \`.arbor/spec/\` — project-wide conventions (source of truth)
+- \`.arbor/workspace/${developer}/journal-*.md\` — their session log,
   rotated at ~2000 lines
 
 ### 3. This project's actual conventions
 
-- Summarize \`.trellis/spec/\` for them — what coding conventions this
+- Summarize \`.arbor/spec/\` for them — what coding conventions this
   specific team enforces.
-- Point at the last 5 entries in \`.trellis/tasks/archive/\` as a rhythm
+- Point at the last 5 entries in \`.arbor/tasks/archive/\` as a rhythm
   example of how people actually work here. **If archive is empty** (the
   project just started), skip this — don't invent examples.
 - Not your job in this onboarding to teach them the business code itself —
@@ -671,9 +671,9 @@ File layout (mention when they ask "where does what live"):
 
 ### 4. Their assigned work
 
-- Check if \`.trellis/workspace/${developer}/\` already exists — if yes, it's
+- Check if \`.arbor/workspace/${developer}/\` already exists — if yes, it's
   their journal from another machine and worth mentioning.
-- Run \`${pythonCmd} ./.trellis/scripts/task.py list --assignee ${developer}\` to
+- Run \`${pythonCmd} ./.arbor/scripts/task.py list --assignee ${developer}\` to
   show tasks assigned to them. (Quote the name if it contains spaces.)
 - Remind them that the "My Tasks" section appears in the SessionStart context
   on every new session.
@@ -683,8 +683,8 @@ File layout (mention when they ask "where does what live"):
 ## Optional: walk through a small task end-to-end
 
 If they want to practice before touching real work, offer to pick a tiny
-P3 task or a typo fix and run the full cycle together: \`/trellis:continue\`
-→ you implement via sub-agents → \`/trellis:finish-work\`.
+P3 task or a typo fix and run the full cycle together: \`/arbor:continue\`
+→ you implement via sub-agents → \`/arbor:finish-work\`.
 
 ---
 
@@ -694,15 +694,15 @@ When they feel oriented (or after you've covered the four topics with
 reasonable back-and-forth), guide them to run:
 
 \`\`\`bash
-${pythonCmd} ./.trellis/scripts/task.py finish
-${pythonCmd} ./.trellis/scripts/task.py archive 00-join-${slug}
+${pythonCmd} ./.arbor/scripts/task.py finish
+${pythonCmd} ./.arbor/scripts/task.py archive 00-join-${slug}
 \`\`\`
 
 ---
 
 ## Suggested opening line
 
-"Welcome! Your \`trellis init\` set me up to onboard you to this project. I
+"Welcome! Your \`arbor init\` set me up to onboard you to this project. I
 can walk you through the workflow, show you the runtime mechanics under the
 hood, summarize the team's spec, or jump to what you're already curious about
 — which would you prefer?"
@@ -710,7 +710,7 @@ hood, summarize the team's spec, or jump to what you're already curious about
 }
 
 /**
- * Create joiner onboarding task for a new developer on an existing Trellis
+ * Create joiner onboarding task for a new developer on an existing Arbor
  * project. Task name is slugified to be filesystem-safe for arbitrary
  * developer names (spaces, Unicode, punctuation).
  */
@@ -727,7 +727,7 @@ function createJoinerOnboardingTask(
 }
 
 /**
- * Handle re-init when .trellis/ already exists.
+ * Handle re-init when .arbor/ already exists.
  * Returns true if handled (caller should return), false if user chose full re-init.
  */
 async function handleReinit(
@@ -771,7 +771,7 @@ async function handleReinit(
       {
         type: "list",
         name: "action",
-        message: "Trellis is already initialized. What would you like to do?",
+        message: "Arbor is already initialized. What would you like to do?",
         choices: [
           { name: "Add AI platform(s)", value: "add-platform" },
           {
@@ -850,7 +850,7 @@ async function handleReinit(
             if (platformId === "claude-code" && options.withStatusline) {
               console.log(
                 chalk.gray(
-                  "   ↳ Trellis statusLine installed (--with-statusline)",
+                  "   ↳ Arbor statusLine installed (--with-statusline)",
                 ),
               );
             }
@@ -887,7 +887,7 @@ async function handleReinit(
 
     // Capture pre-init state: if .developer did not exist before we ran
     // init_developer.py, this checkout had no identity → treat as a new
-    // joiner onboarding onto an existing Trellis project.
+    // joiner onboarding onto an existing Arbor project.
     const hadDeveloperFileBefore = fs.existsSync(
       path.join(cwd, DIR_NAMES.WORKFLOW, FILE_NAMES.DEVELOPER),
     );
@@ -905,7 +905,7 @@ async function handleReinit(
       );
       console.log(
         chalk.gray(
-          `  ${pythonCmd} .trellis/scripts/init_developer.py ${devName}`,
+          `  ${pythonCmd} .arbor/scripts/init_developer.py ${devName}`,
         ),
       );
     }
@@ -951,7 +951,7 @@ async function maybePromptStatuslineOptIn(
       type: "confirm",
       name: "withStatusline",
       message:
-        "Install Trellis statusLine for Claude Code? (status bar: model, context, branch, rate limits)",
+        "Install Arbor statusLine for Claude Code? (status bar: model, context, branch, rate limits)",
       default: false,
     },
   ]);
@@ -966,7 +966,7 @@ interface InitOptions {
   force?: boolean;
   skipExisting?: boolean;
   monorepo?: boolean;
-  /** Claude Code only: install the opt-in Trellis statusLine (--with-statusline) */
+  /** Claude Code only: install the opt-in Arbor statusLine (--with-statusline) */
   withStatusline?: boolean;
 }
 
@@ -1029,8 +1029,8 @@ interface InitAnswers {
 
 export async function init(options: InitOptions): Promise<void> {
   // Refuse to run in $HOME — running here would scoop platform runtime data
-  // (Claude/Codex/OpenCode session histories etc.) into the trellis hash
-  // manifest, and a subsequent `trellis uninstall` would wipe it.
+  // (Claude/Codex/OpenCode session histories etc.) into the arbor hash
+  // manifest, and a subsequent `arbor uninstall` would wipe it.
   if (isCwdHomedir() && !homedirBypassEnabled()) {
     console.error(chalk.red(homedirGuardMessage("init")));
     process.exit(1);
@@ -1040,13 +1040,13 @@ export async function init(options: InitOptions): Promise<void> {
   const isFirstInit = !fs.existsSync(path.join(cwd, DIR_NAMES.WORKFLOW));
   // Captured here (before createWorkflowStructure + init_developer run) so
   // the three-branch dispatch at the bottom can tell "fresh clone joiner"
-  // (.trellis/ exists, .developer missing) apart from "creator first init".
+  // (.arbor/ exists, .developer missing) apart from "creator first init".
   const hadDeveloperFileAtStart = fs.existsSync(
     path.join(cwd, DIR_NAMES.WORKFLOW, FILE_NAMES.DEVELOPER),
   );
 
   // Generate ASCII art banner dynamically using FIGlet "Rebel" font
-  const banner = figlet.textSync("Trellis", { font: "Rebel" });
+  const banner = figlet.textSync("Arbor", { font: "Rebel" });
   console.log(chalk.cyan(`\n${banner.trimEnd()}`));
   console.log(
     chalk.gray(
@@ -1094,10 +1094,10 @@ export async function init(options: InitOptions): Promise<void> {
   const { command: pythonCmd } = resolveSupportedPython();
 
   // ==========================================================================
-  // Re-init fast path: skip full flow when .trellis/ already exists
+  // Re-init fast path: skip full flow when .arbor/ already exists
   // ==========================================================================
 
-  // Aborted-init recovery (issue #204): if .trellis/ exists but tasks/ is
+  // Aborted-init recovery (issue #204): if .arbor/ exists but tasks/ is
   // empty, the previous init never reached bootstrap creation. Fall through
   // to the full flow so the main-dispatch tasksEmpty fallback fires —
   // handleReinit's joiner branch would otherwise mis-route the recovery.
@@ -1125,7 +1125,7 @@ export async function init(options: InitOptions): Promise<void> {
     // Ask for developer name if not detected and not in yes mode
     console.log(
       chalk.gray(
-        "\nTrellis supports team collaboration - each developer has their own\n" +
+        "\nArbor supports team collaboration - each developer has their own\n" +
           `workspace directory (${PATHS.WORKSPACE}/{name}/) to track AI sessions.\n` +
           "Tip: Usually this is your git username (git config user.name).\n",
       ),
@@ -1167,7 +1167,7 @@ export async function init(options: InitOptions): Promise<void> {
       console.log(chalk.gray("  ✗ .gitmodules"));
       console.log(chalk.gray("  ✗ sibling .git directories (need ≥ 2)"));
       console.log("");
-      console.log("To configure manually, add to .trellis/config.yaml:");
+      console.log("To configure manually, add to .arbor/config.yaml:");
       console.log("");
       console.log(chalk.cyan("  packages:"));
       console.log(chalk.cyan("    frontend:"));
@@ -1308,7 +1308,7 @@ export async function init(options: InitOptions): Promise<void> {
         });
         if (platformId === "claude-code" && options.withStatusline) {
           console.log(
-            chalk.gray("   ↳ Trellis statusLine installed (--with-statusline)"),
+            chalk.gray("   ↳ Arbor statusLine installed (--with-statusline)"),
           );
         }
       }
@@ -1355,7 +1355,7 @@ export async function init(options: InitOptions): Promise<void> {
     //   isFirstInit=false + no .developer file → joiner onboarding (fresh clone)
     //   isFirstInit=false + .developer exists  → same-dev re-init, no task
     //
-    // Tasks-empty fallback (issue #204): if .trellis/ exists but tasks dir is
+    // Tasks-empty fallback (issue #204): if .arbor/ exists but tasks dir is
     // empty, the previous init aborted before creating the bootstrap task. Run
     // bootstrap creation regardless of isFirstInit. writeTaskSkeleton is
     // idempotent so repeated triggers are safe.

@@ -36,9 +36,9 @@ function readConfiguredFile(root: string, relativePath: string): string {
 // `collectTemplates` is the single description of a platform's file set;
 // `configure` writes it. Both directions must hold, and only the forward one
 // ("every collected file is on disk") used to be asserted — which is how
-// 0.5.5 shipped `.agents/skills/trellis-start/SKILL.md` from `configureCodex`
+// 0.5.5 shipped `.agents/skills/arbor-start/SKILL.md` from `configureCodex`
 // with no matching `collectTemplates` entry, leaving upgraders without the
-// file after `trellis update` (see manifests/0.5.7.json).
+// file after `arbor update` (see manifests/0.5.7.json).
 // =============================================================================
 
 /**
@@ -46,19 +46,19 @@ function readConfiguredFile(root: string, relativePath: string): string {
  * describe. Exactly one, and it is deliberate.
  *
  * `.claude/hooks/statusline.py` is written only by
- * `trellis init --with-statusline`. Keeping it out of `collectTemplates` is
+ * `arbor init --with-statusline`. Keeping it out of `collectTemplates` is
  * intentional and separately locked by regression.test.ts
  * "[statusline-opt-in] statusline.py is not in claude's collected templates":
  * `analyzeChanges()` classifies a collected-but-absent file as a new file and
  * would force-install the statusline onto projects that opted out.
  *
  * Known consequence, documented but deliberately NOT fixed here (see
- * `.trellis/tasks/08-06-converge-platform-templates/research/configure-vs-collect-inventory.md`):
+ * `.arbor/tasks/08-06-converge-platform-templates/research/configure-vs-collect-inventory.md`):
  * init records the file in `.template-hashes.json`, then
  * `pruneOrphanManifestKeys` drops it as an orphan because it is in neither
  * `collectTemplates` nor a migration — so an opted-in user's `statusline.py`
- * is frozen after their first `trellis update` and is left behind by
- * `trellis uninstall`.
+ * is frozen after their first `arbor update` and is left behind by
+ * `arbor uninstall`.
  */
 const CONFIGURE_ONLY_PATHS = new Set([".claude/hooks/statusline.py"]);
 
@@ -111,14 +111,14 @@ function snapshotDir(root: string): Map<string, string> {
 }
 
 // =============================================================================
-// getConfiguredPlatforms — detects Trellis-owned platform files
+// getConfiguredPlatforms — detects Arbor-owned platform files
 // =============================================================================
 
 describe("getConfiguredPlatforms", () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "trellis-platforms-"));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-platforms-"));
     setWriteMode("force");
   });
 
@@ -133,7 +133,7 @@ describe("getConfiguredPlatforms", () => {
     expect(result.size).toBe(0);
   });
 
-  it("does not treat native platform directories as Trellis installations", () => {
+  it("does not treat native platform directories as Arbor installations", () => {
     for (const id of PLATFORM_IDS) {
       fs.mkdirSync(path.join(tmpDir, AI_TOOLS[id].configDir), {
         recursive: true,
@@ -143,7 +143,7 @@ describe("getConfiguredPlatforms", () => {
     expect([...getConfiguredPlatforms(tmpDir)]).toEqual([]);
   });
 
-  it("detects every platform from the files Trellis tracked for it", async () => {
+  it("detects every platform from the files Arbor tracked for it", async () => {
     for (const id of PLATFORM_IDS) {
       const platformRoot = path.join(tmpDir, id);
       fs.mkdirSync(platformRoot, { recursive: true });
@@ -153,7 +153,7 @@ describe("getConfiguredPlatforms", () => {
       } finally {
         stopRecordingWrites();
       }
-      fs.mkdirSync(path.join(platformRoot, ".trellis"), { recursive: true });
+      fs.mkdirSync(path.join(platformRoot, ".arbor"), { recursive: true });
       initializeHashes(platformRoot, { trackedPaths: written });
 
       expect([...getConfiguredPlatforms(platformRoot)]).toEqual([id]);
@@ -176,7 +176,7 @@ describe("configurePlatform", () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "trellis-configure-"));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-configure-"));
     // Use force mode to avoid interactive prompts
     setWriteMode("force");
   });
@@ -194,7 +194,7 @@ describe("configurePlatform", () => {
   it("configurePlatform writes collected templates byte-for-byte for every platform", async () => {
     for (const id of PLATFORM_IDS) {
       const platformDir = fs.mkdtempSync(
-        path.join(os.tmpdir(), `trellis-parity-${id}-`),
+        path.join(os.tmpdir(), `arbor-parity-${id}-`),
       );
       try {
         await configurePlatform(id, platformDir);
@@ -226,10 +226,10 @@ describe("configurePlatform", () => {
   it("configurePlatform writes no file collectTemplates does not describe, for every platform", async () => {
     // The reverse of the assertion above. Without it, "configure writes a file
     // collectTemplates forgot" passes the suite silently — the exact failure
-    // mode that shipped in 0.5.5 (codex trellis-start).
+    // mode that shipped in 0.5.5 (codex arbor-start).
     for (const id of PLATFORM_IDS) {
       const platformDir = fs.mkdtempSync(
-        path.join(os.tmpdir(), `trellis-reverse-${id}-`),
+        path.join(os.tmpdir(), `arbor-reverse-${id}-`),
       );
       try {
         await configurePlatform(id, platformDir);
@@ -273,7 +273,7 @@ describe("configurePlatform", () => {
     try {
       for (const id of PLATFORM_IDS) {
         const platformDir = fs.mkdtempSync(
-          path.join(os.tmpdir(), `trellis-win-${id}-`),
+          path.join(os.tmpdir(), `arbor-win-${id}-`),
         );
         try {
           await configurePlatform(id, platformDir);
@@ -334,18 +334,18 @@ describe("configurePlatform", () => {
 
     const starFactory = (p: string) => path.join(tmpDir, ".starFactory", p);
 
-    // hasHooks=true → trellis-start is filtered out (session inject replaces it)
-    expect(fs.existsSync(starFactory("commands/trellis/start.md"))).toBe(false);
+    // hasHooks=true → arbor-start is filtered out (session inject replaces it)
+    expect(fs.existsSync(starFactory("commands/arbor/start.md"))).toBe(false);
     expect(
-      fs.existsSync(starFactory("skills/trellis-start/SKILL.md")),
+      fs.existsSync(starFactory("skills/arbor-start/SKILL.md")),
     ).toBe(false);
-    expect(fs.existsSync(starFactory("commands/trellis/continue.md"))).toBe(
+    expect(fs.existsSync(starFactory("commands/arbor/continue.md"))).toBe(
       true,
     );
-    expect(fs.existsSync(starFactory("commands/trellis/finish-work.md"))).toBe(
+    expect(fs.existsSync(starFactory("commands/arbor/finish-work.md"))).toBe(
       true,
     );
-    expect(fs.existsSync(starFactory("skills/trellis-check/SKILL.md"))).toBe(
+    expect(fs.existsSync(starFactory("skills/arbor-check/SKILL.md"))).toBe(
       true,
     );
 
@@ -379,10 +379,10 @@ describe("configurePlatform", () => {
       ".starFactory/hooks/inject-workflow-state.py",
     );
 
-    // A native StarFactory directory without Trellis-owned files is not a
+    // A native StarFactory directory without Arbor-owned files is not a
     // configured platform.
     const emptyDir = fs.mkdtempSync(
-      path.join(os.tmpdir(), "trellis-star-det-"),
+      path.join(os.tmpdir(), "arbor-star-det-"),
     );
     try {
       fs.mkdirSync(path.join(emptyDir, ".starFactory"), { recursive: true });
@@ -401,7 +401,7 @@ describe("configurePlatform", () => {
 
     const templates = collectPlatformTemplates("star");
     expect(templates?.has(".starFactory/settings.json")).toBe(true);
-    expect(templates?.has(".starFactory/commands/trellis/start.md")).toBe(
+    expect(templates?.has(".starFactory/commands/arbor/start.md")).toBe(
       false,
     );
     expect(
@@ -516,7 +516,7 @@ describe("configurePlatform", () => {
   it("does not throw for any platform", async () => {
     for (const id of PLATFORM_IDS) {
       const platformDir = fs.mkdtempSync(
-        path.join(os.tmpdir(), `trellis-cfg-${id}-`),
+        path.join(os.tmpdir(), `arbor-cfg-${id}-`),
       );
       try {
         setWriteMode("force");

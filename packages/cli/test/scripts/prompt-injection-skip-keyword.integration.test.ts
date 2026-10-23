@@ -1,9 +1,9 @@
 /**
- * Integration tests for the `no-trellis` per-turn skip keyword (issue #427).
+ * Integration tests for the `no-arbor` per-turn skip keyword (issue #427).
  *
  * `shared-hooks/inject-workflow-state.py` checks the user prompt for a
  * configurable, word-boundary, case-insensitive skip keyword (default
- * "no-trellis") right after resolving `.trellis/config.yaml`, before any
+ * "no-arbor") right after resolving `.arbor/config.yaml`, before any
  * task resolution or breadcrumb template loading. On a hit it exits 0 with
  * empty stdout for that turn only. `session-start.py` (SessionStart) and
  * `inject-subagent-context.py` (sub-agent context) must ignore the keyword
@@ -21,7 +21,7 @@ import path from "node:path";
 
 const TEMPLATE_SCRIPTS = path.resolve(
   __dirname,
-  "../../src/templates/trellis/scripts",
+  "../../src/templates/arbor/scripts",
 );
 const SHARED_HOOKS = path.resolve(
   __dirname,
@@ -38,19 +38,19 @@ function hasPython(): boolean {
 }
 
 function setupRepo(tmp: string): void {
-  fs.mkdirSync(path.join(tmp, ".trellis", "scripts"), { recursive: true });
-  fs.cpSync(TEMPLATE_SCRIPTS, path.join(tmp, ".trellis", "scripts"), {
+  fs.mkdirSync(path.join(tmp, ".arbor", "scripts"), { recursive: true });
+  fs.cpSync(TEMPLATE_SCRIPTS, path.join(tmp, ".arbor", "scripts"), {
     recursive: true,
   });
   fs.writeFileSync(
-    path.join(tmp, ".trellis", "workflow.md"),
+    path.join(tmp, ".arbor", "workflow.md"),
     [
       "# Workflow",
       "",
       "## Phase Index",
       "",
       "[workflow-state:no_task]",
-      "No active task. Classify the turn before creating a Trellis task.",
+      "No active task. Classify the turn before creating a Arbor task.",
       "[/workflow-state:no_task]",
       "",
       "## Phase 1: Plan",
@@ -60,7 +60,7 @@ function setupRepo(tmp: string): void {
 }
 
 function writeConfig(tmp: string, yaml: string): void {
-  fs.writeFileSync(path.join(tmp, ".trellis", "config.yaml"), yaml, "utf-8");
+  fs.writeFileSync(path.join(tmp, ".arbor", "config.yaml"), yaml, "utf-8");
 }
 
 function runHook(
@@ -86,7 +86,7 @@ function runConfigProbe(tmp: string, code: string): string {
   const probePath = path.join(tmp, "config_probe.py");
   const script = `
 import sys
-sys.path.insert(0, ${JSON.stringify(path.join(tmp, ".trellis", "scripts"))})
+sys.path.insert(0, ${JSON.stringify(path.join(tmp, ".arbor", "scripts"))})
 from pathlib import Path
 from common.config import get_prompt_injection_config
 REPO_ROOT = Path(${JSON.stringify(tmp)})
@@ -102,11 +102,11 @@ ${code}
 
 const describeFn = hasPython() ? describe : describe.skip;
 
-describeFn("no-trellis skip keyword (issue #427)", () => {
+describeFn("no-arbor skip keyword (issue #427)", () => {
   let tmp: string;
 
   beforeEach(() => {
-    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "trellis-skip-keyword-"));
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-skip-keyword-"));
     setupRepo(tmp);
   });
 
@@ -121,7 +121,7 @@ describeFn("no-trellis skip keyword (issue #427)", () => {
         tmp,
         "print(get_prompt_injection_config(REPO_ROOT))",
       );
-      expect(out.trim()).toBe("{'skip_keyword': 'no-trellis'}");
+      expect(out.trim()).toBe("{'skip_keyword': 'no-arbor'}");
     });
 
     it("returns the default skip_keyword when config.yaml is absent", () => {
@@ -129,7 +129,7 @@ describeFn("no-trellis skip keyword (issue #427)", () => {
         tmp,
         "print(get_prompt_injection_config(REPO_ROOT))",
       );
-      expect(out.trim()).toBe("{'skip_keyword': 'no-trellis'}");
+      expect(out.trim()).toBe("{'skip_keyword': 'no-arbor'}");
     });
 
     it("applies an explicit custom skip_keyword override", () => {
@@ -158,11 +158,11 @@ describeFn("no-trellis skip keyword (issue #427)", () => {
   });
 
   describe("inject-workflow-state.py: default keyword", () => {
-    it("emits empty stdout when the prompt contains 'no-trellis' as a standalone word", () => {
+    it("emits empty stdout when the prompt contains 'no-arbor' as a standalone word", () => {
       const { stdout, status } = runHook(
         tmp,
         "inject-workflow-state.py",
-        "no-trellis how do I write this regex",
+        "no-arbor how do I write this regex",
       );
       expect(status).toBe(0);
       expect(stdout).toBe("");
@@ -172,7 +172,7 @@ describeFn("no-trellis skip keyword (issue #427)", () => {
       const { stdout, status } = runHook(
         tmp,
         "inject-workflow-state.py",
-        "No-Trellis please help",
+        "No-Arbor please help",
       );
       expect(status).toBe(0);
       expect(stdout).toBe("");
@@ -196,31 +196,31 @@ describeFn("no-trellis skip keyword (issue #427)", () => {
   });
 
   describe("inject-workflow-state.py: word-boundary negatives", () => {
-    it("does NOT skip on 'no-trellisfoo' (suffix attached, no boundary)", () => {
+    it("does NOT skip on 'no-arborfoo' (suffix attached, no boundary)", () => {
       const { stdout, status } = runHook(
         tmp,
         "inject-workflow-state.py",
-        "no-trellisfoo is a weird word",
+        "no-arborfoo is a weird word",
       );
       expect(status).toBe(0);
       expect(stdout).not.toBe("");
     });
 
-    it("does NOT skip on 'foo-no-trellis' (prefix attached via hyphen, no boundary)", () => {
+    it("does NOT skip on 'foo-no-arbor' (prefix attached via hyphen, no boundary)", () => {
       const { stdout, status } = runHook(
         tmp,
         "inject-workflow-state.py",
-        "foo-no-trellis is also weird",
+        "foo-no-arbor is also weird",
       );
       expect(status).toBe(0);
       expect(stdout).not.toBe("");
     });
 
-    it("DOES skip on 'path/no-trellis.md' — '/' and '.' are boundaries, keyword is standalone", () => {
+    it("DOES skip on 'path/no-arbor.md' — '/' and '.' are boundaries, keyword is standalone", () => {
       const { stdout, status } = runHook(
         tmp,
         "inject-workflow-state.py",
-        "look at path/no-trellis.md please",
+        "look at path/no-arbor.md please",
       );
       expect(status).toBe(0);
       expect(stdout).toBe("");
@@ -230,7 +230,7 @@ describeFn("no-trellis skip keyword (issue #427)", () => {
       const { stdout, status } = runHook(
         tmp,
         "inject-workflow-state.py",
-        "(no-trellis) skip this turn",
+        "(no-arbor) skip this turn",
       );
       expect(status).toBe(0);
       expect(stdout).toBe("");
@@ -255,7 +255,7 @@ describeFn("no-trellis skip keyword (issue #427)", () => {
       const defaultInert = runHook(
         tmp,
         "inject-workflow-state.py",
-        "no-trellis question here",
+        "no-arbor question here",
       );
       expect(defaultInert.status).toBe(0);
       expect(defaultInert.stdout).not.toBe("");
@@ -270,7 +270,7 @@ describeFn("no-trellis skip keyword (issue #427)", () => {
       const { stdout, status } = runHook(
         tmp,
         "inject-workflow-state.py",
-        "no-trellis question here",
+        "no-arbor question here",
       );
       expect(status).toBe(0);
       expect(stdout).not.toBe("");
@@ -289,7 +289,7 @@ describeFn("no-trellis skip keyword (issue #427)", () => {
             hook_event_name: "SessionStart",
             cwd: tmp,
             session_id: "test-session",
-            prompt: "no-trellis",
+            prompt: "no-arbor",
           }),
           env: { ...process.env, CLAUDE_PROJECT_DIR: tmp },
         },

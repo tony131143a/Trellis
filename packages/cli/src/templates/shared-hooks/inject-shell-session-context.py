@@ -28,7 +28,7 @@ if callable(_stdin_reconfigure):
         pass
 
 
-DIR_WORKFLOW = ".trellis"
+DIR_WORKFLOW = ".arbor"
 DIR_RUNTIME = ".runtime"
 DIR_SHELL_TICKETS = "shell-tickets"
 SESSION_SUBCOMMANDS = {"start", "current", "finish"}
@@ -56,11 +56,11 @@ def _string_value(value: Any) -> str | None:
     return None
 
 
-def _resolve_trellis_root(hook_input: dict[str, Any]) -> Path | None:
+def _resolve_arbor_root(hook_input: dict[str, Any]) -> Path | None:
     """Locate the project root, trying the payload cwd and then our own.
 
     A host may send a `cwd` that is not the project root (e.g. `"/"`), in
-    which case trusting the payload alone finds no `.trellis` and the bridge
+    which case trusting the payload alone finds no `.arbor` and the bridge
     silently does nothing — the hook is invoked, writes no ticket, and
     `task.py start` degrades.
 
@@ -79,13 +79,13 @@ def _resolve_trellis_root(hook_input: dict[str, Any]) -> Path | None:
         pass
 
     for candidate in candidates:
-        root = _find_trellis_root(candidate)
+        root = _find_arbor_root(candidate)
         if root is not None:
             return root
     return None
 
 
-def _find_trellis_root(start: Path) -> Path | None:
+def _find_arbor_root(start: Path) -> Path | None:
     current = start.resolve()
     while True:
         if (current / DIR_WORKFLOW).is_dir():
@@ -230,7 +230,7 @@ def _write_ticket(
 
 
 def main() -> int:
-    if os.environ.get("TRELLIS_HOOKS") == "0" or os.environ.get("TRELLIS_DISABLE_HOOKS") == "1":
+    if os.environ.get("ARBOR_HOOKS") == "0" or os.environ.get("ARBOR_DISABLE_HOOKS") == "1":
         return 0
 
     try:
@@ -245,7 +245,7 @@ def main() -> int:
     if not subcommands:
         return 0
 
-    root = _resolve_trellis_root(hook_input)
+    root = _resolve_arbor_root(hook_input)
     if root is None:
         return 0
 

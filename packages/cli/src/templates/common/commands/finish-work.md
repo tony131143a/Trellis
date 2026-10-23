@@ -5,7 +5,7 @@ Wrap up the current session: archive the active task (and any other completed-bu
 ## Step 1: Survey current state
 
 ```bash
-{{PYTHON_CMD}} ./.trellis/scripts/get_context.py --mode record
+{{PYTHON_CMD}} ./.arbor/scripts/get_context.py --mode record
 ```
 
 This prints:
@@ -19,7 +19,7 @@ If `--mode record` surfaces other completed tasks not tied to the current sessio
 Then run the spec freshness lint:
 
 ```bash
-{{PYTHON_CMD}} ./.trellis/scripts/spec.py lint
+{{PYTHON_CMD}} ./.arbor/scripts/spec.py lint
 ```
 
 This is advisory: report its findings to the user in one line (stale, broken, or unlisted spec docs) and continue — it never blocks this command.
@@ -32,7 +32,7 @@ Run:
 git status --porcelain
 ```
 
-Filter out paths under `.trellis/workspace/` and `.trellis/tasks/` — those are managed by `add_session.py` and `task.py archive` auto-commits and will appear dirty as part of this skill's own work.
+Filter out paths under `.arbor/workspace/` and `.arbor/tasks/` — those are managed by `add_session.py` and `task.py archive` auto-commits and will appear dirty as part of this skill's own work.
 
 For each remaining dirty path, decide whether it belongs to **the current task** or to **other parallel work** (e.g., another terminal window editing the same repo). Heuristics:
 
@@ -53,7 +53,7 @@ Then route:
 ## Step 3: Archive task(s)
 
 ```bash
-{{PYTHON_CMD}} ./.trellis/scripts/task.py archive <task-name>
+{{PYTHON_CMD}} ./.arbor/scripts/task.py archive <task-name>
 ```
 
 At minimum: the current active task (if any). Plus any extra tasks the user confirmed in Step 1. Each archive produces a `chore(task): archive ...` commit via the script's auto-commit.
@@ -63,7 +63,7 @@ If there is no active task and the user did not confirm any cleanup archives, sk
 ## Step 4: Record session journal
 
 ```bash
-{{PYTHON_CMD}} ./.trellis/scripts/add_session.py \
+{{PYTHON_CMD}} ./.arbor/scripts/add_session.py \
   --title "Session Title" \
   --commit "hash1,hash2" \
   --summary "Brief summary"

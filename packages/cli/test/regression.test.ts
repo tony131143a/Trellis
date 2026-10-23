@@ -47,11 +47,11 @@ import {
   commonTaskUtils,
   commonDeveloper,
   commonConfig,
-  commonTrellisConfig,
+  commonArborConfig,
   commonGitContext,
   commonSessionContext,
   getAllScripts,
-} from "../src/templates/trellis/index.js";
+} from "../src/templates/arbor/index.js";
 import {
   collectPlatformTemplates,
   resolveCliFlag,
@@ -192,15 +192,15 @@ describe("regression: add_session.py runtime branch context (issue-106)", () => 
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "trellis-session-"));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-session-"));
   });
 
   afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  function writeTrellisScripts(): void {
-    const scriptsDir = path.join(tmpDir, ".trellis", "scripts");
+  function writeArborScripts(): void {
+    const scriptsDir = path.join(tmpDir, ".arbor", "scripts");
     for (const [relativePath, content] of getAllScripts()) {
       const absPath = path.join(scriptsDir, relativePath);
       fs.mkdirSync(path.dirname(absPath), { recursive: true });
@@ -246,7 +246,7 @@ ${separator}
 <!-- @@@/auto:session-history -->
 `;
     fs.writeFileSync(
-      path.join(tmpDir, ".trellis", "workspace", "test-dev", "index.md"),
+      path.join(tmpDir, ".arbor", "workspace", "test-dev", "index.md"),
       indexContent,
       "utf-8",
     );
@@ -258,34 +258,34 @@ ${separator}
     taskBranch?: string;
     taskBaseBranch?: string;
   }): void {
-    writeTrellisScripts();
+    writeArborScripts();
 
-    fs.mkdirSync(path.join(tmpDir, ".trellis", "workspace", "test-dev"), {
+    fs.mkdirSync(path.join(tmpDir, ".arbor", "workspace", "test-dev"), {
       recursive: true,
     });
     fs.writeFileSync(
-      path.join(tmpDir, ".trellis", ".developer"),
+      path.join(tmpDir, ".arbor", ".developer"),
       "name=test-dev\ninitialized_at=2026-03-22T00:00:00\n",
       "utf-8",
     );
     fs.writeFileSync(
-      path.join(tmpDir, ".trellis", "workspace", "test-dev", "journal-1.md"),
+      path.join(tmpDir, ".arbor", "workspace", "test-dev", "journal-1.md"),
       "# Journal - test-dev (Part 1)\n\n---\n",
       "utf-8",
     );
     createWorkspaceIndex(options?.headerMode ?? "current5");
 
     if (options?.taskBranch || options?.taskBaseBranch) {
-      const taskDir = path.join(tmpDir, ".trellis", "tasks", "issue-106");
+      const taskDir = path.join(tmpDir, ".arbor", "tasks", "issue-106");
       fs.mkdirSync(taskDir, { recursive: true });
-      fs.mkdirSync(path.join(tmpDir, ".trellis", ".runtime", "sessions"), {
+      fs.mkdirSync(path.join(tmpDir, ".arbor", ".runtime", "sessions"), {
         recursive: true,
       });
       fs.writeFileSync(
-        path.join(tmpDir, ".trellis", ".runtime", "sessions", "session-a.json"),
+        path.join(tmpDir, ".arbor", ".runtime", "sessions", "session-a.json"),
         JSON.stringify(
           {
-            current_task: ".trellis/tasks/issue-106",
+            current_task: ".arbor/tasks/issue-106",
             platform: "test",
           },
           null,
@@ -322,7 +322,7 @@ ${separator}
     const command = [
       "python3",
       JSON.stringify(
-        path.join(tmpDir, ".trellis", "scripts", "add_session.py"),
+        path.join(tmpDir, ".arbor", "scripts", "add_session.py"),
       ),
       "--title",
       JSON.stringify(title),
@@ -337,7 +337,7 @@ ${separator}
     execSync(command.join(" "), {
       cwd: tmpDir,
       encoding: "utf-8",
-      env: { ...process.env, TRELLIS_CONTEXT_ID: "session-a" },
+      env: { ...process.env, ARBOR_CONTEXT_ID: "session-a" },
     });
   }
 
@@ -358,11 +358,11 @@ ${separator}
     runAddSession("CLI branch wins", { branch: "cli/from-arg" });
 
     const journal = fs.readFileSync(
-      path.join(tmpDir, ".trellis", "workspace", "test-dev", "journal-1.md"),
+      path.join(tmpDir, ".arbor", "workspace", "test-dev", "journal-1.md"),
       "utf-8",
     );
     const index = fs.readFileSync(
-      path.join(tmpDir, ".trellis", "workspace", "test-dev", "index.md"),
+      path.join(tmpDir, ".arbor", "workspace", "test-dev", "index.md"),
       "utf-8",
     );
 
@@ -386,11 +386,11 @@ ${separator}
     runAddSession("Task branch wins");
 
     const journal = fs.readFileSync(
-      path.join(tmpDir, ".trellis", "workspace", "test-dev", "journal-1.md"),
+      path.join(tmpDir, ".arbor", "workspace", "test-dev", "journal-1.md"),
       "utf-8",
     );
     const index = fs.readFileSync(
-      path.join(tmpDir, ".trellis", "workspace", "test-dev", "index.md"),
+      path.join(tmpDir, ".arbor", "workspace", "test-dev", "index.md"),
       "utf-8",
     );
 
@@ -410,11 +410,11 @@ ${separator}
     runAddSession("Git branch fallback");
 
     const journal = fs.readFileSync(
-      path.join(tmpDir, ".trellis", "workspace", "test-dev", "journal-1.md"),
+      path.join(tmpDir, ".arbor", "workspace", "test-dev", "journal-1.md"),
       "utf-8",
     );
     const index = fs.readFileSync(
-      path.join(tmpDir, ".trellis", "workspace", "test-dev", "index.md"),
+      path.join(tmpDir, ".arbor", "workspace", "test-dev", "index.md"),
       "utf-8",
     );
 
@@ -436,7 +436,7 @@ ${separator}
     runAddSession("Legacy 4-column migration");
 
     const index = fs.readFileSync(
-      path.join(tmpDir, ".trellis", "workspace", "test-dev", "index.md"),
+      path.join(tmpDir, ".arbor", "workspace", "test-dev", "index.md"),
       "utf-8",
     );
 
@@ -453,11 +453,11 @@ ${separator}
     runAddSession("No branch available");
 
     const journal = fs.readFileSync(
-      path.join(tmpDir, ".trellis", "workspace", "test-dev", "journal-1.md"),
+      path.join(tmpDir, ".arbor", "workspace", "test-dev", "journal-1.md"),
       "utf-8",
     );
     const index = fs.readFileSync(
-      path.join(tmpDir, ".trellis", "workspace", "test-dev", "index.md"),
+      path.join(tmpDir, ".arbor", "workspace", "test-dev", "index.md"),
       "utf-8",
     );
 
@@ -473,7 +473,7 @@ ${separator}
 describe("regression: Windows path separator (beta.12)", () => {
   it("[beta.12] isManagedPath handles Windows backslash paths", () => {
     expect(isManagedPath(".claude\\commands\\foo.md")).toBe(true);
-    expect(isManagedPath(".trellis\\spec\\backend")).toBe(true);
+    expect(isManagedPath(".arbor\\spec\\backend")).toBe(true);
     expect(isManagedPath(".starFactory\\commands\\start.md")).toBe(true);
   });
 
@@ -487,8 +487,8 @@ describe("regression: Windows path separator (beta.12)", () => {
 // =============================================================================
 
 describe("regression: task directory paths (0.2.14, 0.2.15, beta.13)", () => {
-  it("[0.2.15] PATHS.TASKS is .trellis/tasks (not .trellis/workspace/*/tasks)", () => {
-    expect(PATHS.TASKS).toBe(".trellis/tasks");
+  it("[0.2.15] PATHS.TASKS is .arbor/tasks (not .arbor/workspace/*/tasks)", () => {
+    expect(PATHS.TASKS).toBe(".arbor/tasks");
     expect(PATHS.TASKS).not.toContain("workspace");
   });
 
@@ -506,9 +506,9 @@ describe("regression: task directory paths (0.2.14, 0.2.15, beta.13)", () => {
 });
 
 describe("regression: resolve_task_dir path handling", () => {
-  it("[beta.12] resolve_task_dir handles .trellis prefix", () => {
-    // The function should recognize .trellis-prefixed paths as relative paths
-    expect(commonTaskUtils).toContain('.startswith(".trellis")');
+  it("[beta.12] resolve_task_dir handles .arbor prefix", () => {
+    // The function should recognize .arbor-prefixed paths as relative paths
+    expect(commonTaskUtils).toContain('.startswith(".arbor")');
   });
 
   it("[current-task] resolve_task_dir normalizes backslash separators before path classification", () => {
@@ -527,7 +527,7 @@ describe("regression: resolve_task_dir containment chokepoint", () => {
   } {
     const result = spawnSync(
       pythonCmd,
-      [path.join(".trellis", "scripts", "task.py"), ...args],
+      [path.join(".arbor", "scripts", "task.py"), ...args],
       { cwd: tmpDir, encoding: "utf-8" },
     );
     return {
@@ -538,7 +538,7 @@ describe("regression: resolve_task_dir containment chokepoint", () => {
   }
 
   function taskDir(...segments: string[]): string {
-    return path.join(tmpDir, ".trellis", "tasks", ...segments);
+    return path.join(tmpDir, ".arbor", "tasks", ...segments);
   }
 
   function makeTask(name: string): void {
@@ -550,15 +550,15 @@ describe("regression: resolve_task_dir containment chokepoint", () => {
   }
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "trellis-task-escape-"));
-    const scriptsDir = path.join(tmpDir, ".trellis", "scripts");
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-task-escape-"));
+    const scriptsDir = path.join(tmpDir, ".arbor", "scripts");
     for (const [relativePath, content] of getAllScripts()) {
       const absPath = path.join(scriptsDir, relativePath);
       fs.mkdirSync(path.dirname(absPath), { recursive: true });
       fs.writeFileSync(absPath, content, "utf-8");
     }
     fs.writeFileSync(
-      path.join(tmpDir, ".trellis", ".developer"),
+      path.join(tmpDir, ".arbor", ".developer"),
       "name=tester\n",
     );
     fs.mkdirSync(taskDir("archive"), { recursive: true });
@@ -633,9 +633,9 @@ describe("regression: resolve_task_dir containment chokepoint", () => {
     );
     expect(r.status).not.toBe(0);
     expect(r.stderr).toContain("--slug must be a plain name");
-    expect(fs.existsSync(path.join(tmpDir, ".trellis", "escaped"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".arbor", "escaped"))).toBe(false);
     expect(
-      fs.readdirSync(path.join(tmpDir, ".trellis", "tasks")).sort(),
+      fs.readdirSync(path.join(tmpDir, ".arbor", "tasks")).sort(),
     ).toEqual(["08-09-real", "archive"]);
   });
 
@@ -644,7 +644,7 @@ describe("regression: resolve_task_dir containment chokepoint", () => {
       "add-context",
       "08-09-real",
       "../../../evil-ctx",
-      ".trellis/tasks/08-09-real/task.json",
+      ".arbor/tasks/08-09-real/task.json",
     );
     expect(r.status).not.toBe(0);
     expect(r.stdout + r.stderr).toContain("must be a plain name");
@@ -654,17 +654,17 @@ describe("regression: resolve_task_dir containment chokepoint", () => {
     expect(fs.existsSync(path.join(tmpDir, "evil-ctx.jsonl"))).toBe(false);
   });
 
-  it("[audit] add-context on '..' fails instead of writing into .trellis/", () => {
+  it("[audit] add-context on '..' fails instead of writing into .arbor/", () => {
     const r = runTask(
       "add-context",
       "..",
       "implement",
-      ".trellis/tasks/08-09-real/task.json",
+      ".arbor/tasks/08-09-real/task.json",
     );
     expect(r.status).not.toBe(0);
     expect(r.stderr).toContain("invalid task name");
     expect(
-      fs.existsSync(path.join(tmpDir, ".trellis", "implement.jsonl")),
+      fs.existsSync(path.join(tmpDir, ".arbor", "implement.jsonl")),
     ).toBe(false);
   });
 
@@ -697,12 +697,12 @@ describe("regression: resolve_task_dir containment chokepoint", () => {
 
     expect(runTask("set-meta", "08-09-real", "by-name", "1").status).toBe(0);
     expect(
-      runTask("set-meta", ".trellis/tasks/08-09-real", "by-path", "2").status,
+      runTask("set-meta", ".arbor/tasks/08-09-real", "by-path", "2").status,
     ).toBe(0);
     expect(
       runTask(
         "set-meta",
-        ".trellis/tasks/archive/2026-07/08-09-old",
+        ".arbor/tasks/archive/2026-07/08-09-old",
         "archived",
         "3",
       ).status,
@@ -739,7 +739,7 @@ describe("regression: task lifecycle overwrite and collision safety", () => {
   } {
     const result = spawnSync(
       pythonCmd,
-      [path.join(".trellis", "scripts", "task.py"), ...args],
+      [path.join(".arbor", "scripts", "task.py"), ...args],
       { cwd: tmpDir, encoding: "utf-8" },
     );
     return {
@@ -750,7 +750,7 @@ describe("regression: task lifecycle overwrite and collision safety", () => {
   }
 
   function taskDir(...segments: string[]): string {
-    return path.join(tmpDir, ".trellis", "tasks", ...segments);
+    return path.join(tmpDir, ".arbor", "tasks", ...segments);
   }
 
   function readTaskJson(...segments: string[]): Record<string, unknown> {
@@ -767,15 +767,15 @@ describe("regression: task lifecycle overwrite and collision safety", () => {
   }
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "trellis-task-collision-"));
-    const scriptsDir = path.join(tmpDir, ".trellis", "scripts");
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-task-collision-"));
+    const scriptsDir = path.join(tmpDir, ".arbor", "scripts");
     for (const [relativePath, content] of getAllScripts()) {
       const absPath = path.join(scriptsDir, relativePath);
       fs.mkdirSync(path.dirname(absPath), { recursive: true });
       fs.writeFileSync(absPath, content, "utf-8");
     }
     fs.writeFileSync(
-      path.join(tmpDir, ".trellis", ".developer"),
+      path.join(tmpDir, ".arbor", ".developer"),
       "name=tester\n",
     );
     fs.mkdirSync(taskDir("archive"), { recursive: true });
@@ -884,7 +884,7 @@ describe("regression: task lifecycle overwrite and collision safety", () => {
     // Both sides of the collision must be named, or the user cannot tell
     // which archived task to move out of the way.
     expect(r.stderr).toContain(`archive/${yearMonth}/${dirName}`);
-    expect(r.stderr).toContain(`Task remains at: .trellis/tasks/${dirName}`);
+    expect(r.stderr).toContain(`Task remains at: .arbor/tasks/${dirName}`);
 
     // No nesting, no partial state: the live task is untouched (not even
     // flipped to completed) and the archived copy still holds its own file.
@@ -935,7 +935,7 @@ describe("regression: task lifecycle overwrite and collision safety", () => {
     expect(r.status).not.toBe(0);
     expect(r.stderr).toContain("Parent task not resolved");
     expect(r.stderr).toContain("No task was created");
-    expect(fs.readdirSync(path.join(tmpDir, ".trellis", "tasks"))).toEqual([
+    expect(fs.readdirSync(path.join(tmpDir, ".arbor", "tasks"))).toEqual([
       "archive",
     ]);
   });
@@ -1102,7 +1102,7 @@ describe("regression: JSON read/write failure reporting", () => {
   ): { status: number | null; stdout: string; stderr: string } {
     const result = spawnSync(
       pythonCmd,
-      [path.join(".trellis", "scripts", "task.py"), ...args],
+      [path.join(".arbor", "scripts", "task.py"), ...args],
       { cwd: tmpDir, encoding: "utf-8", env: { ...process.env, ...env } },
     );
     return {
@@ -1113,7 +1113,7 @@ describe("regression: JSON read/write failure reporting", () => {
   }
 
   function taskDir(...segments: string[]): string {
-    return path.join(tmpDir, ".trellis", "tasks", ...segments);
+    return path.join(tmpDir, ".arbor", "tasks", ...segments);
   }
 
   function taskJsonPath(name: string): string {
@@ -1128,15 +1128,15 @@ describe("regression: JSON read/write failure reporting", () => {
   }
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "trellis-task-json-io-"));
-    const scriptsDir = path.join(tmpDir, ".trellis", "scripts");
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-task-json-io-"));
+    const scriptsDir = path.join(tmpDir, ".arbor", "scripts");
     for (const [relativePath, content] of getAllScripts()) {
       const absPath = path.join(scriptsDir, relativePath);
       fs.mkdirSync(path.dirname(absPath), { recursive: true });
       fs.writeFileSync(absPath, content, "utf-8");
     }
     fs.writeFileSync(
-      path.join(tmpDir, ".trellis", ".developer"),
+      path.join(tmpDir, ".arbor", ".developer"),
       "name=tester\n",
     );
     fs.mkdirSync(taskDir("archive"), { recursive: true });
@@ -1526,7 +1526,7 @@ describe("regression: JSON read/write failure reporting", () => {
   });
 
   it("[audit] start still activates a task with a corrupt task.json but says why status and branch stayed", () => {
-    const env = { TRELLIS_CONTEXT_ID: "json-io-start" };
+    const env = { ARBOR_CONTEXT_ID: "json-io-start" };
     expect(
       runTask(
         [
@@ -1554,7 +1554,7 @@ describe("regression: JSON read/write failure reporting", () => {
   });
 
   it("[audit] current --json carries a read-failure signal and stays silent when healthy", () => {
-    const env = { TRELLIS_CONTEXT_ID: "json-io-test" };
+    const env = { ARBOR_CONTEXT_ID: "json-io-test" };
     expect(
       runTask(
         [
@@ -1601,7 +1601,7 @@ describe("regression: JSON read/write failure reporting", () => {
   it.skipIf(!canProvokePermissionFailure)(
     "[audit] a session pointer that cannot be written atomically is left intact",
     () => {
-      const env = { TRELLIS_CONTEXT_ID: "json-io-session" };
+      const env = { ARBOR_CONTEXT_ID: "json-io-session" };
       expect(
         runTask(
           [
@@ -1632,7 +1632,7 @@ describe("regression: JSON read/write failure reporting", () => {
       ).toBe(0);
       expect(runTask(["start", `${datePrefix}-one`], env).status).toBe(0);
 
-      const sessionsDir = path.join(tmpDir, ".trellis", ".runtime", "sessions");
+      const sessionsDir = path.join(tmpDir, ".arbor", ".runtime", "sessions");
       const sessionFile = path.join(sessionsDir, "json-io-session.json");
       expect(fs.existsSync(sessionFile)).toBe(true);
 
@@ -1651,7 +1651,7 @@ describe("regression: JSON read/write failure reporting", () => {
       const session = JSON.parse(fs.readFileSync(sessionFile, "utf-8")) as {
         current_task: string;
       };
-      expect(session.current_task).toBe(`.trellis/tasks/${datePrefix}-one`);
+      expect(session.current_task).toBe(`.arbor/tasks/${datePrefix}-one`);
     },
   );
 });
@@ -1662,22 +1662,22 @@ describe("regression: is_within_tasks_dir archive boundary (issue #428)", () => 
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(
-      path.join(os.tmpdir(), "trellis-within-tasks-dir-"),
+      path.join(os.tmpdir(), "arbor-within-tasks-dir-"),
     );
-    const scriptsDir = path.join(tmpDir, ".trellis", "scripts");
+    const scriptsDir = path.join(tmpDir, ".arbor", "scripts");
     for (const [relativePath, content] of getAllScripts()) {
       const absPath = path.join(scriptsDir, relativePath);
       fs.mkdirSync(path.dirname(absPath), { recursive: true });
       fs.writeFileSync(absPath, content, "utf-8");
     }
-    fs.mkdirSync(path.join(tmpDir, ".trellis", "tasks", "archive"), {
+    fs.mkdirSync(path.join(tmpDir, ".arbor", "tasks", "archive"), {
       recursive: true,
     });
     fs.mkdirSync(
-      path.join(tmpDir, ".trellis", "tasks", "archive", "2026-07", "old-task"),
+      path.join(tmpDir, ".arbor", "tasks", "archive", "2026-07", "old-task"),
       { recursive: true },
     );
-    fs.mkdirSync(path.join(tmpDir, ".trellis", "tasks", "live-task"), {
+    fs.mkdirSync(path.join(tmpDir, ".arbor", "tasks", "live-task"), {
       recursive: true,
     });
     fs.mkdirSync(path.join(tmpDir, "src"), { recursive: true });
@@ -1694,15 +1694,15 @@ import sys
 from pathlib import Path
 
 root = Path.cwd()
-sys.path.insert(0, str(root / ".trellis" / "scripts"))
+sys.path.insert(0, str(root / ".arbor" / "scripts"))
 from common.task_utils import is_within_tasks_dir
 
 print(json.dumps({
-    "archive_root": is_within_tasks_dir(root / ".trellis" / "tasks" / "archive", root),
-    "archived_child": is_within_tasks_dir(root / ".trellis" / "tasks" / "archive" / "2026-07" / "old-task", root),
-    "tasks_root": is_within_tasks_dir(root / ".trellis" / "tasks", root),
+    "archive_root": is_within_tasks_dir(root / ".arbor" / "tasks" / "archive", root),
+    "archived_child": is_within_tasks_dir(root / ".arbor" / "tasks" / "archive" / "2026-07" / "old-task", root),
+    "tasks_root": is_within_tasks_dir(root / ".arbor" / "tasks", root),
     "external_path": is_within_tasks_dir(root / "src", root),
-    "direct_child": is_within_tasks_dir(root / ".trellis" / "tasks" / "live-task", root),
+    "direct_child": is_within_tasks_dir(root / ".arbor" / "tasks" / "live-task", root),
 }))
 `;
     const result = spawnSync(pythonCmd, ["-c", probe], {
@@ -1725,8 +1725,8 @@ describe("regression: write_json fd ownership and cleanup (issue #429)", () => {
   const pythonCmd = process.platform === "win32" ? "python" : "python3";
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "trellis-write-json-"));
-    const scriptsDir = path.join(tmpDir, ".trellis", "scripts");
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-write-json-"));
+    const scriptsDir = path.join(tmpDir, ".arbor", "scripts");
     for (const [relativePath, content] of getAllScripts()) {
       const absPath = path.join(scriptsDir, relativePath);
       fs.mkdirSync(path.dirname(absPath), { recursive: true });
@@ -1751,7 +1751,7 @@ from pathlib import Path
 from unittest import mock
 
 root = Path.cwd()
-sys.path.insert(0, str(root / ".trellis" / "scripts"))
+sys.path.insert(0, str(root / ".arbor" / "scripts"))
 from common.io import write_json
 
 ${probeBody}
@@ -1863,30 +1863,30 @@ describe("regression: task auto-activation failure diagnostics (issue #430)", ()
   const pythonCmd = process.platform === "win32" ? "python" : "python3";
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "trellis-task-activate-"));
-    const scriptsDir = path.join(tmpDir, ".trellis", "scripts");
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-task-activate-"));
+    const scriptsDir = path.join(tmpDir, ".arbor", "scripts");
     for (const [relativePath, content] of getAllScripts()) {
       const absPath = path.join(scriptsDir, relativePath);
       fs.mkdirSync(path.dirname(absPath), { recursive: true });
       fs.writeFileSync(absPath, content, "utf-8");
     }
-    fs.mkdirSync(path.join(tmpDir, ".trellis", "spec", "guides"), {
+    fs.mkdirSync(path.join(tmpDir, ".arbor", "spec", "guides"), {
       recursive: true,
     });
     fs.writeFileSync(
-      path.join(tmpDir, ".trellis", "spec", "guides", "index.md"),
+      path.join(tmpDir, ".arbor", "spec", "guides", "index.md"),
       "# Guides\n",
     );
     fs.writeFileSync(
-      path.join(tmpDir, ".trellis", "workflow.md"),
+      path.join(tmpDir, ".arbor", "workflow.md"),
       "# Workflow\n",
     );
-    fs.mkdirSync(path.join(tmpDir, ".trellis", "tasks"), { recursive: true });
-    fs.mkdirSync(path.join(tmpDir, ".trellis", "workspace", "test-dev"), {
+    fs.mkdirSync(path.join(tmpDir, ".arbor", "tasks"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, ".arbor", "workspace", "test-dev"), {
       recursive: true,
     });
     fs.writeFileSync(
-      path.join(tmpDir, ".trellis", ".developer"),
+      path.join(tmpDir, ".arbor", ".developer"),
       "name=test-dev\n",
       "utf-8",
     );
@@ -1900,7 +1900,7 @@ describe("regression: task auto-activation failure diagnostics (issue #430)", ()
   // running inside Claude Code itself) must not leak into the "no session"
   // scenario — scrub every platform session/transcript key before overlay.
   const AMBIENT_SESSION_ENV_KEYS = [
-    "TRELLIS_CONTEXT_ID",
+    "ARBOR_CONTEXT_ID",
     "CLAUDE_SESSION_ID",
     "CLAUDE_CODE_SESSION_ID",
     "CODEX_SESSION_ID",
@@ -1923,7 +1923,7 @@ describe("regression: task auto-activation failure diagnostics (issue #430)", ()
   ] as const;
 
   function runCreate(env: NodeJS.ProcessEnv) {
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     const blocked = new Set<string>(AMBIENT_SESSION_ENV_KEYS);
     const scrubbed: NodeJS.ProcessEnv = {};
     for (const [key, value] of Object.entries(process.env)) {
@@ -1952,7 +1952,7 @@ describe("regression: task auto-activation failure diagnostics (issue #430)", ()
   });
 
   it("[issue-430] a real session identity activates normally with no warning", () => {
-    const result = runCreate({ TRELLIS_CONTEXT_ID: "probe-session" });
+    const result = runCreate({ ARBOR_CONTEXT_ID: "probe-session" });
     expect(result.status, result.stderr).toBe(0);
     expect(result.stderr).toContain("Activated task for this session");
     expect(result.stderr).not.toContain("Warning: session activation");
@@ -1964,14 +1964,14 @@ describe("regression: task auto-activation failure diagnostics (issue #430)", ()
     // FileExistsError — a real, portable failure mode (no chmod needed).
     const sessionsPathAsFile = path.join(
       tmpDir,
-      ".trellis",
+      ".arbor",
       ".runtime",
       "sessions",
     );
     fs.mkdirSync(path.dirname(sessionsPathAsFile), { recursive: true });
     fs.writeFileSync(sessionsPathAsFile, "not a directory");
 
-    const result = runCreate({ TRELLIS_CONTEXT_ID: "probe-session" });
+    const result = runCreate({ ARBOR_CONTEXT_ID: "probe-session" });
 
     // Task creation itself must still succeed — activation is best-effort.
     expect(result.status, result.stderr).toBe(0);
@@ -2087,7 +2087,7 @@ describe("regression: migration data integrity (beta.14)", () => {
   });
 
   it("[statusline-opt-in] statusline.py is not in claude's collected templates (update must not force-install it)", () => {
-    // The opt-in statusline (`trellis init --with-statusline`) must stay out
+    // The opt-in statusline (`arbor init --with-statusline`) must stay out
     // of the unconditional template walk: analyzeChanges() classifies any
     // collected-but-absent file as `newFiles` and installs it on update,
     // which would force statusline onto opted-out projects.
@@ -2138,7 +2138,7 @@ describe("regression: update only configured platforms (beta.16)", () => {
 // =============================================================================
 
 describe("regression: shell to Python migration (beta.0)", () => {
-  it("[beta.0] no .sh scripts remain in trellis templates", () => {
+  it("[beta.0] no .sh scripts remain in arbor templates", () => {
     const scripts = getAllScripts();
     for (const [name] of scripts) {
       expect(name.endsWith(".sh"), `${name} should not end with .sh`).toBe(
@@ -2154,13 +2154,13 @@ describe("regression: shell to Python migration (beta.0)", () => {
     }
   });
 
-  it("[beta.3] getAllScripts covers every .py file in templates/trellis/scripts/", () => {
+  it("[beta.3] getAllScripts covers every .py file in templates/arbor/scripts/", () => {
     // Bug: update.ts had a hand-maintained file list that missed 11 scripts.
     // Fix: update.ts now uses getAllScripts() directly. This test ensures
     // getAllScripts() itself stays in sync with the filesystem.
     const scriptsDir = path.resolve(
       path.dirname(fileURLToPath(import.meta.url)),
-      "../src/templates/trellis/scripts",
+      "../src/templates/arbor/scripts",
     );
     const fsFiles = new Set<string>();
     function walk(dir: string, prefix: string) {
@@ -2251,21 +2251,21 @@ describe("regression: SessionStart reinject on clear/compact (MIN-231)", () => {
   });
 });
 
-describe("regression: agent-session Trellis update hint", () => {
+describe("regression: agent-session Arbor update hint", () => {
   let tmpDir: string;
   const pythonCmd = process.platform === "win32" ? "python" : "python3";
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "trellis-update-hint-"));
-    const scriptsDir = path.join(tmpDir, ".trellis", "scripts");
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-update-hint-"));
+    const scriptsDir = path.join(tmpDir, ".arbor", "scripts");
     for (const [relativePath, content] of getAllScripts()) {
       const absPath = path.join(scriptsDir, relativePath);
       fs.mkdirSync(path.dirname(absPath), { recursive: true });
       fs.writeFileSync(absPath, content, "utf-8");
     }
-    fs.mkdirSync(path.join(tmpDir, ".trellis", "tasks"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, ".arbor", "tasks"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".trellis", ".developer"),
+      path.join(tmpDir, ".arbor", ".developer"),
       "name=test-dev\ninitialized_at=2026-05-09T00:00:00Z\n",
       "utf-8",
     );
@@ -2275,12 +2275,12 @@ describe("regression: agent-session Trellis update hint", () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  function runContextWithTrellisOutput(
+  function runContextWithArborOutput(
     currentVersion: string,
-    trellisVersionOutput: string | null,
+    arborVersionOutput: string | null,
   ): string {
     fs.writeFileSync(
-      path.join(tmpDir, ".trellis", ".version"),
+      path.join(tmpDir, ".arbor", ".version"),
       `${currentVersion}\n`,
       "utf-8",
     );
@@ -2291,10 +2291,10 @@ describe("regression: agent-session Trellis update hint", () => {
         "import os",
         "import sys",
         "from pathlib import Path",
-        "sys.path.insert(0, str(Path.cwd() / '.trellis' / 'scripts'))",
+        "sys.path.insert(0, str(Path.cwd() / '.arbor' / 'scripts'))",
         "from common import session_context",
-        "output = os.environ.get('TRELLIS_VERSION_OUTPUT')",
-        "session_context._fetch_trellis_version_output = lambda: None if output == '__NONE__' else output",
+        "output = os.environ.get('ARBOR_VERSION_OUTPUT')",
+        "session_context._fetch_arbor_version_output = lambda: None if output == '__NONE__' else output",
         "session_context.output_text(Path.cwd())",
         "",
       ].join("\n"),
@@ -2305,8 +2305,8 @@ describe("regression: agent-session Trellis update hint", () => {
       encoding: "utf-8",
       env: {
         ...process.env,
-        TRELLIS_VERSION_OUTPUT: trellisVersionOutput ?? "__NONE__",
-        TRELLIS_CONTEXT_ID: "test-update-session",
+        ARBOR_VERSION_OUTPUT: arborVersionOutput ?? "__NONE__",
+        ARBOR_CONTEXT_ID: "test-update-session",
       },
     });
   }
@@ -2319,71 +2319,71 @@ describe("regression: agent-session Trellis update hint", () => {
     return match?.[0] ?? "";
   }
 
-  it("shows a concise update hint when trellis --version reports a newer version", () => {
-    const output = runContextWithTrellisOutput(
+  it("shows a concise update hint when arbor --version reports a newer version", () => {
+    const output = runContextWithArborOutput(
       "0.5.0",
-      "Trellis update available: 0.5.0 → 0.5.9\nRun: trellis update\n0.5.9",
+      "Arbor update available: 0.5.0 → 0.5.9\nRun: arbor update\n0.5.9",
     );
 
-    expect(output).toContain("Trellis update available: 0.5.0 -> 0.5.9");
-    expect(output).toContain("run trellis update");
-    expect(output).not.toContain("run trellis upgrade");
+    expect(output).toContain("Arbor update available: 0.5.0 -> 0.5.9");
+    expect(output).toContain("run arbor update");
+    expect(output).not.toContain("run arbor upgrade");
     expect(output).toContain("SESSION CONTEXT");
   });
 
   it("does not show a hint when installed version is equal or newer", () => {
-    expect(runContextWithTrellisOutput("0.5.9", "0.5.9")).not.toContain(
-      "Trellis update available",
+    expect(runContextWithArborOutput("0.5.9", "0.5.9")).not.toContain(
+      "Arbor update available",
     );
-    fs.rmSync(path.join(tmpDir, ".trellis", ".runtime"), {
+    fs.rmSync(path.join(tmpDir, ".arbor", ".runtime"), {
       recursive: true,
       force: true,
     });
-    expect(runContextWithTrellisOutput("0.6.0", "0.5.9")).not.toContain(
-      "Trellis update available",
+    expect(runContextWithArborOutput("0.6.0", "0.5.9")).not.toContain(
+      "Arbor update available",
     );
   });
 
-  it("silently skips the hint when trellis --version fails or version parsing fails", () => {
-    expect(runContextWithTrellisOutput("0.5.0", null)).not.toContain(
-      "Trellis update available",
+  it("silently skips the hint when arbor --version fails or version parsing fails", () => {
+    expect(runContextWithArborOutput("0.5.0", null)).not.toContain(
+      "Arbor update available",
     );
-    fs.rmSync(path.join(tmpDir, ".trellis", ".runtime"), {
+    fs.rmSync(path.join(tmpDir, ".arbor", ".runtime"), {
       recursive: true,
       force: true,
     });
-    expect(runContextWithTrellisOutput("not-a-version", "0.5.9")).not.toContain(
-      "Trellis update available",
+    expect(runContextWithArborOutput("not-a-version", "0.5.9")).not.toContain(
+      "Arbor update available",
     );
   });
 
   it("does not burn the once-per-session marker when version lookup fails", () => {
-    expect(runContextWithTrellisOutput("0.5.0", null)).not.toContain(
-      "Trellis update available",
+    expect(runContextWithArborOutput("0.5.0", null)).not.toContain(
+      "Arbor update available",
     );
 
-    const output = runContextWithTrellisOutput("0.5.0", "0.5.9");
+    const output = runContextWithArborOutput("0.5.0", "0.5.9");
 
-    expect(output).toContain("Trellis update available: 0.5.0 -> 0.5.9");
+    expect(output).toContain("Arbor update available: 0.5.0 -> 0.5.9");
   });
 
-  it("uses the final trellis --version token when no update line is present", () => {
-    const output = runContextWithTrellisOutput("0.5.0", "0.5.9");
+  it("uses the final arbor --version token when no update line is present", () => {
+    const output = runContextWithArborOutput("0.5.0", "0.5.9");
 
-    expect(output).toContain("Trellis update available: 0.5.0 -> 0.5.9");
+    expect(output).toContain("Arbor update available: 0.5.0 -> 0.5.9");
   });
 
   it("only attempts the default text update hint once per session", () => {
-    const first = runContextWithTrellisOutput("0.5.0", "0.5.9");
-    const second = runContextWithTrellisOutput("0.5.0", "0.5.9");
+    const first = runContextWithArborOutput("0.5.0", "0.5.9");
+    const second = runContextWithArborOutput("0.5.0", "0.5.9");
 
-    expect(first).toContain("Trellis update available: 0.5.0 -> 0.5.9");
-    expect(second).not.toContain("Trellis update available");
+    expect(first).toContain("Arbor update available: 0.5.0 -> 0.5.9");
+    expect(second).not.toContain("Arbor update available");
     expect(
       fs.existsSync(
         path.join(
           tmpDir,
-          ".trellis",
+          ".arbor",
           ".runtime",
           "update-check-test-update-session.marker",
         ),
@@ -2403,7 +2403,7 @@ describe("regression: agent-session Trellis update hint", () => {
     ]) {
       expect(
         pythonFunctionBody(commonSessionContext, functionName),
-        `${functionName} should not check Trellis updates`,
+        `${functionName} should not check Arbor updates`,
       ).not.toContain("get_update_hint");
     }
     expect(commonGitContext).toContain('if args.mode == "record":');
@@ -2419,19 +2419,19 @@ describe("regression: issue #252 polyrepo Git context", () => {
   const pythonCmd = process.platform === "win32" ? "python" : "python3";
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "trellis-polyrepo-git-"));
-    const scriptsDir = path.join(tmpDir, ".trellis", "scripts");
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-polyrepo-git-"));
+    const scriptsDir = path.join(tmpDir, ".arbor", "scripts");
     for (const [relativePath, content] of getAllScripts()) {
       const absPath = path.join(scriptsDir, relativePath);
       fs.mkdirSync(path.dirname(absPath), { recursive: true });
       fs.writeFileSync(absPath, content, "utf-8");
     }
-    fs.mkdirSync(path.join(tmpDir, ".trellis", "tasks"), { recursive: true });
-    fs.mkdirSync(path.join(tmpDir, ".trellis", "workspace", "test-dev"), {
+    fs.mkdirSync(path.join(tmpDir, ".arbor", "tasks"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, ".arbor", "workspace", "test-dev"), {
       recursive: true,
     });
     fs.writeFileSync(
-      path.join(tmpDir, ".trellis", ".developer"),
+      path.join(tmpDir, ".arbor", ".developer"),
       "name=test-dev\n",
       "utf-8",
     );
@@ -2443,7 +2443,7 @@ describe("regression: issue #252 polyrepo Git context", () => {
 
   function writeConfigYaml(content: string): void {
     fs.writeFileSync(
-      path.join(tmpDir, ".trellis", "config.yaml"),
+      path.join(tmpDir, ".arbor", "config.yaml"),
       content,
       "utf-8",
     );
@@ -2477,7 +2477,7 @@ describe("regression: issue #252 polyrepo Git context", () => {
         "import json",
         "import sys",
         "from pathlib import Path",
-        "sys.path.insert(0, str(Path.cwd() / '.trellis' / 'scripts'))",
+        "sys.path.insert(0, str(Path.cwd() / '.arbor' / 'scripts'))",
         "from common import session_context",
         expression,
         "",
@@ -2588,7 +2588,7 @@ describe("regression: issue #252 polyrepo Git context", () => {
         "import subprocess",
         "import sys",
         "from pathlib import Path",
-        "sys.path.insert(0, str(Path.cwd() / '.trellis' / 'scripts'))",
+        "sys.path.insert(0, str(Path.cwd() / '.arbor' / 'scripts'))",
         "from common.git import run_git",
         "captured = {}",
         "def fake_run(*args, **kwargs):",
@@ -2681,18 +2681,18 @@ describe("regression: current-task path normalization", () => {
     (hook) => hook.name === "session-start.py",
   )?.content;
   const firstReplyNoticeSentence =
-    "Trellis SessionStart 已注入：workflow、当前任务状态、开发者身份、git 状态、active tasks、spec 索引已加载。";
+    "Arbor SessionStart 已注入：workflow、当前任务状态、开发者身份、git 状态、active tasks、spec 索引已加载。";
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "trellis-current-task-"));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-current-task-"));
   });
 
   afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  function writeTrellisScripts(): void {
-    const scriptsDir = path.join(tmpDir, ".trellis", "scripts");
+  function writeArborScripts(): void {
+    const scriptsDir = path.join(tmpDir, ".arbor", "scripts");
     for (const [relativePath, content] of getAllScripts()) {
       const absPath = path.join(scriptsDir, relativePath);
       fs.mkdirSync(path.dirname(absPath), { recursive: true });
@@ -2707,12 +2707,12 @@ describe("regression: current-task path normalization", () => {
   }
 
   function writeLegacyCurrentTask(taskRef: string): void {
-    writeProjectFile(path.join(".trellis", ".current-task"), `${taskRef}\n`);
+    writeProjectFile(path.join(".arbor", ".current-task"), `${taskRef}\n`);
   }
 
   function writeSessionContext(contextKey: string, taskRef: string): void {
     writeProjectFile(
-      path.join(".trellis", ".runtime", "sessions", `${contextKey}.json`),
+      path.join(".arbor", ".runtime", "sessions", `${contextKey}.json`),
       JSON.stringify(
         {
           current_task: taskRef,
@@ -2725,7 +2725,7 @@ describe("regression: current-task path normalization", () => {
   }
 
   const SESSION_ENV_KEYS = [
-    "TRELLIS_CONTEXT_ID",
+    "ARBOR_CONTEXT_ID",
     "CLAUDE_SESSION_ID",
     "CLAUDE_CODE_SESSION_ID",
     "CODEX_SESSION_ID",
@@ -2767,18 +2767,18 @@ describe("regression: current-task path normalization", () => {
   }
 
   function setupTaskRepo(): void {
-    writeTrellisScripts();
+    writeArborScripts();
     writeProjectFile(
-      path.join(".trellis", ".developer"),
+      path.join(".arbor", ".developer"),
       "name=test-dev\ninitialized_at=2026-03-27T00:00:00\n",
     );
-    writeProjectFile(path.join(".trellis", "workflow.md"), "# Workflow\n");
+    writeProjectFile(path.join(".arbor", "workflow.md"), "# Workflow\n");
     writeProjectFile(
-      path.join(".trellis", "spec", "guides", "index.md"),
+      path.join(".arbor", "spec", "guides", "index.md"),
       "# Guides\n",
     );
     writeProjectFile(
-      path.join(".trellis", "tasks", "issue-106", "task.json"),
+      path.join(".arbor", "tasks", "issue-106", "task.json"),
       JSON.stringify(
         {
           title: "Issue 106 task",
@@ -2790,11 +2790,11 @@ describe("regression: current-task path normalization", () => {
       ),
     );
     writeProjectFile(
-      path.join(".trellis", "tasks", "issue-106", "prd.md"),
+      path.join(".arbor", "tasks", "issue-106", "prd.md"),
       "# PRD\n",
     );
     writeProjectFile(
-      path.join(".trellis", "tasks", "issue-106", "implement.jsonl"),
+      path.join(".arbor", "tasks", "issue-106", "implement.jsonl"),
       '{"file":"src/example.ts","reason":"runtime regression"}\n',
     );
   }
@@ -2852,10 +2852,10 @@ describe("regression: current-task path normalization", () => {
     // prints a degraded-mode warning and returns 0 so the AI workflow can
     // proceed.
     setupTaskRepo();
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
 
     const output = execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} start ${JSON.stringify(".trellis\\\\tasks\\\\issue-106")}`,
+      `${pythonCmd} ${JSON.stringify(taskScriptPath)} start ${JSON.stringify(".arbor\\\\tasks\\\\issue-106")}`,
       {
         cwd: tmpDir,
         encoding: "utf-8",
@@ -2866,13 +2866,13 @@ describe("regression: current-task path normalization", () => {
     expect(output).toContain("Session identity not available");
     expect(output).toContain("degraded");
     expect(output).toContain("conversation context");
-    expect(output).toContain("TRELLIS_CONTEXT_ID");
+    expect(output).toContain("ARBOR_CONTEXT_ID");
 
     // No active-task pointer written
-    expect(fs.existsSync(path.join(tmpDir, ".trellis", ".current-task"))).toBe(
+    expect(fs.existsSync(path.join(tmpDir, ".arbor", ".current-task"))).toBe(
       false,
     );
-    expect(fs.existsSync(path.join(tmpDir, ".trellis", ".runtime"))).toBe(
+    expect(fs.existsSync(path.join(tmpDir, ".arbor", ".runtime"))).toBe(
       false,
     );
 
@@ -2880,7 +2880,7 @@ describe("regression: current-task path normalization", () => {
     // mode preserves the existing status when not planning)
     const taskJsonPath = path.join(
       tmpDir,
-      ".trellis",
+      ".arbor",
       "tasks",
       "issue-106",
       "task.json",
@@ -2896,7 +2896,7 @@ describe("regression: current-task path normalization", () => {
     setupTaskRepo();
     const taskJsonPath = path.join(
       tmpDir,
-      ".trellis",
+      ".arbor",
       "tasks",
       "issue-106",
       "task.json",
@@ -2905,9 +2905,9 @@ describe("regression: current-task path normalization", () => {
     taskJson.status = "planning";
     fs.writeFileSync(taskJsonPath, JSON.stringify(taskJson, null, 2), "utf-8");
 
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     const output = execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} start ${JSON.stringify(".trellis\\\\tasks\\\\issue-106")}`,
+      `${pythonCmd} ${JSON.stringify(taskScriptPath)} start ${JSON.stringify(".arbor\\\\tasks\\\\issue-106")}`,
       { cwd: tmpDir, encoding: "utf-8", env: sessionEnv() },
     );
 
@@ -2916,16 +2916,16 @@ describe("regression: current-task path normalization", () => {
     expect(after.status).toBe("in_progress");
   });
 
-  it("[session-current-task] task.py start writes session runtime state when TRELLIS_CONTEXT_ID is set", () => {
+  it("[session-current-task] task.py start writes session runtime state when ARBOR_CONTEXT_ID is set", () => {
     setupTaskRepo();
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
 
     const output = execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} start ${JSON.stringify(".trellis\\\\tasks\\\\issue-106")}`,
+      `${pythonCmd} ${JSON.stringify(taskScriptPath)} start ${JSON.stringify(".arbor\\\\tasks\\\\issue-106")}`,
       {
         cwd: tmpDir,
         encoding: "utf-8",
-        env: sessionEnv({ TRELLIS_CONTEXT_ID: "session-a" }),
+        env: sessionEnv({ ARBOR_CONTEXT_ID: "session-a" }),
       },
     );
 
@@ -2933,7 +2933,7 @@ describe("regression: current-task path normalization", () => {
     expect(output).not.toContain("Fallback:");
     const contextPath = path.join(
       tmpDir,
-      ".trellis",
+      ".arbor",
       ".runtime",
       "sessions",
       "session-a.json",
@@ -2941,29 +2941,29 @@ describe("regression: current-task path normalization", () => {
     const context = JSON.parse(fs.readFileSync(contextPath, "utf-8")) as {
       current_task: string;
     };
-    expect(context.current_task).toBe(".trellis/tasks/issue-106");
-    expect(fs.existsSync(path.join(tmpDir, ".trellis", ".current-task"))).toBe(
+    expect(context.current_task).toBe(".arbor/tasks/issue-106");
+    expect(fs.existsSync(path.join(tmpDir, ".arbor", ".current-task"))).toBe(
       false,
     );
   });
 
   it("[session-current-task] task.py finish deletes the session runtime context", () => {
     setupTaskRepo();
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     const contextPath = path.join(
       tmpDir,
-      ".trellis",
+      ".arbor",
       ".runtime",
       "sessions",
       "session-finish.json",
     );
 
     execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} start ${JSON.stringify(".trellis/tasks/issue-106")}`,
+      `${pythonCmd} ${JSON.stringify(taskScriptPath)} start ${JSON.stringify(".arbor/tasks/issue-106")}`,
       {
         cwd: tmpDir,
         encoding: "utf-8",
-        env: sessionEnv({ TRELLIS_CONTEXT_ID: "session-finish" }),
+        env: sessionEnv({ ARBOR_CONTEXT_ID: "session-finish" }),
       },
     );
     expect(fs.existsSync(contextPath)).toBe(true);
@@ -2973,7 +2973,7 @@ describe("regression: current-task path normalization", () => {
       {
         cwd: tmpDir,
         encoding: "utf-8",
-        env: sessionEnv({ TRELLIS_CONTEXT_ID: "session-finish" }),
+        env: sessionEnv({ ARBOR_CONTEXT_ID: "session-finish" }),
       },
     );
 
@@ -2982,39 +2982,39 @@ describe("regression: current-task path normalization", () => {
     expect(fs.existsSync(contextPath)).toBe(false);
   });
 
-  it("[workflow-state-r7] task.py create auto-sets session pointer when TRELLIS_CONTEXT_ID is set (planning breadcrumb reachable)", () => {
+  it("[workflow-state-r7] task.py create auto-sets session pointer when ARBOR_CONTEXT_ID is set (planning breadcrumb reachable)", () => {
     // Pre-R7 (v0.5.0-beta.19 and earlier), `task.py create` only created the
     // task directory; the session pointer was set by `task.py start`. That
     // made the [workflow-state:planning] block dead text — the breadcrumb
     // stayed at no_task during brainstorm + jsonl curation. R7 hooked
     // set_active_task into cmd_create so the planning breadcrumb fires
     // immediately when session identity is available.
-    writeTrellisScripts();
+    writeArborScripts();
     writeProjectFile(
-      path.join(".trellis", ".developer"),
+      path.join(".arbor", ".developer"),
       "name=test-dev\ninitialized_at=2026-03-27T00:00:00\n",
     );
-    writeProjectFile(path.join(".trellis", "workflow.md"), "# Workflow\n");
+    writeProjectFile(path.join(".arbor", "workflow.md"), "# Workflow\n");
 
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     execSync(
       `${pythonCmd} ${JSON.stringify(taskScriptPath)} create "r7-auto-active" --description "regression fixture" --slug r7-auto --assignee test-dev`,
       {
         cwd: tmpDir,
         encoding: "utf-8",
-        env: sessionEnv({ TRELLIS_CONTEXT_ID: "r7-session" }),
+        env: sessionEnv({ ARBOR_CONTEXT_ID: "r7-session" }),
       },
     );
 
     // Resolve the new task directory (MM-DD-r7-auto)
     const taskDir = fs
-      .readdirSync(path.join(tmpDir, ".trellis", "tasks"))
+      .readdirSync(path.join(tmpDir, ".arbor", "tasks"))
       .find((d) => d.includes("r7-auto"));
     expect(taskDir).toBeDefined();
 
     const contextPath = path.join(
       tmpDir,
-      ".trellis",
+      ".arbor",
       ".runtime",
       "sessions",
       "r7-session.json",
@@ -3023,18 +3023,18 @@ describe("regression: current-task path normalization", () => {
     const context = JSON.parse(fs.readFileSync(contextPath, "utf-8")) as {
       current_task: string;
     };
-    expect(context.current_task).toBe(`.trellis/tasks/${taskDir}`);
+    expect(context.current_task).toBe(`.arbor/tasks/${taskDir}`);
   });
 
   it("[issue-397] task.py create stores the trimmed description and reports session activation", () => {
-    writeTrellisScripts();
+    writeArborScripts();
     writeProjectFile(
-      path.join(".trellis", ".developer"),
+      path.join(".arbor", ".developer"),
       "name=test-dev\ninitialized_at=2026-03-27T00:00:00\n",
     );
-    writeProjectFile(path.join(".trellis", "workflow.md"), "# Workflow\n");
+    writeProjectFile(path.join(".arbor", "workflow.md"), "# Workflow\n");
 
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     const result = spawnSync(
       pythonCmd,
       [
@@ -3051,7 +3051,7 @@ describe("regression: current-task path normalization", () => {
       {
         cwd: tmpDir,
         encoding: "utf-8",
-        env: sessionEnv({ TRELLIS_CONTEXT_ID: "issue-397-session" }),
+        env: sessionEnv({ ARBOR_CONTEXT_ID: "issue-397-session" }),
       },
     );
 
@@ -3060,12 +3060,12 @@ describe("regression: current-task path normalization", () => {
     expect(result.stderr).toContain("Source: session:issue-397-session");
 
     const taskDir = fs
-      .readdirSync(path.join(tmpDir, ".trellis", "tasks"))
+      .readdirSync(path.join(tmpDir, ".arbor", "tasks"))
       .find((d) => d.includes("described"));
     expect(taskDir).toBeDefined();
     const taskJson = JSON.parse(
       fs.readFileSync(
-        path.join(tmpDir, ".trellis", "tasks", taskDir as string, "task.json"),
+        path.join(tmpDir, ".arbor", "tasks", taskDir as string, "task.json"),
         "utf-8",
       ),
     ) as { description: string };
@@ -3073,15 +3073,15 @@ describe("regression: current-task path normalization", () => {
   });
 
   it("[issue-397] task.py create --no-start does not move the session pointer", () => {
-    writeTrellisScripts();
+    writeArborScripts();
     writeProjectFile(
-      path.join(".trellis", ".developer"),
+      path.join(".arbor", ".developer"),
       "name=test-dev\ninitialized_at=2026-03-27T00:00:00\n",
     );
-    writeProjectFile(path.join(".trellis", "workflow.md"), "# Workflow\n");
-    writeSessionContext("batch-session", ".trellis/tasks/existing-task");
+    writeProjectFile(path.join(".arbor", "workflow.md"), "# Workflow\n");
+    writeSessionContext("batch-session", ".arbor/tasks/existing-task");
 
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     const result = spawnSync(
       pythonCmd,
       [
@@ -3099,7 +3099,7 @@ describe("regression: current-task path normalization", () => {
       {
         cwd: tmpDir,
         encoding: "utf-8",
-        env: sessionEnv({ TRELLIS_CONTEXT_ID: "batch-session" }),
+        env: sessionEnv({ ARBOR_CONTEXT_ID: "batch-session" }),
       },
     );
 
@@ -3109,7 +3109,7 @@ describe("regression: current-task path normalization", () => {
       fs.readFileSync(
         path.join(
           tmpDir,
-          ".trellis",
+          ".arbor",
           ".runtime",
           "sessions",
           "batch-session.json",
@@ -3117,15 +3117,15 @@ describe("regression: current-task path normalization", () => {
         "utf-8",
       ),
     ) as { current_task: string };
-    expect(context.current_task).toBe(".trellis/tasks/existing-task");
+    expect(context.current_task).toBe(".arbor/tasks/existing-task");
 
     const taskDir = fs
-      .readdirSync(path.join(tmpDir, ".trellis", "tasks"))
+      .readdirSync(path.join(tmpDir, ".arbor", "tasks"))
       .find((d) => d.includes("batch-backlog"));
     expect(taskDir).toBeDefined();
     const taskJson = JSON.parse(
       fs.readFileSync(
-        path.join(tmpDir, ".trellis", "tasks", taskDir as string, "task.json"),
+        path.join(tmpDir, ".arbor", "tasks", taskDir as string, "task.json"),
         "utf-8",
       ),
     ) as { description: string };
@@ -3136,14 +3136,14 @@ describe("regression: current-task path normalization", () => {
     // R7 contract: best-effort activation. No context key (CLI shell with no
     // session env) → task is still created, but no .runtime/sessions/ file is
     // written. Pre-R7 behavior parity for headless CLI usage.
-    writeTrellisScripts();
+    writeArborScripts();
     writeProjectFile(
-      path.join(".trellis", ".developer"),
+      path.join(".arbor", ".developer"),
       "name=test-dev\ninitialized_at=2026-03-27T00:00:00\n",
     );
-    writeProjectFile(path.join(".trellis", "workflow.md"), "# Workflow\n");
+    writeProjectFile(path.join(".arbor", "workflow.md"), "# Workflow\n");
 
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     // sessionEnv() with no overrides drops every session-identity env var.
     execSync(
       `${pythonCmd} ${JSON.stringify(taskScriptPath)} create "r7-cli-only" --description "regression fixture" --slug r7-cli --assignee test-dev`,
@@ -3151,11 +3151,11 @@ describe("regression: current-task path normalization", () => {
     );
 
     const taskDir = fs
-      .readdirSync(path.join(tmpDir, ".trellis", "tasks"))
+      .readdirSync(path.join(tmpDir, ".arbor", "tasks"))
       .find((d) => d.includes("r7-cli"));
     expect(taskDir).toBeDefined();
 
-    const sessionsDir = path.join(tmpDir, ".trellis", ".runtime", "sessions");
+    const sessionsDir = path.join(tmpDir, ".arbor", ".runtime", "sessions");
     if (fs.existsSync(sessionsDir)) {
       const files = fs.readdirSync(sessionsDir);
       expect(files).toEqual([]);
@@ -3166,33 +3166,33 @@ describe("regression: current-task path normalization", () => {
     // Finding 6: R7 made cmd_create auto-call set_active_task. cmd_start also
     // calls set_active_task. The second call must not error, and status must
     // still flip planning → in_progress correctly.
-    writeTrellisScripts();
+    writeArborScripts();
     writeProjectFile(
-      path.join(".trellis", ".developer"),
+      path.join(".arbor", ".developer"),
       "name=test-dev\ninitialized_at=2026-03-27T00:00:00\n",
     );
-    writeProjectFile(path.join(".trellis", "workflow.md"), "# Workflow\n");
+    writeProjectFile(path.join(".arbor", "workflow.md"), "# Workflow\n");
 
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     execSync(
       `${pythonCmd} ${JSON.stringify(taskScriptPath)} create "r7-idem" --description "regression fixture" --slug r7-idem --assignee test-dev`,
       {
         cwd: tmpDir,
         encoding: "utf-8",
-        env: sessionEnv({ TRELLIS_CONTEXT_ID: "r7-idem-session" }),
+        env: sessionEnv({ ARBOR_CONTEXT_ID: "r7-idem-session" }),
       },
     );
 
     const taskDir = fs
-      .readdirSync(path.join(tmpDir, ".trellis", "tasks"))
+      .readdirSync(path.join(tmpDir, ".arbor", "tasks"))
       .find((d) => d.includes("r7-idem"));
     expect(taskDir).toBeDefined();
-    const relTaskDir = path.posix.join(".trellis", "tasks", taskDir as string);
+    const relTaskDir = path.posix.join(".arbor", "tasks", taskDir as string);
 
     // Status should be planning after create.
     const taskJsonPath = path.join(
       tmpDir,
-      ".trellis",
+      ".arbor",
       "tasks",
       taskDir as string,
       "task.json",
@@ -3211,7 +3211,7 @@ describe("regression: current-task path normalization", () => {
         {
           cwd: tmpDir,
           encoding: "utf-8",
-          env: sessionEnv({ TRELLIS_CONTEXT_ID: "r7-idem-session" }),
+          env: sessionEnv({ ARBOR_CONTEXT_ID: "r7-idem-session" }),
         },
       );
     } catch (err) {
@@ -3231,7 +3231,7 @@ describe("regression: current-task path normalization", () => {
     // Pointer still points at the same task.
     const contextPath = path.join(
       tmpDir,
-      ".trellis",
+      ".arbor",
       ".runtime",
       "sessions",
       "r7-idem-session.json",
@@ -3245,39 +3245,39 @@ describe("regression: current-task path normalization", () => {
 
   it("[session-current-task] task.py archive deletes runtime sessions pointing at the archived task", () => {
     setupTaskRepo();
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     const contextA = path.join(
       tmpDir,
-      ".trellis",
+      ".arbor",
       ".runtime",
       "sessions",
       "session-a.json",
     );
     const contextB = path.join(
       tmpDir,
-      ".trellis",
+      ".arbor",
       ".runtime",
       "sessions",
       "session-b.json",
     );
     const contextOther = path.join(
       tmpDir,
-      ".trellis",
+      ".arbor",
       ".runtime",
       "sessions",
       "session-other.json",
     );
     writeProjectFile(
-      path.join(".trellis", ".runtime", "sessions", "session-a.json"),
-      JSON.stringify({ current_task: ".trellis/tasks/issue-106" }, null, 2),
+      path.join(".arbor", ".runtime", "sessions", "session-a.json"),
+      JSON.stringify({ current_task: ".arbor/tasks/issue-106" }, null, 2),
     );
     writeProjectFile(
-      path.join(".trellis", ".runtime", "sessions", "session-b.json"),
+      path.join(".arbor", ".runtime", "sessions", "session-b.json"),
       JSON.stringify({ current_task: "issue-106" }, null, 2),
     );
     writeProjectFile(
-      path.join(".trellis", ".runtime", "sessions", "session-other.json"),
-      JSON.stringify({ current_task: ".trellis/tasks/other-task" }, null, 2),
+      path.join(".arbor", ".runtime", "sessions", "session-other.json"),
+      JSON.stringify({ current_task: ".arbor/tasks/other-task" }, null, 2),
     );
 
     execSync(
@@ -3295,15 +3295,15 @@ describe("regression: current-task path normalization", () => {
   });
 
   it("[task-lifecycle] task.py create refuses an archived task dir-name collision", () => {
-    writeTrellisScripts();
+    writeArborScripts();
     writeProjectFile(
-      path.join(".trellis", ".developer"),
+      path.join(".arbor", ".developer"),
       "name=test-dev\ninitialized_at=2026-03-27T00:00:00\n",
     );
-    writeProjectFile(path.join(".trellis", "workflow.md"), "# Workflow\n");
+    writeProjectFile(path.join(".arbor", "workflow.md"), "# Workflow\n");
     fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
 
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     const createArgs = [
       taskScriptPath,
       "create",
@@ -3315,7 +3315,7 @@ describe("regression: current-task path normalization", () => {
       "--assignee",
       "test-dev",
     ];
-    const env = sessionEnv({ TRELLIS_CONTEXT_ID: "archive-collision" });
+    const env = sessionEnv({ ARBOR_CONTEXT_ID: "archive-collision" });
 
     execSync(
       `${pythonCmd} ${createArgs.map((arg) => JSON.stringify(arg)).join(" ")}`,
@@ -3326,7 +3326,7 @@ describe("regression: current-task path normalization", () => {
       },
     );
 
-    const tasksDir = path.join(tmpDir, ".trellis", "tasks");
+    const tasksDir = path.join(tmpDir, ".arbor", "tasks");
     const taskDirName = fs
       .readdirSync(tasksDir)
       .find((entry) => entry.endsWith("-web-auth-retry"));
@@ -3371,7 +3371,7 @@ describe("regression: current-task path normalization", () => {
 
     const contextPath = path.join(
       tmpDir,
-      ".trellis",
+      ".arbor",
       ".runtime",
       "sessions",
       "archive-collision.json",
@@ -3387,7 +3387,7 @@ describe("regression: current-task path normalization", () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("Task already archived");
     expect(result.stderr).toContain(taskDirName as string);
-    expect(result.stderr).toContain(".trellis/tasks/archive/");
+    expect(result.stderr).toContain(".arbor/tasks/archive/");
     expect(fs.existsSync(path.join(tasksDir, taskDirName as string))).toBe(
       false,
     );
@@ -3399,12 +3399,12 @@ describe("regression: current-task path normalization", () => {
   });
 
   it("[issue-377] task.py create normalizes a --slug carrying today's date prefix", () => {
-    writeTrellisScripts();
+    writeArborScripts();
     writeProjectFile(
-      path.join(".trellis", ".developer"),
+      path.join(".arbor", ".developer"),
       "name=test-dev\ninitialized_at=2026-03-27T00:00:00\n",
     );
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     const now = new Date();
     const todayPrefix = `${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
@@ -3426,7 +3426,7 @@ describe("regression: current-task path normalization", () => {
 
     expect(result.status).toBe(0);
     expect(result.stderr).toContain("normalized to");
-    const tasksDir = path.join(tmpDir, ".trellis", "tasks");
+    const tasksDir = path.join(tmpDir, ".arbor", "tasks");
     expect(
       fs.existsSync(path.join(tasksDir, `${todayPrefix}-example-task`)),
     ).toBe(true);
@@ -3438,12 +3438,12 @@ describe("regression: current-task path normalization", () => {
   });
 
   it("[issue-377] task.py create rejects a --slug carrying a different date prefix", () => {
-    writeTrellisScripts();
+    writeArborScripts();
     writeProjectFile(
-      path.join(".trellis", ".developer"),
+      path.join(".arbor", ".developer"),
       "name=test-dev\ninitialized_at=2026-03-27T00:00:00\n",
     );
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     const now = new Date();
     // Pick a valid date prefix that is guaranteed not to be today.
     const otherPrefix =
@@ -3468,18 +3468,18 @@ describe("regression: current-task path normalization", () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("date prefix");
     expect(result.stderr).toContain("--slug example-task");
-    const tasksDir = path.join(tmpDir, ".trellis", "tasks");
+    const tasksDir = path.join(tmpDir, ".arbor", "tasks");
     const created = fs.existsSync(tasksDir) ? fs.readdirSync(tasksDir) : [];
     expect(created.filter((d) => d.endsWith("example-task"))).toEqual([]);
   });
 
   it("[issue-377] task.py create leaves non-date numeric slug prefixes untouched", () => {
-    writeTrellisScripts();
+    writeArborScripts();
     writeProjectFile(
-      path.join(".trellis", ".developer"),
+      path.join(".arbor", ".developer"),
       "name=test-dev\ninitialized_at=2026-03-27T00:00:00\n",
     );
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     const now = new Date();
     const todayPrefix = `${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
@@ -3506,7 +3506,7 @@ describe("regression: current-task path normalization", () => {
       fs.existsSync(
         path.join(
           tmpDir,
-          ".trellis",
+          ".arbor",
           "tasks",
           `${todayPrefix}-13-45-example-task`,
         ),
@@ -3516,13 +3516,13 @@ describe("regression: current-task path normalization", () => {
 
   it("[task-input-contract] task.py archive accepts task name, relative path, and absolute path", () => {
     setupTaskRepo();
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
 
     // Create three additional task directories for the three input forms.
     const taskNames = ["issue-201", "issue-202", "issue-203"];
     for (const name of taskNames) {
       writeProjectFile(
-        path.join(".trellis", "tasks", name, "task.json"),
+        path.join(".arbor", "tasks", name, "task.json"),
         JSON.stringify(
           {
             title: `Task ${name}`,
@@ -3547,7 +3547,7 @@ describe("regression: current-task path normalization", () => {
 
     // Form 2: relative path
     execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} archive ${JSON.stringify(`.trellis/tasks/${taskNames[1]}`)} --no-commit`,
+      `${pythonCmd} ${JSON.stringify(taskScriptPath)} archive ${JSON.stringify(`.arbor/tasks/${taskNames[1]}`)} --no-commit`,
       {
         cwd: tmpDir,
         encoding: "utf-8",
@@ -3556,7 +3556,7 @@ describe("regression: current-task path normalization", () => {
     );
 
     // Form 3: absolute path
-    const absPath = path.join(tmpDir, ".trellis", "tasks", taskNames[2]);
+    const absPath = path.join(tmpDir, ".arbor", "tasks", taskNames[2]);
     execSync(
       `${pythonCmd} ${JSON.stringify(taskScriptPath)} archive ${JSON.stringify(absPath)} --no-commit`,
       {
@@ -3569,13 +3569,13 @@ describe("regression: current-task path normalization", () => {
     // All three task dirs should be removed from active tasks/.
     for (const name of taskNames) {
       expect(
-        fs.existsSync(path.join(tmpDir, ".trellis", "tasks", name)),
+        fs.existsSync(path.join(tmpDir, ".arbor", "tasks", name)),
         `task ${name} should no longer exist in active tasks/`,
       ).toBe(false);
     }
 
     // All three should appear under archive/<YYYY-MM>/.
-    const archiveRoot = path.join(tmpDir, ".trellis", "tasks", "archive");
+    const archiveRoot = path.join(tmpDir, ".arbor", "tasks", "archive");
     expect(fs.existsSync(archiveRoot)).toBe(true);
     const archivedNames = new Set<string>();
     for (const monthDir of fs.readdirSync(archiveRoot)) {
@@ -3601,10 +3601,10 @@ describe("regression: current-task path normalization", () => {
     // resolving end-to-end through `task.py start` — instead of covering a
     // fiction. Codex's surviving real name has its own test below.
     setupTaskRepo();
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
 
     const output = execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} start ${JSON.stringify(".trellis/tasks/issue-106")}`,
+      `${pythonCmd} ${JSON.stringify(taskScriptPath)} start ${JSON.stringify(".arbor/tasks/issue-106")}`,
       {
         cwd: tmpDir,
         encoding: "utf-8",
@@ -3615,7 +3615,7 @@ describe("regression: current-task path normalization", () => {
     expect(output).toContain("Source: session:claude_native-a");
     const contextPath = path.join(
       tmpDir,
-      ".trellis",
+      ".arbor",
       ".runtime",
       "sessions",
       "claude_native-a.json",
@@ -3623,14 +3623,14 @@ describe("regression: current-task path normalization", () => {
     const context = JSON.parse(fs.readFileSync(contextPath, "utf-8")) as {
       current_task: string;
     };
-    expect(context.current_task).toBe(".trellis/tasks/issue-106");
+    expect(context.current_task).toBe(".arbor/tasks/issue-106");
   });
 
   // ==========================================================================
   // [env-name-purge] active_task.py's env tables may only name real variables
   // ==========================================================================
   // A 2026-08-05 audit checked all 21 platforms against vendor docs, shipped
-  // binaries and live shells (see .trellis/tasks/08-05-session-identity-
+  // binaries and live shells (see .arbor/tasks/08-05-session-identity-
   // propagation/research/platform-session-identity.md). 12 of the 21 declared
   // session env var names had never existed on any platform — they were
   // pattern-guessed from a `<PLATFORM>_SESSION_ID` shape no vendor agreed to,
@@ -3640,28 +3640,28 @@ describe("regression: current-task path normalization", () => {
 
   it("[session-current-task] task.py finish ignores legacy .current-task when no session task is set", () => {
     setupTaskRepo();
-    writeLegacyCurrentTask(".trellis/tasks/issue-106");
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    writeLegacyCurrentTask(".arbor/tasks/issue-106");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
 
     const output = execSync(
       `${pythonCmd} ${JSON.stringify(taskScriptPath)} finish`,
       {
         cwd: tmpDir,
         encoding: "utf-8",
-        env: sessionEnv({ TRELLIS_CONTEXT_ID: "session-fallback" }),
+        env: sessionEnv({ ARBOR_CONTEXT_ID: "session-fallback" }),
       },
     );
 
     expect(output).toContain("No current task set");
-    expect(fs.existsSync(path.join(tmpDir, ".trellis", ".current-task"))).toBe(
+    expect(fs.existsSync(path.join(tmpDir, ".arbor", ".current-task"))).toBe(
       true,
     );
   });
 
   it("[session-current-task] task.py current ignores legacy .current-task without context key", () => {
     setupTaskRepo();
-    writeLegacyCurrentTask(".trellis/tasks/issue-106");
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    writeLegacyCurrentTask(".arbor/tasks/issue-106");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
 
     let output = "";
     let status = 0;
@@ -3689,27 +3689,27 @@ describe("regression: current-task path normalization", () => {
 
   it("[session-current-task] stale session task does not fall back to legacy .current-task", () => {
     setupTaskRepo();
-    writeLegacyCurrentTask(".trellis/tasks/issue-106");
+    writeLegacyCurrentTask(".arbor/tasks/issue-106");
     writeProjectFile(
-      path.join(".trellis", ".runtime", "sessions", "session-b.json"),
+      path.join(".arbor", ".runtime", "sessions", "session-b.json"),
       JSON.stringify(
-        { current_task: ".trellis/tasks/missing-task", platform: "test" },
+        { current_task: ".arbor/tasks/missing-task", platform: "test" },
         null,
         2,
       ),
     );
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
 
     const output = execSync(
       `${pythonCmd} ${JSON.stringify(taskScriptPath)} current --source`,
       {
         cwd: tmpDir,
         encoding: "utf-8",
-        env: sessionEnv({ TRELLIS_CONTEXT_ID: "session-b" }),
+        env: sessionEnv({ ARBOR_CONTEXT_ID: "session-b" }),
       },
     );
 
-    expect(output).toContain("Current task: .trellis/tasks/missing-task");
+    expect(output).toContain("Current task: .arbor/tasks/missing-task");
     expect(output).toContain("Source: session:session-b");
     expect(output).toContain("State: stale");
     expect(output).not.toContain("issue-106");
@@ -3717,9 +3717,9 @@ describe("regression: current-task path normalization", () => {
 
   it("[session-current-task] Claude statusline uses session-scoped task when session_id is present", () => {
     setupTaskRepo();
-    writeLegacyCurrentTask(".trellis/tasks/issue-106");
+    writeLegacyCurrentTask(".arbor/tasks/issue-106");
     writeProjectFile(
-      path.join(".trellis", "tasks", "session-task", "task.json"),
+      path.join(".arbor", "tasks", "session-task", "task.json"),
       JSON.stringify(
         {
           title: "Session scoped task",
@@ -3731,10 +3731,10 @@ describe("regression: current-task path normalization", () => {
       ),
     );
     writeProjectFile(
-      path.join(".trellis", ".runtime", "sessions", "claude_status-a.json"),
+      path.join(".arbor", ".runtime", "sessions", "claude_status-a.json"),
       JSON.stringify(
         {
-          current_task: ".trellis/tasks/session-task",
+          current_task: ".arbor/tasks/session-task",
           platform: "claude",
         },
         null,
@@ -3780,7 +3780,7 @@ describe("regression: current-task path normalization", () => {
 
   it("[session-current-task] Claude statusline ignores legacy .current-task without session context", () => {
     setupTaskRepo();
-    writeLegacyCurrentTask(".trellis/tasks/issue-106");
+    writeLegacyCurrentTask(".arbor/tasks/issue-106");
     writeProjectFile(
       path.join(".claude", "hooks", "statusline.py"),
       getStatuslineHook(),
@@ -3896,7 +3896,7 @@ describe("regression: current-task path normalization", () => {
 
   it("[session-current-task] Python session-start hooks resolve session backslash refs without stale pointer", () => {
     setupTaskRepo();
-    writeSessionContext("claude_session-a", ".trellis\\tasks\\issue-106");
+    writeSessionContext("claude_session-a", ".arbor\\tasks\\issue-106");
 
     writeProjectFile(
       path.join(".claude", "hooks", "session-start.py"),
@@ -3912,7 +3912,7 @@ describe("regression: current-task path normalization", () => {
     expect(claudeOutput).not.toContain("STALE POINTER");
   });
 
-  it("[session-current-task] Claude SessionStart persists TRELLIS_CONTEXT_ID for Bash commands", () => {
+  it("[session-current-task] Claude SessionStart persists ARBOR_CONTEXT_ID for Bash commands", () => {
     setupTaskRepo();
     const sessionStartScript = getSharedHookScripts().find(
       (hook) => hook.name === "session-start.py",
@@ -3935,7 +3935,7 @@ describe("regression: current-task path normalization", () => {
     );
 
     expect(fs.readFileSync(envFile, "utf-8")).toContain(
-      "export TRELLIS_CONTEXT_ID=claude_bash-start-a",
+      "export ARBOR_CONTEXT_ID=claude_bash-start-a",
     );
   });
 
@@ -3975,7 +3975,7 @@ describe("regression: current-task path normalization", () => {
     return fs
       .readFileSync(envFile, "utf-8")
       .split("\n")
-      .filter((line) => line.startsWith("export TRELLIS_CONTEXT_ID="));
+      .filter((line) => line.startsWith("export ARBOR_CONTEXT_ID="));
   }
 
   it("[env-file-dedup] repeated SessionStarts with the same key append exactly once", () => {
@@ -3990,7 +3990,7 @@ describe("regression: current-task path normalization", () => {
     runSessionStart("dedup-a", envFile);
 
     expect(contextIdExports(envFile)).toEqual([
-      "export TRELLIS_CONTEXT_ID=claude_dedup-a",
+      "export ARBOR_CONTEXT_ID=claude_dedup-a",
     ]);
     expect(fs.readFileSync(envFile, "utf-8")).toContain(
       'export http_proxy="http://127.0.0.1:7890"',
@@ -4008,8 +4008,8 @@ describe("regression: current-task path normalization", () => {
     runSessionStart("dedup-b", envFile);
 
     expect(contextIdExports(envFile)).toEqual([
-      "export TRELLIS_CONTEXT_ID=claude_dedup-a",
-      "export TRELLIS_CONTEXT_ID=claude_dedup-b",
+      "export ARBOR_CONTEXT_ID=claude_dedup-a",
+      "export ARBOR_CONTEXT_ID=claude_dedup-b",
     ]);
   });
 
@@ -4027,9 +4027,9 @@ describe("regression: current-task path normalization", () => {
     runSessionStart("dedup-a", envFile);
 
     expect(contextIdExports(envFile)).toEqual([
-      "export TRELLIS_CONTEXT_ID=claude_dedup-a",
-      "export TRELLIS_CONTEXT_ID=claude_dedup-b",
-      "export TRELLIS_CONTEXT_ID=claude_dedup-a",
+      "export ARBOR_CONTEXT_ID=claude_dedup-a",
+      "export ARBOR_CONTEXT_ID=claude_dedup-b",
+      "export ARBOR_CONTEXT_ID=claude_dedup-a",
     ]);
   });
 
@@ -4061,51 +4061,51 @@ describe("regression: current-task path normalization", () => {
 
     expect(() => runSessionStart("dedup-latin", envFile)).not.toThrow();
     expect(contextIdExports(envFile)).toEqual([
-      "export TRELLIS_CONTEXT_ID=claude_dedup-latin",
+      "export ARBOR_CONTEXT_ID=claude_dedup-latin",
     ]);
   });
 
   // ---------------------------------------------------------------------
   // SessionStart update reminder. `_get_update_hint` (now public as
-  // `get_update_hint`) computed "Trellis update available: X -> Y, run trellis
+  // `get_update_hint`) computed "Arbor update available: X -> Y, run arbor
   // update" for months, but its only caller was `output_text()` — the
   // get_context.py text path. The hook
   // built its own payload and never went through it, so on hook-driven
-  // platforms the reminder was silent: this repo sat on .trellis/.version
-  // 0.6.2 against an installed 0.6.7 CLI while `.trellis/.runtime/` held six
+  // platforms the reminder was silent: this repo sat on .arbor/.version
+  // 0.6.2 against an installed 0.6.7 CLI while `.arbor/.runtime/` held six
   // codex_* update markers and not one claude_* marker. The hint now rides the
   // <first-reply-notice> block, the payload's existing "say it in the first
   // visible reply" channel, so it reaches the user and not just the model.
   //
-  // The fake `trellis` CLI below is a shell script on PATH. Windows
+  // The fake `arbor` CLI below is a shell script on PATH. Windows
   // CreateProcess resolves a bare command name against .exe only, so
-  // subprocess.run(["trellis", ...]) would never find a .bat/.cmd shim —
+  // subprocess.run(["arbor", ...]) would never find a .bat/.cmd shim —
   // those cases skip there.
   // ---------------------------------------------------------------------
 
   const isWindows = process.platform === "win32";
 
-  function writeFakeTrellisCli(body: string): NodeJS.ProcessEnv {
+  function writeFakeArborCli(body: string): NodeJS.ProcessEnv {
     const binDir = path.join(tmpDir, "fake-bin");
     fs.mkdirSync(binDir, { recursive: true });
-    const shimPath = path.join(binDir, "trellis");
+    const shimPath = path.join(binDir, "arbor");
     fs.writeFileSync(shimPath, `#!/bin/sh\n${body}`, "utf-8");
     fs.chmodSync(shimPath, 0o755);
     return {
       PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ""}`,
-      TRELLIS_FAKE_CALL_LOG: path.join(tmpDir, "trellis-calls.log"),
+      ARBOR_FAKE_CALL_LOG: path.join(tmpDir, "arbor-calls.log"),
     };
   }
 
-  function trellisCliCallCount(): number {
-    const callLog = path.join(tmpDir, "trellis-calls.log");
+  function arborCliCallCount(): number {
+    const callLog = path.join(tmpDir, "arbor-calls.log");
     if (!fs.existsSync(callLog)) {
       return 0;
     }
     return fs.readFileSync(callLog, "utf-8").split("\n").filter(Boolean).length;
   }
 
-  const REPORTS_0_5_9 = 'echo called >> "$TRELLIS_FAKE_CALL_LOG"\necho 0.5.9\n';
+  const REPORTS_0_5_9 = 'echo called >> "$ARBOR_FAKE_CALL_LOG"\necho 0.5.9\n';
 
   function sessionStartContext(
     sessionId: string,
@@ -4147,11 +4147,11 @@ describe("regression: current-task path normalization", () => {
   // cannot catch a line that is added unconditionally, so this is pinned.
   const NOTICE_WITHOUT_UPDATE_HINT = [
     "<first-reply-notice>",
-    "On the first visible assistant reply in this session, briefly acknowledge that Trellis SessionStart context loaded.",
+    "On the first visible assistant reply in this session, briefly acknowledge that Arbor SessionStart context loaded.",
     "Choose the acknowledgment language in this order:",
     "1. Use the language of the user's current request (the user message that triggered this reply).",
     "2. If that request has no clear natural language, use an explicitly established project communication language.",
-    "3. If neither provides a language, output the language-neutral fallback exactly: `Trellis SessionStart ✓`.",
+    "3. If neither provides a language, output the language-neutral fallback exactly: `Arbor SessionStart ✓`.",
     "Continue directly with the user's request after the acknowledgment.",
     "The acknowledgment must not alter the language used for the remainder of the response.",
     "This notice is one-shot: do not repeat it after the first visible assistant reply in this session.",
@@ -4161,31 +4161,31 @@ describe("regression: current-task path normalization", () => {
   function updateMarkerPath(sessionId: string): string {
     return path.join(
       tmpDir,
-      ".trellis",
+      ".arbor",
       ".runtime",
       `update-check-claude_${sessionId}.marker`,
     );
   }
 
   it.skipIf(isWindows)(
-    "[session-update-hint] a stale .trellis/.version reaches the user through the first-reply notice",
+    "[session-update-hint] a stale .arbor/.version reaches the user through the first-reply notice",
     () => {
       setupTaskRepo();
       writeClaudeSessionStartHook();
-      const fakeCli = writeFakeTrellisCli(REPORTS_0_5_9);
-      writeProjectFile(path.join(".trellis", ".version"), "0.5.0\n");
+      const fakeCli = writeFakeArborCli(REPORTS_0_5_9);
+      writeProjectFile(path.join(".arbor", ".version"), "0.5.0\n");
 
       const context = sessionStartContext("update-stale", fakeCli);
 
       // Inside the notice, not merely somewhere in the payload: a hint the
       // assistant is not told to say out loud never reaches the maintainer.
       expect(firstReplyNotice(context)).toContain(
-        "Trellis update available: 0.5.0 -> 0.5.9, run trellis update",
+        "Arbor update available: 0.5.0 -> 0.5.9, run arbor update",
       );
       expect(firstReplyNotice(context)).toContain(
         "on its own line in that same reply",
       );
-      expect(trellisCliCallCount()).toBe(1);
+      expect(arborCliCallCount()).toBe(1);
     },
   );
 
@@ -4194,16 +4194,16 @@ describe("regression: current-task path normalization", () => {
     () => {
       setupTaskRepo();
       writeClaudeSessionStartHook();
-      const fakeCli = writeFakeTrellisCli(REPORTS_0_5_9);
+      const fakeCli = writeFakeArborCli(REPORTS_0_5_9);
 
-      // No .trellis/.version: the hint path cannot produce anything, so this
+      // No .arbor/.version: the hint path cannot produce anything, so this
       // is the payload exactly as it was shipped before the change.
       const baseline = sessionStartContext("update-baseline", fakeCli);
 
-      writeProjectFile(path.join(".trellis", ".version"), "0.6.0\n");
+      writeProjectFile(path.join(".arbor", ".version"), "0.6.0\n");
       const upToDate = sessionStartContext("update-current", fakeCli);
 
-      expect(baseline).not.toContain("Trellis update available");
+      expect(baseline).not.toContain("Arbor update available");
       expect(firstReplyNotice(upToDate)).toBe(NOTICE_WITHOUT_UPDATE_HINT);
       expect(upToDate).toBe(baseline);
     },
@@ -4214,16 +4214,16 @@ describe("regression: current-task path normalization", () => {
     () => {
       setupTaskRepo();
       writeClaudeSessionStartHook();
-      const fakeCli = writeFakeTrellisCli(REPORTS_0_5_9);
-      writeProjectFile(path.join(".trellis", ".version"), "0.5.0\n");
+      const fakeCli = writeFakeArborCli(REPORTS_0_5_9);
+      writeProjectFile(path.join(".arbor", ".version"), "0.5.0\n");
 
       const first = sessionStartContext("update-marker", fakeCli);
       // SessionStart also fires on clear/compact within the same session.
       const second = sessionStartContext("update-marker", fakeCli);
 
-      expect(first).toContain("Trellis update available: 0.5.0 -> 0.5.9");
-      expect(second).not.toContain("Trellis update available");
-      expect(trellisCliCallCount()).toBe(1);
+      expect(first).toContain("Arbor update available: 0.5.0 -> 0.5.9");
+      expect(second).not.toContain("Arbor update available");
+      expect(arborCliCallCount()).toBe(1);
       // The marker is keyed by the identity the hook resolved from stdin, not
       // by session_context's TERM_SESSION_ID / ppid fallback — the latter is a
       // terminal window, which would mute the reminder for every later session
@@ -4233,25 +4233,25 @@ describe("regression: current-task path normalization", () => {
   );
 
   it.skipIf(isWindows)(
-    "[session-update-hint] a failing or hanging trellis CLI stays silent and leaves the check for the next session",
+    "[session-update-hint] a failing or hanging arbor CLI stays silent and leaves the check for the next session",
     () => {
       setupTaskRepo();
       writeClaudeSessionStartHook();
-      writeProjectFile(path.join(".trellis", ".version"), "0.5.0\n");
+      writeProjectFile(path.join(".arbor", ".version"), "0.5.0\n");
 
-      const failing = writeFakeTrellisCli(
-        'echo called >> "$TRELLIS_FAKE_CALL_LOG"\necho boom >&2\nexit 1\n',
+      const failing = writeFakeArborCli(
+        'echo called >> "$ARBOR_FAKE_CALL_LOG"\necho boom >&2\nexit 1\n',
       );
       const afterFailure = sessionStartContext("update-fail", failing);
 
       // Hangs well past the hint path's 1s subprocess timeout.
-      const hanging = writeFakeTrellisCli(
-        'echo called >> "$TRELLIS_FAKE_CALL_LOG"\nsleep 5\n',
+      const hanging = writeFakeArborCli(
+        'echo called >> "$ARBOR_FAKE_CALL_LOG"\nsleep 5\n',
       );
       const afterTimeout = sessionStartContext("update-hang", hanging);
 
       for (const context of [afterFailure, afterTimeout]) {
-        expect(context).not.toContain("Trellis update available");
+        expect(context).not.toContain("Arbor update available");
         expect(context).toContain("<first-reply-notice>");
         expect(context).toContain("<task-status>");
       }
@@ -4261,17 +4261,17 @@ describe("regression: current-task path normalization", () => {
     },
   );
 
-  it("[session-update-hint] an unreadable .trellis/.version leaves SessionStart working and silent", () => {
+  it("[session-update-hint] an unreadable .arbor/.version leaves SessionStart working and silent", () => {
     setupTaskRepo();
     writeClaudeSessionStartHook();
     // A directory where the version file belongs: read_text raises OSError
     // (IsADirectoryError on POSIX, PermissionError on Windows) before the hint
-    // path ever reaches `trellis --version`.
-    fs.mkdirSync(path.join(tmpDir, ".trellis", ".version"));
+    // path ever reaches `arbor --version`.
+    fs.mkdirSync(path.join(tmpDir, ".arbor", ".version"));
 
     const context = sessionStartContext("update-unreadable");
 
-    expect(context).not.toContain("Trellis update available");
+    expect(context).not.toContain("Arbor update available");
     expect(context).toContain("<first-reply-notice>");
     expect(context).toContain("<task-status>");
   });
@@ -4366,7 +4366,7 @@ describe("regression: current-task path normalization", () => {
         );
 
         const sessionId = `e2e-${platform}`;
-        const command = `${pythonCmd} ./.trellis/scripts/task.py start .trellis/tasks/issue-106`;
+        const command = `${pythonCmd} ./.arbor/scripts/task.py start .arbor/tasks/issue-106`;
         const payload = isShellExecutionEvent
           ? { session_id: sessionId, cwd: tmpDir, command }
           : {
@@ -4397,7 +4397,7 @@ describe("regression: current-task path normalization", () => {
 
         const ticketDir = path.join(
           tmpDir,
-          ".trellis",
+          ".arbor",
           ".runtime",
           "shell-tickets",
         );
@@ -4408,7 +4408,7 @@ describe("regression: current-task path normalization", () => {
         expect(ticket.context_key).toBeTruthy();
 
         const startOutput = execSync(
-          `${pythonCmd} ${JSON.stringify(path.join(tmpDir, ".trellis", "scripts", "task.py"))} start ${JSON.stringify(".trellis/tasks/issue-106")}`,
+          `${pythonCmd} ${JSON.stringify(path.join(tmpDir, ".arbor", "scripts", "task.py"))} start ${JSON.stringify(".arbor/tasks/issue-106")}`,
           { cwd: tmpDir, encoding: "utf-8", env: hookEnv() },
         );
         expect(startOutput).toContain(`Source: session:${ticket.context_key}`);
@@ -4416,7 +4416,7 @@ describe("regression: current-task path normalization", () => {
           fs.existsSync(
             path.join(
               tmpDir,
-              ".trellis",
+              ".arbor",
               ".runtime",
               "sessions",
               `${ticket.context_key}.json`,
@@ -4428,7 +4428,7 @@ describe("regression: current-task path normalization", () => {
         // the platform's own hook can only find the task by computing exactly
         // the same context key the ticket carried. That agreement is the whole
         // point: a ticket keyed differently writes a file no hook ever reads.
-        writeSessionContext("decoy_other_window", ".trellis/tasks/issue-106");
+        writeSessionContext("decoy_other_window", ".arbor/tasks/issue-106");
 
         // Whichever context hook this platform ships. The per-turn breadcrumb
         // names the task directory; session-start names its title.
@@ -4467,7 +4467,7 @@ describe("regression: current-task path normalization", () => {
       const files = templatesFor(platform);
       const hookPath = requireInstallPath(files, SHELL_HOOK, platform);
       writeSharedHook(hookPath, SHELL_HOOK);
-      const command = `${pythonCmd} ./.trellis/scripts/task.py start .trellis/tasks/issue-106`;
+      const command = `${pythonCmd} ./.arbor/scripts/task.py start .arbor/tasks/issue-106`;
 
       // Two windows, same repo, same subcommand, both tickets fresh.
       for (const sessionId of ["window-a", "window-b"]) {
@@ -4488,18 +4488,18 @@ describe("regression: current-task path normalization", () => {
       }
       expect(
         fs.readdirSync(
-          path.join(tmpDir, ".trellis", ".runtime", "shell-tickets"),
+          path.join(tmpDir, ".arbor", ".runtime", "shell-tickets"),
         ),
       ).toHaveLength(2);
 
       const startOutput = execSync(
-        `${pythonCmd} ${JSON.stringify(path.join(tmpDir, ".trellis", "scripts", "task.py"))} start ${JSON.stringify(".trellis/tasks/issue-106")}`,
+        `${pythonCmd} ${JSON.stringify(path.join(tmpDir, ".arbor", "scripts", "task.py"))} start ${JSON.stringify(".arbor/tasks/issue-106")}`,
         { cwd: tmpDir, encoding: "utf-8", env: hookEnv() },
       );
       // Degraded, never a guess: two candidate keys means neither wins.
       expect(startOutput).not.toContain("Source: session:");
       expect(
-        fs.existsSync(path.join(tmpDir, ".trellis", ".runtime", "sessions")),
+        fs.existsSync(path.join(tmpDir, ".arbor", ".runtime", "sessions")),
       ).toBe(false);
     });
 
@@ -4552,7 +4552,7 @@ describe("regression: current-task path normalization", () => {
       }
       expect(
         fs.existsSync(
-          path.join(tmpDir, ".trellis", ".runtime", "shell-tickets"),
+          path.join(tmpDir, ".arbor", ".runtime", "shell-tickets"),
         ),
       ).toBe(false);
     });
@@ -4582,7 +4582,7 @@ describe("regression: current-task path normalization", () => {
 
     const ctx = sharedPayload.hookSpecificOutput.additionalContext;
     expect(ctx.startsWith("<session-context>")).toBe(true);
-    expect(ctx).toContain("Trellis compact SessionStart context");
+    expect(ctx).toContain("Arbor compact SessionStart context");
     expect(ctx).toContain("<first-reply-notice>");
     expect(ctx).toContain("the user's current request");
     expect(ctx).toContain("the user message that triggered this reply");
@@ -4590,7 +4590,7 @@ describe("regression: current-task path normalization", () => {
     expect(ctx).toContain(
       "explicitly established project communication language",
     );
-    expect(ctx).toContain("Trellis SessionStart ✓");
+    expect(ctx).toContain("Arbor SessionStart ✓");
     expect(ctx).toContain("Continue directly with the user's request");
     expect(ctx).toContain(
       "must not alter the language used for the remainder of the response",
@@ -4601,12 +4601,12 @@ describe("regression: current-task path normalization", () => {
     );
     expect(
       ctx.indexOf("explicitly established project communication language"),
-    ).toBeLessThan(ctx.indexOf("Trellis SessionStart ✓"));
+    ).toBeLessThan(ctx.indexOf("Arbor SessionStart ✓"));
     expect(ctx.indexOf("<first-reply-notice>")).toBeLessThan(
       ctx.indexOf("<current-state>"),
     );
     expect(ctx).toContain("<current-state>");
-    expect(ctx).toContain("<trellis-workflow>");
+    expect(ctx).toContain("<arbor-workflow>");
     expect(ctx).toContain("<guidelines>");
     expect(ctx).toContain("<task-status>");
     expect(ctx).not.toContain("say once in Chinese");
@@ -4616,7 +4616,7 @@ describe("regression: current-task path normalization", () => {
 
   it("[workflow-v2] shared session-start summarizes in-progress context without auto-dispatch approval", () => {
     setupTaskRepo();
-    writeSessionContext("claude_session-a", ".trellis/tasks/issue-106");
+    writeSessionContext("claude_session-a", ".arbor/tasks/issue-106");
 
     writeProjectFile(
       path.join(".claude", "hooks", "session-start.py"),
@@ -4638,9 +4638,9 @@ describe("regression: current-task path normalization", () => {
     expect(rawOutput).toContain("load details on demand");
   });
 
-  it("[trellis-hooks-env] runtime: shared hooks emit no additionalContext when TRELLIS_HOOKS=0", () => {
+  it("[arbor-hooks-env] runtime: shared hooks emit no additionalContext when ARBOR_HOOKS=0", () => {
     setupTaskRepo();
-    writeSessionContext("claude_session-a", ".trellis/tasks/issue-106");
+    writeSessionContext("claude_session-a", ".arbor/tasks/issue-106");
 
     const claudeSession = expectTemplateContent(
       claudeSessionStart,
@@ -4672,26 +4672,26 @@ describe("regression: current-task path normalization", () => {
     );
     expect(baselineSession).toContain("hookSpecificOutput");
 
-    // With TRELLIS_HOOKS=0: shared hooks short-circuit with empty stdout
+    // With ARBOR_HOOKS=0: shared hooks short-circuit with empty stdout
     const gatedSession = runPython(
       path.join(".claude", "hooks", "session-start.py"),
       stdinPayload,
-      { TRELLIS_HOOKS: "0" },
+      { ARBOR_HOOKS: "0" },
     );
     expect(gatedSession.trim()).toBe("");
 
     const gatedWorkflow = runPython(
       path.join(".claude", "hooks", "inject-workflow-state.py"),
       stdinPayload,
-      { TRELLIS_HOOKS: "0" },
+      { ARBOR_HOOKS: "0" },
     );
     expect(gatedWorkflow.trim()).toBe("");
 
-    // TRELLIS_DISABLE_HOOKS=1 has the same effect
+    // ARBOR_DISABLE_HOOKS=1 has the same effect
     const gatedAlt = runPython(
       path.join(".claude", "hooks", "session-start.py"),
       stdinPayload,
-      { TRELLIS_DISABLE_HOOKS: "1" },
+      { ARBOR_DISABLE_HOOKS: "1" },
     );
     expect(gatedAlt.trim()).toBe("");
   });
@@ -4704,7 +4704,7 @@ describe("regression: current-task path normalization", () => {
     output: string;
     status: number;
   } {
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     let output = "";
     let status = 0;
     try {
@@ -4728,7 +4728,7 @@ describe("regression: current-task path normalization", () => {
 
   it("[session-fallback] main CLI does not borrow a sole unrelated session", () => {
     setupTaskRepo();
-    writeSessionContext("codex_session_parent", ".trellis/tasks/issue-106");
+    writeSessionContext("codex_session_parent", ".arbor/tasks/issue-106");
 
     const { output, status } = runTaskCurrent();
     expect(status).toBe(1);
@@ -4748,12 +4748,12 @@ describe("regression: current-task path normalization", () => {
 
   it("[session-fallback] multiple session files — refuses to guess, returns none", () => {
     setupTaskRepo();
-    writeSessionContext("codex_session_a", ".trellis/tasks/issue-106");
+    writeSessionContext("codex_session_a", ".arbor/tasks/issue-106");
     writeProjectFile(
-      path.join(".trellis", "tasks", "other-task", "task.json"),
+      path.join(".arbor", "tasks", "other-task", "task.json"),
       JSON.stringify({ title: "other", status: "in_progress" }, null, 2),
     );
-    writeSessionContext("codex_session_b", ".trellis/tasks/other-task");
+    writeSessionContext("codex_session_b", ".arbor/tasks/other-task");
 
     const { output, status } = runTaskCurrent();
     expect(status).toBe(1);
@@ -4763,13 +4763,13 @@ describe("regression: current-task path normalization", () => {
 
   it("[session-fallback] explicit context-key match takes precedence over fallback", () => {
     setupTaskRepo();
-    writeSessionContext("codex_session_explicit", ".trellis/tasks/issue-106");
+    writeSessionContext("codex_session_explicit", ".arbor/tasks/issue-106");
 
     const { output, status } = runTaskCurrent({
-      TRELLIS_CONTEXT_ID: "codex_session_explicit",
+      ARBOR_CONTEXT_ID: "codex_session_explicit",
     });
     expect(status).toBe(0);
-    expect(output).toContain("Current task: .trellis/tasks/issue-106");
+    expect(output).toContain("Current task: .arbor/tasks/issue-106");
     // Source should be "session:" (precise match), not "session-fallback:"
     expect(output).toContain("Source: session:codex_session_explicit");
     expect(output).not.toContain("session-fallback");
@@ -4777,10 +4777,10 @@ describe("regression: current-task path normalization", () => {
 
   it("[issue #469] finish removes only the exact matched session file", () => {
     setupTaskRepo();
-    writeSessionContext("claude_exact", ".trellis/tasks/issue-106");
-    writeSessionContext("codex_thread_sibling", ".trellis/tasks/issue-106");
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
-    const sessionsDir = path.join(tmpDir, ".trellis", ".runtime", "sessions");
+    writeSessionContext("claude_exact", ".arbor/tasks/issue-106");
+    writeSessionContext("codex_thread_sibling", ".arbor/tasks/issue-106");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
+    const sessionsDir = path.join(tmpDir, ".arbor", ".runtime", "sessions");
 
     const output = execSync(
       `${pythonCmd} ${JSON.stringify(taskScriptPath)} finish`,
@@ -4802,11 +4802,11 @@ describe("regression: current-task path normalization", () => {
 
   it("[issue #469] finish preserves a sole unmatched session file", () => {
     setupTaskRepo();
-    writeSessionContext("codex_previous-thread", ".trellis/tasks/issue-106");
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    writeSessionContext("codex_previous-thread", ".arbor/tasks/issue-106");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     const fallbackPath = path.join(
       tmpDir,
-      ".trellis",
+      ".arbor",
       ".runtime",
       "sessions",
       "codex_previous-thread.json",
@@ -4833,10 +4833,10 @@ describe("regression: current-task path normalization", () => {
 
   it("[issue #469] finish deletes nothing when fallback resolution is ambiguous", () => {
     setupTaskRepo();
-    writeSessionContext("codex_thread_a", ".trellis/tasks/issue-106");
-    writeSessionContext("codex_thread_b", ".trellis/tasks/issue-106");
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
-    const sessionsDir = path.join(tmpDir, ".trellis", ".runtime", "sessions");
+    writeSessionContext("codex_thread_a", ".arbor/tasks/issue-106");
+    writeSessionContext("codex_thread_b", ".arbor/tasks/issue-106");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
+    const sessionsDir = path.join(tmpDir, ".arbor", ".runtime", "sessions");
 
     const output = execSync(
       `${pythonCmd} ${JSON.stringify(taskScriptPath)} finish`,
@@ -4859,12 +4859,12 @@ describe("regression: current-task path normalization", () => {
   it("[issue #469] finish preserves a malformed exact session when another session exists", () => {
     setupTaskRepo();
     writeProjectFile(
-      path.join(".trellis", ".runtime", "sessions", "codex_malformed.json"),
+      path.join(".arbor", ".runtime", "sessions", "codex_malformed.json"),
       "{",
     );
-    writeSessionContext("codex_other", ".trellis/tasks/issue-106");
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
-    const sessionsDir = path.join(tmpDir, ".trellis", ".runtime", "sessions");
+    writeSessionContext("codex_other", ".arbor/tasks/issue-106");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
+    const sessionsDir = path.join(tmpDir, ".arbor", ".runtime", "sessions");
 
     const output = execSync(
       `${pythonCmd} ${JSON.stringify(taskScriptPath)} finish`,
@@ -4890,13 +4890,13 @@ describe("regression: current-task path normalization", () => {
     // not UTF-8 raised straight out of a read whose whole contract is to
     // return None, and the hook path failed instead of degrading.
     setupTaskRepo();
-    const sessionsDir = path.join(tmpDir, ".trellis", ".runtime", "sessions");
+    const sessionsDir = path.join(tmpDir, ".arbor", ".runtime", "sessions");
     fs.mkdirSync(sessionsDir, { recursive: true });
     fs.writeFileSync(
       path.join(sessionsDir, "codex_binary.json"),
       Buffer.from([0x7b, 0x22, 0xff, 0x22, 0x7d]),
     );
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
 
     const proc = spawnSync(pythonCmd, [taskScriptPath, "finish"], {
       cwd: tmpDir,
@@ -4919,7 +4919,7 @@ describe("regression: current-task path normalization", () => {
 
   function writeWorkflowStateHook(): void {
     writeProjectFile(
-      path.join(".trellis", "hooks", "inject-workflow-state.py"),
+      path.join(".arbor", "hooks", "inject-workflow-state.py"),
       expectTemplateContent(injectWorkflowStateScript, "inject-workflow-state"),
     );
   }
@@ -4927,7 +4927,7 @@ describe("regression: current-task path normalization", () => {
   function setStatus(status: string): void {
     const taskJsonPath = path.join(
       tmpDir,
-      ".trellis",
+      ".arbor",
       "tasks",
       "issue-106",
       "task.json",
@@ -4940,7 +4940,7 @@ describe("regression: current-task path normalization", () => {
   }
 
   function writeWorkflowMd(body: string): void {
-    writeProjectFile(path.join(".trellis", "workflow.md"), body);
+    writeProjectFile(path.join(".arbor", "workflow.md"), body);
   }
 
   function runInjectWorkflowState(cwdOverride?: string): string {
@@ -4952,14 +4952,14 @@ describe("regression: current-task path normalization", () => {
 
   function runInjectWorkflowStateWithInput(inputData: object): string {
     return runPython(
-      path.join(".trellis", "hooks", "inject-workflow-state.py"),
+      path.join(".arbor", "hooks", "inject-workflow-state.py"),
       JSON.stringify(inputData),
     );
   }
 
   it("[workflow-state] missing/empty workflow.md degrades to generic line (post-R5: no fallback dict)", () => {
     setupTaskRepo();
-    writeSessionContext("session_workflow-a", ".trellis/tasks/issue-106");
+    writeSessionContext("session_workflow-a", ".arbor/tasks/issue-106");
     writeWorkflowStateHook();
     // overwrite workflow.md with empty content (no tag blocks). After
     // v0.5.0-rc.0 the fallback dict was removed — the hook now degrades
@@ -4979,20 +4979,20 @@ describe("regression: current-task path normalization", () => {
     );
     // Hardcoded fallback wording must NOT appear post-R5
     expect(parsed.hookSpecificOutput.additionalContext).not.toContain(
-      "trellis-implement → trellis-check",
+      "arbor-implement → arbor-check",
     );
   });
 
   it("[workflow-state] in_progress tag in workflow.md mentions Phase 3.4 commit (R1 invariant)", () => {
     setupTaskRepo();
-    writeSessionContext("session_workflow-a", ".trellis/tasks/issue-106");
+    writeSessionContext("session_workflow-a", ".arbor/tasks/issue-106");
     writeWorkflowStateHook();
     // Write a workflow.md containing only the in_progress tag with the
     // canonical Phase 3.4 commit reminder. This guards against future
     // regressions that omit Phase 3.4 from the per-turn breadcrumb.
     writeWorkflowMd(
       "[workflow-state:in_progress]\n" +
-        "Flow: trellis-implement → trellis-check → trellis-update-spec → commit (Phase 3.4) → /trellis:finish-work\n" +
+        "Flow: arbor-implement → arbor-check → arbor-update-spec → commit (Phase 3.4) → /arbor:finish-work\n" +
         "[/workflow-state:in_progress]\n",
     );
 
@@ -5006,7 +5006,7 @@ describe("regression: current-task path normalization", () => {
 
   it("[workflow-state] workflow.md tag overrides hardcoded fallback", () => {
     setupTaskRepo();
-    writeSessionContext("session_workflow-a", ".trellis/tasks/issue-106");
+    writeSessionContext("session_workflow-a", ".arbor/tasks/issue-106");
     writeWorkflowStateHook();
     writeWorkflowMd(
       "[workflow-state:in_progress]\nCUSTOM BODY from workflow.md\n[/workflow-state:in_progress]\n",
@@ -5019,7 +5019,7 @@ describe("regression: current-task path normalization", () => {
       "CUSTOM BODY from workflow.md",
     );
     expect(parsed.hookSpecificOutput.additionalContext).not.toContain(
-      "trellis-implement → trellis-check",
+      "arbor-implement → arbor-check",
     );
   });
 
@@ -5033,7 +5033,7 @@ describe("regression: current-task path normalization", () => {
 
   it("[workflow-state] custom status with hyphen matches via regex", () => {
     setupTaskRepo();
-    writeSessionContext("session_workflow-a", ".trellis/tasks/issue-106");
+    writeSessionContext("session_workflow-a", ".arbor/tasks/issue-106");
     writeWorkflowStateHook();
     setStatus("in-review");
     writeWorkflowMd(
@@ -5053,7 +5053,7 @@ describe("regression: current-task path normalization", () => {
 
   it("[workflow-state] unknown status with no tag emits generic fallback, not silent", () => {
     setupTaskRepo();
-    writeSessionContext("session_workflow-a", ".trellis/tasks/issue-106");
+    writeSessionContext("session_workflow-a", ".arbor/tasks/issue-106");
     writeWorkflowStateHook();
     setStatus("weirdstate");
     writeWorkflowMd("# no matching tags\n");
@@ -5071,9 +5071,9 @@ describe("regression: current-task path normalization", () => {
     );
   });
 
-  it("[workflow-state] CWD drift: hook finds .trellis/ when invoked from subdirectory", () => {
+  it("[workflow-state] CWD drift: hook finds .arbor/ when invoked from subdirectory", () => {
     setupTaskRepo();
-    writeSessionContext("session_workflow-a", ".trellis/tasks/issue-106");
+    writeSessionContext("session_workflow-a", ".arbor/tasks/issue-106");
     writeWorkflowStateHook();
     // Create a subdirectory and invoke hook with that CWD
     const subDir = path.join(tmpDir, "packages", "cli");
@@ -5088,18 +5088,18 @@ describe("regression: current-task path normalization", () => {
   });
 
   it("[workflow-state] no_task breadcrumb emitted when no session active task exists", () => {
-    writeTrellisScripts();
-    writeProjectFile(path.join(".trellis", ".developer"), "name=test\n");
+    writeArborScripts();
+    writeProjectFile(path.join(".arbor", ".developer"), "name=test\n");
     // Post-R5: breadcrumb body is read exclusively from workflow.md tag
     // blocks. Provide a minimal no_task tag so the test can assert the
-    // routing to trellis-brainstorm content surfaces.
+    // routing to arbor-brainstorm content surfaces.
     writeProjectFile(
-      path.join(".trellis", "workflow.md"),
+      path.join(".arbor", "workflow.md"),
       "[workflow-state:no_task]\n" +
-        "No active task. Load `trellis-brainstorm` skill to start.\n" +
+        "No active task. Load `arbor-brainstorm` skill to start.\n" +
         "[/workflow-state:no_task]\n",
     );
-    writeLegacyCurrentTask(".trellis/tasks/issue-106");
+    writeLegacyCurrentTask(".arbor/tasks/issue-106");
     writeWorkflowStateHook();
     // Legacy repo-global state must not suppress the session no_task breadcrumb.
     const output = runInjectWorkflowState();
@@ -5111,13 +5111,13 @@ describe("regression: current-task path normalization", () => {
       "Status: no_task",
     );
     expect(parsed.hookSpecificOutput.additionalContext).toContain(
-      "trellis-brainstorm",
+      "arbor-brainstorm",
     );
   });
 
   it("reports task_error when task.json is malformed", () => {
     setupTaskRepo();
-    writeSessionContext("session_workflow-a", ".trellis/tasks/issue-106");
+    writeSessionContext("session_workflow-a", ".arbor/tasks/issue-106");
     writeWorkflowStateHook();
     writeWorkflowMd(
       "[workflow-state:no_task]\n" +
@@ -5128,7 +5128,7 @@ describe("regression: current-task path normalization", () => {
         "[/workflow-state:task_error]\n",
     );
     writeProjectFile(
-      path.join(".trellis", "tasks", "issue-106", "task.json"),
+      path.join(".arbor", "tasks", "issue-106", "task.json"),
       "{not-json\n",
     );
 
@@ -5144,13 +5144,13 @@ describe("regression: current-task path normalization", () => {
 
   it("reports task_error when task.json has no usable status", () => {
     setupTaskRepo();
-    writeSessionContext("session_workflow-a", ".trellis/tasks/issue-106");
+    writeSessionContext("session_workflow-a", ".arbor/tasks/issue-106");
     writeWorkflowStateHook();
     writeWorkflowMd(
       "[workflow-state:no_task]\nNo active task.\n[/workflow-state:no_task]\n",
     );
     writeProjectFile(
-      path.join(".trellis", "tasks", "issue-106", "task.json"),
+      path.join(".arbor", "tasks", "issue-106", "task.json"),
       JSON.stringify({ title: "Missing status" }),
     );
 
@@ -5166,13 +5166,13 @@ describe("regression: current-task path normalization", () => {
 
   it("reports task_error when task.json is not an object", () => {
     setupTaskRepo();
-    writeSessionContext("session_workflow-a", ".trellis/tasks/issue-106");
+    writeSessionContext("session_workflow-a", ".arbor/tasks/issue-106");
     writeWorkflowStateHook();
     writeWorkflowMd(
       "[workflow-state:task_error]\nRepair the active task record before continuing.\n[/workflow-state:task_error]\n",
     );
     writeProjectFile(
-      path.join(".trellis", "tasks", "issue-106", "task.json"),
+      path.join(".arbor", "tasks", "issue-106", "task.json"),
       "[]",
     );
 
@@ -5186,11 +5186,11 @@ describe("regression: current-task path normalization", () => {
     expect(context).not.toContain("Status: no_task");
   });
 
-  it("[workflow-state] silent exit 0 when not a Trellis project (no .trellis/ dir)", () => {
-    // No .trellis/ at all — hook should silently exit
+  it("[workflow-state] silent exit 0 when not a Arbor project (no .arbor/ dir)", () => {
+    // No .arbor/ at all — hook should silently exit
     writeWorkflowStateHook();
-    fs.rmSync(path.join(tmpDir, ".trellis"), { recursive: true, force: true });
-    fs.mkdirSync(path.join(tmpDir, ".trellis", "hooks"), { recursive: true });
+    fs.rmSync(path.join(tmpDir, ".arbor"), { recursive: true, force: true });
+    fs.mkdirSync(path.join(tmpDir, ".arbor", "hooks"), { recursive: true });
     fs.copyFileSync(
       path.join(
         __dirname,
@@ -5200,15 +5200,15 @@ describe("regression: current-task path normalization", () => {
         "shared-hooks",
         "inject-workflow-state.py",
       ),
-      path.join(tmpDir, ".trellis", "hooks", "inject-workflow-state.py"),
+      path.join(tmpDir, ".arbor", "hooks", "inject-workflow-state.py"),
     );
-    // Now .trellis/ exists only as a parent for the hook script — need to move
-    // the hook out of .trellis/ so root-finding fails. Use a fully separate dir.
-    const nonTrellisDir = fs.mkdtempSync(
-      path.join(os.tmpdir(), "non-trellis-"),
+    // Now .arbor/ exists only as a parent for the hook script — need to move
+    // the hook out of .arbor/ so root-finding fails. Use a fully separate dir.
+    const nonArborDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "non-arbor-"),
     );
     try {
-      const hookPath = path.join(nonTrellisDir, "hook.py");
+      const hookPath = path.join(nonArborDir, "hook.py");
       fs.copyFileSync(
         path.join(
           __dirname,
@@ -5221,13 +5221,13 @@ describe("regression: current-task path normalization", () => {
         hookPath,
       );
       const result = execSync(`${pythonCmd} ${JSON.stringify(hookPath)}`, {
-        cwd: nonTrellisDir,
-        input: JSON.stringify({ cwd: nonTrellisDir }),
+        cwd: nonArborDir,
+        input: JSON.stringify({ cwd: nonArborDir }),
         encoding: "utf-8",
       });
       expect(result.trim()).toBe("");
     } finally {
-      fs.rmSync(nonTrellisDir, { recursive: true, force: true });
+      fs.rmSync(nonArborDir, { recursive: true, force: true });
     }
   });
 
@@ -5237,7 +5237,7 @@ describe("regression: current-task path normalization", () => {
 
     const hookPath = path.join(
       tmpDir,
-      ".trellis",
+      ".arbor",
       "hooks",
       "inject-workflow-state.py",
     );
@@ -5288,13 +5288,13 @@ describe("regression: current-task path normalization", () => {
 
   it("[workflow-v2] task.py create does NOT write legacy current_phase / next_action fields", () => {
     setupTaskRepo();
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     execSync(
       `${pythonCmd} ${JSON.stringify(taskScriptPath)} create "dummy task" --description "regression fixture" --slug dummy-task --assignee test-dev`,
       { cwd: tmpDir, encoding: "utf-8" },
     );
     // Locate the newly created task dir
-    const tasksDir = path.join(tmpDir, ".trellis", "tasks");
+    const tasksDir = path.join(tmpDir, ".arbor", "tasks");
     const newDirs = fs
       .readdirSync(tasksDir)
       .filter((d) => d.includes("dummy-task"));
@@ -5315,12 +5315,12 @@ describe("regression: current-task path normalization", () => {
   it("[init-context-removal] task.py create does NOT seed jsonl when no sub-agent platform configured", () => {
     setupTaskRepo();
     // setupTaskRepo does not create any .{platform}/ dir → agent-less mode
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     execSync(
       `${pythonCmd} ${JSON.stringify(taskScriptPath)} create "plain task" --description "regression fixture" --slug plain-task --assignee test-dev`,
       { cwd: tmpDir, encoding: "utf-8" },
     );
-    const tasksDir = path.join(tmpDir, ".trellis", "tasks");
+    const tasksDir = path.join(tmpDir, ".arbor", "tasks");
     const newDirs = fs
       .readdirSync(tasksDir)
       .filter((d) => d.includes("plain-task"));
@@ -5334,13 +5334,13 @@ describe("regression: current-task path normalization", () => {
     setupTaskRepo();
     // Simulate a Claude Code install
     fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     const output = execSync(
       `${pythonCmd} ${JSON.stringify(taskScriptPath)} create "seeded task" --description "regression fixture" --slug seeded-task --assignee test-dev`,
       { cwd: tmpDir, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
     );
     expect(output).toBeDefined();
-    const tasksDir = path.join(tmpDir, ".trellis", "tasks");
+    const tasksDir = path.join(tmpDir, ".arbor", "tasks");
     const newDirs = fs
       .readdirSync(tasksDir)
       .filter((d) => d.includes("seeded-task"));
@@ -5359,7 +5359,7 @@ describe("regression: current-task path normalization", () => {
   it("[validation-preflight] task.py create prints jsonl curation instructions instead of writing them into the files", () => {
     setupTaskRepo();
     fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     const result = spawnSync(
       pythonCmd,
       [
@@ -5383,12 +5383,12 @@ describe("regression: current-task path normalization", () => {
 
   it("[init-context-removal] task.py init-context is deprecated with clear pointer to planning artifacts", () => {
     setupTaskRepo();
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     let threw = false;
     let stderr = "";
     try {
       execSync(
-        `${pythonCmd} ${JSON.stringify(taskScriptPath)} init-context .trellis/tasks/issue-106 fullstack`,
+        `${pythonCmd} ${JSON.stringify(taskScriptPath)} init-context .arbor/tasks/issue-106 fullstack`,
         { cwd: tmpDir, encoding: "utf-8" },
       );
     } catch (err) {
@@ -5445,16 +5445,16 @@ print(len(entries))
   it("[#573] task.py validate fails for a freshly created task until manifests are curated", () => {
     setupTaskRepo();
     fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     execSync(
       `${pythonCmd} ${JSON.stringify(taskScriptPath)} create "seed-only" --description "regression fixture" --slug seed-only-task --assignee test-dev`,
       { cwd: tmpDir, encoding: "utf-8" },
     );
     const taskDir = fs
-      .readdirSync(path.join(tmpDir, ".trellis", "tasks"))
+      .readdirSync(path.join(tmpDir, ".arbor", "tasks"))
       .find((d) => d.includes("seed-only-task"));
     expect(taskDir).toBeDefined();
-    const relTaskDir = path.posix.join(".trellis", "tasks", taskDir as string);
+    const relTaskDir = path.posix.join(".arbor", "tasks", taskDir as string);
 
     const result = spawnSync(
       pythonCmd,
@@ -5478,14 +5478,14 @@ print(len(entries))
     // Curated row for the manifest not under test: an empty manifest is
     // itself an error since #573, which would obscure the count under test.
     const curatedRow =
-      '{"file":".trellis/spec/guides/index.md","reason":"guideline"}\n';
+      '{"file":".arbor/spec/guides/index.md","reason":"guideline"}\n';
 
     function validateWith(
       implementContent: string,
       checkContent: string,
     ): ReturnType<typeof spawnSync> {
       setupTaskRepo();
-      const taskDir = path.join(tmpDir, ".trellis", "tasks", "issue-106");
+      const taskDir = path.join(tmpDir, ".arbor", "tasks", "issue-106");
       fs.writeFileSync(
         path.join(taskDir, "implement.jsonl"),
         implementContent,
@@ -5496,10 +5496,10 @@ print(len(entries))
         checkContent,
         "utf-8",
       );
-      const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+      const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
       return spawnSync(
         pythonCmd,
-        [taskScriptPath, "validate", ".trellis/tasks/issue-106"],
+        [taskScriptPath, "validate", ".arbor/tasks/issue-106"],
         { cwd: tmpDir, encoding: "utf-8", env: sessionEnv() },
       );
     }
@@ -5545,15 +5545,15 @@ print(len(entries))
 
     it("passes for curated entries pointing at real files", () => {
       setupTaskRepo();
-      const taskDir = path.join(tmpDir, ".trellis", "tasks", "issue-106");
+      const taskDir = path.join(tmpDir, ".arbor", "tasks", "issue-106");
       const curated =
-        '{"file":".trellis/spec/guides/index.md","reason":"guideline"}\n';
+        '{"file":".arbor/spec/guides/index.md","reason":"guideline"}\n';
       fs.writeFileSync(path.join(taskDir, "implement.jsonl"), curated, "utf-8");
       fs.writeFileSync(path.join(taskDir, "check.jsonl"), curated, "utf-8");
-      const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+      const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
       const result = spawnSync(
         pythonCmd,
-        [taskScriptPath, "validate", ".trellis/tasks/issue-106"],
+        [taskScriptPath, "validate", ".arbor/tasks/issue-106"],
         { cwd: tmpDir, encoding: "utf-8", env: sessionEnv() },
       );
       expect(result.status).toBe(0);
@@ -5584,29 +5584,29 @@ print(len(entries))
       // Same wrong-shape rows as the validate case above — list-context is a
       // read-only listing, so it skips them and still lists curated entries.
       setupTaskRepo();
-      const taskDir = path.join(tmpDir, ".trellis", "tasks", "issue-106");
+      const taskDir = path.join(tmpDir, ".arbor", "tasks", "issue-106");
       fs.writeFileSync(
         path.join(taskDir, "implement.jsonl"),
-        '"just a string"\n[1, 2]\nnull\n{"file":".trellis/spec/guides/index.md","reason":"guideline"}\n',
+        '"just a string"\n[1, 2]\nnull\n{"file":".arbor/spec/guides/index.md","reason":"guideline"}\n',
         "utf-8",
       );
       fs.writeFileSync(path.join(taskDir, "check.jsonl"), "", "utf-8");
-      const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+      const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
       const result = spawnSync(
         pythonCmd,
-        [taskScriptPath, "list-context", ".trellis/tasks/issue-106"],
+        [taskScriptPath, "list-context", ".arbor/tasks/issue-106"],
         { cwd: tmpDir, encoding: "utf-8", env: sessionEnv() },
       );
       expect(result.status).toBe(0);
       expect(result.stderr).not.toContain("Traceback");
-      expect(result.stdout).toContain(".trellis/spec/guides/index.md");
+      expect(result.stdout).toContain(".arbor/spec/guides/index.md");
     });
 
     it("rejects a placeholder row inside an archived task", () => {
       setupTaskRepo();
       const archivedDir = path.join(
         tmpDir,
-        ".trellis",
+        ".arbor",
         "tasks",
         "archive",
         "2026-07",
@@ -5623,13 +5623,13 @@ print(len(entries))
         "utf-8",
       );
       fs.writeFileSync(path.join(archivedDir, "check.jsonl"), "", "utf-8");
-      const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+      const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
       const result = spawnSync(
         pythonCmd,
         [
           taskScriptPath,
           "validate",
-          ".trellis/tasks/archive/2026-07/07-01-archived-task",
+          ".arbor/tasks/archive/2026-07/07-01-archived-task",
         ],
         { cwd: tmpDir, encoding: "utf-8", env: sessionEnv() },
       );
@@ -5640,10 +5640,10 @@ print(len(entries))
 
   describe("[#573] task.py start seed-only context gate", () => {
     const curatedRow =
-      '{"file":".trellis/spec/guides/index.md","reason":"guideline"}\n';
+      '{"file":".arbor/spec/guides/index.md","reason":"guideline"}\n';
 
     function writeManifests(implement: string | null, check: string | null): void {
-      const taskDir = path.join(tmpDir, ".trellis", "tasks", "issue-106");
+      const taskDir = path.join(tmpDir, ".arbor", "tasks", "issue-106");
       if (implement !== null) {
         fs.writeFileSync(path.join(taskDir, "implement.jsonl"), implement, "utf-8");
       }
@@ -5653,16 +5653,16 @@ print(len(entries))
     }
 
     function runStart(...extra: string[]): ReturnType<typeof spawnSync> {
-      const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+      const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
       return spawnSync(
         pythonCmd,
-        [taskScriptPath, "start", ".trellis/tasks/issue-106", ...extra],
+        [taskScriptPath, "start", ".arbor/tasks/issue-106", ...extra],
         {
           cwd: tmpDir,
           encoding: "utf-8",
           // Session identity so a successful start prints "Current task set
           // to" instead of the degraded-mode notice.
-          env: sessionEnv({ TRELLIS_CONTEXT_ID: "test-ctx-573" }),
+          env: sessionEnv({ ARBOR_CONTEXT_ID: "test-ctx-573" }),
         },
       );
     }
@@ -5716,16 +5716,16 @@ print(len(entries))
   it("[init-context-removal] task.py list-context prints 'no curated entries yet' for uncurated jsonl", () => {
     setupTaskRepo();
     fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     execSync(
       `${pythonCmd} ${JSON.stringify(taskScriptPath)} create "seed-list" --description "regression fixture" --slug seed-list-task --assignee test-dev`,
       { cwd: tmpDir, encoding: "utf-8" },
     );
     const taskDir = fs
-      .readdirSync(path.join(tmpDir, ".trellis", "tasks"))
+      .readdirSync(path.join(tmpDir, ".arbor", "tasks"))
       .find((d) => d.includes("seed-list-task"));
     expect(taskDir).toBeDefined();
-    const relTaskDir = path.posix.join(".trellis", "tasks", taskDir as string);
+    const relTaskDir = path.posix.join(".arbor", "tasks", taskDir as string);
 
     const result = execSync(
       `${pythonCmd} ${JSON.stringify(taskScriptPath)} list-context ${relTaskDir}`,
@@ -5748,7 +5748,7 @@ print(len(entries))
       "..",
       "src",
       "templates",
-      "trellis",
+      "arbor",
       "workflow.md",
     );
     return readFileSync(templatePath, "utf-8");
@@ -5910,16 +5910,16 @@ print(len(entries))
   });
 
   it("[workflow-v2] get_context.py --mode phase returns compact Phase Index only", () => {
-    writeTrellisScripts();
-    writeProjectFile(path.join(".trellis", ".developer"), "name=test\n");
+    writeArborScripts();
+    writeProjectFile(path.join(".arbor", ".developer"), "name=test\n");
     writeProjectFile(
-      path.join(".trellis", "workflow.md"),
+      path.join(".arbor", "workflow.md"),
       templateWorkflowMd(),
     );
 
     const contextScript = path.join(
       tmpDir,
-      ".trellis",
+      ".arbor",
       "scripts",
       "get_context.py",
     );
@@ -5938,14 +5938,14 @@ print(len(entries))
   });
 
   // ------------------------------------------------------------
-  // session-start.py <trellis-workflow> + <guidelines> compact context
+  // session-start.py <arbor-workflow> + <guidelines> compact context
   // ------------------------------------------------------------
 
-  it("[workflow-v2] session-start.py <trellis-workflow> block contains compact Phase Index", () => {
-    writeTrellisScripts();
-    writeProjectFile(path.join(".trellis", ".developer"), "name=test\n");
+  it("[workflow-v2] session-start.py <arbor-workflow> block contains compact Phase Index", () => {
+    writeArborScripts();
+    writeProjectFile(path.join(".arbor", ".developer"), "name=test\n");
     writeProjectFile(
-      path.join(".trellis", "workflow.md"),
+      path.join(".arbor", "workflow.md"),
       templateWorkflowMd(),
     );
     writeProjectFile(
@@ -5962,7 +5962,7 @@ print(len(entries))
     const ctx = payload.hookSpecificOutput.additionalContext;
 
     const workflowMatch =
-      /<trellis-workflow>([\s\S]*?)<\/trellis-workflow>/.exec(ctx);
+      /<arbor-workflow>([\s\S]*?)<\/arbor-workflow>/.exec(ctx);
     if (!workflowMatch) throw new Error("workflow block not found in payload");
     const workflowBlock = workflowMatch[1];
 
@@ -5981,20 +5981,20 @@ print(len(entries))
   });
 
   it("[workflow-v2] session-start.py <guidelines> block lists context order and spec paths", () => {
-    writeTrellisScripts();
-    writeProjectFile(path.join(".trellis", ".developer"), "name=test\n");
+    writeArborScripts();
+    writeProjectFile(path.join(".arbor", ".developer"), "name=test\n");
     writeProjectFile(
-      path.join(".trellis", "workflow.md"),
+      path.join(".arbor", "workflow.md"),
       templateWorkflowMd(),
     );
     // Guides are no longer inlined in compact SessionStart.
     writeProjectFile(
-      path.join(".trellis", "spec", "guides", "index.md"),
+      path.join(".arbor", "spec", "guides", "index.md"),
       "# Thinking Guides\n\nGUIDES_INLINE_MARKER\n",
     );
     // Package index — must be paths-only (content should NOT appear)
     writeProjectFile(
-      path.join(".trellis", "spec", "cli", "backend", "index.md"),
+      path.join(".arbor", "spec", "cli", "backend", "index.md"),
       "# Backend\n\nBACKEND_INDEX_CONTENT_SHOULD_NOT_APPEAR\n",
     );
     writeProjectFile(
@@ -6017,7 +6017,7 @@ print(len(entries))
 
     expect(guidelinesBlock).toContain("Task context order");
     expect(guidelinesBlock).not.toContain("GUIDES_INLINE_MARKER");
-    expect(guidelinesBlock).toContain(".trellis/spec/cli/backend/index.md");
+    expect(guidelinesBlock).toContain(".arbor/spec/cli/backend/index.md");
     expect(guidelinesBlock).not.toContain(
       "BACKEND_INDEX_CONTENT_SHOULD_NOT_APPEAR",
     );
@@ -6035,15 +6035,15 @@ print(len(entries))
       (hook) => hook.name === "inject-subagent-context.py",
     )?.content;
 
-    writeTrellisScripts();
-    writeProjectFile(path.join(".trellis", ".developer"), "name=test\n");
-    writeProjectFile(path.join(".trellis", "workflow.md"), "# Minimal\n");
+    writeArborScripts();
+    writeProjectFile(path.join(".arbor", ".developer"), "name=test\n");
+    writeProjectFile(path.join(".arbor", "workflow.md"), "# Minimal\n");
     // Session active task WITHOUT current_phase field (post-migration state)
     writeProjectFile(
-      path.join(".trellis", ".runtime", "sessions", "claude_phase-a.json"),
+      path.join(".arbor", ".runtime", "sessions", "claude_phase-a.json"),
       JSON.stringify(
         {
-          current_task: ".trellis/tasks/issue-106",
+          current_task: ".arbor/tasks/issue-106",
           platform: "claude",
         },
         null,
@@ -6051,7 +6051,7 @@ print(len(entries))
       ),
     );
     writeProjectFile(
-      path.join(".trellis", "tasks", "issue-106", "task.json"),
+      path.join(".arbor", "tasks", "issue-106", "task.json"),
       JSON.stringify(
         {
           id: "issue-106",
@@ -6064,11 +6064,11 @@ print(len(entries))
       ),
     );
     writeProjectFile(
-      path.join(".trellis", "tasks", "issue-106", "prd.md"),
+      path.join(".arbor", "tasks", "issue-106", "prd.md"),
       "# PRD\n",
     );
     writeProjectFile(
-      path.join(".trellis", "tasks", "issue-106", "implement.jsonl"),
+      path.join(".arbor", "tasks", "issue-106", "implement.jsonl"),
       '{"file":"src/example.ts","reason":"spec"}\n',
     );
     writeProjectFile(
@@ -6080,7 +6080,7 @@ print(len(entries))
     const input = JSON.stringify({
       tool_name: "Task",
       tool_input: {
-        subagent_type: "trellis-implement",
+        subagent_type: "arbor-implement",
         prompt: "do work",
       },
       cwd: tmpDir,
@@ -6094,7 +6094,7 @@ print(len(entries))
     // Assert task.json is NOT modified with current_phase
     const taskJson = JSON.parse(
       fs.readFileSync(
-        path.join(tmpDir, ".trellis", "tasks", "issue-106", "task.json"),
+        path.join(tmpDir, ".arbor", "tasks", "issue-106", "task.json"),
         "utf-8",
       ),
     ) as Record<string, unknown>;
@@ -6117,7 +6117,7 @@ print(len(entries))
 
   it("[issue-395] task.py list --json emits a stable machine-readable schema", () => {
     setupTaskRepo();
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
 
     const output = execSync(
       `${pythonCmd} ${JSON.stringify(taskScriptPath)} list --json`,
@@ -6137,7 +6137,7 @@ print(len(entries))
     };
     expect(parsed.tasks).toHaveLength(1);
     expect(parsed.tasks[0]).toMatchObject({
-      dir: ".trellis/tasks/issue-106",
+      dir: ".arbor/tasks/issue-106",
       title: "Issue 106 task",
       status: "in_progress",
       parent: null,
@@ -6147,7 +6147,7 @@ print(len(entries))
 
   it("[issue-395] task.py current --json reports null when no task is active", () => {
     setupTaskRepo();
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
 
     const result = spawnSync(pythonCmd, [taskScriptPath, "current", "--json"], {
       cwd: tmpDir,
@@ -6162,14 +6162,14 @@ print(len(entries))
 
   it("[issue-395] task.py current --json reports the active task object", () => {
     setupTaskRepo();
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
 
     execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} start ${JSON.stringify(".trellis/tasks/issue-106")}`,
+      `${pythonCmd} ${JSON.stringify(taskScriptPath)} start ${JSON.stringify(".arbor/tasks/issue-106")}`,
       {
         cwd: tmpDir,
         encoding: "utf-8",
-        env: sessionEnv({ TRELLIS_CONTEXT_ID: "json-current-session" }),
+        env: sessionEnv({ ARBOR_CONTEXT_ID: "json-current-session" }),
       },
     );
 
@@ -6178,7 +6178,7 @@ print(len(entries))
       {
         cwd: tmpDir,
         encoding: "utf-8",
-        env: sessionEnv({ TRELLIS_CONTEXT_ID: "json-current-session" }),
+        env: sessionEnv({ ARBOR_CONTEXT_ID: "json-current-session" }),
       },
     );
 
@@ -6186,7 +6186,7 @@ print(len(entries))
       current_task: { dir: string; title: string; status: string } | null;
     };
     expect(parsed.current_task).toMatchObject({
-      dir: ".trellis/tasks/issue-106",
+      dir: ".arbor/tasks/issue-106",
       title: "Issue 106 task",
       status: "in_progress",
     });
@@ -6217,19 +6217,19 @@ print(len(entries))
     );
     execSync("git checkout -q -b feature/some-work", { cwd: tmpDir });
 
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     execSync(
       `${pythonCmd} ${JSON.stringify(taskScriptPath)} create "base branch test" --description "regression fixture" --slug base-branch-test --assignee test-dev --no-start`,
       { cwd: tmpDir, encoding: "utf-8", env: sessionEnv() },
     );
 
     const taskDir = fs
-      .readdirSync(path.join(tmpDir, ".trellis", "tasks"))
+      .readdirSync(path.join(tmpDir, ".arbor", "tasks"))
       .find((d) => d.includes("base-branch-test"));
     expect(taskDir).toBeDefined();
     const taskJson = JSON.parse(
       fs.readFileSync(
-        path.join(tmpDir, ".trellis", "tasks", taskDir as string, "task.json"),
+        path.join(tmpDir, ".arbor", "tasks", taskDir as string, "task.json"),
         "utf-8",
       ),
     ) as { base_branch: string };
@@ -6247,7 +6247,7 @@ print(len(entries))
     execSync("git commit -q -m init", { cwd: tmpDir });
     // No origin remote configured at all.
 
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     const result = spawnSync(
       pythonCmd,
       [
@@ -6273,11 +6273,11 @@ print(len(entries))
     expect(result.stderr).toContain("solo-branch");
 
     const taskDir = fs
-      .readdirSync(path.join(tmpDir, ".trellis", "tasks"))
+      .readdirSync(path.join(tmpDir, ".arbor", "tasks"))
       .find((d) => d.includes("no-remote-test"));
     const taskJson = JSON.parse(
       fs.readFileSync(
-        path.join(tmpDir, ".trellis", "tasks", taskDir as string, "task.json"),
+        path.join(tmpDir, ".arbor", "tasks", taskDir as string, "task.json"),
         "utf-8",
       ),
     ) as { base_branch: string };
@@ -6293,7 +6293,7 @@ print(len(entries))
     execSync("git commit -q -m init", { cwd: tmpDir });
     // No origin remote configured at all — would otherwise fall back with a warning.
 
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     const result = spawnSync(
       pythonCmd,
       [
@@ -6318,12 +6318,12 @@ print(len(entries))
     );
 
     const taskDir = fs
-      .readdirSync(path.join(tmpDir, ".trellis", "tasks"))
+      .readdirSync(path.join(tmpDir, ".arbor", "tasks"))
       .find((d) => d.includes("explicit-base-branch-test"));
     expect(taskDir).toBeDefined();
     const taskJson = JSON.parse(
       fs.readFileSync(
-        path.join(tmpDir, ".trellis", "tasks", taskDir as string, "task.json"),
+        path.join(tmpDir, ".arbor", "tasks", taskDir as string, "task.json"),
         "utf-8",
       ),
     ) as { base_branch: string };
@@ -6340,7 +6340,7 @@ print(len(entries))
 
     const taskJsonPath = path.join(
       tmpDir,
-      ".trellis",
+      ".arbor",
       "tasks",
       "issue-106",
       "task.json",
@@ -6349,10 +6349,10 @@ print(len(entries))
     data.branch = "task/deleted-branch-does-not-exist";
     fs.writeFileSync(taskJsonPath, JSON.stringify(data, null, 2));
 
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     const result = spawnSync(
       pythonCmd,
-      [taskScriptPath, "validate", ".trellis/tasks/issue-106"],
+      [taskScriptPath, "validate", ".arbor/tasks/issue-106"],
       { cwd: tmpDir, encoding: "utf-8", env: sessionEnv() },
     );
 
@@ -6371,7 +6371,7 @@ print(len(entries))
 
     const taskJsonPath = path.join(
       tmpDir,
-      ".trellis",
+      ".arbor",
       "tasks",
       "issue-106",
       "task.json",
@@ -6380,10 +6380,10 @@ print(len(entries))
     data.branch = "task/deleted-branch-does-not-exist";
     fs.writeFileSync(taskJsonPath, JSON.stringify(data, null, 2));
 
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     const result = spawnSync(
       pythonCmd,
-      [taskScriptPath, "archive", ".trellis/tasks/issue-106", "--no-commit"],
+      [taskScriptPath, "archive", ".arbor/tasks/issue-106", "--no-commit"],
       { cwd: tmpDir, encoding: "utf-8", env: sessionEnv() },
     );
 
@@ -6411,7 +6411,7 @@ print(len(entries))
   function patchIssue106Task(fields: Record<string, unknown>): string {
     const taskJsonPath = path.join(
       tmpDir,
-      ".trellis",
+      ".arbor",
       "tasks",
       "issue-106",
       "task.json",
@@ -6427,7 +6427,7 @@ print(len(entries))
   function readIssue106Task(): { branch: string | null; status: string } {
     return JSON.parse(
       fs.readFileSync(
-        path.join(tmpDir, ".trellis", "tasks", "issue-106", "task.json"),
+        path.join(tmpDir, ".arbor", "tasks", "issue-106", "task.json"),
         "utf-8",
       ),
     );
@@ -6439,14 +6439,14 @@ print(len(entries))
     execSync("git checkout -q -b feature/record-me", { cwd: tmpDir });
     patchIssue106Task({ status: "planning", branch: null, base_branch: "main" });
 
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     const result = spawnSync(
       pythonCmd,
-      [taskScriptPath, "start", ".trellis/tasks/issue-106"],
+      [taskScriptPath, "start", ".arbor/tasks/issue-106"],
       {
         cwd: tmpDir,
         encoding: "utf-8",
-        env: sessionEnv({ TRELLIS_CONTEXT_ID: "start-branch-session" }),
+        env: sessionEnv({ ARBOR_CONTEXT_ID: "start-branch-session" }),
       },
     );
 
@@ -6467,14 +6467,14 @@ print(len(entries))
       base_branch: "main",
     });
 
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     const result = spawnSync(
       pythonCmd,
-      [taskScriptPath, "start", ".trellis/tasks/issue-106"],
+      [taskScriptPath, "start", ".arbor/tasks/issue-106"],
       {
         cwd: tmpDir,
         encoding: "utf-8",
-        env: sessionEnv({ TRELLIS_CONTEXT_ID: "start-noclobber-session" }),
+        env: sessionEnv({ ARBOR_CONTEXT_ID: "start-noclobber-session" }),
       },
     );
 
@@ -6488,14 +6488,14 @@ print(len(entries))
     execSync("git checkout -q --detach", { cwd: tmpDir });
     patchIssue106Task({ status: "planning", branch: null, base_branch: "main" });
 
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     const result = spawnSync(
       pythonCmd,
-      [taskScriptPath, "start", ".trellis/tasks/issue-106"],
+      [taskScriptPath, "start", ".arbor/tasks/issue-106"],
       {
         cwd: tmpDir,
         encoding: "utf-8",
-        env: sessionEnv({ TRELLIS_CONTEXT_ID: "start-detached-session" }),
+        env: sessionEnv({ ARBOR_CONTEXT_ID: "start-detached-session" }),
       },
     );
 
@@ -6512,10 +6512,10 @@ print(len(entries))
     initTaskGitRepo("main", true);
     patchIssue106Task({ branch: null, base_branch: "main" });
 
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     const result = spawnSync(
       pythonCmd,
-      [taskScriptPath, "archive", ".trellis/tasks/issue-106", "--no-commit"],
+      [taskScriptPath, "archive", ".arbor/tasks/issue-106", "--no-commit"],
       { cwd: tmpDir, encoding: "utf-8", env: sessionEnv() },
     );
 
@@ -6525,7 +6525,7 @@ print(len(entries))
     expect(result.stderr).toContain("--skip-branch-validation");
     // Refused before any mutation: the task stays put, still un-completed.
     expect(
-      fs.existsSync(path.join(tmpDir, ".trellis", "tasks", "issue-106")),
+      fs.existsSync(path.join(tmpDir, ".arbor", "tasks", "issue-106")),
     ).toBe(true);
     expect(readIssue106Task().status).toBe("in_progress");
   });
@@ -6535,10 +6535,10 @@ print(len(entries))
     initTaskGitRepo("main", true);
     patchIssue106Task({ branch: "main", base_branch: "main" });
 
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     const result = spawnSync(
       pythonCmd,
-      [taskScriptPath, "archive", ".trellis/tasks/issue-106", "--no-commit"],
+      [taskScriptPath, "archive", ".arbor/tasks/issue-106", "--no-commit"],
       { cwd: tmpDir, encoding: "utf-8", env: sessionEnv() },
     );
 
@@ -6546,7 +6546,7 @@ print(len(entries))
     expect(result.stderr).toContain("branch and base_branch are both 'main'");
     expect(result.stderr).toContain("task.py set-base-branch");
     expect(
-      fs.existsSync(path.join(tmpDir, ".trellis", "tasks", "issue-106")),
+      fs.existsSync(path.join(tmpDir, ".arbor", "tasks", "issue-106")),
     ).toBe(true);
   });
 
@@ -6555,13 +6555,13 @@ print(len(entries))
     initTaskGitRepo("main", true);
     patchIssue106Task({ branch: null, base_branch: "main" });
 
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     const result = spawnSync(
       pythonCmd,
       [
         taskScriptPath,
         "archive",
-        ".trellis/tasks/issue-106",
+        ".arbor/tasks/issue-106",
         "--no-commit",
         "--skip-branch-validation",
       ],
@@ -6570,7 +6570,7 @@ print(len(entries))
 
     expect(result.status).toBe(0);
     expect(
-      fs.existsSync(path.join(tmpDir, ".trellis", "tasks", "issue-106")),
+      fs.existsSync(path.join(tmpDir, ".arbor", "tasks", "issue-106")),
     ).toBe(false);
   });
 
@@ -6582,10 +6582,10 @@ print(len(entries))
       base_branch: "main",
     });
 
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     const result = spawnSync(
       pythonCmd,
-      [taskScriptPath, "archive", ".trellis/tasks/issue-106", "--no-commit"],
+      [taskScriptPath, "archive", ".arbor/tasks/issue-106", "--no-commit"],
       { cwd: tmpDir, encoding: "utf-8", env: sessionEnv() },
     );
 
@@ -6594,7 +6594,7 @@ print(len(entries))
       "recorded branch 'feature/merged-and-deleted' no longer exists locally",
     );
     expect(
-      fs.existsSync(path.join(tmpDir, ".trellis", "tasks", "issue-106")),
+      fs.existsSync(path.join(tmpDir, ".arbor", "tasks", "issue-106")),
     ).toBe(false);
   });
 });
@@ -6648,7 +6648,7 @@ describe("regression: cli_adapter platform support (beta.9, beta.13, beta.16)", 
     expect(AI_TOOLS.star.supportsAgentSkills ?? false).toBe(false);
     expect(AI_TOOLS.star.templateContext.agentCapable).toBe(true);
     expect(AI_TOOLS.star.templateContext.hasHooks).toBe(true);
-    expect(AI_TOOLS.star.templateContext.cmdRefPrefix).toBe("/trellis:");
+    expect(AI_TOOLS.star.templateContext.cmdRefPrefix).toBe("/arbor:");
   });
 
   // v0.5.0-beta.12 removed `task.py init-context`; jsonl manifests are now
@@ -6772,7 +6772,7 @@ describe("regression: migration manifest consistency", () => {
 // =============================================================================
 
 describe("regression: collectTemplates paths match init directory structure (0.3.1)", () => {
-  it("[0.3.1] all platforms with commands use consistent trellis/ subdirectory", () => {
+  it("[0.3.1] all platforms with commands use consistent arbor/ subdirectory", () => {
     const platformsWithCommands = ["claude-code", "star"] as const;
     for (const id of platformsWithCommands) {
       const templates = collectPlatformTemplates(id);
@@ -6783,8 +6783,8 @@ describe("regression: collectTemplates paths match init directory structure (0.3
       for (const key of commandKeys) {
         expect(
           key,
-          `${id} command path should include trellis/ subdirectory: ${key}`,
-        ).toContain("/commands/trellis/");
+          `${id} command path should include arbor/ subdirectory: ${key}`,
+        ).toContain("/commands/arbor/");
       }
     }
   });
@@ -6795,32 +6795,32 @@ describe("regression: collectTemplates paths match init directory structure (0.3
 // =============================================================================
 
 describe("regression: parse_simple_yaml uses _unquote not greedy strip (0.3.8)", () => {
-  // 0.6.x: the parser was consolidated into trellis_config.py (config.py now
+  // 0.6.x: the parser was consolidated into arbor_config.py (config.py now
   // imports it), so these source assertions follow it there. config.py must
   // not grow a second copy back.
-  it("trellis_config.py defines _unquote helper", () => {
-    expect(commonTrellisConfig).toContain("def _unquote(value: str) -> str:");
+  it("arbor_config.py defines _unquote helper", () => {
+    expect(commonArborConfig).toContain("def _unquote(value: str) -> str:");
   });
 
-  it("trellis_config.py uses _unquote for list items, not .strip('\"')", () => {
+  it("arbor_config.py uses _unquote for list items, not .strip('\"')", () => {
     // The bug: .strip('"').strip("'") greedily eats nested quotes
     // e.g. "echo 'hello'" -> strip("'") -> echo 'hello (broken!)
-    expect(commonTrellisConfig).not.toContain(".strip('\"').strip(\"'\")");
-    expect(commonTrellisConfig).toContain("_unquote(stripped[2:].strip())");
+    expect(commonArborConfig).not.toContain(".strip('\"').strip(\"'\")");
+    expect(commonArborConfig).toContain("_unquote(stripped[2:].strip())");
   });
 
-  it("trellis_config.py uses _unquote for key-value, not .strip('\"')", () => {
+  it("arbor_config.py uses _unquote for key-value, not .strip('\"')", () => {
     // 0.5.11: parse path strips inline comments first, then unquotes, so YAML
     // `key: false  # comment` parses correctly. The forbidden
     // `.strip('"').strip("'")` greedy chain still must not appear.
-    expect(commonTrellisConfig).not.toContain(".strip('\"').strip(\"'\")");
-    expect(commonTrellisConfig).toContain("_unquote(value)");
-    expect(commonTrellisConfig).toContain("_strip_inline_comment(value)");
+    expect(commonArborConfig).not.toContain(".strip('\"').strip(\"'\")");
+    expect(commonArborConfig).toContain("_unquote(value)");
+    expect(commonArborConfig).toContain("_strip_inline_comment(value)");
   });
 
   it("config.py imports the parser instead of redefining it", () => {
     expect(commonConfig).toContain(
-      "from .trellis_config import parse_simple_yaml",
+      "from .arbor_config import parse_simple_yaml",
     );
     expect(commonConfig).not.toContain("def parse_simple_yaml(");
     expect(commonConfig).not.toContain("def _parse_yaml_block(");
@@ -6829,15 +6829,15 @@ describe("regression: parse_simple_yaml uses _unquote not greedy strip (0.3.8)",
 });
 
 describe("regression: parse_simple_yaml Python execution (0.3.8)", () => {
-  // trellis_config.py imports nothing from the package (hooks load it as a
+  // arbor_config.py imports nothing from the package (hooks load it as a
   // single file), so it runs standalone as-is — no source extraction needed.
   const pythonCmd = process.platform === "win32" ? "python" : "python3";
   let tmpDir: string;
 
   beforeEach(() => {
-    expect(commonTrellisConfig).toContain("def parse_simple_yaml(");
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "trellis-yaml-py-"));
-    fs.writeFileSync(path.join(tmpDir, "yaml_parser.py"), commonTrellisConfig);
+    expect(commonArborConfig).toContain("def parse_simple_yaml(");
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-yaml-py-"));
+    fs.writeFileSync(path.join(tmpDir, "yaml_parser.py"), commonArborConfig);
   });
 
   afterEach(() => {
@@ -7007,7 +7007,7 @@ describe("regression: templates/markdown/spec contains only .md.txt files (0.5.0
   // placeholder templates only — markdown/index.ts reads .md.txt via
   // readLocalTemplate, so bare .md files there are orphans (ship to dist as
   // dead weight, never land on user disks). Documented in
-  // .trellis/spec/cli/backend/directory-structure.md "Don't: Leak dogfood
+  // .arbor/spec/cli/backend/directory-structure.md "Don't: Leak dogfood
   // spec into templates/markdown/spec/". Captured while cleaning up ~2-year-old
   // leakage in task 04-21-task-schema-unify.
   it("every file under templates/markdown/spec ends in .md.txt", () => {
@@ -7035,11 +7035,11 @@ describe("regression: templates/markdown/spec contains only .md.txt files (0.5.0
   });
 });
 
-describe("regression: hook templates honor the TRELLIS_HOOKS kill switch", () => {
-  it("[trellis-hooks-env] all hook templates honor TRELLIS_HOOKS=0 / TRELLIS_DISABLE_HOOKS=1", () => {
+describe("regression: hook templates honor the ARBOR_HOOKS kill switch", () => {
+  it("[arbor-hooks-env] all hook templates honor ARBOR_HOOKS=0 / ARBOR_DISABLE_HOOKS=1", () => {
     // All shipped hook scripts must early-return when the operator sets
-    // TRELLIS_HOOKS=0 (or TRELLIS_DISABLE_HOOKS=1), so subprocess wrappers
-    // and casual-chat scenarios can disable Trellis injection without
+    // ARBOR_HOOKS=0 (or ARBOR_DISABLE_HOOKS=1), so subprocess wrappers
+    // and casual-chat scenarios can disable Arbor injection without
     // editing config or restarting under different settings.
     const sharedHookTargets = [
       "session-start.py",
@@ -7052,9 +7052,9 @@ describe("regression: hook templates honor the TRELLIS_HOOKS kill switch", () =>
         (h) => h.name === name,
       )?.content;
       expect(script, `shared-hooks/${name} should exist`).toBeTruthy();
-      expect(script).toContain('os.environ.get("TRELLIS_HOOKS") == "0"');
+      expect(script).toContain('os.environ.get("ARBOR_HOOKS") == "0"');
       expect(script).toContain(
-        'os.environ.get("TRELLIS_DISABLE_HOOKS") == "1"',
+        'os.environ.get("ARBOR_DISABLE_HOOKS") == "1"',
       );
     }
   });
@@ -7062,7 +7062,7 @@ describe("regression: hook templates honor the TRELLIS_HOOKS kill switch", () =>
 
 describe("regression: session-start.py f-string Python <=3.11 compat (0.5.2)", () => {
   // PEP 498 (Python <=3.11) forbids backslashes inside the *expression* part
-  // of an f-string. Trellis 0.5.0/0.5.1 shipped session-start hooks with
+  // of an f-string. Arbor 0.5.0/0.5.1 shipped session-start hooks with
   //   `f"{drive}:\\{rest.replace('/', '\\')}"`
   // which crashes on parse with `SyntaxError: f-string expression part cannot
   // include a backslash`. PEP 701 (Python 3.12+) lifted this restriction, so
@@ -7125,11 +7125,11 @@ describe("regression: sub-agent context injection fallback (0.5.3)", () => {
   // distributions, hooks disabled) sub-agents received the dispatch prompt
   // without prd / spec / jsonl context, with no recovery path.
   //
-  // The fix: hook output now begins with a `<!-- trellis-hook-injected -->`
-  // marker, and every class-1 trellis-implement / trellis-check definition
-  // file carries a Trellis Context Loading Protocol section telling the
+  // The fix: hook output now begins with a `<!-- arbor-hook-injected -->`
+  // marker, and every class-1 arbor-implement / arbor-check definition
+  // file carries a Arbor Context Loading Protocol section telling the
   // sub-agent to load context itself when the marker is absent.
-  const HOOK_INJECTED_MARKER = "<!-- trellis-hook-injected -->";
+  const HOOK_INJECTED_MARKER = "<!-- arbor-hook-injected -->";
 
   it("inject-subagent-context.py emits the marker for implement / check / finish", () => {
     const hook = getSharedHookScripts().find(
@@ -7142,7 +7142,7 @@ describe("regression: sub-agent context injection fallback (0.5.3)", () => {
     // task binding).
     expect(src).toContain(HOOK_INJECTED_MARKER);
     // Must appear at least three times (one per implement / check / finish).
-    const matches = src.match(/<!--\s*trellis-hook-injected\s*-->/g) ?? [];
+    const matches = src.match(/<!--\s*arbor-hook-injected\s*-->/g) ?? [];
     expect(matches.length).toBeGreaterThanOrEqual(3);
   });
 
@@ -7152,17 +7152,17 @@ describe("regression: sub-agent context injection fallback (0.5.3)", () => {
   it("workflow.md dispatch protocol covers all platforms (not class-2 only)", () => {
     const workflowPath = path.join(
       repoRootFb,
-      "packages/cli/src/templates/trellis/workflow.md",
+      "packages/cli/src/templates/arbor/workflow.md",
     );
     const wf = fs.readFileSync(workflowPath, "utf-8");
     // The protocol enforces `Active task: <path>` for ALL sub-agents (no
-    // trellis-research carve-out as of 0.5.8 — research sub-agents need the
+    // arbor-research carve-out as of 0.5.8 — research sub-agents need the
     // task path to know which `{task_dir}/research/` to write into).
     expect(wf).toContain("Sub-agent dispatch protocol");
     expect(wf).toContain("all platforms");
     expect(wf).toContain("all sub-agents");
-    expect(wf).not.toContain("EXCEPT trellis-research");
-    expect(wf).toContain("trellis-research");
+    expect(wf).not.toContain("EXCEPT arbor-research");
+    expect(wf).toContain("arbor-research");
     expect(wf).toContain("Active task:");
     // Must NOT scope the rule to class-2 only — that was the pre-0.5.3 limit.
     expect(wf).not.toMatch(
@@ -7175,7 +7175,7 @@ describe("regression: configSectionsAdded (issue-codex-dispatch-mode)", () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "trellis-config-section-"));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-config-section-"));
   });
 
   afterEach(() => {
@@ -7224,18 +7224,18 @@ describe("regression: configSectionsAdded (issue-codex-dispatch-mode)", () => {
   it("[config-sections] applyConfigSectionsAdded appends section when sentinel missing, idempotent on rerun", async () => {
     const { applyConfigSectionsAdded } =
       await import("../src/commands/update.js");
-    const trellisDir = path.join(tmpDir, ".trellis");
-    fs.mkdirSync(trellisDir, { recursive: true });
-    const userConfigPath = path.join(trellisDir, "config.yaml");
+    const arborDir = path.join(tmpDir, ".arbor");
+    fs.mkdirSync(arborDir, { recursive: true });
+    const userConfigPath = path.join(arborDir, "config.yaml");
     const userConfig = [
-      "# Trellis Configuration",
+      "# Arbor Configuration",
       'session_commit_message: "chore: record journal"',
       "",
     ].join("\n");
     fs.writeFileSync(userConfigPath, userConfig);
 
     const bundledTemplate = [
-      "# Trellis Configuration",
+      "# Arbor Configuration",
       'session_commit_message: "chore: record journal"',
       "",
       "#-------------------------------------------------------------------------------",
@@ -7248,13 +7248,13 @@ describe("regression: configSectionsAdded (issue-codex-dispatch-mode)", () => {
 
     const entries = [
       {
-        file: ".trellis/config.yaml",
+        file: ".arbor/config.yaml",
         sentinel: "codex:",
         sectionHeading: "Codex (sub-agent dispatch behavior)",
       },
     ];
     const bundled = new Map<string, string>([
-      [".trellis/config.yaml", bundledTemplate],
+      [".arbor/config.yaml", bundledTemplate],
     ]);
 
     const first = applyConfigSectionsAdded(entries, tmpDir, bundled);
@@ -7277,64 +7277,64 @@ describe("regression: configSectionsAdded (issue-codex-dispatch-mode)", () => {
     const result = applyConfigSectionsAdded(
       [
         {
-          file: ".trellis/config.yaml",
+          file: ".arbor/config.yaml",
           sentinel: "codex:",
           sectionHeading: "Codex (sub-agent dispatch behavior)",
         },
       ],
       tmpDir,
-      new Map<string, string>([[".trellis/config.yaml", "# fake template"]]),
+      new Map<string, string>([[".arbor/config.yaml", "# fake template"]]),
     );
     expect(result.appended).toBe(0);
   });
 });
 
 // =============================================================================
-// safe-commit: gitignored .trellis/ recovery (0.5.10 → 0.5.11)
+// safe-commit: gitignored .arbor/ recovery (0.5.10 → 0.5.11)
 // =============================================================================
 //
-// Real user incident: project .gitignore listed `.trellis/`. add_session.py's
-// auto-commit ran `git add .trellis/workspace .trellis/tasks`, got `ignored
-// by .gitignore`, fell back to a hint suggesting `git add .trellis &&
+// Real user incident: project .gitignore listed `.arbor/`. add_session.py's
+// auto-commit ran `git add .arbor/workspace .arbor/tasks`, got `ignored
+// by .gitignore`, fell back to a hint suggesting `git add .arbor &&
 // commit`. The AI agent driving the workflow extrapolated that to
-// `git add -f .trellis/`, which forced in `.trellis/.backup-*/`,
-// `.trellis/worktrees/`, `.trellis/.template-hashes.json`, etc. — 548 files
+// `git add -f .arbor/`, which forced in `.arbor/.backup-*/`,
+// `.arbor/worktrees/`, `.arbor/.template-hashes.json`, etc. — 548 files
 // / 83474 lines of caches/backups committed.
 //
 // 0.5.10 fix (since reverted):
 //   - Scripts only stage SPECIFIC product paths.
 //   - On `ignored by` the scripts retried with `git add -f <specific paths>`.
-// That auto-`-f` was an over-fix — when a user gitignores `.trellis/` they
-// mean "keep .trellis/ local-only", and forcing the commit through (even on
+// That auto-`-f` was an over-fix — when a user gitignores `.arbor/` they
+// mean "keep .arbor/ local-only", and forcing the commit through (even on
 // narrow paths) violates user intent. Group-chat report: a finish-work auto
-// committed `.trellis/workspace/` straight into a repo whose .gitignore
-// excluded `.trellis/`.
+// committed `.arbor/workspace/` straight into a repo whose .gitignore
+// excluded `.arbor/`.
 //
 // 0.5.11 fix (current):
 //   - Plain `git add <specific>` is tried once. On `ignored by`, the script
 //     warns and skips the auto-commit — never `-f`.
 //   - New `session_auto_commit: false` config opts the user out of auto-stage
 //     and auto-commit entirely (issue #245).
-//   - The warning explicitly says ``Do NOT use `git add -f .trellis/```` so
+//   - The warning explicitly says ``Do NOT use `git add -f .arbor/```` so
 //     AI re-reading the log doesn't reinvent the bug, and points at the new
 //     `session_auto_commit: false` knob.
 //
-// These tests synthesize a tmp git repo with `.trellis/` gitignored and
+// These tests synthesize a tmp git repo with `.arbor/` gitignored and
 // verify (a) on `ignored by` the script warns + skips (no commit, no -f),
 // (b) `session_auto_commit: false` skips git entirely in any state, and
 // (c) the negative-rule warning + new config hint are reachable.
 // =============================================================================
 
-describe("regression: safe auto-commit when .trellis/ is gitignored (0.5.10 → 0.5.11)", () => {
+describe("regression: safe auto-commit when .arbor/ is gitignored (0.5.10 → 0.5.11)", () => {
   let tmpDir: string;
   const pyCmd = process.platform === "win32" ? "python" : "python3";
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "trellis-safe-commit-"));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-safe-commit-"));
     execSync("git init -q -b main", { cwd: tmpDir });
     // Configure user so git commit succeeds in CI sandboxes.
-    execSync('git config user.email "test@trellis.local"', { cwd: tmpDir });
-    execSync('git config user.name "Trellis Test"', { cwd: tmpDir });
+    execSync('git config user.email "test@arbor.local"', { cwd: tmpDir });
+    execSync('git config user.name "Arbor Test"', { cwd: tmpDir });
   });
 
   afterEach(() => {
@@ -7347,8 +7347,8 @@ describe("regression: safe auto-commit when .trellis/ is gitignored (0.5.10 → 
     fs.writeFileSync(abs, content, "utf-8");
   }
 
-  function writeTrellisScripts(): void {
-    const scriptsDir = path.join(tmpDir, ".trellis", "scripts");
+  function writeArborScripts(): void {
+    const scriptsDir = path.join(tmpDir, ".arbor", "scripts");
     for (const [rel, content] of getAllScripts()) {
       const abs = path.join(scriptsDir, rel);
       fs.mkdirSync(path.dirname(abs), { recursive: true });
@@ -7358,7 +7358,7 @@ describe("regression: safe auto-commit when .trellis/ is gitignored (0.5.10 → 
 
   function writeWorkspaceIndex(): void {
     writeFile(
-      ".trellis/workspace/test-dev/index.md",
+      ".arbor/workspace/test-dev/index.md",
       [
         "# Workspace Index - test-dev",
         "",
@@ -7389,43 +7389,43 @@ describe("regression: safe auto-commit when .trellis/ is gitignored (0.5.10 → 
     );
   }
 
-  function setupRepo(options?: { gitignoreTrellis?: boolean }): void {
-    writeTrellisScripts();
+  function setupRepo(options?: { gitignoreArbor?: boolean }): void {
+    writeArborScripts();
     writeFile(
-      ".trellis/.developer",
+      ".arbor/.developer",
       "name=test-dev\ninitialized_at=2026-05-09T00:00:00\n",
     );
     writeFile(
-      ".trellis/workspace/test-dev/journal-1.md",
+      ".arbor/workspace/test-dev/journal-1.md",
       "# Journal - test-dev (Part 1)\n\n---\n",
     );
     writeWorkspaceIndex();
     // Ignored caches/backups must exist on disk to prove they don't get
     // staged when -f is forced on specific paths.
     writeFile(
-      ".trellis/.backup-2026-05-09/should-not-be-committed.txt",
+      ".arbor/.backup-2026-05-09/should-not-be-committed.txt",
       "secret-backup\n",
     );
     writeFile(
-      ".trellis/worktrees/wt-a/should-not-be-committed.txt",
+      ".arbor/worktrees/wt-a/should-not-be-committed.txt",
       "secret-worktree\n",
     );
     writeFile(
-      ".trellis/.template-hashes.json",
+      ".arbor/.template-hashes.json",
       '{"_": "should-not-be-committed"}\n',
     );
     writeFile(
-      ".trellis/.runtime/sessions/should-not-be-committed.json",
+      ".arbor/.runtime/sessions/should-not-be-committed.json",
       "{}\n",
     );
 
-    if (options?.gitignoreTrellis) {
-      writeFile(".gitignore", ".trellis/\n");
+    if (options?.gitignoreArbor) {
+      writeFile(".gitignore", ".arbor/\n");
     }
     // Seed an initial commit so HEAD exists.
     writeFile("README.md", "test\n");
     execSync("git add README.md", { cwd: tmpDir });
-    if (options?.gitignoreTrellis) {
+    if (options?.gitignoreArbor) {
       execSync("git add .gitignore", { cwd: tmpDir });
     }
     execSync('git commit -q -m "init"', { cwd: tmpDir });
@@ -7434,7 +7434,7 @@ describe("regression: safe auto-commit when .trellis/ is gitignored (0.5.10 → 
   function runAddSession(): { stdout: string; stderr: string } {
     const scriptPath = path.join(
       tmpDir,
-      ".trellis",
+      ".arbor",
       "scripts",
       "add_session.py",
     );
@@ -7444,7 +7444,7 @@ describe("regression: safe auto-commit when .trellis/ is gitignored (0.5.10 → 
       {
         cwd: tmpDir,
         encoding: "utf-8",
-        env: { ...process.env, TRELLIS_CONTEXT_ID: "session-a" },
+        env: { ...process.env, ARBOR_CONTEXT_ID: "session-a" },
       },
     );
     return {
@@ -7461,8 +7461,8 @@ describe("regression: safe auto-commit when .trellis/ is gitignored (0.5.10 → 
     return out.split("\n").filter((l) => l.length > 0);
   }
 
-  it("[gitignore-trellis] add_session warns and skips when .trellis/ is ignored (default mode)", () => {
-    setupRepo({ gitignoreTrellis: true });
+  it("[gitignore-arbor] add_session warns and skips when .arbor/ is ignored (default mode)", () => {
+    setupRepo({ gitignoreArbor: true });
     const { stderr } = runAddSession();
 
     // Plain add fails with "ignored by". 0.5.11 must NOT retry with -f.
@@ -7470,16 +7470,16 @@ describe("regression: safe auto-commit when .trellis/ is gitignored (0.5.10 → 
     // "Auto-committed" line, and the warning fires.
     expect(stderr).not.toContain("Auto-committed");
     expect(stderr).toContain("ignored by your .gitignore");
-    expect(stderr).toContain("Do NOT use `git add -f .trellis/`");
+    expect(stderr).toContain("Do NOT use `git add -f .arbor/`");
     expect(stderr).toContain("session_auto_commit: false");
 
-    // Nothing under .trellis/ should be tracked: the user's .gitignore
+    // Nothing under .arbor/ should be tracked: the user's .gitignore
     // intent is preserved.
     const tracked = listCommittedFiles();
     for (const tracked_path of tracked) {
       expect(
-        tracked_path.startsWith(".trellis/"),
-        `should not commit anything under .trellis/ (got: ${tracked_path})`,
+        tracked_path.startsWith(".arbor/"),
+        `should not commit anything under .arbor/ (got: ${tracked_path})`,
       ).toBe(false);
     }
 
@@ -7487,34 +7487,34 @@ describe("regression: safe auto-commit when .trellis/ is gitignored (0.5.10 → 
     // before attempting auto-commit) — only git was untouched.
     expect(
       fs.existsSync(
-        path.join(tmpDir, ".trellis/workspace/test-dev/journal-1.md"),
+        path.join(tmpDir, ".arbor/workspace/test-dev/journal-1.md"),
       ),
     ).toBe(true);
     expect(
-      fs.existsSync(path.join(tmpDir, ".trellis/workspace/test-dev/index.md")),
+      fs.existsSync(path.join(tmpDir, ".arbor/workspace/test-dev/index.md")),
     ).toBe(true);
   });
 
-  it("[gitignore-trellis] add_session works normally when .trellis/ is NOT ignored", () => {
+  it("[gitignore-arbor] add_session works normally when .arbor/ is NOT ignored", () => {
     // Regression guard: pre-existing behavior must not change for users
-    // whose .gitignore does not exclude .trellis/.
-    setupRepo({ gitignoreTrellis: false });
+    // whose .gitignore does not exclude .arbor/.
+    setupRepo({ gitignoreArbor: false });
     const { stderr } = runAddSession();
     expect(stderr).toContain("Auto-committed");
 
     const tracked = listCommittedFiles();
-    expect(tracked).toContain(".trellis/workspace/test-dev/journal-1.md");
+    expect(tracked).toContain(".arbor/workspace/test-dev/journal-1.md");
   });
 
-  it("[gitignore-trellis] safe_commit module ships and contains the negative warning + new config hint", () => {
+  it("[gitignore-arbor] safe_commit module ships and contains the negative warning + new config hint", () => {
     // The warning's exact text matters because AI agents read it.
     // Specifically the negative example must appear verbatim so any future
     // refactor that removes it will fail this test. 0.5.11 also adds the
     // new session_auto_commit hint.
     const safeCommit = getAllScripts().get("common/safe_commit.py");
     expect(safeCommit).toBeTruthy();
-    expect(safeCommit).toContain("Do NOT use `git add -f .trellis/`");
-    expect(safeCommit).toContain("safe_trellis_paths_to_add");
+    expect(safeCommit).toContain("Do NOT use `git add -f .arbor/`");
+    expect(safeCommit).toContain("safe_arbor_paths_to_add");
     expect(safeCommit).toContain("safe_archive_paths_to_add");
     expect(safeCommit).toContain("safe_git_add");
     // 0.5.11: new hint pointing users at the config knob.
@@ -7524,47 +7524,47 @@ describe("regression: safe auto-commit when .trellis/ is gitignored (0.5.10 → 
     expect(safeCommit).not.toMatch(/\["add", "-f", "--",/);
   });
 
-  it("[gitignore-trellis] task.py archive warns and skips when .trellis/ is ignored (default mode)", () => {
-    setupRepo({ gitignoreTrellis: true });
+  it("[gitignore-arbor] task.py archive warns and skips when .arbor/ is ignored (default mode)", () => {
+    setupRepo({ gitignoreArbor: true });
     // Create a task to archive.
     writeFile(
-      ".trellis/tasks/issue-500/task.json",
+      ".arbor/tasks/issue-500/task.json",
       JSON.stringify(
         { title: "Test archive", status: "in_progress", package: null },
         null,
         2,
       ),
     );
-    writeFile(".trellis/tasks/issue-500/prd.md", "# PRD\n");
+    writeFile(".arbor/tasks/issue-500/prd.md", "# PRD\n");
 
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     const result = spawnSync(pyCmd, [taskScriptPath, "archive", "issue-500"], {
       cwd: tmpDir,
       encoding: "utf-8",
-      env: { ...process.env, TRELLIS_CONTEXT_ID: "session-arch" },
+      env: { ...process.env, ARBOR_CONTEXT_ID: "session-arch" },
     });
     const stderr = result.stderr ?? "";
     // 0.5.11: must NOT retry with -f, must NOT auto-commit. Warning must
     // surface so the user knows their .gitignore won.
     expect(stderr).not.toContain("Auto-committed");
     expect(stderr).toContain("ignored by your .gitignore");
-    expect(stderr).toContain("Do NOT use `git add -f .trellis/`");
+    expect(stderr).toContain("Do NOT use `git add -f .arbor/`");
 
     const tracked = listCommittedFiles();
-    // Nothing under .trellis/ should be tracked.
+    // Nothing under .arbor/ should be tracked.
     for (const t of tracked) {
       expect(
-        t.startsWith(".trellis/"),
-        `should not commit anything under .trellis/ (got: ${t})`,
+        t.startsWith(".arbor/"),
+        `should not commit anything under .arbor/ (got: ${t})`,
       ).toBe(false);
     }
 
     // The archive directory move on disk still happened — only git was
     // untouched.
     const archiveExists = fs
-      .readdirSync(path.join(tmpDir, ".trellis/tasks/archive"))
+      .readdirSync(path.join(tmpDir, ".arbor/tasks/archive"))
       .some((monthDir) => {
-        const monthPath = path.join(tmpDir, ".trellis/tasks/archive", monthDir);
+        const monthPath = path.join(tmpDir, ".arbor/tasks/archive", monthDir);
         return (
           fs.statSync(monthPath).isDirectory() &&
           fs.existsSync(path.join(monthPath, "issue-500"))
@@ -7578,13 +7578,13 @@ describe("regression: safe auto-commit when .trellis/ is gitignored (0.5.10 → 
   // ===========================================================================
 
   function writeConfigYaml(content: string): void {
-    writeFile(".trellis/config.yaml", content);
+    writeFile(".arbor/config.yaml", content);
   }
 
   it("[session_auto_commit=false] add_session skips git entirely (no add, no commit)", () => {
     // User wants journal/task files written to disk but no auto-staging
     // and no auto-commit. Issue #245 + screenshot user use case.
-    setupRepo({ gitignoreTrellis: false });
+    setupRepo({ gitignoreArbor: false });
     writeConfigYaml("session_auto_commit: false\n");
 
     const { stderr } = runAddSession();
@@ -7608,30 +7608,30 @@ describe("regression: safe auto-commit when .trellis/ is gitignored (0.5.10 → 
     // Files were still written to disk.
     expect(
       fs.existsSync(
-        path.join(tmpDir, ".trellis/workspace/test-dev/journal-1.md"),
+        path.join(tmpDir, ".arbor/workspace/test-dev/journal-1.md"),
       ),
     ).toBe(true);
   });
 
   it("[session_auto_commit=false] task.py archive skips git entirely", () => {
-    setupRepo({ gitignoreTrellis: false });
+    setupRepo({ gitignoreArbor: false });
     writeConfigYaml("session_auto_commit: false\n");
 
     writeFile(
-      ".trellis/tasks/issue-600/task.json",
+      ".arbor/tasks/issue-600/task.json",
       JSON.stringify(
         { title: "Test archive", status: "in_progress", package: null },
         null,
         2,
       ),
     );
-    writeFile(".trellis/tasks/issue-600/prd.md", "# PRD\n");
+    writeFile(".arbor/tasks/issue-600/prd.md", "# PRD\n");
 
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     const result = spawnSync(pyCmd, [taskScriptPath, "archive", "issue-600"], {
       cwd: tmpDir,
       encoding: "utf-8",
-      env: { ...process.env, TRELLIS_CONTEXT_ID: "session-arch-2" },
+      env: { ...process.env, ARBOR_CONTEXT_ID: "session-arch-2" },
     });
     const stderr = result.stderr ?? "";
     expect(stderr).not.toContain("Auto-committed");
@@ -7645,9 +7645,9 @@ describe("regression: safe auto-commit when .trellis/ is gitignored (0.5.10 → 
 
     // Archive directory move still happened on disk.
     const archiveExists = fs
-      .readdirSync(path.join(tmpDir, ".trellis/tasks/archive"))
+      .readdirSync(path.join(tmpDir, ".arbor/tasks/archive"))
       .some((monthDir) => {
-        const monthPath = path.join(tmpDir, ".trellis/tasks/archive", monthDir);
+        const monthPath = path.join(tmpDir, ".arbor/tasks/archive", monthDir);
         return (
           fs.statSync(monthPath).isDirectory() &&
           fs.existsSync(path.join(monthPath, "issue-600"))
@@ -7659,8 +7659,8 @@ describe("regression: safe auto-commit when .trellis/ is gitignored (0.5.10 → 
   it("[session_auto_commit] inline comment is stripped before parsing", () => {
     // YAML inline-comment trap: `key: false  # comment` previously broke in
     // common/config.py because parse_simple_yaml didn't strip ` #`. This
-    // verifies the helper is shared with trellis_config.py's parser.
-    setupRepo({ gitignoreTrellis: false });
+    // verifies the helper is shared with arbor_config.py's parser.
+    setupRepo({ gitignoreArbor: false });
     writeConfigYaml("session_auto_commit: false  # disable for this project\n");
 
     const { stderr } = runAddSession();
@@ -7680,7 +7680,7 @@ describe("regression: safe auto-commit when .trellis/ is gitignored (0.5.10 → 
     // Spot-check `FALSE` (uppercase) and `no` here; `0` and `off` follow
     // the same code path (the lowercase set in get_session_auto_commit).
     for (const variant of ["FALSE", "no", "off", "0"]) {
-      setupRepo({ gitignoreTrellis: false });
+      setupRepo({ gitignoreArbor: false });
       writeConfigYaml(`session_auto_commit: ${variant}\n`);
 
       const { stderr } = runAddSession();
@@ -7691,15 +7691,15 @@ describe("regression: safe auto-commit when .trellis/ is gitignored (0.5.10 → 
 
       // Reset for next iteration.
       fs.rmSync(tmpDir, { recursive: true, force: true });
-      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "trellis-safe-commit-"));
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-safe-commit-"));
       execSync("git init -q -b main", { cwd: tmpDir });
-      execSync('git config user.email "test@trellis.local"', { cwd: tmpDir });
-      execSync('git config user.name "Trellis Test"', { cwd: tmpDir });
+      execSync('git config user.email "test@arbor.local"', { cwd: tmpDir });
+      execSync('git config user.name "Arbor Test"', { cwd: tmpDir });
     }
   });
 
   it("[session_auto_commit] invalid value falls back to true with stderr warn", () => {
-    setupRepo({ gitignoreTrellis: false });
+    setupRepo({ gitignoreArbor: false });
     writeConfigYaml("session_auto_commit: maybe\n");
 
     const { stderr } = runAddSession();
@@ -7735,10 +7735,10 @@ describe("regression: bounded index.lock retry on archive auto-commit", () => {
   const taskName = "issue-lock";
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "trellis-index-lock-"));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-index-lock-"));
     execSync("git init -q -b main", { cwd: tmpDir });
-    execSync('git config user.email "test@trellis.local"', { cwd: tmpDir });
-    execSync('git config user.name "Trellis Test"', { cwd: tmpDir });
+    execSync('git config user.email "test@arbor.local"', { cwd: tmpDir });
+    execSync('git config user.name "Arbor Test"', { cwd: tmpDir });
   });
 
   afterEach(() => {
@@ -7756,25 +7756,25 @@ describe("regression: bounded index.lock retry on archive auto-commit", () => {
   }
 
   function setupRepo(): void {
-    const scriptsDir = path.join(tmpDir, ".trellis", "scripts");
+    const scriptsDir = path.join(tmpDir, ".arbor", "scripts");
     for (const [rel, content] of getAllScripts()) {
       const abs = path.join(scriptsDir, rel);
       fs.mkdirSync(path.dirname(abs), { recursive: true });
       fs.writeFileSync(abs, content, "utf-8");
     }
     writeFile(
-      ".trellis/.developer",
+      ".arbor/.developer",
       "name=test-dev\ninitialized_at=2026-08-09T00:00:00\n",
     );
     writeFile(
-      `.trellis/tasks/${taskName}/task.json`,
+      `.arbor/tasks/${taskName}/task.json`,
       JSON.stringify(
         { title: "Locked archive", status: "in_progress", package: null },
         null,
         2,
       ),
     );
-    writeFile(`.trellis/tasks/${taskName}/prd.md`, "# PRD\n");
+    writeFile(`.arbor/tasks/${taskName}/prd.md`, "# PRD\n");
     writeFile("README.md", "test\n");
     // The task must be tracked: an untracked task dir makes a failed
     // auto-commit inconsequential, which is not the case under test.
@@ -7783,17 +7783,17 @@ describe("regression: bounded index.lock retry on archive auto-commit", () => {
   }
 
   function runArchive(): { status: number | null; stderr: string } {
-    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     const result = spawnSync(pyCmd, [taskScriptPath, "archive", taskName], {
       cwd: tmpDir,
       encoding: "utf-8",
-      env: { ...process.env, TRELLIS_CONTEXT_ID: "session-lock" },
+      env: { ...process.env, ARBOR_CONTEXT_ID: "session-lock" },
     });
     return { status: result.status, stderr: result.stderr ?? "" };
   }
 
   function archivedTaskExists(): boolean {
-    const archiveRoot = path.join(tmpDir, ".trellis/tasks/archive");
+    const archiveRoot = path.join(tmpDir, ".arbor/tasks/archive");
     if (!fs.existsSync(archiveRoot)) return false;
     return fs.readdirSync(archiveRoot).some((monthDir) => {
       const monthPath = path.join(archiveRoot, monthDir);
@@ -7821,7 +7821,7 @@ import sys
 from pathlib import Path
 
 root = Path.cwd()
-sys.path.insert(0, str(root / ".trellis" / "scripts"))
+sys.path.insert(0, str(root / ".arbor" / "scripts"))
 import common.git as g
 
 # Real backoff would make this probe sleep for its whole runtime.
@@ -7914,7 +7914,7 @@ print(json.dumps({
     expect(status, stderr).toBe(0);
     expect(stderr).toContain("Auto-committed");
     expect(archivedTaskExists()).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, ".trellis/tasks", taskName))).toBe(
+    expect(fs.existsSync(path.join(tmpDir, ".arbor/tasks", taskName))).toBe(
       false,
     );
 
@@ -7928,7 +7928,7 @@ print(json.dumps({
       cwd: tmpDir,
       encoding: "utf-8",
     });
-    expect(dirty).not.toContain(`.trellis/tasks/${taskName}/`);
+    expect(dirty).not.toContain(`.arbor/tasks/${taskName}/`);
   });
 
   it("[index-lock] a lock that never clears aborts with a diagnostic naming it", () => {
@@ -7950,7 +7950,7 @@ print(json.dumps({
 
     // Consistent state: the move completed, nothing is half-moved.
     expect(archivedTaskExists()).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, ".trellis/tasks", taskName))).toBe(
+    expect(fs.existsSync(path.join(tmpDir, ".arbor/tasks", taskName))).toBe(
       false,
     );
 
@@ -7961,7 +7961,7 @@ print(json.dumps({
       cwd: tmpDir,
       encoding: "utf-8",
     });
-    expect(dirty).toContain(`.trellis/tasks/${taskName}/`);
+    expect(dirty).toContain(`.arbor/tasks/${taskName}/`);
   });
 });
 
@@ -7969,9 +7969,9 @@ print(json.dumps({
 // regression: dogfood ↔ shipped Python script parity
 // =============================================================================
 
-describe("regression: .trellis/scripts stays byte-identical to templates/trellis/scripts", () => {
-  // `.trellis/scripts/` is Trellis's own dogfood copy;
-  // `packages/cli/src/templates/trellis/scripts/` is what ships to users.
+describe("regression: .arbor/scripts stays byte-identical to templates/arbor/scripts", () => {
+  // `.arbor/scripts/` is Arbor's own dogfood copy;
+  // `packages/cli/src/templates/arbor/scripts/` is what ships to users.
   // They are two physical copies of the same 28 files and nothing enforced
   // parity, so one-sided edits landed silently — PR #390 changed the template's
   // `common/session_context.py` upgrade hint and left the dogfood copy on the
@@ -7979,10 +7979,10 @@ describe("regression: .trellis/scripts stays byte-identical to templates/trellis
   // build failure.
   const __dirnameParity = path.dirname(fileURLToPath(import.meta.url));
   const parityRepoRoot = path.resolve(__dirnameParity, "../../..");
-  const dogfoodScriptsRoot = path.join(parityRepoRoot, ".trellis", "scripts");
+  const dogfoodScriptsRoot = path.join(parityRepoRoot, ".arbor", "scripts");
   const templateScriptsRoot = path.join(
     parityRepoRoot,
-    "packages/cli/src/templates/trellis/scripts",
+    "packages/cli/src/templates/arbor/scripts",
   );
 
   function listPyFiles(root: string): string[] {
@@ -8007,7 +8007,7 @@ describe("regression: .trellis/scripts stays byte-identical to templates/trellis
     const dogfoodFiles = listPyFiles(dogfoodScriptsRoot);
     expect(
       dogfoodFiles,
-      "`.trellis/scripts/` and `packages/cli/src/templates/trellis/scripts/` " +
+      "`.arbor/scripts/` and `packages/cli/src/templates/arbor/scripts/` " +
         "must hold the same .py files — a script added to (or deleted from) " +
         "one tree must be mirrored in the other.",
     ).toEqual(templateFiles);
@@ -8018,7 +8018,7 @@ describe("regression: .trellis/scripts stays byte-identical to templates/trellis
       const dogfoodPath = path.join(dogfoodScriptsRoot, relativePath);
       expect(
         fs.existsSync(dogfoodPath),
-        `.trellis/scripts/${relativePath} is missing (template has it)`,
+        `.arbor/scripts/${relativePath} is missing (template has it)`,
       ).toBe(true);
       const dogfoodBytes = fs.readFileSync(dogfoodPath);
       const templateBytes = fs.readFileSync(
@@ -8026,8 +8026,8 @@ describe("regression: .trellis/scripts stays byte-identical to templates/trellis
       );
       expect(
         dogfoodBytes.equals(templateBytes),
-        `.trellis/scripts/${relativePath} has drifted from ` +
-          `packages/cli/src/templates/trellis/scripts/${relativePath}. ` +
+        `.arbor/scripts/${relativePath} has drifted from ` +
+          `packages/cli/src/templates/arbor/scripts/${relativePath}. ` +
           `Edit both copies, never one.`,
       ).toBe(true);
     });
@@ -8045,7 +8045,7 @@ describe("regression: compat alias must not win platform detection", () => {
   // no_task while the pointer sits on disk.
   //
   // Observed on CodeBuddy IDE 4.10.4: `codebuddy_ae54840e….json` in
-  // .trellis/.runtime/sessions/ next to `update-check-claude_ae54840e….marker`
+  // .arbor/.runtime/sessions/ next to `update-check-claude_ae54840e….marker`
   // — same session id, two different platform prefixes.
   const HOOKS_WITH_DETECTION = ["inject-workflow-state.py", "session-start.py"];
 
@@ -8088,14 +8088,14 @@ describe("regression: task.py rename rewrites every reference in one pass", () =
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "trellis-task-rename-"));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-task-rename-"));
     for (const [rel, content] of getAllScripts()) {
-      const abs = path.join(tmpDir, ".trellis", "scripts", rel);
+      const abs = path.join(tmpDir, ".arbor", "scripts", rel);
       fs.mkdirSync(path.dirname(abs), { recursive: true });
       fs.writeFileSync(abs, content, "utf-8");
     }
     fs.writeFileSync(
-      path.join(tmpDir, ".trellis", ".developer"),
+      path.join(tmpDir, ".arbor", ".developer"),
       "name=test-dev\ninitialized_at=2026-08-09T00:00:00\n",
     );
     fs.mkdirSync(taskDir("archive"), { recursive: true });
@@ -8112,7 +8112,7 @@ describe("regression: task.py rename rewrites every reference in one pass", () =
   } {
     const proc = spawnSync(
       pyCmd,
-      [path.join(".trellis", "scripts", "task.py"), ...args],
+      [path.join(".arbor", "scripts", "task.py"), ...args],
       { cwd: tmpDir, encoding: "utf-8" },
     );
     return {
@@ -8123,7 +8123,7 @@ describe("regression: task.py rename rewrites every reference in one pass", () =
   }
 
   function taskDir(...segments: string[]): string {
-    return path.join(tmpDir, ".trellis", "tasks", ...segments);
+    return path.join(tmpDir, ".arbor", "tasks", ...segments);
   }
 
   function readTaskJson(name: string): Record<string, unknown> {
@@ -8148,7 +8148,7 @@ describe("regression: task.py rename rewrites every reference in one pass", () =
     return `${datePrefix}-${slug}`;
   }
 
-  /** Every `<file>:<line>` under .trellis/tasks/ that still names `taskName`. */
+  /** Every `<file>:<line>` under .arbor/tasks/ that still names `taskName`. */
   function scanForName(taskName: string): string[] {
     const pattern = new RegExp(`(?<![0-9A-Za-z_-])${taskName}(?![0-9A-Za-z_-])`);
     const hits: string[] = [];
@@ -8219,10 +8219,10 @@ describe("regression: task.py rename rewrites every reference in one pass", () =
     create("kid", target);
     fs.writeFileSync(
       path.join(taskDir(target), "implement.jsonl"),
-      `{"file": ".trellis/tasks/${target}/research.md", "reason": "findings"}\n`,
+      `{"file": ".arbor/tasks/${target}/research.md", "reason": "findings"}\n`,
     );
     fs.writeFileSync(
-      path.join(tmpDir, ".trellis", "workflow.md"),
+      path.join(tmpDir, ".arbor", "workflow.md"),
       `The plan is tracked in ${target}.\n`,
     );
 
@@ -8240,21 +8240,21 @@ describe("regression: task.py rename rewrites every reference in one pass", () =
     // The whole point of the dry run: what it printed is what the real run did.
     expect(applied.stdout).toBe(dry.stdout);
     expect(dry.stdout).toContain(
-      `dir: .trellis/tasks/${target} -> .trellis/tasks/${datePrefix}-renamed`,
+      `dir: .arbor/tasks/${target} -> .arbor/tasks/${datePrefix}-renamed`,
     );
     expect(dry.stdout).toContain("task.json: id: target -> renamed");
     expect(dry.stdout).toContain(
-      `backref: .trellis/tasks/${parent}/task.json: children[0]: ${target} -> ${datePrefix}-renamed`,
+      `backref: .arbor/tasks/${parent}/task.json: children[0]: ${target} -> ${datePrefix}-renamed`,
     );
     expect(dry.stdout).toContain(
-      `jsonl: .trellis/tasks/${target}/implement.jsonl:1:`,
+      `jsonl: .arbor/tasks/${target}/implement.jsonl:1:`,
     );
     // References outside the task dir are reported, never rewritten.
     expect(dry.stdout).toContain(
-      "reported (not rewritten): .trellis/workflow.md:1",
+      "reported (not rewritten): .arbor/workflow.md:1",
     );
     expect(
-      fs.readFileSync(path.join(tmpDir, ".trellis", "workflow.md"), "utf-8"),
+      fs.readFileSync(path.join(tmpDir, ".arbor", "workflow.md"), "utf-8"),
     ).toContain(target);
   });
 
@@ -8264,9 +8264,9 @@ describe("regression: task.py rename rewrites every reference in one pass", () =
     fs.writeFileSync(
       path.join(taskDir(target), "check.jsonl"),
       [
-        `{"file": ".trellis/tasks/${target}/research.md", "reason": "findings"}`,
-        `{"file": ".trellis/spec/guides/style.md", "reason": "spec"}`,
-        `{"file": ".trellis/tasks/${sibling}/notes.md", "reason": "sibling"}`,
+        `{"file": ".arbor/tasks/${target}/research.md", "reason": "findings"}`,
+        `{"file": ".arbor/spec/guides/style.md", "reason": "spec"}`,
+        `{"file": ".arbor/tasks/${sibling}/notes.md", "reason": "sibling"}`,
         "",
       ].join("\n"),
     );
@@ -8278,10 +8278,10 @@ describe("regression: task.py rename rewrites every reference in one pass", () =
       path.join(taskDir(renamed), "check.jsonl"),
       "utf-8",
     );
-    expect(after).toContain(`".trellis/tasks/${renamed}/research.md"`);
-    expect(after).toContain('".trellis/spec/guides/style.md"');
+    expect(after).toContain(`".arbor/tasks/${renamed}/research.md"`);
+    expect(after).toContain('".arbor/spec/guides/style.md"');
     // `target` is a prefix of `target-other`; the sibling must survive intact.
-    expect(after).toContain(`".trellis/tasks/${sibling}/notes.md"`);
+    expect(after).toContain(`".arbor/tasks/${sibling}/notes.md"`);
   });
 
   it("[task-rename] refuses an existing destination, an archived name, a bad slug and an unknown task", () => {
@@ -8335,18 +8335,18 @@ describe("regression: task.py rename rewrites every reference in one pass", () =
     // very next turn resolved the active task as stale/missing.
     const target = create("target");
     const other = create("bystander");
-    const sessionsDir = path.join(tmpDir, ".trellis", ".runtime", "sessions");
+    const sessionsDir = path.join(tmpDir, ".arbor", ".runtime", "sessions");
     fs.mkdirSync(sessionsDir, { recursive: true });
     const sessionFile = path.join(sessionsDir, "sess-a.json");
     const bystanderFile = path.join(sessionsDir, "sess-b.json");
     fs.writeFileSync(
       sessionFile,
-      JSON.stringify({ current_task: `.trellis/tasks/${target}` }),
+      JSON.stringify({ current_task: `.arbor/tasks/${target}` }),
       "utf-8",
     );
     fs.writeFileSync(
       bystanderFile,
-      JSON.stringify({ current_task: `.trellis/tasks/${other}` }),
+      JSON.stringify({ current_task: `.arbor/tasks/${other}` }),
       "utf-8",
     );
 
@@ -8356,11 +8356,11 @@ describe("regression: task.py rename rewrites every reference in one pass", () =
     const renamed = `${datePrefix}-renamed`;
     expect(
       JSON.parse(fs.readFileSync(sessionFile, "utf-8")).current_task,
-    ).toBe(`.trellis/tasks/${renamed}`);
+    ).toBe(`.arbor/tasks/${renamed}`);
     // A session on a different task is left exactly as it was.
     expect(
       JSON.parse(fs.readFileSync(bystanderFile, "utf-8")).current_task,
-    ).toBe(`.trellis/tasks/${other}`);
+    ).toBe(`.arbor/tasks/${other}`);
   });
 
   it("[task-rename] refuses to rename an archived task", () => {
@@ -8369,7 +8369,7 @@ describe("regression: task.py rename rewrites every reference in one pass", () =
 
     const r = runTask(
       "rename",
-      path.posix.join(".trellis", "tasks", "archive", yearMonth, target),
+      path.posix.join(".arbor", "tasks", "archive", yearMonth, target),
       "renamed",
     );
     expect(r.status).not.toBe(0);
@@ -8381,7 +8381,7 @@ describe("regression: task.py rename rewrites every reference in one pass", () =
 });
 
 describe("regression: a linked worktree inherits developer identity", () => {
-  // `.trellis/.developer` is gitignored (it carries a personal identity), so a
+  // `.arbor/.developer` is gitignored (it carries a personal identity), so a
   // fresh `git worktree add` used to start with no identity at all and every
   // task.py command failed with "No developer set" until init_developer.py was
   // re-run per worktree — which blocks worktree-per-worker parallel runs.
@@ -8402,7 +8402,7 @@ describe("regression: a linked worktree inherits developer identity", () => {
 
   function writeScripts(root: string): void {
     for (const [rel, content] of getAllScripts()) {
-      const abs = path.join(root, ".trellis", "scripts", rel);
+      const abs = path.join(root, ".arbor", "scripts", rel);
       fs.mkdirSync(path.dirname(abs), { recursive: true });
       fs.writeFileSync(abs, content, "utf-8");
     }
@@ -8413,12 +8413,12 @@ describe("regression: a linked worktree inherits developer identity", () => {
     writeScripts(mainDir);
     fs.writeFileSync(
       path.join(mainDir, ".gitignore"),
-      ".trellis/.developer\n",
+      ".arbor/.developer\n",
       "utf-8",
     );
     if (developerName !== null) {
       fs.writeFileSync(
-        path.join(mainDir, ".trellis", ".developer"),
+        path.join(mainDir, ".arbor", ".developer"),
         `name=${developerName}\ninitialized_at=2026-08-09T00:00:00\n`,
         "utf-8",
       );
@@ -8439,12 +8439,12 @@ describe("regression: a linked worktree inherits developer identity", () => {
     const env = { ...process.env, ...envOverrides };
     // Inherited identity must come from the repo, never from the environment
     // of the machine running the suite.
-    if (envOverrides.TRELLIS_DEVELOPER === undefined) {
-      delete env.TRELLIS_DEVELOPER;
+    if (envOverrides.ARBOR_DEVELOPER === undefined) {
+      delete env.ARBOR_DEVELOPER;
     }
     const proc = spawnSync(
       pyCmd,
-      [path.join(cwd, ".trellis", "scripts", "task.py"), ...args],
+      [path.join(cwd, ".arbor", "scripts", "task.py"), ...args],
       { cwd, encoding: "utf-8", env },
     );
     return {
@@ -8479,7 +8479,7 @@ describe("regression: a linked worktree inherits developer identity", () => {
   function assigneeOf(cwd: string, slug: string): unknown {
     const taskJson = path.join(
       cwd,
-      ".trellis",
+      ".arbor",
       "tasks",
       `${datePrefix}-${slug}`,
       "task.json",
@@ -8490,7 +8490,7 @@ describe("regression: a linked worktree inherits developer identity", () => {
   }
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "trellis-wt-identity-"));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-wt-identity-"));
     mainDir = path.join(tmpDir, "main");
     worktreeDir = path.join(tmpDir, "linked");
     fs.mkdirSync(mainDir, { recursive: true });
@@ -8505,7 +8505,7 @@ describe("regression: a linked worktree inherits developer identity", () => {
 
     // The premise: git did not carry the gitignored identity file across.
     expect(
-      fs.existsSync(path.join(worktreeDir, ".trellis", ".developer")),
+      fs.existsSync(path.join(worktreeDir, ".arbor", ".developer")),
     ).toBe(false);
 
     const created = createTask(worktreeDir, "inherited");
@@ -8527,7 +8527,7 @@ describe("regression: a linked worktree inherits developer identity", () => {
     // Inheritance is read-only: copying the file in would go stale and shadow
     // later changes made in the main checkout.
     expect(
-      fs.existsSync(path.join(worktreeDir, ".trellis", ".developer")),
+      fs.existsSync(path.join(worktreeDir, ".arbor", ".developer")),
     ).toBe(false);
   });
 
@@ -8537,7 +8537,7 @@ describe("regression: a linked worktree inherits developer identity", () => {
     expect(assigneeOf(worktreeDir, "first")).toBe("main-dev");
 
     fs.writeFileSync(
-      path.join(mainDir, ".trellis", ".developer"),
+      path.join(mainDir, ".arbor", ".developer"),
       "name=renamed-dev\ninitialized_at=2026-08-09T00:00:00\n",
       "utf-8",
     );
@@ -8546,7 +8546,7 @@ describe("regression: a linked worktree inherits developer identity", () => {
     expect(assigneeOf(worktreeDir, "second")).toBe("renamed-dev");
   });
 
-  it("[worktree-identity] precedence: --assignee > TRELLIS_DEVELOPER > local file > main checkout", () => {
+  it("[worktree-identity] precedence: --assignee > ARBOR_DEVELOPER > local file > main checkout", () => {
     buildRepo("main-dev");
 
     // 4. main checkout, in the worktree that has no file of its own
@@ -8555,7 +8555,7 @@ describe("regression: a linked worktree inherits developer identity", () => {
 
     // 3. a local file in the worktree wins over the main checkout
     fs.writeFileSync(
-      path.join(worktreeDir, ".trellis", ".developer"),
+      path.join(worktreeDir, ".arbor", ".developer"),
       "name=local-dev\ninitialized_at=2026-08-09T00:00:00\n",
       "utf-8",
     );
@@ -8564,7 +8564,7 @@ describe("regression: a linked worktree inherits developer identity", () => {
 
     // 2. the env var wins over both files
     expect(
-      createTask(worktreeDir, "env", [], { TRELLIS_DEVELOPER: "env-dev" })
+      createTask(worktreeDir, "env", [], { ARBOR_DEVELOPER: "env-dev" })
         .status,
     ).toBe(0);
     expect(assigneeOf(worktreeDir, "env")).toBe("env-dev");
@@ -8572,7 +8572,7 @@ describe("regression: a linked worktree inherits developer identity", () => {
     // 1. --assignee wins over everything
     expect(
       createTask(worktreeDir, "flag", ["--assignee", "flag-dev"], {
-        TRELLIS_DEVELOPER: "env-dev",
+        ARBOR_DEVELOPER: "env-dev",
       }).status,
     ).toBe(0);
     expect(assigneeOf(worktreeDir, "flag")).toBe("flag-dev");
@@ -8581,7 +8581,7 @@ describe("regression: a linked worktree inherits developer identity", () => {
   it("[worktree-identity] the env var alone is enough in the main checkout too", () => {
     buildRepo(null);
     expect(
-      createTask(mainDir, "envonly", [], { TRELLIS_DEVELOPER: "env-dev" })
+      createTask(mainDir, "envonly", [], { ARBOR_DEVELOPER: "env-dev" })
         .status,
     ).toBe(0);
     expect(assigneeOf(mainDir, "envonly")).toBe("env-dev");
@@ -8590,7 +8590,7 @@ describe("regression: a linked worktree inherits developer identity", () => {
   it("[worktree-identity] a whitespace-only env var does not count as an identity", () => {
     buildRepo("main-dev");
     expect(
-      createTask(worktreeDir, "blank", [], { TRELLIS_DEVELOPER: "   " }).status,
+      createTask(worktreeDir, "blank", [], { ARBOR_DEVELOPER: "   " }).status,
     ).toBe(0);
     expect(assigneeOf(worktreeDir, "blank")).toBe("main-dev");
   });
@@ -8603,7 +8603,7 @@ describe("regression: a linked worktree inherits developer identity", () => {
       expect(created.status).not.toBe(0);
       expect(created.stderr).toContain("No developer set");
       expect(created.stderr).toContain("init_developer.py");
-      expect(created.stderr).toContain("TRELLIS_DEVELOPER");
+      expect(created.stderr).toContain("ARBOR_DEVELOPER");
       expect(created.stderr).toContain("linked git worktree");
 
       const listed = runTask(cwd, ["list", "--json", "--mine"]);
@@ -8613,7 +8613,7 @@ describe("regression: a linked worktree inherits developer identity", () => {
         hint: string;
       };
       expect(payload.error).toBe("No developer set");
-      expect(payload.hint).toContain("TRELLIS_DEVELOPER");
+      expect(payload.hint).toContain("ARBOR_DEVELOPER");
       expect(payload.hint).toContain("linked git worktree");
     }
   });
@@ -8638,9 +8638,9 @@ describe("regression: a linked worktree inherits developer identity", () => {
     // answer looks exactly like a right one. git must name the main worktree.
     buildRepo("main-dev");
     const outerDir = path.join(tmpDir, "outer");
-    fs.mkdirSync(path.join(outerDir, ".trellis"), { recursive: true });
+    fs.mkdirSync(path.join(outerDir, ".arbor"), { recursive: true });
     fs.writeFileSync(
-      path.join(outerDir, ".trellis", ".developer"),
+      path.join(outerDir, ".arbor", ".developer"),
       "name=unrelated-stranger\ninitialized_at=2026-08-09T00:00:00\n",
       "utf-8",
     );
@@ -8670,5 +8670,43 @@ describe("regression: a linked worktree inherits developer identity", () => {
     expect(created.status).toBe(1);
     expect(created.stderr).toContain("No developer set");
     expect(created.stderr).not.toContain("Traceback");
+  });
+});
+
+// =============================================================================
+// arbor: no upstream brand leaks into shipped templates
+// =============================================================================
+
+describe("arbor: shipped templates carry no upstream Trellis identifiers", () => {
+  const templatesRoot = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "../src/templates",
+  );
+
+  function walk(dir: string, out: string[] = []): string[] {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === "__pycache__") continue;
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full, out);
+      else out.push(full);
+    }
+    return out;
+  }
+
+  it("no template path or content contains 'trellis' (case-insensitive)", () => {
+    const offenders: string[] = [];
+    for (const file of walk(templatesRoot)) {
+      const rel = path.relative(templatesRoot, file);
+      if (/trellis/i.test(rel)) {
+        offenders.push(`${rel} (path)`);
+        continue;
+      }
+      const content = fs.readFileSync(file, "utf-8");
+      const lines = content.split("\n");
+      lines.forEach((line, idx) => {
+        if (/trellis/i.test(line)) offenders.push(`${rel}:${idx + 1}: ${line.trim()}`);
+      });
+    }
+    expect(offenders).toEqual([]);
   });
 });

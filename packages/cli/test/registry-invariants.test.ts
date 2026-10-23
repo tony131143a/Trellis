@@ -52,9 +52,9 @@ describe("registry internal consistency", () => {
     }
   });
 
-  it("no configDir collides with .trellis", () => {
+  it("no configDir collides with .arbor", () => {
     for (const id of PLATFORM_IDS) {
-      expect(AI_TOOLS[id].configDir).not.toBe(".trellis");
+      expect(AI_TOOLS[id].configDir).not.toBe(".arbor");
     }
   });
 
@@ -138,7 +138,7 @@ describe("UserPromptSubmit hook wiring", () => {
 // 0.6.14 shipped while the docs still advertised 17 platforms and the registry
 // already had 21: --grok, --kimi, --snow and --trae worked but were documented
 // nowhere, and a user asked in the community whether Grok support was planned.
-// `trellis init --help` was correct that whole time because it is generated
+// `arbor init --help` was correct that whole time because it is generated
 // from AI_TOOLS — only the prose drifted, and nothing failed when it did.
 //
 // docs-site is a submodule, so these skip when it is not checked out. CI clones
@@ -231,13 +231,13 @@ describe("every platform resolves to a marker label workflow.md uses", () => {
     const { fileURLToPath } = await import("node:url");
 
     const testDir = dirname(fileURLToPath(import.meta.url));
-    const scriptsDir = join(testDir, "..", "src", "templates", "trellis", "scripts");
+    const scriptsDir = join(testDir, "..", "src", "templates", "arbor", "scripts");
     const workflowPath = join(
       testDir,
       "..",
       "src",
       "templates",
-      "trellis",
+      "arbor",
       "workflow.md",
     );
     const flags = PLATFORM_IDS.map((id) => AI_TOOLS[id].cliFlag);

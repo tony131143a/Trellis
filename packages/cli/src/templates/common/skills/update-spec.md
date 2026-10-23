@@ -55,7 +55,7 @@ For triggered tasks, include all sections below:
 ## Spec Structure Overview
 
 ```
-.trellis/spec/
+.arbor/spec/
 ├── <layer>/           # Per-layer coding standards (e.g., backend/, frontend/, api/)
 │   ├── index.md       # Overview and links
 │   └── *.md           # Topic-specific guidelines
@@ -103,10 +103,10 @@ last_verified: 2026-10-21
 - `last_verified`: when the doc was last re-checked against its sources. Do not hand-edit it. After you update or re-verify a doc, stamp it:
 
 ```bash
-{{PYTHON_CMD}} ./.trellis/scripts/spec.py verify .trellis/spec/<layer>/<doc>.md
+{{PYTHON_CMD}} ./.arbor/scripts/spec.py verify .arbor/spec/<layer>/<doc>.md
 ```
 
-`{{PYTHON_CMD}} ./.trellis/scripts/spec.py lint` (also run in `{{CMD_REF:finish-work}}` Step 1) reports `missing-metadata`, `dead-source`, `broken-link`, `stale`, `placeholder`, `missing-section`, and `unlisted-doc` findings. `spec.py init-meta <doc>` seeds the block on a doc that lacks one. All of it is advisory — fix what the finding names, it never blocks.
+`{{PYTHON_CMD}} ./.arbor/scripts/spec.py lint` (also run in `{{CMD_REF:finish-work}}` Step 1) reports `missing-metadata`, `dead-source`, `broken-link`, `stale`, `placeholder`, `missing-section`, and `unlisted-doc` findings. `spec.py init-meta <doc>` seeds the block on a doc that lacks one. All of it is advisory — fix what the finding names, it never blocks.
 
 ---
 
@@ -140,7 +140,7 @@ Before editing, read the current code-spec to:
 - Find the right section for your update
 
 ```bash
-cat .trellis/spec/<category>/<file>.md
+cat .arbor/spec/<category>/<file>.md
 ```
 
 ### Step 4: Make the Update

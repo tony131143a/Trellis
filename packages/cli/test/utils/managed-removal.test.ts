@@ -13,7 +13,7 @@ describe("managed-removal strict planning", () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "trellis-removal-plan-"));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-removal-plan-"));
   });
 
   afterEach(() => {
@@ -86,6 +86,6 @@ describe("managed-removal strict planning", () => {
         { ".claude/settings.json": "hash" },
         { strictPaths: true },
       ),
-    ).toThrow(/Cannot prove Trellis content was removed/);
+    ).toThrow(/Cannot prove Arbor content was removed/);
   });
 });

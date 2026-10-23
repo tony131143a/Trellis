@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Trellis per-turn breadcrumb hook (UserPromptSubmit / BeforeAgent equivalent).
+"""Arbor per-turn breadcrumb hook (UserPromptSubmit / BeforeAgent equivalent).
 
-Runs on every user prompt. Resolves the active task through Trellis'
+Runs on every user prompt. Resolves the active task through Arbor'
 session-aware active task resolver and emits a short <workflow-state>
 block reminding the main AI what task is active and its expected flow.
 
@@ -21,7 +21,7 @@ template map through collectSharedHooks(), and a single writer puts that
 map on disk at init time.
 
 Silent exit 0 case (no output):
-  - No .trellis/ directory found (not a Trellis project)
+  - No .arbor/ directory found (not a Arbor project)
 
 When a session points at a task directory whose task.json is missing, malformed,
 or missing a usable status, the hook emits a task_error breadcrumb instead of
@@ -62,18 +62,18 @@ from typing import Optional
 
 
 # ---------------------------------------------------------------------------
-# CWD-robust Trellis root discovery (fixes hook-path-robustness for this hook)
+# CWD-robust Arbor root discovery (fixes hook-path-robustness for this hook)
 # ---------------------------------------------------------------------------
 
-def find_trellis_root(start: Path) -> Optional[Path]:
-    """Walk up from start to find directory containing .trellis/.
+def find_arbor_root(start: Path) -> Optional[Path]:
+    """Walk up from start to find directory containing .arbor/.
 
     Handles CWD drift: subdirectory launches, monorepo packages, etc.
-    Returns None if no .trellis/ found (silent no-op).
+    Returns None if no .arbor/ found (silent no-op).
     """
     cur = start.resolve()
     while cur != cur.parent:
-        if (cur / ".trellis").is_dir():
+        if (cur / ".arbor").is_dir():
             return cur
         cur = cur.parent
     return None
@@ -106,7 +106,7 @@ def _detect_platform(input_data: dict) -> str | None:
 
 
 def _resolve_active_task(root: Path, input_data: dict):
-    scripts_dir = root / ".trellis" / "scripts"
+    scripts_dir = root / ".arbor" / "scripts"
     if str(scripts_dir) not in sys.path:
         sys.path.insert(0, str(scripts_dir))
     from common.active_task import resolve_active_task  # type: ignore[import-not-found]
@@ -171,7 +171,7 @@ def load_breadcrumbs(root: Path) -> dict[str, str]:
     in build_breadcrumb so users see the broken state and fix
     workflow.md, rather than the hook silently masking the issue.
     """
-    workflow = root / ".trellis" / "workflow.md"
+    workflow = root / ".arbor" / "workflow.md"
     if not workflow.is_file():
         return {}
     try:
@@ -188,33 +188,33 @@ def load_breadcrumbs(root: Path) -> dict[str, str]:
     return result
 
 
-def _read_trellis_config(root: Path) -> dict:
-    """Load .trellis/config.yaml via the bundled trellis_config helper.
+def _read_arbor_config(root: Path) -> dict:
+    """Load .arbor/config.yaml via the bundled arbor_config helper.
 
-    The helper lives in .trellis/scripts/common; the hook lives outside the
+    The helper lives in .arbor/scripts/common; the hook lives outside the
     scripts tree, so we extend sys.path before importing.
     """
-    scripts_dir = root / ".trellis" / "scripts"
+    scripts_dir = root / ".arbor" / "scripts"
     if str(scripts_dir) not in sys.path:
         sys.path.insert(0, str(scripts_dir))
     try:
-        from common.trellis_config import read_trellis_config  # type: ignore[import-not-found]
+        from common.arbor_config import read_arbor_config  # type: ignore[import-not-found]
     except Exception:
         return {}
     try:
-        return read_trellis_config(root)
+        return read_arbor_config(root)
     except Exception:
         return {}
 
 
-DEFAULT_PROMPT_INJECTION_SKIP_KEYWORD = "no-trellis"
+DEFAULT_PROMPT_INJECTION_SKIP_KEYWORD = "no-arbor"
 
 
 def _resolve_skip_keyword(config: dict) -> str:
-    """Read `prompt_injection.skip_keyword` from parsed .trellis/config.yaml.
+    """Read `prompt_injection.skip_keyword` from parsed .arbor/config.yaml.
 
     Mirrors `common.config.get_prompt_injection_config()`. Defaults to
-    "no-trellis"; "" disables the escape hatch entirely. A non-string value
+    "no-arbor"; "" disables the escape hatch entirely. A non-string value
     falls back to the default.
     """
     if isinstance(config, dict):
@@ -229,8 +229,8 @@ def _resolve_skip_keyword(config: dict) -> str:
 def prompt_has_skip_keyword(prompt: str, keyword: str) -> bool:
     """Case-insensitive, word-boundary match of `keyword` in `prompt`.
 
-    Hyphen counts as a word char so "no-trellisx" / "xno-trellis" /
-    "foo-no-trellis" don't match, but punctuation/whitespace boundaries do.
+    Hyphen counts as a word char so "no-arborx" / "xno-arbor" /
+    "foo-no-arbor" don't match, but punctuation/whitespace boundaries do.
     Empty keyword never matches (disables the escape hatch).
     """
     if not keyword or not isinstance(prompt, str):
@@ -296,7 +296,7 @@ def _load_hook_input() -> dict:
 
 
 def main() -> int:
-    if os.environ.get("TRELLIS_HOOKS") == "0" or os.environ.get("TRELLIS_DISABLE_HOOKS") == "1":
+    if os.environ.get("ARBOR_HOOKS") == "0" or os.environ.get("ARBOR_DISABLE_HOOKS") == "1":
         return 0
 
     data = _load_hook_input()
@@ -304,11 +304,11 @@ def main() -> int:
     cwd_str = data.get("cwd") or os.getcwd()
     cwd = Path(cwd_str)
 
-    root = find_trellis_root(cwd)
+    root = find_arbor_root(cwd)
     if root is None:
-        return 0  # not a Trellis project
+        return 0  # not a Arbor project
 
-    config = _read_trellis_config(root)
+    config = _read_arbor_config(root)
     if prompt_has_skip_keyword(data.get("prompt", ""), _resolve_skip_keyword(config)):
         return 0  # user opted out of the per-turn breadcrumb for this turn
 
@@ -316,7 +316,7 @@ def main() -> int:
     task = get_active_task(root, data)
     if task is None:
         # No active task — still emit a breadcrumb nudging AI toward
-        # trellis-brainstorm + task.py create when user describes real work.
+        # arbor-brainstorm + task.py create when user describes real work.
         breadcrumb = build_breadcrumb(None, "no_task", templates)
     else:
         task_id, status, source = task

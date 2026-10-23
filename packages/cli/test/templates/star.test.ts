@@ -109,19 +109,19 @@ describe("collectStarTemplates", () => {
   });
 
   it("writes session-boundary commands, filtering out the hook-injected start command", () => {
-    expect(files.has(".starFactory/commands/trellis/finish-work.md")).toBe(true);
-    expect(files.has(".starFactory/commands/trellis/continue.md")).toBe(true);
+    expect(files.has(".starFactory/commands/arbor/finish-work.md")).toBe(true);
+    expect(files.has(".starFactory/commands/arbor/continue.md")).toBe(true);
     // SessionStart injects the workflow; a start command would duplicate it.
-    expect(files.has(".starFactory/commands/trellis/start.md")).toBe(false);
+    expect(files.has(".starFactory/commands/arbor/start.md")).toBe(false);
   });
 
   it("writes workflow skills under .starFactory/skills/", () => {
     for (const skill of [
-      "trellis-before-dev",
-      "trellis-brainstorm",
-      "trellis-check",
-      "trellis-break-loop",
-      "trellis-update-spec",
+      "arbor-before-dev",
+      "arbor-brainstorm",
+      "arbor-check",
+      "arbor-break-loop",
+      "arbor-update-spec",
     ]) {
       expect(files.has(`.starFactory/skills/${skill}/SKILL.md`)).toBe(true);
     }
@@ -130,10 +130,10 @@ describe("collectStarTemplates", () => {
   // Guards the `collectSkillTemplates(skillRoot, skills, bundledSkills)` third
   // argument: dropping it ships zero bundled skills with no other failure.
   it("writes bundled skill files, including their nested references", () => {
-    expect(files.has(".starFactory/skills/trellis-meta/SKILL.md")).toBe(true);
+    expect(files.has(".starFactory/skills/arbor-meta/SKILL.md")).toBe(true);
     expect(
       files.has(
-        ".starFactory/skills/trellis-meta/references/local-architecture/overview.md",
+        ".starFactory/skills/arbor-meta/references/local-architecture/overview.md",
       ),
     ).toBe(true);
   });

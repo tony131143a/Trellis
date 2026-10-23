@@ -1,6 +1,6 @@
 /**
  * Integration test for the `.gitattributes` "merge=union" rule shipped for
- * developer journal files under `.trellis/workspace/` (#415 quick-fix tier).
+ * developer journal files under `.arbor/workspace/` (#415 quick-fix tier).
  *
  * Simulates two branches diverging from a common base, each appending a
  * different session block to the same journal file, then merges them with
@@ -17,7 +17,7 @@ import path from "node:path";
 
 const GITATTRIBUTES_TEMPLATE = path.resolve(
   __dirname,
-  "../../src/templates/trellis/gitattributes.txt",
+  "../../src/templates/arbor/gitattributes.txt",
 );
 
 function git(cwd: string, ...args: string[]): { status: number; stdout: string; stderr: string } {
@@ -37,14 +37,14 @@ describe("journal-*.md merge=union gitattributes rule", () => {
   let tmp: string;
 
   beforeEach(() => {
-    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "trellis-gitattr-merge-"));
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-gitattr-merge-"));
     gitOk(tmp, "init", "-q", "-b", "main");
     gitOk(tmp, "config", "user.email", "test@example.com");
     gitOk(tmp, "config", "user.name", "Test");
 
     fs.copyFileSync(GITATTRIBUTES_TEMPLATE, path.join(tmp, ".gitattributes"));
 
-    const workspaceDir = path.join(tmp, ".trellis", "workspace", "tester");
+    const workspaceDir = path.join(tmp, ".arbor", "workspace", "tester");
     fs.mkdirSync(workspaceDir, { recursive: true });
     fs.writeFileSync(
       path.join(workspaceDir, "journal-1.md"),
@@ -65,14 +65,14 @@ describe("journal-*.md merge=union gitattributes rule", () => {
 
   it("does not apply merge=union to index.md", () => {
     const content = fs.readFileSync(path.join(tmp, ".gitattributes"), "utf-8");
-    expect(content).toContain(".trellis/workspace/*/journal-*.md merge=union");
+    expect(content).toContain(".arbor/workspace/*/journal-*.md merge=union");
     expect(content).not.toMatch(/index\.md.*merge=union/);
   });
 
   it("merges two branches' appended journal sessions cleanly (no conflict markers)", () => {
     const journalPath = path.join(
       tmp,
-      ".trellis",
+      ".arbor",
       "workspace",
       "tester",
       "journal-1.md",
@@ -100,7 +100,7 @@ describe("journal-*.md merge=union gitattributes rule", () => {
   it("still produces a normal git conflict on index.md for the same parallel-edit scenario", () => {
     const indexPath = path.join(
       tmp,
-      ".trellis",
+      ".arbor",
       "workspace",
       "tester",
       "index.md",

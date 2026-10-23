@@ -6,10 +6,10 @@
  * runs the pure scrubbers below, and returns the exact post-removal content.
  *
  * Structured config files (settings.json / AGENTS.md) are passed through a
- * scrubber that strips just the trellis fields, leaving user-added neighbors
+ * scrubber that strips just the arbor fields, leaving user-added neighbors
  * intact. Each scrubber returns `{ content, fullyEmpty }`:
  * - `content` is the post-scrub text to write back if the file should remain.
- * - `fullyEmpty` is true when, after stripping every trellis-managed value,
+ * - `fullyEmpty` is true when, after stripping every arbor-managed value,
  *   nothing meaningful is left. The caller deletes the file in that case.
  */
 
@@ -20,8 +20,8 @@ import { DIR_NAMES, FILE_NAMES } from "../constants/paths.js";
 import { ALL_MANAGED_DIRS } from "../configurators/index.js";
 import {
   cleanupEmptyDirs,
-  TRELLIS_BLOCK_END,
-  TRELLIS_BLOCK_START,
+  ARBOR_BLOCK_END,
+  ARBOR_BLOCK_START,
 } from "./managed-paths.js";
 
 export interface ScrubResult {
@@ -32,7 +32,7 @@ export interface ScrubResult {
 /**
  * Test whether a hook command string references any of the given manifest paths.
  *
- * Trellis-emitted hook commands always have the shape
+ * Arbor-emitted hook commands always have the shape
  *   `<python-cmd> <manifest-path>`
  * so the trailing whitespace-delimited token is the script path. We compare
  * that last token (with surrounding quotes stripped) against the manifest
@@ -72,20 +72,20 @@ function getEntryCommand(entry: unknown): string | null {
   return null;
 }
 
-const CLAUDE_TRELLIS_STATUSLINE = ".claude/hooks/statusline.py";
+const CLAUDE_ARBOR_STATUSLINE = ".claude/hooks/statusline.py";
 
-function isTrellisClaudeStatusLine(
+function isArborClaudeStatusLine(
   value: unknown,
   deletedPaths: readonly string[],
 ): boolean {
-  if (!deletedPaths.includes(CLAUDE_TRELLIS_STATUSLINE)) return false;
+  if (!deletedPaths.includes(CLAUDE_ARBOR_STATUSLINE)) return false;
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return false;
   }
   const command = getEntryCommand(value);
   return (
     command !== null &&
-    commandMatchesDeletedPath(command, [CLAUDE_TRELLIS_STATUSLINE])
+    commandMatchesDeletedPath(command, [CLAUDE_ARBOR_STATUSLINE])
   );
 }
 
@@ -95,7 +95,7 @@ function isTrellisClaudeStatusLine(
  *
  * Strips every entry whose command references a path in `deletedPaths`,
  * then bottom-up cleans empty containers (matcher block, event array, hooks
- * object). The exact opt-in Trellis Claude statusLine command is also removed;
+ * object). The exact opt-in Arbor Claude statusLine command is also removed;
  * other keys outside `hooks` (e.g. `env`, `model`, `permissions`) are
  * preserved.
  */
@@ -116,7 +116,7 @@ export function scrubHooksJson(
   }
 
   const root = parsed as Record<string, unknown>;
-  if (isTrellisClaudeStatusLine(root.statusLine, deletedPaths)) {
+  if (isArborClaudeStatusLine(root.statusLine, deletedPaths)) {
     delete root.statusLine;
   }
   const hooks = root.hooks;
@@ -245,7 +245,7 @@ export interface PlannedModification {
 export interface ManagedRemovalPlan {
   deletions: PlannedDeletion[];
   modifications: PlannedModification[];
-  removeTrellisDir: boolean;
+  removeArborDir: boolean;
   allPosixPaths: string[];
 }
 
@@ -288,7 +288,7 @@ function assertWithinProject(projectRoot: string, absPath: string): void {
  * Validate a manifest key before it reaches path.join/path.resolve.
  * Manifest keys are intentionally stricter than generic relative paths: empty,
  * dot, dotdot, NUL, absolute, and Windows-separator segments are not ownership
- * claims that Trellis can safely act on.
+ * claims that Arbor can safely act on.
  */
 export function validateManagedRelativePath(posixPath: string): void {
   if (
@@ -355,18 +355,18 @@ export function buildStructuredFileSpecs(): Map<string, StructuredFileSpec> {
     ...([".claude/settings.json", ".starFactory/settings.json"] as const).map(
       (posixPath): StructuredFileSpec => ({
         posixPath,
-        reason: "Strip trellis hooks; preserve user fields",
+        reason: "Strip arbor hooks; preserve user fields",
         scrub: (content, deletedPaths) => scrubHooksJson(content, deletedPaths),
       }),
     ),
     {
       posixPath: FILE_NAMES.AGENTS,
-      reason: "Strip Trellis managed block; preserve user instructions",
+      reason: "Strip Arbor managed block; preserve user instructions",
       scrub: (content) =>
         scrubManagedMarkdownBlock(
           content,
-          TRELLIS_BLOCK_START,
-          TRELLIS_BLOCK_END,
+          ARBOR_BLOCK_START,
+          ARBOR_BLOCK_END,
         ),
     },
   ];
@@ -423,7 +423,7 @@ export function buildManagedRemovalPlan(
       result.content === content
     ) {
       throw new Error(
-        `Cannot prove Trellis content was removed from structured file: ${posixPath}`,
+        `Cannot prove Arbor content was removed from structured file: ${posixPath}`,
       );
     }
     if (result.fullyEmpty) {
@@ -441,14 +441,14 @@ export function buildManagedRemovalPlan(
   return {
     deletions,
     modifications,
-    removeTrellisDir: true,
+    removeArborDir: true,
     allPosixPaths,
   };
 }
 
 /**
  * Execute a removal plan: write scrubbed files, unlink deletions, remove
- * `.trellis/`, then clean up directories that became empty.
+ * `.arbor/`, then clean up directories that became empty.
  */
 export function executeManagedRemovalPlan(
   cwd: string,
@@ -475,10 +475,10 @@ export function executeManagedRemovalPlan(
   }
 
   let deletedDirs = 0;
-  if (plan.removeTrellisDir) {
-    const trellisDir = path.join(cwd, DIR_NAMES.WORKFLOW);
-    if (lstatIfPresent(trellisDir)) {
-      fs.rmSync(trellisDir, { recursive: true, force: true });
+  if (plan.removeArborDir) {
+    const arborDir = path.join(cwd, DIR_NAMES.WORKFLOW);
+    if (lstatIfPresent(arborDir)) {
+      fs.rmSync(arborDir, { recursive: true, force: true });
       deletedDirs += 1;
     }
   }

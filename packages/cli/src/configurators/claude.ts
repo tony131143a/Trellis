@@ -22,7 +22,7 @@ import {
  *
  * Mirrors `preserveExistingClaudeStatusLine` (update.ts) exactly: parse →
  * assign (key lands at the END of the object) → stringify(null, 2) + "\n".
- * Byte-parity matters: `trellis update` re-derives the expected settings.json
+ * Byte-parity matters: `arbor update` re-derives the expected settings.json
  * via that preserve step, so any divergence (e.g. a different key position)
  * makes update flag a phantom settings.json change on every fresh opted-in
  * project.
@@ -37,11 +37,11 @@ function injectStatusLine(content: string): string {
 }
 
 /**
- * The Claude Code file set — written at init and diffed by `trellis update`.
+ * The Claude Code file set — written at init and diffed by `arbor update`.
  * - settings.json from the platform template directory
  * - hooks/ from shared-hooks/ (unified with other platforms)
- * - commands/trellis/ — continue + finish-work as slash commands
- * - skills/trellis-{name}/SKILL.md — auto-triggered skills from `common/skills/`
+ * - commands/arbor/ — continue + finish-work as slash commands
+ * - skills/arbor-{name}/SKILL.md — auto-triggered skills from `common/skills/`
  *
  * The opt-in statusline is deliberately absent — see `configureClaude`.
  */
@@ -58,7 +58,7 @@ export function collectClaudeTemplates(): Map<string, string> {
   );
 
   for (const cmd of resolveCommands(ctx)) {
-    files.set(`.claude/commands/trellis/${cmd.name}.md`, cmd.content);
+    files.set(`.claude/commands/arbor/${cmd.name}.md`, cmd.content);
   }
   for (const [filePath, content] of collectSkillTemplates(
     ".claude/skills",
@@ -76,11 +76,11 @@ export function collectClaudeTemplates(): Map<string, string> {
 
 /**
  * Configure Claude Code by writing `collectClaudeTemplates`, plus the opt-in
- * statusline (`trellis init --with-statusline`) when requested.
+ * statusline (`arbor init --with-statusline`) when requested.
  *
  * The statusline is a post-processor over the map rather than part of it:
  * `collectTemplates` has no parameter for a per-init flag, and a statusline
- * entry there would make `trellis update` force-install the hook on every
+ * entry there would make `arbor update` force-install the hook on every
  * project that opted out (locked by regression.test.ts). It adds one file and
  * replaces one entry; it does not restate the file set.
  */

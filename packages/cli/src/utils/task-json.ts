@@ -2,13 +2,13 @@
  * Canonical task.json shape — single source of truth shared by all TS
  * writers.
  *
- * The runtime Python writer is `.trellis/scripts/common/task_store.py`
+ * The runtime Python writer is `.arbor/scripts/common/task_store.py`
  * (`cmd_create`). The 24-field shape and field order below mirror that
  * writer exactly so every TS and Python entry point produces structurally
  * identical task.json files.
  */
 
-export interface TrellisTaskRecord {
+export interface ArborTaskRecord {
   id: string;
   name: string;
   title: string;
@@ -36,7 +36,7 @@ export interface TrellisTaskRecord {
 }
 
 /**
- * Produce a fully-populated canonical-shape {@link TrellisTaskRecord}.
+ * Produce a fully-populated canonical-shape {@link ArborTaskRecord}.
  *
  * All 24 fields are present in canonical order. `overrides` shallow-merges
  * over the defaults — callers supply per-task values (id, name, title,
@@ -44,10 +44,10 @@ export interface TrellisTaskRecord {
  * unless they have a real value.
  */
 export function emptyTaskRecord(
-  overrides: Partial<TrellisTaskRecord> = {},
-): TrellisTaskRecord {
+  overrides: Partial<ArborTaskRecord> = {},
+): ArborTaskRecord {
   const today = new Date().toISOString().split("T")[0] ?? "";
-  const base: TrellisTaskRecord = {
+  const base: ArborTaskRecord = {
     id: "",
     name: "",
     title: "",
@@ -134,6 +134,6 @@ function cloneJsonValue(value: unknown, path: string): unknown {
   throw new Error(`${path} must contain only JSON values`);
 }
 
-export type TaskJson = TrellisTaskRecord;
+export type TaskJson = ArborTaskRecord;
 
 export const emptyTaskJson = emptyTaskRecord;

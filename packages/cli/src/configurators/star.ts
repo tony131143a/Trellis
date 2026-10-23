@@ -9,8 +9,8 @@
  * The file set mirrors Claude Code's, rooted at `.starFactory/`:
  * - `settings.json` from the platform template directory
  * - `hooks/` from shared-hooks/ (unified with other platforms)
- * - `commands/trellis/` — continue + finish-work as slash commands
- * - `skills/trellis-{name}/SKILL.md` — auto-triggered skills from `common/skills/`
+ * - `commands/arbor/` — continue + finish-work as slash commands
+ * - `skills/arbor-{name}/SKILL.md` — auto-triggered skills from `common/skills/`
  *
  * Unlike Claude Code there is no residual behavior (no `--with-statusline`),
  * so this is a plain `fromTemplates` platform — `configure` is derived from
@@ -29,7 +29,7 @@ import {
 } from "./shared.js";
 
 /**
- * The StarFactory file set — written at init and diffed by `trellis update`.
+ * The StarFactory file set — written at init and diffed by `arbor update`.
  */
 export function collectStarTemplates(): Map<string, string> {
   const ctx = AI_TOOLS.star.templateContext;
@@ -42,7 +42,7 @@ export function collectStarTemplates(): Map<string, string> {
   );
 
   for (const cmd of resolveCommands(ctx)) {
-    files.set(`.starFactory/commands/trellis/${cmd.name}.md`, cmd.content);
+    files.set(`.starFactory/commands/arbor/${cmd.name}.md`, cmd.content);
   }
   for (const [filePath, content] of collectSkillTemplates(
     ".starFactory/skills",

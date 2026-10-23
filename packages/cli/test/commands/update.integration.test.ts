@@ -14,7 +14,7 @@ import inquirer from "inquirer";
 // === External dependency mocks (hoisted by vitest) ===
 
 vi.mock("figlet", () => ({
-  default: { textSync: vi.fn(() => "TRELLIS") },
+  default: { textSync: vi.fn(() => "ARBOR") },
 }));
 
 vi.mock("inquirer", () => ({
@@ -35,7 +35,7 @@ import { update } from "../../src/commands/update.js";
 import { VERSION } from "../../src/constants/version.js";
 import { DIR_NAMES, FILE_NAMES, PATHS } from "../../src/constants/paths.js";
 import { computeHash } from "../../src/utils/template-hash.js";
-import { workflowMdTemplate } from "../../src/templates/trellis/index.js";
+import { workflowMdTemplate } from "../../src/templates/arbor/index.js";
 import { replacePythonCommandLiterals } from "../../src/configurators/shared.js";
 
 // A managed template file that update always handles (Python script)
@@ -109,7 +109,7 @@ describe("update() integration", () => {
   }
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "trellis-update-int-"));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-update-int-"));
     vi.spyOn(process, "cwd").mockReturnValue(tmpDir);
     // eslint-disable-next-line @typescript-eslint/no-empty-function
     const noop = () => {};
@@ -296,8 +296,8 @@ describe("update() integration", () => {
     const targetFull = path.join(tmpDir, targetRelative);
     const templateContent = fs.readFileSync(targetFull, "utf-8");
     const modifiedOldContent = removeSubagentsSection(templateContent).replace(
-      "# Trellis Instructions",
-      "# Custom Trellis Instructions",
+      "# Arbor Instructions",
+      "# Custom Arbor Instructions",
     );
     fs.writeFileSync(targetFull, modifiedOldContent);
 
@@ -317,14 +317,14 @@ describe("update() integration", () => {
     expect(fs.readFileSync(targetFull, "utf-8")).toBe(modifiedOldContent);
   });
 
-  it("#4d preserves user AGENTS.md without TRELLIS markers by appending the managed block", async () => {
+  it("#4d preserves user AGENTS.md without ARBOR markers by appending the managed block", async () => {
     await setupProject();
 
     const targetRelative = FILE_NAMES.AGENTS;
     const targetFull = path.join(tmpDir, targetRelative);
     const templateContent = fs.readFileSync(targetFull, "utf-8");
 
-    // User has a hand-written AGENTS.md with no TRELLIS:START/END markers at
+    // User has a hand-written AGENTS.md with no ARBOR:START/END markers at
     // all (predates 0.5.0-beta.18 or was authored by hand). Pre-fix behavior
     // would clobber this content; post-fix should append the managed block.
     const userContent = "# Project notes\n\nThings the team agreed on.\n";
@@ -335,11 +335,11 @@ describe("update() integration", () => {
     const result = fs.readFileSync(targetFull, "utf-8");
     expect(result).toContain("# Project notes");
     expect(result).toContain("Things the team agreed on.");
-    expect(result).toContain("<!-- TRELLIS:START -->");
-    expect(result).toContain("<!-- TRELLIS:END -->");
+    expect(result).toContain("<!-- ARBOR:START -->");
+    expect(result).toContain("<!-- ARBOR:END -->");
     // Managed block should sit AFTER the user content, not replace it.
     expect(result.indexOf("# Project notes")).toBeLessThan(
-      result.indexOf("<!-- TRELLIS:START -->"),
+      result.indexOf("<!-- ARBOR:START -->"),
     );
     // Tail equals the canonical template (force-applied managed block).
     expect(result.endsWith(templateContent.trimEnd() + "\n")).toBe(true);
@@ -558,7 +558,7 @@ describe("update() integration", () => {
     await update({ force: true });
 
     const content = fs.readFileSync(gitattributesPath, "utf-8");
-    expect(content).toContain(".trellis/workspace/*/journal-*.md merge=union");
+    expect(content).toContain(".arbor/workspace/*/journal-*.md merge=union");
   });
 
   it("#15b does not duplicate an existing user journal merge=union rule (#415)", async () => {
@@ -566,7 +566,7 @@ describe("update() integration", () => {
 
     const gitattributesPath = path.join(tmpDir, ".gitattributes");
     const userContent =
-      "# my own rules\n*.png binary\n.trellis/workspace/*/journal-*.md merge=union\n";
+      "# my own rules\n*.png binary\n.arbor/workspace/*/journal-*.md merge=union\n";
     fs.writeFileSync(gitattributesPath, userContent);
 
     await update({ force: true });
@@ -755,7 +755,7 @@ describe("update() integration", () => {
       "#### 2.1 Implement `[required · repeatable]`\n\n" +
       "[Codex]\nSpawn the implement sub-agent:\n[/Codex]\n\n" +
       "[Kilo, Antigravity, Windsurf]\n" +
-      "1. Load the `trellis-before-dev` skill to read project guidelines\n" +
+      "1. Load the `arbor-before-dev` skill to read project guidelines\n" +
       "[/Kilo, Antigravity, Windsurf]\n";
 
     fs.writeFileSync(workflowPath, staleWorkflow, "utf-8");

@@ -1,5 +1,5 @@
 /**
- * Integration test for #396 — `trellis platforms [--json]`.
+ * Integration test for #396 — `arbor platforms [--json]`.
  *
  * Exposes which platforms are configured in a repo in a machine-readable
  * way, so downstream tooling doesn't have to hand-maintain marker-file
@@ -31,10 +31,10 @@ function writeTrackedPlatforms(
   cwd: string,
   relativePaths: string[],
 ): void {
-  const trellisDir = path.join(cwd, ".trellis");
-  fs.mkdirSync(trellisDir, { recursive: true });
+  const arborDir = path.join(cwd, ".arbor");
+  fs.mkdirSync(arborDir, { recursive: true });
   fs.writeFileSync(
-    path.join(trellisDir, ".template-hashes.json"),
+    path.join(arborDir, ".template-hashes.json"),
     JSON.stringify({
       __version: 2,
       hashes: Object.fromEntries(relativePaths.map((item) => [item, "hash"])),
@@ -42,11 +42,11 @@ function writeTrackedPlatforms(
   );
 }
 
-describe("trellis platforms (#396)", () => {
+describe("arbor platforms (#396)", () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "trellis-platforms-"));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-platforms-"));
   });
 
   afterEach(() => {
@@ -57,8 +57,8 @@ describe("trellis platforms (#396)", () => {
     fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
     fs.mkdirSync(path.join(tmpDir, ".starFactory"), { recursive: true });
     writeTrackedPlatforms(tmpDir, [
-      ".claude/commands/trellis/continue.md",
-      ".starFactory/commands/trellis/continue.md",
+      ".claude/commands/arbor/continue.md",
+      ".starFactory/commands/arbor/continue.md",
     ]);
 
     const result = runCli(tmpDir, ["platforms", "--json"]);
@@ -89,7 +89,7 @@ describe("trellis platforms (#396)", () => {
   it("human output lists configured platforms without --json", () => {
     fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
     writeTrackedPlatforms(tmpDir, [
-      ".claude/commands/trellis/continue.md",
+      ".claude/commands/arbor/continue.md",
     ]);
 
     const result = runCli(tmpDir, ["platforms"]);

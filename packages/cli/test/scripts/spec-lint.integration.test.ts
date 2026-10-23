@@ -1,8 +1,8 @@
 /**
  * Integration tests for `spec.py lint | verify | init-meta`.
  *
- * The scripts live under `src/templates/trellis/scripts/`; this test stamps
- * them into a fixture repo with a hand-built `.trellis/spec` tree and runs
+ * The scripts live under `src/templates/arbor/scripts/`; this test stamps
+ * them into a fixture repo with a hand-built `.arbor/spec` tree and runs
  * the real `python3 spec.py ...` entry point. One fixture doc per rule
  * (L1–L7), each expected to be reported exactly once with `path:line`.
  */
@@ -19,7 +19,7 @@ import path from "node:path";
 
 const TEMPLATE_SCRIPTS = path.resolve(
   __dirname,
-  "../../src/templates/trellis/scripts",
+  "../../src/templates/arbor/scripts",
 );
 
 // Committer date stamped on every fixture commit; `stale` compares against it.
@@ -76,10 +76,10 @@ function setupRepo(tmp: string): void {
   git(tmp, "init", "-q", "-b", "main");
   git(tmp, "config", "user.email", "test@example.com");
   git(tmp, "config", "user.name", "Test");
-  const scriptsDest = path.join(tmp, ".trellis", "scripts");
+  const scriptsDest = path.join(tmp, ".arbor", "scripts");
   fs.mkdirSync(scriptsDest, { recursive: true });
   fs.cpSync(TEMPLATE_SCRIPTS, scriptsDest, { recursive: true });
-  fs.writeFileSync(path.join(tmp, ".trellis", "config.yaml"), "");
+  fs.writeFileSync(path.join(tmp, ".arbor", "config.yaml"), "");
 }
 
 /** Build the one-finding-per-rule fixture. Returns expected `rule path:line`. */
@@ -89,7 +89,7 @@ function writeFixture(tmp: string): string[] {
 
   // Layer index: links every leaf except unlisted.md; has both sections;
   // one row's Status is "To fill" (line 7).
-  write(tmp, ".trellis/spec/backend/index.md", [
+  write(tmp, ".arbor/spec/backend/index.md", [
     "# Backend", //                                   1
     "", //                                            2
     "| Guide | Description | Status |", //            3
@@ -110,7 +110,7 @@ function writeFixture(tmp: string): string[] {
     "1. Run lint",
   ]);
 
-  write(tmp, ".trellis/spec/backend/good.md", [
+  write(tmp, ".arbor/spec/backend/good.md", [
     ...meta(["src/a.ts"], FRESH),
     "# Good",
     "",
@@ -125,50 +125,50 @@ function writeFixture(tmp: string): string[] {
   ]);
 
   // L2: sources entry on line 3 matches nothing.
-  write(tmp, ".trellis/spec/backend/dead.md", [
+  write(tmp, ".arbor/spec/backend/dead.md", [
     ...meta(["src/gone.ts"], FRESH),
     "# Dead",
   ]);
 
   // L4: sources committed 2026-10-18, doc verified before that (line 4).
-  write(tmp, ".trellis/spec/backend/stale.md", [
+  write(tmp, ".arbor/spec/backend/stale.md", [
     ...meta(["src/*.ts"], "2026-09-01"),
     "# Stale",
   ]);
 
   // L3: broken relative link on line 7.
-  write(tmp, ".trellis/spec/backend/linky.md", [
+  write(tmp, ".arbor/spec/backend/linky.md", [
     ...meta(["src/a.ts"], FRESH), //                 1-5
     "# Linky", //                                     6
     "Read [missing](./nope.md#x) first.", //          7
   ]);
 
   // L5: placeholder phrase on line 7.
-  write(tmp, ".trellis/spec/backend/placeholder.md", [
+  write(tmp, ".arbor/spec/backend/placeholder.md", [
     ...meta(["src/a.ts"], FRESH), //                 1-5
     "# Placeholder", //                               6
     "(To be filled by the team)", //                  7
   ]);
 
   // L7: valid metadata, not linked from index.md.
-  write(tmp, ".trellis/spec/backend/unlisted.md", [
+  write(tmp, ".arbor/spec/backend/unlisted.md", [
     ...meta(["src/b.ts"], FRESH),
     "# Unlisted",
   ]);
 
   // L1: no frontmatter at all.
-  write(tmp, ".trellis/spec/backend/nometa.md", ["# No meta", "", "body"]);
+  write(tmp, ".arbor/spec/backend/nometa.md", ["# No meta", "", "body"]);
 
   // L6: layer index without either section.
-  write(tmp, ".trellis/spec/frontend/index.md", [
+  write(tmp, ".arbor/spec/frontend/index.md", [
     "# Frontend",
     "",
     "Nothing here yet.",
   ]);
 
   // Guides are optional: no metadata, cross-dir link resolves, no findings.
-  write(tmp, ".trellis/spec/guides/index.md", ["# Guides", "- [g](./g.md)"]);
-  write(tmp, ".trellis/spec/guides/g.md", [
+  write(tmp, ".arbor/spec/guides/index.md", ["# Guides", "- [g](./g.md)"]);
+  write(tmp, ".arbor/spec/guides/g.md", [
     "# Guide",
     "Pointer: [good](../backend/good.md)",
   ]);
@@ -177,21 +177,21 @@ function writeFixture(tmp: string): string[] {
   git(tmp, "commit", "-q", "-m", "fixture");
 
   return [
-    "broken-link .trellis/spec/backend/linky.md:7",
-    "dead-source .trellis/spec/backend/dead.md:3",
-    "missing-metadata .trellis/spec/backend/nometa.md:1",
-    "missing-section .trellis/spec/frontend/index.md:0",
-    "missing-section .trellis/spec/frontend/index.md:0",
-    "placeholder .trellis/spec/backend/index.md:7",
-    "placeholder .trellis/spec/backend/placeholder.md:7",
-    "stale .trellis/spec/backend/stale.md:4",
-    "unlisted-doc .trellis/spec/backend/unlisted.md:0",
+    "broken-link .arbor/spec/backend/linky.md:7",
+    "dead-source .arbor/spec/backend/dead.md:3",
+    "missing-metadata .arbor/spec/backend/nometa.md:1",
+    "missing-section .arbor/spec/frontend/index.md:0",
+    "missing-section .arbor/spec/frontend/index.md:0",
+    "placeholder .arbor/spec/backend/index.md:7",
+    "placeholder .arbor/spec/backend/placeholder.md:7",
+    "stale .arbor/spec/backend/stale.md:4",
+    "unlisted-doc .arbor/spec/backend/unlisted.md:0",
   ];
 }
 
 function writeCleanFixture(tmp: string): void {
   write(tmp, "src/a.ts", ["export const a = 1;"]);
-  write(tmp, ".trellis/spec/backend/index.md", [
+  write(tmp, ".arbor/spec/backend/index.md", [
     "# Backend",
     "| Guide | Description | Status |",
     "|-------|-------------|--------|",
@@ -199,7 +199,7 @@ function writeCleanFixture(tmp: string): void {
     "## Pre-Development Checklist",
     "## Quality Check",
   ]);
-  write(tmp, ".trellis/spec/backend/good.md", [
+  write(tmp, ".arbor/spec/backend/good.md", [
     ...meta(["src/a.ts"], FRESH),
     "# Good",
   ]);
@@ -208,7 +208,7 @@ function writeCleanFixture(tmp: string): void {
 }
 
 function runSpec(repo: string, ...args: string[]): SpawnSyncReturns<string> {
-  return spawnSync("python3", [".trellis/scripts/spec.py", ...args], {
+  return spawnSync("python3", [".arbor/scripts/spec.py", ...args], {
     cwd: repo,
     encoding: "utf-8",
   });
@@ -237,7 +237,7 @@ describe.skipIf(!hasPython())("spec.py lint", () => {
   let tmp: string;
 
   beforeEach(() => {
-    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "trellis-spec-lint-"));
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-spec-lint-"));
     setupRepo(tmp);
   });
 
@@ -277,7 +277,7 @@ describe.skipIf(!hasPython())("spec.py lint", () => {
       `sources changed ${SOURCE_COMMIT_DATE} after last_verified 2026-09-01 (src/a.ts)`,
     );
     expect(r.stdout).toContain(
-      "run spec.py init-meta .trellis/spec/backend/nometa.md",
+      "run spec.py init-meta .arbor/spec/backend/nometa.md",
     );
     expect(r.stdout).toContain("link target ./nope.md#x does not exist");
   });
@@ -329,11 +329,11 @@ describe.skipIf(!hasPython())("spec.py lint", () => {
   it("--strict passes when only warnings/info remain", () => {
     writeFixture(tmp);
     // Repair the two errors; warnings and info stay.
-    write(tmp, ".trellis/spec/backend/dead.md", [
+    write(tmp, ".arbor/spec/backend/dead.md", [
       ...meta(["src/a.ts"], FRESH),
       "# Dead",
     ]);
-    write(tmp, ".trellis/spec/backend/linky.md", [
+    write(tmp, ".arbor/spec/backend/linky.md", [
       ...meta(["src/a.ts"], FRESH),
       "# Linky",
     ]);
@@ -346,12 +346,12 @@ describe.skipIf(!hasPython())("spec.py lint", () => {
 
   it("PATH filters to the given file or directory; --package to spec/<pkg>", () => {
     writeFixture(tmp);
-    const one = runSpec(tmp, "lint", "--json", ".trellis/spec/backend/dead.md");
+    const one = runSpec(tmp, "lint", "--json", ".arbor/spec/backend/dead.md");
     const oneReport = JSON.parse(one.stdout) as JsonReport;
     expect(oneReport.docs).toBe(1);
     expect(oneReport.findings.map((f) => f.rule)).toEqual(["dead-source"]);
 
-    const dir = runSpec(tmp, "lint", "--json", ".trellis/spec/frontend");
+    const dir = runSpec(tmp, "lint", "--json", ".arbor/spec/frontend");
     const dirReport = JSON.parse(dir.stdout) as JsonReport;
     expect(dirReport.docs).toBe(1);
     expect(dirReport.findings.map((f) => f.rule)).toEqual([
@@ -361,23 +361,23 @@ describe.skipIf(!hasPython())("spec.py lint", () => {
 
     // Monorepo: --package scopes to spec/<pkg>/ and <pkg>/<layer>/ is a layer.
     fs.writeFileSync(
-      path.join(tmp, ".trellis", "config.yaml"),
+      path.join(tmp, ".arbor", "config.yaml"),
       "packages:\n  api:\n    path: packages/api\n",
     );
-    write(tmp, ".trellis/spec/api/backend/index.md", [
+    write(tmp, ".arbor/spec/api/backend/index.md", [
       "# API",
       "## Pre-Development Checklist",
       "## Quality Check",
     ]);
-    write(tmp, ".trellis/spec/api/backend/orphan.md", ["# Orphan"]);
+    write(tmp, ".arbor/spec/api/backend/orphan.md", ["# Orphan"]);
     const pkg = runSpec(tmp, "lint", "--json", "--package", "api");
     const pkgReport = JSON.parse(pkg.stdout) as JsonReport;
     expect(pkgReport.docs).toBe(2);
     expect(
       pkgReport.findings.map((f) => `${f.rule} ${f.path}:${f.line}`).sort(),
     ).toEqual([
-      "missing-metadata .trellis/spec/api/backend/orphan.md:1",
-      "unlisted-doc .trellis/spec/api/backend/orphan.md:0",
+      "missing-metadata .arbor/spec/api/backend/orphan.md:1",
+      "unlisted-doc .arbor/spec/api/backend/orphan.md:0",
     ]);
   });
 
@@ -386,11 +386,11 @@ describe.skipIf(!hasPython())("spec.py lint", () => {
     writeCleanFixture(tmp);
     const outside = runSpec(tmp, "lint", "src/a.ts");
     expect(outside.status).toBe(2);
-    expect(outside.stderr).toContain("not under .trellis/spec");
+    expect(outside.stderr).toContain("not under .arbor/spec");
     const badDate = runSpec(
       tmp,
       "verify",
-      ".trellis/spec/backend/good.md",
+      ".arbor/spec/backend/good.md",
       "--date",
       "2026-13-40",
     );
@@ -410,18 +410,18 @@ describe.skipIf(!hasPython())("spec.py lint", () => {
     // good/linky/placeholder (src/a.ts), unlisted (src/b.ts), stale (src/*.ts)
     // are all older than the bumped mtime now.
     expect(stale.map((f) => f.path).sort()).toEqual([
-      ".trellis/spec/backend/good.md",
-      ".trellis/spec/backend/linky.md",
-      ".trellis/spec/backend/placeholder.md",
-      ".trellis/spec/backend/stale.md",
-      ".trellis/spec/backend/unlisted.md",
+      ".arbor/spec/backend/good.md",
+      ".arbor/spec/backend/linky.md",
+      ".arbor/spec/backend/placeholder.md",
+      ".arbor/spec/backend/stale.md",
+      ".arbor/spec/backend/unlisted.md",
     ]);
     expect(stale[0].detail.changed).toBe("2027-03-04");
   });
 
   it("invalid frontmatter is an error naming the line, not a silent skip", () => {
     writeCleanFixture(tmp);
-    write(tmp, ".trellis/spec/backend/good.md", [
+    write(tmp, ".arbor/spec/backend/good.md", [
       "---",
       "sources: [src/a.ts]",
       "last_verified: yesterday",
@@ -441,7 +441,7 @@ describe.skipIf(!hasPython())("spec.py lint", () => {
 
   it("invalid-source rejects absolute paths and `..` segments", () => {
     writeCleanFixture(tmp);
-    write(tmp, ".trellis/spec/backend/good.md", [
+    write(tmp, ".arbor/spec/backend/good.md", [
       ...meta(["/etc/passwd", "../outside.ts", "src/a.ts"], FRESH),
       "# Good",
     ]);
@@ -455,19 +455,19 @@ describe.skipIf(!hasPython())("spec.py lint", () => {
 
   it("--provenance reads spec_changes from archived task.json (R6)", () => {
     writeCleanFixture(tmp);
-    write(tmp, ".trellis/tasks/archive/2026-10/10-01-older/task.json", [
+    write(tmp, ".arbor/tasks/archive/2026-10/10-01-older/task.json", [
       JSON.stringify({
         completedAt: "2026-10-02",
-        spec_changes: [".trellis/spec/backend/good.md"],
+        spec_changes: [".arbor/spec/backend/good.md"],
         spec_changes_source: "since-created",
       }),
     ]);
-    write(tmp, ".trellis/tasks/archive/2026-10/10-20-newer/task.json", [
+    write(tmp, ".arbor/tasks/archive/2026-10/10-20-newer/task.json", [
       JSON.stringify({
         completedAt: "2026-10-21",
         spec_changes: [
-          ".trellis/spec/backend/good.md",
-          ".trellis/spec/backend/gone.md",
+          ".arbor/spec/backend/good.md",
+          ".arbor/spec/backend/gone.md",
         ],
         spec_changes_source: "branch-diff",
       }),
@@ -476,7 +476,7 @@ describe.skipIf(!hasPython())("spec.py lint", () => {
     const j = runSpec(tmp, "lint", "--json", "--provenance");
     const report = JSON.parse(j.stdout) as JsonReport;
     expect(report.provenance).toEqual({
-      ".trellis/spec/backend/good.md": [
+      ".arbor/spec/backend/good.md": [
         {
           task: "10-20-newer",
           completedAt: "2026-10-21",
@@ -492,7 +492,7 @@ describe.skipIf(!hasPython())("spec.py lint", () => {
 
     const t = runSpec(tmp, "lint", "--provenance");
     expect(t.stdout).toContain(
-      ".trellis/spec/backend/good.md  last changed by 10-20-newer (2026-10-21)",
+      ".arbor/spec/backend/good.md  last changed by 10-20-newer (2026-10-21)",
     );
     expect(t.stdout).not.toContain("gone.md");
   });
@@ -502,7 +502,7 @@ describe.skipIf(!hasPython())("spec.py verify", () => {
   let tmp: string;
 
   beforeEach(() => {
-    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "trellis-spec-verify-"));
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-spec-verify-"));
     setupRepo(tmp);
     writeFixture(tmp);
   });
@@ -512,7 +512,7 @@ describe.skipIf(!hasPython())("spec.py verify", () => {
   });
 
   it("AC3: changes only the last_verified line", () => {
-    const rel = ".trellis/spec/backend/stale.md";
+    const rel = ".arbor/spec/backend/stale.md";
     const before = read(tmp, rel).split("\n");
     const r = runSpec(tmp, "verify", rel, "--date", "2026-10-19");
     expect(r.status).toBe(0);
@@ -532,7 +532,7 @@ describe.skipIf(!hasPython())("spec.py verify", () => {
   });
 
   it("inserts last_verified after the sources block when absent", () => {
-    const rel = ".trellis/spec/backend/good.md";
+    const rel = ".arbor/spec/backend/good.md";
     write(tmp, rel, [
       "---",
       "sources:",
@@ -559,8 +559,8 @@ describe.skipIf(!hasPython())("spec.py verify", () => {
     );
   });
 
-  it("defaults to today, is idempotent, and refuses paths outside .trellis/spec", () => {
-    const rel = ".trellis/spec/backend/good.md";
+  it("defaults to today, is idempotent, and refuses paths outside .arbor/spec", () => {
+    const rel = ".arbor/spec/backend/good.md";
     const today = new Date().toISOString().slice(0, 10);
     const first = runSpec(tmp, "verify", rel);
     expect(first.status).toBe(0);
@@ -575,7 +575,7 @@ describe.skipIf(!hasPython())("spec.py verify", () => {
   });
 
   it("keeps CRLF line endings through lint, verify, and init-meta", () => {
-    const rel = ".trellis/spec/backend/good.md";
+    const rel = ".arbor/spec/backend/good.md";
     const file = path.join(tmp, rel);
     const crlf =
       [
@@ -604,7 +604,7 @@ describe.skipIf(!hasPython())("spec.py verify", () => {
     );
 
     // A CRLF doc without a block gets a CRLF block, nothing else rewritten.
-    const bareRel = ".trellis/spec/backend/nometa.md";
+    const bareRel = ".arbor/spec/backend/nometa.md";
     const bare = path.join(tmp, bareRel);
     fs.writeFileSync(bare, "# No meta\r\n\r\nbody\r\n");
     expect(runSpec(tmp, "init-meta", bareRel).status).toBe(0);
@@ -621,7 +621,7 @@ describe.skipIf(!hasPython())("spec.py init-meta", () => {
   let tmp: string;
 
   beforeEach(() => {
-    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "trellis-spec-init-meta-"));
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-spec-init-meta-"));
     setupRepo(tmp);
     writeFixture(tmp);
   });
@@ -631,7 +631,7 @@ describe.skipIf(!hasPython())("spec.py init-meta", () => {
   });
 
   it("AC4: seeds sources from a `Sources:` bullet list and last_verified from git", () => {
-    const rel = ".trellis/spec/backend/nometa.md";
+    const rel = ".arbor/spec/backend/nometa.md";
     const body = [
       "# No meta",
       "",
@@ -682,31 +682,31 @@ describe.skipIf(!hasPython())("spec.py init-meta", () => {
     // nometa.md is the only leaf without a block; index.md / guides are skipped.
     expect(r.stdout).toContain("seeded 1 doc\n");
     expect(
-      read(tmp, ".trellis/spec/backend/nometa.md").startsWith(
+      read(tmp, ".arbor/spec/backend/nometa.md").startsWith(
         "---\nsources: []\n",
       ),
     ).toBe(true);
-    expect(read(tmp, ".trellis/spec/frontend/index.md").startsWith("---")).toBe(
+    expect(read(tmp, ".arbor/spec/frontend/index.md").startsWith("---")).toBe(
       false,
     );
-    expect(read(tmp, ".trellis/spec/guides/g.md").startsWith("---")).toBe(
+    expect(read(tmp, ".arbor/spec/guides/g.md").startsWith("---")).toBe(
       false,
     );
 
-    const explicit = runSpec(tmp, "init-meta", ".trellis/spec/guides/g.md");
+    const explicit = runSpec(tmp, "init-meta", ".arbor/spec/guides/g.md");
     expect(explicit.stdout).toContain(
-      "seeded .trellis/spec/guides/g.md (0 sources)",
+      "seeded .arbor/spec/guides/g.md (0 sources)",
     );
     expect(
-      read(tmp, ".trellis/spec/guides/g.md").startsWith("---\nsources: []\n"),
+      read(tmp, ".arbor/spec/guides/g.md").startsWith("---\nsources: []\n"),
     ).toBe(true);
   });
 
   it("falls back to today for last_verified when the doc has no git history", () => {
     fs.rmSync(path.join(tmp, ".git"), { recursive: true, force: true });
     const today = new Date().toISOString().slice(0, 10);
-    runSpec(tmp, "init-meta", ".trellis/spec/backend/nometa.md");
-    expect(read(tmp, ".trellis/spec/backend/nometa.md")).toContain(
+    runSpec(tmp, "init-meta", ".arbor/spec/backend/nometa.md");
+    expect(read(tmp, ".arbor/spec/backend/nometa.md")).toContain(
       `last_verified: ${today}`,
     );
   });

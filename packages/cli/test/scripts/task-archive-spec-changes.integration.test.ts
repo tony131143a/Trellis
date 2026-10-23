@@ -26,7 +26,7 @@ import path from "node:path";
 
 const TEMPLATE_SCRIPTS = path.resolve(
   __dirname,
-  "../../src/templates/trellis/scripts",
+  "../../src/templates/arbor/scripts",
 );
 
 function hasPython(): boolean {
@@ -58,23 +58,23 @@ function setupRepo(tmp: string): void {
   git(tmp, "init", "-q", "-b", "main");
   git(tmp, "config", "user.email", "test@example.com");
   git(tmp, "config", "user.name", "Test");
-  const scriptsDest = path.join(tmp, ".trellis", "scripts");
+  const scriptsDest = path.join(tmp, ".arbor", "scripts");
   fs.mkdirSync(scriptsDest, { recursive: true });
   fs.cpSync(TEMPLATE_SCRIPTS, scriptsDest, { recursive: true });
   // Keep archive from committing so each case inspects task.json directly.
   fs.writeFileSync(
-    path.join(tmp, ".trellis", "config.yaml"),
+    path.join(tmp, ".arbor", "config.yaml"),
     "session_auto_commit: false\n",
   );
-  fs.mkdirSync(path.join(tmp, ".trellis", "spec", "backend"), {
+  fs.mkdirSync(path.join(tmp, ".arbor", "spec", "backend"), {
     recursive: true,
   });
   fs.writeFileSync(
-    path.join(tmp, ".trellis", "spec", "backend", "index.md"),
+    path.join(tmp, ".arbor", "spec", "backend", "index.md"),
     "# idx\n",
   );
   fs.writeFileSync(
-    path.join(tmp, ".trellis", "spec", "backend", "x.md"),
+    path.join(tmp, ".arbor", "spec", "backend", "x.md"),
     "# x\n",
   );
   fs.writeFileSync(path.join(tmp, "src.ts"), "export {};\n");
@@ -85,7 +85,7 @@ function makeTask(
   name: string,
   overrides: Record<string, unknown> = {},
 ): void {
-  const dir = path.join(repo, ".trellis", "tasks", name);
+  const dir = path.join(repo, ".arbor", "tasks", name);
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, "prd.md"), `${name} prd\n`);
   fs.writeFileSync(
@@ -130,15 +130,15 @@ function runTask(
   env: NodeJS.ProcessEnv = process.env,
   python = "python3",
 ): SpawnSyncReturns<string> {
-  return spawnSync(python, [".trellis/scripts/task.py", ...args], {
+  return spawnSync(python, [".arbor/scripts/task.py", ...args], {
     cwd: repo,
     encoding: "utf-8",
-    env: { ...env, TRELLIS_DEVELOPER: "tester" },
+    env: { ...env, ARBOR_DEVELOPER: "tester" },
   });
 }
 
 function archivedTaskJson(repo: string, name: string): Record<string, unknown> {
-  const archive = path.join(repo, ".trellis", "tasks", "archive");
+  const archive = path.join(repo, ".arbor", "tasks", "archive");
   for (const month of fs.readdirSync(archive)) {
     const file = path.join(archive, month, name, "task.json");
     if (fs.existsSync(file)) {
@@ -154,7 +154,7 @@ function archivedTaskJson(repo: string, name: string): Record<string, unknown> {
 function activeTaskJson(repo: string, name: string): Record<string, unknown> {
   return JSON.parse(
     fs.readFileSync(
-      path.join(repo, ".trellis", "tasks", name, "task.json"),
+      path.join(repo, ".arbor", "tasks", name, "task.json"),
       "utf-8",
     ),
   ) as Record<string, unknown>;
@@ -164,7 +164,7 @@ describe.skipIf(!hasPython())("task.py archive records spec_changes", () => {
   let tmp: string;
 
   beforeEach(() => {
-    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "trellis-archive-spec-"));
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-archive-spec-"));
     setupRepo(tmp);
   });
 
@@ -178,7 +178,7 @@ describe.skipIf(!hasPython())("task.py archive records spec_changes", () => {
 
     git(tmp, "checkout", "-q", "-b", "feat");
     fs.writeFileSync(
-      path.join(tmp, ".trellis", "spec", "backend", "x.md"),
+      path.join(tmp, ".arbor", "spec", "backend", "x.md"),
       "# x changed\n",
     );
     fs.writeFileSync(path.join(tmp, "src.ts"), "export const changed = 1;\n");
@@ -189,7 +189,7 @@ describe.skipIf(!hasPython())("task.py archive records spec_changes", () => {
     expect(r.stderr).not.toContain("could not derive spec changes");
 
     const data = archivedTaskJson(tmp, "feat-task");
-    expect(data.spec_changes).toEqual([".trellis/spec/backend/x.md"]);
+    expect(data.spec_changes).toEqual([".arbor/spec/backend/x.md"]);
     expect(data.spec_changes_source).toBe("branch-diff");
   });
 
@@ -198,7 +198,7 @@ describe.skipIf(!hasPython())("task.py archive records spec_changes", () => {
     commitAll(tmp, "initial");
     git(tmp, "checkout", "-q", "-b", "feat");
     fs.writeFileSync(
-      path.join(tmp, ".trellis", "spec", "backend", "x.md"),
+      path.join(tmp, ".arbor", "spec", "backend", "x.md"),
       "# x changed\n",
     );
     commitAll(tmp, "spec on feat");
@@ -207,7 +207,7 @@ describe.skipIf(!hasPython())("task.py archive records spec_changes", () => {
     const r = runTask(tmp, ["archive", "feat-task"]);
     expect(r.status, r.stderr).toBe(0);
     const data = archivedTaskJson(tmp, "feat-task");
-    expect(data.spec_changes).toEqual([".trellis/spec/backend/x.md"]);
+    expect(data.spec_changes).toEqual([".arbor/spec/backend/x.md"]);
     expect(data.spec_changes_source).toBe("branch-diff");
   });
 
@@ -220,14 +220,14 @@ describe.skipIf(!hasPython())("task.py archive records spec_changes", () => {
     commitAll(tmp, "initial");
     git(tmp, "checkout", "-q", "-b", "feat");
     fs.writeFileSync(
-      path.join(tmp, ".trellis", "spec", "backend", "x.md"),
+      path.join(tmp, ".arbor", "spec", "backend", "x.md"),
       "# x changed\n",
     );
     commitAll(tmp, "spec x on feat");
     git(tmp, "checkout", "-q", "main");
     // A concurrent base-only spec change must not be attributed to the task.
     fs.writeFileSync(
-      path.join(tmp, ".trellis", "spec", "backend", "y.md"),
+      path.join(tmp, ".arbor", "spec", "backend", "y.md"),
       "# y on main\n",
     );
     commitAll(tmp, "spec y on main");
@@ -237,7 +237,7 @@ describe.skipIf(!hasPython())("task.py archive records spec_changes", () => {
     expect(r.status, r.stderr).toBe(0);
     expect(r.stderr).not.toContain("could not derive spec changes");
     const data = archivedTaskJson(tmp, "feat-task");
-    expect(data.spec_changes).toEqual([".trellis/spec/backend/x.md"]);
+    expect(data.spec_changes).toEqual([".arbor/spec/backend/x.md"]);
     expect(data.spec_changes_source).toBe("branch-diff");
   });
 
@@ -245,11 +245,11 @@ describe.skipIf(!hasPython())("task.py archive records spec_changes", () => {
     makeTask(tmp, "shared-task");
     commitAll(tmp, "initial");
     fs.writeFileSync(
-      path.join(tmp, ".trellis", "spec", "backend", "y.md"),
+      path.join(tmp, ".arbor", "spec", "backend", "y.md"),
       "# y\n",
     );
     commitAll(tmp, "add spec y on main");
-    fs.rmSync(path.join(tmp, ".trellis", "spec", "backend", "x.md"));
+    fs.rmSync(path.join(tmp, ".arbor", "spec", "backend", "x.md"));
     commitAll(tmp, "delete spec x on main");
 
     const r = runTask(tmp, ["archive", "shared-task"]);
@@ -259,9 +259,9 @@ describe.skipIf(!hasPython())("task.py archive records spec_changes", () => {
     // Deleted paths count: the task still changed them. index.md/x.md come
     // from the initial commit, which is also after createdAt.
     expect(data.spec_changes).toEqual([
-      ".trellis/spec/backend/index.md",
-      ".trellis/spec/backend/x.md",
-      ".trellis/spec/backend/y.md",
+      ".arbor/spec/backend/index.md",
+      ".arbor/spec/backend/x.md",
+      ".arbor/spec/backend/y.md",
     ]);
     expect(data.spec_changes_source).toBe("since-created");
   });
@@ -300,44 +300,44 @@ describe.skipIf(!hasPython())("task.py archive records spec_changes", () => {
 
     const add = runTask(tmp, [
       "add-spec-change",
-      ".trellis/tasks/manual-task",
-      "./.trellis/spec/backend/index.md",
+      ".arbor/tasks/manual-task",
+      "./.arbor/spec/backend/index.md",
     ]);
     expect(add.status, add.stderr).toBe(0);
     const data = activeTaskJson(tmp, "manual-task");
-    expect(data.spec_changes).toEqual([".trellis/spec/backend/index.md"]);
+    expect(data.spec_changes).toEqual([".arbor/spec/backend/index.md"]);
     expect(data.spec_changes_source).toBe("manual");
 
     // Adding the same path twice is a no-op; outside / missing paths fail.
     const dup = runTask(tmp, [
       "add-spec-change",
-      ".trellis/tasks/manual-task",
-      ".trellis/spec/backend/index.md",
+      ".arbor/tasks/manual-task",
+      ".arbor/spec/backend/index.md",
     ]);
     expect(dup.status).toBe(0);
     expect(dup.stdout).toContain("Already recorded");
     const outside = runTask(tmp, [
       "add-spec-change",
-      ".trellis/tasks/manual-task",
+      ".arbor/tasks/manual-task",
       "src.ts",
     ]);
     expect(outside.status).toBe(1);
-    expect(outside.stderr).toContain("not under .trellis/spec/");
+    expect(outside.stderr).toContain("not under .arbor/spec/");
     const missing = runTask(tmp, [
       "add-spec-change",
-      ".trellis/tasks/manual-task",
-      ".trellis/spec/backend/nope.md",
+      ".arbor/tasks/manual-task",
+      ".arbor/spec/backend/nope.md",
     ]);
     expect(missing.status).toBe(1);
     expect(missing.stderr).toContain("does not exist");
     expect(activeTaskJson(tmp, "manual-task").spec_changes).toEqual([
-      ".trellis/spec/backend/index.md",
+      ".arbor/spec/backend/index.md",
     ]);
 
     const r = runTask(tmp, ["archive", "manual-task"]);
     expect(r.status, r.stderr).toBe(0);
     const archived = archivedTaskJson(tmp, "manual-task");
-    expect(archived.spec_changes).toEqual([".trellis/spec/backend/index.md"]);
+    expect(archived.spec_changes).toEqual([".arbor/spec/backend/index.md"]);
     expect(archived.spec_changes_source).toBe("manual");
   });
 
@@ -346,18 +346,18 @@ describe.skipIf(!hasPython())("task.py archive records spec_changes", () => {
     commitAll(tmp, "initial");
     git(tmp, "checkout", "-q", "-b", "feat");
     fs.writeFileSync(
-      path.join(tmp, ".trellis", "spec", "backend", "x.md"),
+      path.join(tmp, ".arbor", "spec", "backend", "x.md"),
       "# x changed\n",
     );
     commitAll(tmp, "spec on feat");
 
     for (const p of [
-      ".trellis/spec/backend/index.md",
-      ".trellis/spec/backend/x.md",
+      ".arbor/spec/backend/index.md",
+      ".arbor/spec/backend/x.md",
     ]) {
       const add = runTask(tmp, [
         "add-spec-change",
-        ".trellis/tasks/mixed-task",
+        ".arbor/tasks/mixed-task",
         p,
       ]);
       expect(add.status, add.stderr).toBe(0);
@@ -367,8 +367,8 @@ describe.skipIf(!hasPython())("task.py archive records spec_changes", () => {
     expect(r.status, r.stderr).toBe(0);
     const data = archivedTaskJson(tmp, "mixed-task");
     expect(data.spec_changes).toEqual([
-      ".trellis/spec/backend/index.md",
-      ".trellis/spec/backend/x.md",
+      ".arbor/spec/backend/index.md",
+      ".arbor/spec/backend/x.md",
     ]);
     expect(data.spec_changes_source).toBe("mixed");
   });
@@ -386,7 +386,7 @@ describe.skipIf(!hasPython())("task.py archive records spec_changes", () => {
     ]);
     expect(r.status, r.stderr).toBe(0);
     const created = fs
-      .readdirSync(path.join(tmp, ".trellis", "tasks"))
+      .readdirSync(path.join(tmp, ".arbor", "tasks"))
       .filter((d: string) => d.endsWith("-fresh"));
     expect(created).toHaveLength(1);
     const data = activeTaskJson(tmp, created[0]);

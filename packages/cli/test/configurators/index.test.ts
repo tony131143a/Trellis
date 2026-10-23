@@ -39,13 +39,13 @@ describe("CONFIG_DIRS", () => {
 });
 
 describe("ALL_MANAGED_DIRS", () => {
-  it("starts with .trellis", () => {
-    expect(ALL_MANAGED_DIRS[0]).toBe(".trellis");
+  it("starts with .arbor", () => {
+    expect(ALL_MANAGED_DIRS[0]).toBe(".arbor");
   });
 
-  it("contains .trellis plus all managed dirs", () => {
+  it("contains .arbor plus all managed dirs", () => {
     expect(ALL_MANAGED_DIRS).toEqual([
-      ".trellis",
+      ".arbor",
       ...new Set(PLATFORM_MANAGED_DIRS),
     ]);
   });
@@ -69,19 +69,19 @@ describe("isManagedPath", () => {
   // Positive: exact match (startsWith(d + "/") = false, === d = true)
   it("matches exact managed directory names", () => {
     expect(isManagedPath(".claude")).toBe(true);
-    expect(isManagedPath(".trellis")).toBe(true);
+    expect(isManagedPath(".arbor")).toBe(true);
   });
 
-  // Positive: .trellis hardcoded paths
-  it("matches .trellis sub-paths", () => {
-    expect(isManagedPath(".trellis/spec")).toBe(true);
-    expect(isManagedPath(".trellis/tasks/some-task")).toBe(true);
+  // Positive: .arbor hardcoded paths
+  it("matches .arbor sub-paths", () => {
+    expect(isManagedPath(".arbor/spec")).toBe(true);
+    expect(isManagedPath(".arbor/tasks/some-task")).toBe(true);
   });
 
   // Boundary: prefix-similar but NOT a sub-path (no / separator after name)
   it("rejects prefix-similar non-sub-paths", () => {
     expect(isManagedPath(".claude-backup")).toBe(false);
-    expect(isManagedPath(".trellis-old")).toBe(false);
+    expect(isManagedPath(".arbor-old")).toBe(false);
   });
 
   // Boundary: empty string
@@ -92,7 +92,7 @@ describe("isManagedPath", () => {
   // Boundary: path traversal
   it("rejects path traversal", () => {
     expect(isManagedPath("../.claude")).toBe(false);
-    expect(isManagedPath("../.trellis/spec")).toBe(false);
+    expect(isManagedPath("../.arbor/spec")).toBe(false);
   });
 
   // Boundary: unrelated directories
@@ -106,7 +106,7 @@ describe("isManagedPath", () => {
   // Windows path separator (bug fix verification)
   it("matches Windows-style backslash paths", () => {
     expect(isManagedPath(".claude\\commands\\foo.md")).toBe(true);
-    expect(isManagedPath(".trellis\\spec\\backend")).toBe(true);
+    expect(isManagedPath(".arbor\\spec\\backend")).toBe(true);
   });
 
   // Mixed separators
@@ -126,13 +126,13 @@ describe("isManagedRootDir", () => {
     }
   });
 
-  it("matches .trellis", () => {
-    expect(isManagedRootDir(".trellis")).toBe(true);
+  it("matches .arbor", () => {
+    expect(isManagedRootDir(".arbor")).toBe(true);
   });
 
   it("rejects sub-paths (not a root dir)", () => {
     expect(isManagedRootDir(".claude/commands")).toBe(false);
-    expect(isManagedRootDir(".trellis/spec")).toBe(false);
+    expect(isManagedRootDir(".arbor/spec")).toBe(false);
   });
 
   it("rejects unrelated directories", () => {
@@ -293,18 +293,18 @@ describe("collectPlatformTemplates", () => {
     for (const [id, skillRoot] of Object.entries(SKILL_ROOTS)) {
       const result = collectPlatformTemplates(id as AITool);
       expect(result, `${id} should have template tracking`).toBeInstanceOf(Map);
-      expect(result?.has(`${skillRoot}/trellis-meta/SKILL.md`)).toBe(true);
+      expect(result?.has(`${skillRoot}/arbor-meta/SKILL.md`)).toBe(true);
       expect(
         result?.has(
-          `${skillRoot}/trellis-meta/references/local-architecture/overview.md`,
+          `${skillRoot}/arbor-meta/references/local-architecture/overview.md`,
         ),
       ).toBe(true);
-      expect(result?.has(`${skillRoot}/trellis-spec-bootstrap/SKILL.md`)).toBe(
+      expect(result?.has(`${skillRoot}/arbor-spec-bootstrap/SKILL.md`)).toBe(
         true,
       );
       expect(
         result?.has(
-          `${skillRoot}/trellis-spec-bootstrap/references/spec-writing.md`,
+          `${skillRoot}/arbor-spec-bootstrap/references/spec-writing.md`,
         ),
       ).toBe(true);
     }

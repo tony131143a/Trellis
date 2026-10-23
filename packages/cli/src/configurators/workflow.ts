@@ -2,16 +2,16 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { DIR_NAMES, PATHS } from "../constants/paths.js";
-import { copyTrellisDir } from "../templates/extract.js";
+import { copyArborDir } from "../templates/extract.js";
 
-// Import trellis templates (generic, not project-specific)
+// Import arbor templates (generic, not project-specific)
 import {
   workflowMdTemplate,
   configYamlTemplate,
   gitignoreTemplate,
   gitattributesTemplate,
   getAllAgents,
-} from "../templates/trellis/index.js";
+} from "../templates/arbor/index.js";
 
 // Import markdown templates
 import {
@@ -73,7 +73,7 @@ const JOURNAL_MERGE_UNION_PATTERN = /journal-\*\.md\s+merge=union/;
  *
  * - No `.gitattributes` yet: write the bundled template directly.
  * - Existing file that already has a `journal-*.md merge=union` rule (user's
- *   own or from a previous `trellis init`/`update`): no-op, avoids duplicates.
+ *   own or from a previous `arbor init`/`update`): no-op, avoids duplicates.
  * - Existing file without that rule: append the bundled template content.
  *
  * Intentionally does NOT go through the standard `writeFile` conflict-prompt
@@ -100,7 +100,7 @@ export function ensureGitattributes(cwd: string): void {
 /**
  * Create workflow structure based on project type
  *
- * This function creates the .trellis/ directory structure by:
+ * This function creates the .arbor/ directory structure by:
  * 1. Copying scripts/ directory directly (dogfooding)
  * 2. Copying workflow.md and .gitignore (dogfooding)
  * 3. Creating workspace/ with index.md
@@ -117,11 +117,11 @@ export async function createWorkflowStructure(
   const projectType = options?.projectType ?? "fullstack";
   const packages = options?.packages;
 
-  // Create base .trellis directory
+  // Create base .arbor directory
   ensureDir(path.join(cwd, DIR_NAMES.WORKFLOW));
 
   // Copy scripts/ directory from templates
-  await copyTrellisDir("scripts", path.join(cwd, PATHS.SCRIPTS), {
+  await copyArborDir("scripts", path.join(cwd, PATHS.SCRIPTS), {
     executable: true,
   });
 
@@ -148,10 +148,10 @@ export async function createWorkflowStructure(
   ensureGitattributes(cwd);
 
   // Dispatch channel runtime agent definitions. These are platform-agnostic
-  // Trellis runtime files consumed by `trellis channel spawn --agent <name>`
+  // Arbor runtime files consumed by `arbor channel spawn --agent <name>`
   // through `packages/cli/src/commands/channel/agent-loader.ts`. They are
   // dispatched on every init regardless of selected workflow because the user
-  // can switch to a channel-driven workflow at any time via `trellis workflow
+  // can switch to a channel-driven workflow at any time via `arbor workflow
   // --template`.
   ensureDir(path.join(cwd, PATHS.AGENTS));
   for (const [agentFile, content] of getAllAgents()) {

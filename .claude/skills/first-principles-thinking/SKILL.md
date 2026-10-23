@@ -226,14 +226,14 @@ Maintain a running checklist throughout the analysis. After each phase completio
 
 ---
 
-## Trellis Integration
+## Arbor Integration
 
-When used within a Trellis-managed project, the analysis artifacts integrate with the task system.
+When used within a Arbor-managed project, the analysis artifacts integrate with the task system.
 
 ### File Placement
 
 ```
-.trellis/tasks/{MM-DD-slug}/
+.arbor/tasks/{MM-DD-slug}/
 ├── task.json              # Existing
 ├── prd.md                 # Existing — FP feeds into this
 ├── fp-analysis.md         # ← FP analysis output (Phases 0-5)
@@ -245,7 +245,7 @@ When used within a Trellis-managed project, the analysis artifacts integrate wit
 
 ### Brainstorm Integration
 
-During `/trellis:brainstorm`, when the task is classified as "Complex":
+During `/arbor:brainstorm`, when the task is classified as "Complex":
 
 1. **Trigger**: User says "从第一性原理分析" or AI detects the problem has ≥3 unvalidated assumptions
 2. **Execute**: Run Phases 0-3, saving output to `fp-analysis.md` in task directory
@@ -260,8 +260,8 @@ During `/trellis:brainstorm`, when the task is classified as "Complex":
 After FP analysis completes, add to context files:
 
 ```bash
-python3 ./.trellis/scripts/task.py add-context "$TASK_DIR" implement "fp-analysis.md" "Ground truths and reasoning chain"
-python3 ./.trellis/scripts/task.py add-context "$TASK_DIR" check "fp-analysis.md" "Verify implementation traces to ground truths"
+python3 ./.arbor/scripts/task.py add-context "$TASK_DIR" implement "fp-analysis.md" "Ground truths and reasoning chain"
+python3 ./.arbor/scripts/task.py add-context "$TASK_DIR" check "fp-analysis.md" "Verify implementation traces to ground truths"
 ```
 
 ### Completion Recording

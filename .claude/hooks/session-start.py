@@ -68,12 +68,12 @@ def _normalize_windows_shell_path(path_str: str) -> str:
 
 
 _FIRST_REPLY_NOTICE_HEAD = """<first-reply-notice>
-On the first visible assistant reply in this session, briefly acknowledge that Trellis SessionStart context loaded."""
+On the first visible assistant reply in this session, briefly acknowledge that Arbor SessionStart context loaded."""
 
 _FIRST_REPLY_NOTICE_TAIL = """Choose the acknowledgment language in this order:
 1. Use the language of the user's current request (the user message that triggered this reply).
 2. If that request has no clear natural language, use an explicitly established project communication language.
-3. If neither provides a language, output the language-neutral fallback exactly: `Trellis SessionStart ✓`.
+3. If neither provides a language, output the language-neutral fallback exactly: `Arbor SessionStart ✓`.
 Continue directly with the user's request after the acknowledgment.
 The acknowledgment must not alter the language used for the remainder of the response.
 This notice is one-shot: do not repeat it after the first visible assistant reply in this session.
@@ -83,7 +83,7 @@ FIRST_REPLY_NOTICE = f"{_FIRST_REPLY_NOTICE_HEAD}\n{_FIRST_REPLY_NOTICE_TAIL}"
 
 
 def _build_first_reply_notice(update_hint: str | None) -> str:
-    """First-reply notice, carrying the Trellis update reminder when there is one.
+    """First-reply notice, carrying the Arbor update reminder when there is one.
 
     The reminder has to reach the *user*, not just the model's context — a line
     buried in SessionStart context is exactly how the update step kept getting
@@ -97,7 +97,7 @@ def _build_first_reply_notice(update_hint: str | None) -> str:
         return FIRST_REPLY_NOTICE
     return (
         f"{_FIRST_REPLY_NOTICE_HEAD}\n"
-        f"Also relay this Trellis maintenance notice on its own line in that same reply: {update_hint}\n"
+        f"Also relay this Arbor maintenance notice on its own line in that same reply: {update_hint}\n"
         f"{_FIRST_REPLY_NOTICE_TAIL}"
     )
 
@@ -151,26 +151,14 @@ def _has_curated_jsonl_entry(jsonl_path: Path) -> bool:
 
 
 def should_skip_injection() -> bool:
-    """Check if any platform's non-interactive flag is set, or if Trellis
-    hooks are explicitly disabled via TRELLIS_HOOKS=0 / TRELLIS_DISABLE_HOOKS=1.
+    """Check if the host's non-interactive flag is set, or if Arbor
+    hooks are explicitly disabled via ARBOR_HOOKS=0 / ARBOR_DISABLE_HOOKS=1.
     """
-    if os.environ.get("TRELLIS_HOOKS") == "0":
+    if os.environ.get("ARBOR_HOOKS") == "0":
         return True
-    if os.environ.get("TRELLIS_DISABLE_HOOKS") == "1":
+    if os.environ.get("ARBOR_DISABLE_HOOKS") == "1":
         return True
-    non_interactive_vars = [
-        "CLAUDE_NON_INTERACTIVE",
-        "QODER_NON_INTERACTIVE",
-        "CODEBUDDY_NON_INTERACTIVE",
-        "FACTORY_NON_INTERACTIVE",
-        "CURSOR_NON_INTERACTIVE",
-        "GEMINI_NON_INTERACTIVE",
-        "KIRO_NON_INTERACTIVE",
-        "COPILOT_NON_INTERACTIVE",
-        "TRAE_NON_INTERACTIVE",
-        "ZCODE_NON_INTERACTIVE",
-    ]
-    return any(os.environ.get(var) == "1" for var in non_interactive_vars)
+    return os.environ.get("CLAUDE_NON_INTERACTIVE") == "1"
 
 
 def read_file(path: Path, fallback: str = "") -> str:
@@ -216,26 +204,13 @@ def _format_git_state(repo_root: Path) -> str:
 
 
 def _detect_platform(input_data: dict) -> str | None:
-    if isinstance(input_data.get("cursor_version"), str):
-        return "cursor"
-    # CLAUDE_PROJECT_DIR is a compatibility alias that several hosts set
-    # alongside their own variable — CodeBuddy, ZCode and Trae all do. It must
-    # therefore be checked LAST, or every one of them is detected as claude and
-    # the context key becomes `claude_<their-session-id>`. That key does not
-    # match the session file `task.py start` wrote under the host's real name,
-    # so every turn reports no_task while the pointer exists on disk.
-    # Observed on CodeBuddy IDE 4.10.4: session file `codebuddy_ae54840e….json`
-    # alongside marker `update-check-claude_ae54840e….marker`, same id.
+    # StarFactory is a Claude Code fork: it exports CLAUDE_PROJECT_DIR too, so
+    # its own vendor key must be checked FIRST or a star session is detected as
+    # claude and the context key becomes `claude_<session-id>`. That key does
+    # not match the session file `task.py start` wrote under the host's real
+    # name, so every turn reports no_task while the pointer exists on disk.
     env_map = {
-        "ZCODE_PROJECT_DIR": "zcode",
-        "CURSOR_PROJECT_DIR": "cursor",
-        "CODEBUDDY_PROJECT_DIR": "codebuddy",
-        "FACTORY_PROJECT_DIR": "droid",
-        "GEMINI_PROJECT_DIR": "gemini",
-        "QODER_PROJECT_DIR": "qoder",
-        "KIRO_PROJECT_DIR": "kiro",
-        "COPILOT_PROJECT_DIR": "copilot",
-        "TRAE_PROJECT_DIR": "trae",
+        "STARFACTORY_PROJECT_DIR": "star",
         # Last: the shared alias, only meaningful once no vendor key matched.
         "CLAUDE_PROJECT_DIR": "claude",
     }
@@ -245,29 +220,13 @@ def _detect_platform(input_data: dict) -> str | None:
     script_parts = set(Path(sys.argv[0]).parts)
     if ".claude" in script_parts:
         return "claude"
-    if ".cursor" in script_parts:
-        return "cursor"
-    if ".codex" in script_parts:
-        return "codex"
-    if ".gemini" in script_parts:
-        return "gemini"
-    if ".qoder" in script_parts:
-        return "qoder"
-    if ".codebuddy" in script_parts:
-        return "codebuddy"
-    if ".factory" in script_parts:
-        return "droid"
-    if ".kiro" in script_parts:
-        return "kiro"
-    if ".trae" in script_parts:
-        return "trae"
-    if ".zcode" in script_parts:
-        return "zcode"
+    if ".starFactory" in script_parts:
+        return "star"
     return None
 
 
-def _resolve_context_key(trellis_dir: Path, input_data: dict) -> str | None:
-    scripts_dir = trellis_dir / "scripts"
+def _resolve_context_key(arbor_dir: Path, input_data: dict) -> str | None:
+    scripts_dir = arbor_dir / "scripts"
     if str(scripts_dir) not in sys.path:
         sys.path.insert(0, str(scripts_dir))
     from common.active_task import resolve_context_key  # type: ignore[import-not-found]
@@ -276,7 +235,7 @@ def _resolve_context_key(trellis_dir: Path, input_data: dict) -> str | None:
 
 
 def _persist_context_key_for_bash(context_key: str | None) -> None:
-    """Expose Trellis session identity to later Claude Code Bash commands.
+    """Expose Arbor session identity to later Claude Code Bash commands.
 
     Claude Code SessionStart hooks can append exports to CLAUDE_ENV_FILE; those
     variables are then available to Bash tools in the same conversation. Without
@@ -286,7 +245,7 @@ def _persist_context_key_for_bash(context_key: str | None) -> None:
     CLAUDE_ENV_FILE is user-owned (conda init, proxy settings, ...) and the host
     shell sources it for every command, so an unconditional append grows it
     without bound — one line per SessionStart forever. Skip the write when the
-    *last* existing TRELLIS_CONTEXT_ID export already assigns this value. Last
+    *last* existing ARBOR_CONTEXT_ID export already assigns this value. Last
     wins in shell, so only the final assignment describes the effective state:
     "the value appears somewhere in the file" would wrongly skip after a switch
     A -> B -> A, leaving the shell on B.
@@ -296,7 +255,7 @@ def _persist_context_key_for_bash(context_key: str | None) -> None:
     env_file = os.environ.get("CLAUDE_ENV_FILE")
     if not env_file:
         return
-    export_line = f"export TRELLIS_CONTEXT_ID={shlex.quote(context_key)}"
+    export_line = f"export ARBOR_CONTEXT_ID={shlex.quote(context_key)}"
     try:
         if _last_context_key_export(env_file) == export_line:
             return
@@ -307,7 +266,7 @@ def _persist_context_key_for_bash(context_key: str | None) -> None:
 
 
 def _last_context_key_export(env_file: str) -> str | None:
-    """Return the last `export TRELLIS_CONTEXT_ID=` line in env_file, if any.
+    """Return the last `export ARBOR_CONTEXT_ID=` line in env_file, if any.
 
     A missing file means "no previous export" (the caller then creates it).
     `errors="replace"` matters: a user env file with non-UTF-8 bytes would
@@ -319,44 +278,44 @@ def _last_context_key_export(env_file: str) -> str | None:
         with open(env_file, "r", encoding="utf-8", errors="replace") as handle:
             for raw_line in handle:
                 stripped = raw_line.strip()
-                if stripped.startswith("export TRELLIS_CONTEXT_ID="):
+                if stripped.startswith("export ARBOR_CONTEXT_ID="):
                     last_export = stripped
     except FileNotFoundError:
         return None
     return last_export
 
 
-def _resolve_update_hint(trellis_dir: Path, context_key: str | None) -> str | None:
-    """Ask common.session_context whether a Trellis update is available.
+def _resolve_update_hint(arbor_dir: Path, context_key: str | None) -> str | None:
+    """Ask common.session_context whether a Arbor update is available.
 
     Throttling lives there: the first SessionStart of a session writes a marker
-    under `.trellis/.runtime/`, and later ones (clear, compact) return without
-    spawning `trellis --version`. The resolved `context_key` is passed through so
+    under `.arbor/.runtime/`, and later ones (clear, compact) return without
+    spawning `arbor --version`. The resolved `context_key` is passed through so
     the marker is scoped to the same session identity the rest of the hook uses,
     rather than session_context's environment-only fallback.
 
     Best-effort: a missing scripts dir, an import error, or anything raised while
     probing versions leaves the rest of the payload untouched.
     """
-    scripts_dir = trellis_dir / "scripts"
+    scripts_dir = arbor_dir / "scripts"
     if str(scripts_dir) not in sys.path:
         sys.path.insert(0, str(scripts_dir))
     try:
         from common.session_context import get_update_hint  # type: ignore[import-not-found]
 
-        return get_update_hint(trellis_dir.parent, context_key)
+        return get_update_hint(arbor_dir.parent, context_key)
     except Exception:
         return None  # Optional reminder; keep session-start non-fatal.
 
 
-def _resolve_active_task(trellis_dir: Path, input_data: dict):
-    scripts_dir = trellis_dir / "scripts"
+def _resolve_active_task(arbor_dir: Path, input_data: dict):
+    scripts_dir = arbor_dir / "scripts"
     if str(scripts_dir) not in sys.path:
         sys.path.insert(0, str(scripts_dir))
     from common.active_task import resolve_active_task  # type: ignore[import-not-found]
 
     return resolve_active_task(
-        trellis_dir.parent,
+        arbor_dir.parent,
         input_data,
         platform=_detect_platform(input_data),
     )
@@ -369,12 +328,12 @@ def run_script(script_path: Path, context_key: str | None = None) -> str:
             env = os.environ.copy()
             env["PYTHONIOENCODING"] = "utf-8"
             if context_key:
-                env["TRELLIS_CONTEXT_ID"] = context_key
+                env["ARBOR_CONTEXT_ID"] = context_key
             cmd = [sys.executable, "-W", "ignore", str(script_path)]
         else:
             env = os.environ.copy()
             if context_key:
-                env["TRELLIS_CONTEXT_ID"] = context_key
+                env["ARBOR_CONTEXT_ID"] = context_key
             cmd = [str(script_path)]
 
         result = subprocess.run(
@@ -406,39 +365,39 @@ def _normalize_task_ref(task_ref: str) -> str:
         normalized = normalized[2:]
 
     if normalized.startswith("tasks/"):
-        return f".trellis/{normalized}"
+        return f".arbor/{normalized}"
 
     return normalized
 
 
-def _resolve_task_dir(trellis_dir: Path, task_ref: str) -> Path:
+def _resolve_task_dir(arbor_dir: Path, task_ref: str) -> Path:
     normalized = _normalize_task_ref(task_ref)
     path_obj = Path(normalized)
     if path_obj.is_absolute():
         return path_obj
-    if normalized.startswith(".trellis/"):
-        return trellis_dir.parent / path_obj
-    return trellis_dir / "tasks" / path_obj
+    if normalized.startswith(".arbor/"):
+        return arbor_dir.parent / path_obj
+    return arbor_dir / "tasks" / path_obj
 
 
-def _get_task_status(trellis_dir: Path, input_data: dict) -> str:
+def _get_task_status(arbor_dir: Path, input_data: dict) -> str:
     """Return compact active-task status, artifact presence, and next action."""
-    active = _resolve_active_task(trellis_dir, input_data)
+    active = _resolve_active_task(arbor_dir, input_data)
 
     if not active.task_path:
         return (
             "Status: NO ACTIVE TASK\n"
-            "Next-Action: Classify the current turn before creating any Trellis task. "
-            "Simple conversation / small task asks only whether this turn should create a Trellis task. "
+            "Next-Action: Classify the current turn before creating any Arbor task. "
+            "Simple conversation / small task asks only whether this turn should create a Arbor task. "
             "Complex task asks whether task creation and planning are allowed."
         )
 
     task_ref = active.task_path
-    task_dir = _resolve_task_dir(trellis_dir, task_ref)
+    task_dir = _resolve_task_dir(arbor_dir, task_ref)
     if active.stale or not task_dir.is_dir():
         return (
             f"Status: STALE POINTER\nTask: {task_ref}\n"
-            f"Next-Action: Run `python3 ./.trellis/scripts/task.py finish` to clear the stale pointer, "
+            f"Next-Action: Run `python3 ./.arbor/scripts/task.py finish` to clear the stale pointer, "
             "then ask the user what to work on next."
         )
 
@@ -462,7 +421,7 @@ def _get_task_status(trellis_dir: Path, input_data: dict) -> str:
         return (
             f"Status: COMPLETED\nTask: {task_title}\n"
             f"Present: {present_line}\n"
-            "Next-Action: Run `/trellis:finish-work`. If the working tree is dirty, return to Phase 3.4 first."
+            "Next-Action: Run `/arbor:finish-work`. If the working tree is dirty, return to Phase 3.4 first."
         )
 
     has_prd = (task_dir / "prd.md").is_file()
@@ -479,7 +438,7 @@ def _get_task_status(trellis_dir: Path, input_data: dict) -> str:
         return (
             f"Status: PLANNING\nTask: {task_title}\n"
             f"Present: {present_line}\n"
-            "Next-Action: Load `trellis-brainstorm` and write `prd.md`. Stay in planning."
+            "Next-Action: Load `arbor-brainstorm` and write `prd.md`. Stay in planning."
         )
 
     if task_status == "planning":
@@ -514,13 +473,13 @@ def _get_task_status(trellis_dir: Path, input_data: dict) -> str:
     )
 
 
-def _load_trellis_config(trellis_dir: Path, input_data: dict) -> tuple:
-    """Load Trellis config for session-start decisions.
+def _load_arbor_config(arbor_dir: Path, input_data: dict) -> tuple:
+    """Load Arbor config for session-start decisions.
 
     Returns:
         (is_mono, packages_dict, spec_scope, task_pkg, default_pkg)
     """
-    scripts_dir = trellis_dir / "scripts"
+    scripts_dir = arbor_dir / "scripts"
     if str(scripts_dir) not in sys.path:
         sys.path.insert(0, str(scripts_dir))
 
@@ -528,7 +487,7 @@ def _load_trellis_config(trellis_dir: Path, input_data: dict) -> tuple:
         from common.config import get_default_package, get_packages, get_spec_scope, is_monorepo  # type: ignore[import-not-found]
         from common.paths import get_current_task  # type: ignore[import-not-found]
 
-        repo_root = trellis_dir.parent
+        repo_root = arbor_dir.parent
         is_mono = is_monorepo(repo_root)
         packages = get_packages(repo_root) or {}
         scope = get_spec_scope(repo_root)
@@ -558,7 +517,7 @@ def _load_trellis_config(trellis_dir: Path, input_data: dict) -> tuple:
         return False, {}, None, None, None
 
 
-def _check_legacy_spec(trellis_dir: Path, is_mono: bool, packages: dict) -> str | None:
+def _check_legacy_spec(arbor_dir: Path, is_mono: bool, packages: dict) -> str | None:
     """Check for legacy spec directory structure in monorepo.
 
     Returns warning message if legacy structure detected, None otherwise.
@@ -566,7 +525,7 @@ def _check_legacy_spec(trellis_dir: Path, is_mono: bool, packages: dict) -> str 
     if not is_mono or not packages:
         return None
 
-    spec_dir = trellis_dir / "spec"
+    spec_dir = arbor_dir / "spec"
     if not spec_dir.is_dir():
         return None
 
@@ -663,13 +622,13 @@ def _resolve_spec_scope(
     return None  # Unknown scope type: full scan
 
 
-def _collect_spec_index_paths(trellis_dir: Path, allowed_pkgs: set | None) -> list[str]:
+def _collect_spec_index_paths(arbor_dir: Path, allowed_pkgs: set | None) -> list[str]:
     paths: list[str] = []
-    guides_index = trellis_dir / "spec" / "guides" / "index.md"
+    guides_index = arbor_dir / "spec" / "guides" / "index.md"
     if guides_index.is_file():
-        paths.append(".trellis/spec/guides/index.md")
+        paths.append(".arbor/spec/guides/index.md")
 
-    spec_dir = trellis_dir / "spec"
+    spec_dir = arbor_dir / "spec"
     if not spec_dir.is_dir():
         return paths
 
@@ -679,7 +638,7 @@ def _collect_spec_index_paths(trellis_dir: Path, allowed_pkgs: set | None) -> li
 
         index_file = sub / "index.md"
         if index_file.is_file():
-            paths.append(f".trellis/spec/{sub.name}/index.md")
+            paths.append(f".arbor/spec/{sub.name}/index.md")
             continue
 
         if allowed_pkgs is not None and sub.name not in allowed_pkgs:
@@ -689,17 +648,17 @@ def _collect_spec_index_paths(trellis_dir: Path, allowed_pkgs: set | None) -> li
                 continue
             nested_index = nested / "index.md"
             if nested_index.is_file():
-                paths.append(f".trellis/spec/{sub.name}/{nested.name}/index.md")
+                paths.append(f".arbor/spec/{sub.name}/{nested.name}/index.md")
 
     return paths
 
 
 def _build_compact_current_state(
-    trellis_dir: Path,
+    arbor_dir: Path,
     input_data: dict,
     spec_index_paths: list[str],
 ) -> str:
-    repo_root = trellis_dir.parent
+    repo_root = arbor_dir.parent
     lines: list[str] = []
 
     try:
@@ -716,9 +675,9 @@ def _build_compact_current_state(
     lines.append(f"Developer: {developer or '(not initialized)'}")
     lines.append(_format_git_state(repo_root))
 
-    active = _resolve_active_task(trellis_dir, input_data)
+    active = _resolve_active_task(arbor_dir, input_data)
     if active.task_path:
-        task_dir = _resolve_task_dir(trellis_dir, active.task_path)
+        task_dir = _resolve_task_dir(arbor_dir, active.task_path)
         status = "unknown"
         task_json = task_dir / "task.json"
         if task_json.is_file():
@@ -736,7 +695,7 @@ def _build_compact_current_state(
         try:
             task_count = sum(1 for _ in iter_active_tasks(get_tasks_dir(repo_root)))
             lines.append(
-                f"Active tasks: {task_count} total. Use `python3 ./.trellis/scripts/task.py list --mine` only if needed."
+                f"Active tasks: {task_count} total. Use `python3 ./.arbor/scripts/task.py list --mine` only if needed."
             )
         except Exception:
             pass  # Optional task summary; keep compact state available.
@@ -808,7 +767,7 @@ def _build_workflow_overview(workflow_path: Path) -> str:
 
     out_lines = [
         "# Development Workflow - Session Summary",
-        "Full guide: .trellis/workflow.md. Step detail: `python3 ./.trellis/scripts/get_context.py --mode phase --step <X.Y>`.",
+        "Full guide: .arbor/workflow.md. Step detail: `python3 ./.arbor/scripts/get_context.py --mode phase --step <X.Y>`.",
         "",
     ]
 
@@ -832,16 +791,8 @@ def main():
 
     # Try platform-specific env vars, hook cwd, fallback to cwd
     project_dir_env_vars = [
+        "STARFACTORY_PROJECT_DIR",
         "CLAUDE_PROJECT_DIR",
-        "QODER_PROJECT_DIR",
-        "CODEBUDDY_PROJECT_DIR",
-        "FACTORY_PROJECT_DIR",
-        "CURSOR_PROJECT_DIR",
-        "GEMINI_PROJECT_DIR",
-        "KIRO_PROJECT_DIR",
-        "COPILOT_PROJECT_DIR",
-        "TRAE_PROJECT_DIR",
-        "ZCODE_PROJECT_DIR",
     ]
     project_dir = None
     for var in project_dir_env_vars:
@@ -852,41 +803,41 @@ def main():
     if project_dir is None:
         project_dir = Path(_normalize_windows_shell_path(hook_input.get("cwd", "."))).resolve()
 
-    trellis_dir = project_dir / ".trellis"
-    context_key = _resolve_context_key(trellis_dir, hook_input)
+    arbor_dir = project_dir / ".arbor"
+    context_key = _resolve_context_key(arbor_dir, hook_input)
     _persist_context_key_for_bash(context_key)
 
     # Load config for scope filtering and legacy detection
-    is_mono, packages, scope_config, task_pkg, default_pkg = _load_trellis_config(
-        trellis_dir,
+    is_mono, packages, scope_config, task_pkg, default_pkg = _load_arbor_config(
+        arbor_dir,
         hook_input,
     )
     allowed_pkgs = _resolve_spec_scope(is_mono, packages, scope_config, task_pkg, default_pkg)
 
     output = StringIO()
 
-    spec_index_paths = _collect_spec_index_paths(trellis_dir, allowed_pkgs)
+    spec_index_paths = _collect_spec_index_paths(arbor_dir, allowed_pkgs)
 
     output.write("""<session-context>
-Trellis compact SessionStart context. Use it to orient the session; load details on demand.
+Arbor compact SessionStart context. Use it to orient the session; load details on demand.
 </session-context>
 
 """)
-    output.write(_build_first_reply_notice(_resolve_update_hint(trellis_dir, context_key)))
+    output.write(_build_first_reply_notice(_resolve_update_hint(arbor_dir, context_key)))
     output.write("\n\n")
 
     # Legacy migration warning
-    legacy_warning = _check_legacy_spec(trellis_dir, is_mono, packages)
+    legacy_warning = _check_legacy_spec(arbor_dir, is_mono, packages)
     if legacy_warning:
         output.write(f"<migration-warning>\n{legacy_warning}\n</migration-warning>\n\n")
 
     output.write("<current-state>\n")
-    output.write(_build_compact_current_state(trellis_dir, hook_input, spec_index_paths))
+    output.write(_build_compact_current_state(arbor_dir, hook_input, spec_index_paths))
     output.write("\n</current-state>\n\n")
 
-    output.write("<trellis-workflow>\n")
-    output.write(_build_workflow_overview(trellis_dir / "workflow.md"))
-    output.write("\n</trellis-workflow>\n\n")
+    output.write("<arbor-workflow>\n")
+    output.write(_build_workflow_overview(arbor_dir / "workflow.md"))
+    output.write("\n</arbor-workflow>\n\n")
 
     output.write("<guidelines>\n")
     output.write(
@@ -903,12 +854,12 @@ Trellis compact SessionStart context. Use it to orient the session; load details
 
     output.write(
         "Discover more via: "
-        "`python3 ./.trellis/scripts/get_context.py --mode packages`\n"
+        "`python3 ./.arbor/scripts/get_context.py --mode packages`\n"
     )
     output.write("</guidelines>\n\n")
 
     # Check task status and inject structured tag
-    task_status = _get_task_status(trellis_dir, hook_input)
+    task_status = _get_task_status(arbor_dir, hook_input)
     output.write(f"<task-status>\n{task_status}\n</task-status>\n\n")
 
     output.write("""<ready>
@@ -917,29 +868,13 @@ Context loaded. Follow <task-status>. Load workflow/spec/task details only when 
 
     context_text = output.getvalue()
 
-    # Kiro (CLI trellis agent agentSpawn) adds a hook's stdout directly to the
-    # conversation context — no JSON envelope. Emit the bare overview text.
-    # Conditionally isolated: all other platforms keep the JSON path below.
-    if _detect_platform(hook_input) == "kiro":
-        print(context_text, flush=True)
-        return
-
-    platform = _detect_platform(hook_input)
     result: dict[str, object] = {
-        # Claude Code / Qoder / CodeBuddy / Droid / Gemini / Copilot / Trae /
-        # ZCode format.
+        # Claude Code SessionStart format (StarFactory is a Claude Code fork).
         "hookSpecificOutput": {
             "hookEventName": "SessionStart",
             "additionalContext": context_text,
         },
     }
-    # Cursor sessionStart format (top-level snake_case per Cursor docs).
-    # ZCode reads BOTH `hookSpecificOutput.additionalContext` and top-level
-    # `additional_context` without deduplication, so emitting both keys would
-    # duplicate the context in the conversation. Keep the previous shared output
-    # shape for every other platform.
-    if platform != "zcode":
-        result["additional_context"] = context_text
 
     # Output JSON - stdout is already configured for UTF-8
     print(json.dumps(result, ensure_ascii=False), flush=True)

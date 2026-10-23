@@ -9,7 +9,7 @@ import { writeFileAtomic } from "../../src/utils/atomic-write.js";
 describe("writeFileAtomic", () => {
   let dir: string;
   beforeEach(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), "trellis-atomic-"));
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-atomic-"));
   });
   afterEach(() => {
     fs.rmSync(dir, { recursive: true, force: true });

@@ -1,5 +1,5 @@
 /**
- * Path constants for Trellis workflow structure
+ * Path constants for Arbor workflow structure
  *
  * Change these values to rename directories across the entire project.
  * All paths should be relative to the project root.
@@ -8,18 +8,18 @@
 // Directory names (can be renamed)
 export const DIR_NAMES = {
   /** Root workflow directory */
-  WORKFLOW: ".trellis",
-  /** Workspace directory (under .trellis/) - developer work areas */
+  WORKFLOW: ".arbor",
+  /** Workspace directory (under .arbor/) - developer work areas */
   WORKSPACE: "workspace",
-  /** Tasks directory (under .trellis/) - unified task storage */
+  /** Tasks directory (under .arbor/) - unified task storage */
   TASKS: "tasks",
   /** Archive directory (under tasks/) */
   ARCHIVE: "archive",
-  /** Spec/guidelines directory (under .trellis/) */
+  /** Spec/guidelines directory (under .arbor/) */
   SPEC: "spec",
-  /** Scripts directory (under .trellis/) */
+  /** Scripts directory (under .arbor/) */
   SCRIPTS: "scripts",
-  /** Channel runtime agent definitions (under .trellis/) */
+  /** Channel runtime agent definitions (under .arbor/) */
   AGENTS: "agents",
 } as const;
 
@@ -43,29 +43,29 @@ export const FILE_NAMES = {
 
 // Constructed paths (relative to project root)
 export const PATHS = {
-  /** .trellis/ */
+  /** .arbor/ */
   WORKFLOW: DIR_NAMES.WORKFLOW,
-  /** .trellis/workspace/ */
+  /** .arbor/workspace/ */
   WORKSPACE: `${DIR_NAMES.WORKFLOW}/${DIR_NAMES.WORKSPACE}`,
-  /** .trellis/tasks/ */
+  /** .arbor/tasks/ */
   TASKS: `${DIR_NAMES.WORKFLOW}/${DIR_NAMES.TASKS}`,
-  /** .trellis/spec/ */
+  /** .arbor/spec/ */
   SPEC: `${DIR_NAMES.WORKFLOW}/${DIR_NAMES.SPEC}`,
-  /** .trellis/scripts/ */
+  /** .arbor/scripts/ */
   SCRIPTS: `${DIR_NAMES.WORKFLOW}/${DIR_NAMES.SCRIPTS}`,
-  /** .trellis/agents/ */
+  /** .arbor/agents/ */
   AGENTS: `${DIR_NAMES.WORKFLOW}/${DIR_NAMES.AGENTS}`,
-  /** .trellis/.developer */
+  /** .arbor/.developer */
   DEVELOPER_FILE: `${DIR_NAMES.WORKFLOW}/${FILE_NAMES.DEVELOPER}`,
-  /** .trellis/.current-task */
+  /** .arbor/.current-task */
   CURRENT_TASK_FILE: `${DIR_NAMES.WORKFLOW}/${FILE_NAMES.CURRENT_TASK}`,
-  /** .trellis/workflow.md */
+  /** .arbor/workflow.md */
   WORKFLOW_GUIDE_FILE: `${DIR_NAMES.WORKFLOW}/${FILE_NAMES.WORKFLOW_GUIDE}`,
 } as const;
 
 /**
  * Get developer's workspace directory path
- * @example getWorkspaceDir("john") => ".trellis/workspace/john"
+ * @example getWorkspaceDir("john") => ".arbor/workspace/john"
  */
 export function getWorkspaceDir(developer: string): string {
   return `${PATHS.WORKSPACE}/${developer}`;
@@ -73,7 +73,7 @@ export function getWorkspaceDir(developer: string): string {
 
 /**
  * Get task directory path
- * @example getTaskDir("01-21-my-task") => ".trellis/tasks/01-21-my-task"
+ * @example getTaskDir("01-21-my-task") => ".arbor/tasks/01-21-my-task"
  */
 export function getTaskDir(taskName: string): string {
   return `${PATHS.TASKS}/${taskName}`;
@@ -81,7 +81,7 @@ export function getTaskDir(taskName: string): string {
 
 /**
  * Get archive directory path
- * @example getArchiveDir() => ".trellis/tasks/archive"
+ * @example getArchiveDir() => ".arbor/tasks/archive"
  */
 export function getArchiveDir(): string {
   return `${PATHS.TASKS}/${DIR_NAMES.ARCHIVE}`;

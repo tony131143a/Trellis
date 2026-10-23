@@ -44,7 +44,7 @@ interface PlatformFunctions {
 /**
  * Registry entry for a platform whose configuration is exactly "write these
  * files": `configure` is derived from `collectTemplates`, so the file set is
- * described once and `trellis init` and `trellis update` cannot disagree
+ * described once and `arbor init` and `arbor update` cannot disagree
  * about it.
  *
  * Claude Code also does something a `Map<path, content>` cannot express (the
@@ -83,14 +83,14 @@ export const PLATFORM_MANAGED_DIRS = PLATFORM_IDS.flatMap((id) =>
   getManagedPaths(id),
 );
 
-/** All directories managed by Trellis (including .trellis itself) */
-export const ALL_MANAGED_DIRS = [".trellis", ...new Set(PLATFORM_MANAGED_DIRS)];
+/** All directories managed by Arbor (including .arbor itself) */
+export const ALL_MANAGED_DIRS = [".arbor", ...new Set(PLATFORM_MANAGED_DIRS)];
 
 /**
- * Detect platforms from Trellis-owned templates, not native config directories.
+ * Detect platforms from Arbor-owned templates, not native config directories.
  *
- * A platform directory may predate Trellis. The template hash manifest records
- * only files Trellis actually wrote, while the platform template registry
+ * A platform directory may predate Arbor. The template hash manifest records
+ * only files Arbor actually wrote, while the platform template registry
  * supplies each platform's distinct file layout.
  */
 export function getConfiguredPlatforms(cwd: string): Set<AITool> {

@@ -27,13 +27,13 @@ export type CliFlag = "claude" | "star";
 export interface TemplateContext {
   /** Prefix for cross-referencing other commands/skills */
   cmdRefPrefix:
-    | "/trellis:"
-    | "/trellis-"
+    | "/arbor:"
+    | "/arbor-"
     | "$"
     | "/"
-    | "/skill trellis-"
-    | "/skill:trellis-"
-    | "trellis-";
+    | "/skill arbor-"
+    | "/skill:arbor-"
+    | "arbor-";
   /** Description of AI executor actions shown in role tables */
   executorAI:
     | "Bash scripts or Task calls"
@@ -110,7 +110,7 @@ export const AI_TOOLS: Record<AITool, AIToolConfig> = {
     defaultChecked: true,
     hasPythonHooks: true,
     templateContext: {
-      cmdRefPrefix: "/trellis:",
+      cmdRefPrefix: "/arbor:",
       executorAI: "Bash scripts or Task calls",
       userActionLabel: "Slash commands",
       agentCapable: true,
@@ -131,7 +131,7 @@ export const AI_TOOLS: Record<AITool, AIToolConfig> = {
    * under `.claude/` are ignored entirely.
    *
    * - Skills: `.starFactory/skills/<name>/SKILL.md` (invocable as slash commands)
-   * - Commands: `.starFactory/commands/trellis/*.md` -> `/trellis:<name>`
+   * - Commands: `.starFactory/commands/arbor/*.md` -> `/arbor:<name>`
    * - Hooks: `.starFactory/hooks/` + `.starFactory/settings.json`
    *   (SessionStart / UserPromptSubmit / PreToolUse all verified to fire)
    *
@@ -146,7 +146,7 @@ export const AI_TOOLS: Record<AITool, AIToolConfig> = {
     defaultChecked: false,
     hasPythonHooks: true,
     templateContext: {
-      cmdRefPrefix: "/trellis:",
+      cmdRefPrefix: "/arbor:",
       executorAI: "Bash scripts or Task calls",
       userActionLabel: "Slash commands",
       agentCapable: true,

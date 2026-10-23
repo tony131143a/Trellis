@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import {
-  getTrellisTemplatePath,
+  getArborTemplatePath,
   getClaudeTemplatePath,
-  getTrellisSourcePath,
-  readTrellisFile,
+  getArborSourcePath,
+  readArborFile,
   readTemplate,
   readScript,
   readMarkdown,
@@ -15,8 +15,8 @@ import {
 // =============================================================================
 
 describe("template path functions", () => {
-  it("getTrellisTemplatePath returns existing directory", () => {
-    const p = getTrellisTemplatePath();
+  it("getArborTemplatePath returns existing directory", () => {
+    const p = getArborTemplatePath();
     expect(fs.existsSync(p)).toBe(true);
     expect(fs.statSync(p).isDirectory()).toBe(true);
   });
@@ -34,32 +34,32 @@ describe("template path functions", () => {
 // =============================================================================
 
 describe("deprecated source path aliases", () => {
-  it("getTrellisSourcePath equals getTrellisTemplatePath", () => {
-    expect(getTrellisSourcePath()).toBe(getTrellisTemplatePath());
+  it("getArborSourcePath equals getArborTemplatePath", () => {
+    expect(getArborSourcePath()).toBe(getArborTemplatePath());
   });
 
 });
 
 // =============================================================================
-// readTrellisFile — reads files from trellis template directory
+// readArborFile — reads files from arbor template directory
 // =============================================================================
 
-describe("readTrellisFile", () => {
-  it("reads workflow.md from trellis templates", () => {
-    const content = readTrellisFile("workflow.md");
+describe("readArborFile", () => {
+  it("reads workflow.md from arbor templates", () => {
+    const content = readArborFile("workflow.md");
     expect(typeof content).toBe("string");
     expect(content.length).toBeGreaterThan(0);
     expect(content).toContain("#");
   });
 
   it("reads a script file", () => {
-    const content = readTrellisFile("scripts/task.py");
+    const content = readArborFile("scripts/task.py");
     expect(typeof content).toBe("string");
     expect(content.length).toBeGreaterThan(0);
   });
 
   it("throws for nonexistent file", () => {
-    expect(() => readTrellisFile("nonexistent.txt")).toThrow();
+    expect(() => readArborFile("nonexistent.txt")).toThrow();
   });
 });
 

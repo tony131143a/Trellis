@@ -41,7 +41,7 @@ import {
   configYamlTemplate,
   gitignoreTemplate,
   workflowMdTemplate,
-} from "../templates/trellis/index.js";
+} from "../templates/arbor/index.js";
 import { agentsMdContent } from "../templates/markdown/index.js";
 
 import {
@@ -54,14 +54,14 @@ import { ensureGitattributes } from "../configurators/workflow.js";
 import { pruneOrphanManifestKeys } from "../utils/manifest-prune.js";
 import {
   cleanupEmptyDirs,
-  TRELLIS_BLOCK_END,
-  TRELLIS_BLOCK_START,
+  ARBOR_BLOCK_END,
+  ARBOR_BLOCK_START,
 } from "../utils/managed-paths.js";
 
 export {
   cleanupEmptyDirs,
-  TRELLIS_BLOCK_END,
-  TRELLIS_BLOCK_START,
+  ARBOR_BLOCK_END,
+  ARBOR_BLOCK_START,
 } from "../utils/managed-paths.js";
 
 export interface UpdateOptions {
@@ -208,8 +208,8 @@ function buildAgentsMdTemplate(cwd: string): string {
     cwd,
     FILE_NAMES.AGENTS,
     agentsMdContent,
-    TRELLIS_BLOCK_START,
-    TRELLIS_BLOCK_END,
+    ARBOR_BLOCK_START,
+    ARBOR_BLOCK_END,
   );
 }
 
@@ -386,7 +386,7 @@ function executeSafeFileDeletes(
 }
 
 /**
- * Load update.skip paths from .trellis/config.yaml
+ * Load update.skip paths from .arbor/config.yaml
  *
  * Parses simple YAML structure:
  *   update:
@@ -626,7 +626,7 @@ async function collectTemplateFiles(
   }
 
   // Channel runtime agent definitions (single source of truth: getAllAgents()).
-  // Backfilled by `trellis update` if missing so users who installed before the
+  // Backfilled by `arbor update` if missing so users who installed before the
   // bundled agents existed pick them up. Edited files take the standard
   // modified-file prompt path.
   for (const [agentFile, content] of getAllAgents()) {
@@ -764,7 +764,7 @@ function analyzeChanges(
  * Nothing else repairs these. `analyzeChanges` classifies such a file
  * `unchanged`, and the write-back draws only from `newFiles`,
  * `autoUpdateFiles` and overwritten `changedFiles` — so a poisoned or absent
- * entry beside a pristine file survives every subsequent `trellis update`,
+ * entry beside a pristine file survives every subsequent `arbor update`,
  * however many times it is run. Identical template content across versions is
  * not what saves such an entry from going stale; it is precisely what freezes
  * it, because the file never leaves the `unchanged` bucket.
@@ -776,7 +776,7 @@ function analyzeChanges(
  * `changedFiles`, and is never seen by this function.
  *
  * That also leaves the mixed-ownership paths — `AGENTS.md`,
- * `.github/copilot-instructions.md`, `.trellis/config.yaml` — free to differ
+ * `.github/copilot-instructions.md`, `.arbor/config.yaml` — free to differ
  * from their recorded hash, which for them is the correct state: once the
  * repository has appended its own content they are no longer `unchanged`.
  */
@@ -793,7 +793,7 @@ function collectUnchangedFileHashRepairs(
     if (recorded === undefined) {
       // A missing entry is only an omission for a path the receipt is meant
       // to carry. `EXCLUDE_FROM_HASH` holds paths deliberately left out —
-      // `.trellis/.gitignore` among them — and adding those here would put
+      // `.arbor/.gitignore` among them — and adding those here would put
       // this path in disagreement with `initializeHashes` about what the
       // receipt tracks at all.
       if (!shouldExcludeFromHash(key)) {
@@ -1236,9 +1236,9 @@ function isFileSafeToReplace(
  */
 /**
  * Whether the manifest records any file under `dirRelativePath` — i.e. whether
- * Trellis actually created this directory. Used to gate rename-dir migrations:
- * a directory Trellis never wrote (e.g. a user's own `.windsurf/` editor
- * config that merely shares a path with a retired Trellis platform dir) must
+ * Arbor actually created this directory. Used to gate rename-dir migrations:
+ * a directory Arbor never wrote (e.g. a user's own `.windsurf/` editor
+ * config that merely shares a path with a retired Arbor platform dir) must
  * not be auto-moved.
  */
 export function dirHasManifestEntries(
@@ -1276,7 +1276,7 @@ export function classifyMigrations(
       continue;
     }
     // For non-rename types, also block writing TO protected paths
-    // rename/rename-dir are allowed to target protected paths (e.g., 0.2.0 renames into .trellis/workspace)
+    // rename/rename-dir are allowed to target protected paths (e.g., 0.2.0 renames into .arbor/workspace)
     if (
       item.to &&
       isProtectedPath(item.to) &&
@@ -1330,13 +1330,13 @@ export function classifyMigrations(
           result.conflict.push(item);
         }
       } else if (dirHasManifestEntries(item.from, hashes)) {
-        // Trellis created this directory (the manifest tracks files under it),
+        // Arbor created this directory (the manifest tracks files under it),
         // so the rename is ours to make.
         result.auto.push(item);
       } else {
         // Target absent and the source has no manifest record: this is very
         // likely a user-owned directory that merely shares a path with a
-        // retired Trellis platform dir (e.g. a real `.windsurf/` editor
+        // retired Arbor platform dir (e.g. a real `.windsurf/` editor
         // config). Skipping avoids silently moving the user's data out from
         // under their editor — even under --force, since skip never executes.
         result.skip.push(item);
@@ -1415,7 +1415,7 @@ function printMigrationSummary(classified: ClassifiedMigrations): void {
 
   if (classified.skip.length > 0) {
     console.log(
-      chalk.gray("  ○ Skipping (not found, protected, or not Trellis-owned):"),
+      chalk.gray("  ○ Skipping (not found, protected, or not Arbor-owned):"),
     );
     for (const item of classified.skip.slice(0, 3)) {
       console.log(chalk.gray(`    ${item.from}`));
@@ -1475,7 +1475,7 @@ async function promptMigrationAction(
           .join("\n"),
       )
     : chalk.gray(
-        `  Why prompted: file content doesn't match the Trellis template hash\n` +
+        `  Why prompted: file content doesn't match the Arbor template hash\n` +
           `  for this path — usually local customization. If unsure, pick [b].`,
       );
 
@@ -1672,7 +1672,7 @@ export async function executeMigrations(
 
     // For `backup-rename`, leave an inline .backup copy of the user's modified
     // original next to the new location (for rename) or in place (for delete).
-    // This is in addition to the full project snapshot at .trellis/.backup-*/;
+    // This is in addition to the full project snapshot at .arbor/.backup-*/;
     // the inline copy is more discoverable when the user wants to diff or merge
     // their customizations against the new template.
     if (item.type === "rename" && item.to) {
@@ -1703,7 +1703,7 @@ export async function executeMigrations(
 
       if (action === "backup-rename") {
         // Keep a .backup copy in place before deletion so the user can recover
-        // inline without digging through .trellis/.backup-*/.
+        // inline without digging through .arbor/.backup-*/.
         fs.copyFileSync(filePath, filePath + ".backup");
       }
 
@@ -1755,14 +1755,14 @@ function printMigrationResult(result: MigrationResult): void {
 export async function update(options: UpdateOptions): Promise<void> {
   const cwd = process.cwd();
 
-  // Check if Trellis is initialized
+  // Check if Arbor is initialized
   if (!fs.existsSync(path.join(cwd, DIR_NAMES.WORKFLOW))) {
-    console.log(chalk.red("Error: Trellis not initialized in this directory."));
-    console.log(chalk.gray("Run 'trellis init' first."));
+    console.log(chalk.red("Error: Arbor not initialized in this directory."));
+    console.log(chalk.gray("Run 'arbor init' first."));
     return;
   }
 
-  console.log(chalk.cyan("\nTrellis Update"));
+  console.log(chalk.cyan("\nArbor Update"));
   console.log(chalk.cyan("══════════════\n"));
 
   // Get versions
@@ -1790,7 +1790,7 @@ export async function update(options: UpdateOptions): Promise<void> {
       console.log(chalk.gray("Solutions:"));
       console.log(chalk.gray(`  1. Update your CLI: rebuild and \`npm link\``));
       console.log(
-        chalk.gray(`  2. Force downgrade: trellis update --allow-downgrade\n`),
+        chalk.gray(`  2. Force downgrade: arbor update --allow-downgrade\n`),
       );
       return;
     }
@@ -1813,7 +1813,7 @@ export async function update(options: UpdateOptions): Promise<void> {
   if (isUnknownVersion) {
     console.log(
       chalk.yellow(
-        "⚠️  No version file found. Skipping migrations — run trellis init to fix.",
+        "⚠️  No version file found. Skipping migrations — run arbor init to fix.",
       ),
     );
     console.log(chalk.gray("   Template updates will still be applied."));
@@ -1824,7 +1824,7 @@ export async function update(options: UpdateOptions): Promise<void> {
 
   // Self-heal poisoned manifests: prune entries that no current platform
   // configurator owns. This silently removes user-owned paths that early
-  // buggy versions of `trellis init` over-hashed.
+  // buggy versions of `arbor init` over-hashed.
   {
     const prune = pruneOrphanManifestKeys(
       cwd,
@@ -1957,7 +1957,7 @@ export async function update(options: UpdateOptions): Promise<void> {
             ),
         );
         console.log("");
-        console.log(chalk.yellow(`  Run: trellis update --migrate`));
+        console.log(chalk.yellow(`  Run: arbor update --migrate`));
         console.log("");
         console.log(
           chalk.gray(
@@ -2133,7 +2133,7 @@ export async function update(options: UpdateOptions): Promise<void> {
           );
           console.log(
             chalk.gray(
-              "  Hash-verified: only files matching known Trellis templates are deleted. Your local customizations (hash mismatch) are still preserved.",
+              "  Hash-verified: only files matching known Arbor templates are deleted. Your local customizations (hash mismatch) are still preserved.",
             ),
           );
         }
@@ -2413,7 +2413,7 @@ export async function update(options: UpdateOptions): Promise<void> {
           status: "planning",
           scope: "migration",
           priority: "P1",
-          creator: "trellis-update",
+          creator: "arbor-update",
           assignee: currentDeveloper,
           createdAt: todayStr,
         });
@@ -2428,7 +2428,7 @@ export async function update(options: UpdateOptions): Promise<void> {
         prdContent += `**From Version**: ${projectVersion}\n`;
         prdContent += `**To Version**: ${cliVersion}\n`;
         prdContent += `**Assignee**: ${currentDeveloper}\n\n`;
-        prdContent += `## Status\n\n- [ ] Review migration guide\n- [ ] Update custom files\n- [ ] Run \`trellis update --migrate\`\n- [ ] Test workflows\n\n`;
+        prdContent += `## Status\n\n- [ ] Review migration guide\n- [ ] Update custom files\n- [ ] Run \`arbor update --migrate\`\n- [ ] Test workflows\n\n`;
 
         for (const {
           version,

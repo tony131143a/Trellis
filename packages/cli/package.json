@@ -38,9 +38,9 @@
     "developer-tools",
     "agent",
     "memory",
-    "trellis"
+    "arbor"
   ],
-  "author": "Mindfold LLC",
+  "author": "tony131143a",
   "license": "AGPL-3.0-only",
   "dependencies": {
     "chalk": "^5.3.0",
@@ -73,6 +73,6 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/mindfold-ai/trellis.git"
+    "url": "https://github.com/tony131143a/Trellis.git"
   }
 }

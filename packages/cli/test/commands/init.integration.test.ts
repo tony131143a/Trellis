@@ -13,7 +13,7 @@ import path from "node:path";
 // === External dependency mocks (hoisted by vitest) ===
 
 vi.mock("figlet", () => ({
-  default: { textSync: vi.fn(() => "TRELLIS") },
+  default: { textSync: vi.fn(() => "ARBOR") },
 }));
 
 vi.mock("inquirer", () => ({
@@ -40,7 +40,7 @@ describe("init() integration", () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "trellis-init-int-"));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-init-int-"));
     vi.spyOn(process, "cwd").mockReturnValue(tmpDir);
     vi.spyOn(console, "log").mockImplementation(noop);
     vi.spyOn(console, "error").mockImplementation(noop);
@@ -82,7 +82,7 @@ describe("init() integration", () => {
     // Built-in multi-file skills are installed for default platforms.
     expect(
       fs.existsSync(
-        path.join(tmpDir, ".claude", "skills", "trellis-meta", "SKILL.md"),
+        path.join(tmpDir, ".claude", "skills", "arbor-meta", "SKILL.md"),
       ),
     ).toBe(true);
     expect(
@@ -91,7 +91,7 @@ describe("init() integration", () => {
           tmpDir,
           ".claude",
           "skills",
-          "trellis-spec-bootstrap",
+          "arbor-spec-bootstrap",
           "SKILL.md",
         ),
       ),
@@ -102,7 +102,7 @@ describe("init() integration", () => {
           tmpDir,
           ".claude",
           "skills",
-          "trellis-meta",
+          "arbor-meta",
           "references",
           "local-architecture",
           "overview.md",
@@ -119,7 +119,7 @@ describe("init() integration", () => {
       "utf-8",
     );
     expect(gitattributes).toContain(
-      ".trellis/workspace/*/journal-*.md merge=union",
+      ".arbor/workspace/*/journal-*.md merge=union",
     );
     expect(gitattributes).not.toContain("index.md merge=union");
   });
@@ -146,7 +146,7 @@ describe("init() integration", () => {
     expect(fs.existsSync(path.join(tmpDir, ".agents", "skills"))).toBe(false);
     expect(
       fs.existsSync(
-        path.join(tmpDir, ".claude", "skills", "trellis-meta", "SKILL.md"),
+        path.join(tmpDir, ".claude", "skills", "arbor-meta", "SKILL.md"),
       ),
     ).toBe(true);
   });
@@ -164,10 +164,10 @@ describe("init() integration", () => {
 
     const starFactory = (p: string) => path.join(tmpDir, ".starFactory", p);
 
-    // Class-1: SessionStart injects the workflow, so trellis-start is filtered.
+    // Class-1: SessionStart injects the workflow, so arbor-start is filtered.
     expect(fs.existsSync(starFactory("settings.json"))).toBe(true);
-    expect(fs.existsSync(starFactory("commands/trellis/start.md"))).toBe(false);
-    expect(fs.existsSync(starFactory("commands/trellis/finish-work.md"))).toBe(
+    expect(fs.existsSync(starFactory("commands/arbor/start.md"))).toBe(false);
+    expect(fs.existsSync(starFactory("commands/arbor/finish-work.md"))).toBe(
       true,
     );
     for (const hook of [
@@ -308,7 +308,7 @@ describe("init() integration", () => {
     );
     expect(console.log).toHaveBeenCalledWith(
       expect.stringContaining(
-        `Trellis rendered Python commands as "${expectedPythonCmd}" in generated hooks, settings, and help text`,
+        `Arbor rendered Python commands as "${expectedPythonCmd}" in generated hooks, settings, and help text`,
       ),
     );
   });
@@ -455,8 +455,8 @@ describe("init() integration", () => {
 
   it("#14 monorepo: writes packages section to config.yaml", async () => {
     setupPnpmWorkspace(tmpDir, [
-      { rel: "packages/cli", name: "@trellis/cli" },
-      { rel: "packages/docs", name: "@trellis/docs" },
+      { rel: "packages/cli", name: "@arbor/cli" },
+      { rel: "packages/docs", name: "@arbor/docs" },
     ]);
 
     await init({ yes: true });
@@ -498,8 +498,8 @@ describe("init() integration", () => {
     expect(taskJson.next_action).toBeUndefined();
 
     // relatedFiles point to spec/<name>/
-    expect(taskJson.relatedFiles).toContain(".trellis/spec/core/");
-    expect(taskJson.relatedFiles).toContain(".trellis/spec/ui/");
+    expect(taskJson.relatedFiles).toContain(".arbor/spec/core/");
+    expect(taskJson.relatedFiles).toContain(".arbor/spec/ui/");
 
     // prd.md mentions packages + renders per-package checklist items
     const prd = fs.readFileSync(path.join(taskDir, "prd.md"), "utf-8");
@@ -511,10 +511,10 @@ describe("init() integration", () => {
     expect(prd).toContain("- [ ] Fill guidelines for core");
     expect(prd).toContain("- [ ] Fill guidelines for ui");
     expect(prd).toContain(
-      `${expectedPythonCmd} ./.trellis/scripts/task.py finish`,
+      `${expectedPythonCmd} ./.arbor/scripts/task.py finish`,
     );
     expect(prd).toContain(
-      `${expectedPythonCmd} ./.trellis/scripts/task.py archive 00-bootstrap-guidelines`,
+      `${expectedPythonCmd} ./.arbor/scripts/task.py archive 00-bootstrap-guidelines`,
     );
   });
 
@@ -559,7 +559,7 @@ describe("init() integration", () => {
     );
     expect(guideCall).toBeDefined();
 
-    // Should NOT create .trellis/ (early return)
+    // Should NOT create .arbor/ (early return)
     expect(fs.existsSync(path.join(tmpDir, DIR_NAMES.WORKFLOW))).toBe(false);
   });
 
@@ -749,7 +749,7 @@ describe("init() integration", () => {
     await init({ yes: true, star: true, user: "alice" });
     expect(
       fs.existsSync(
-        path.join(tmpDir, ".claude", "skills", "trellis-meta", "SKILL.md"),
+        path.join(tmpDir, ".claude", "skills", "arbor-meta", "SKILL.md"),
       ),
     ).toBe(false);
 
@@ -757,7 +757,7 @@ describe("init() integration", () => {
 
     expect(
       fs.existsSync(
-        path.join(tmpDir, ".claude", "skills", "trellis-meta", "SKILL.md"),
+        path.join(tmpDir, ".claude", "skills", "arbor-meta", "SKILL.md"),
       ),
     ).toBe(true);
     expect(fs.readFileSync(nativeSettingsPath, "utf-8")).toBe(

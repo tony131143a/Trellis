@@ -15,7 +15,7 @@ import { AI_TOOLS } from "../types/ai-tools.js";
 export { VERSION, PACKAGE_NAME };
 
 /**
- * Check if a Trellis update is available (compare project version with CLI version)
+ * Check if a Arbor update is available (compare project version with CLI version)
  */
 function checkForUpdates(cwd: string): void {
   const versionFile = path.join(cwd, DIR_NAMES.WORKFLOW, ".version");
@@ -30,10 +30,10 @@ function checkForUpdates(cwd: string): void {
     // CLI is newer than project - update available
     console.log(
       chalk.yellow(
-        `\n⚠️  Trellis update available: ${projectVersion} → ${cliVersion}`,
+        `\n⚠️  Arbor update available: ${projectVersion} → ${cliVersion}`,
       ),
     );
-    console.log(chalk.gray(`   Run: trellis update\n`));
+    console.log(chalk.gray(`   Run: arbor update\n`));
   } else if (comparison < 0) {
     // CLI is older than project - CLI needs updating
     console.log(
@@ -45,7 +45,7 @@ function checkForUpdates(cwd: string): void {
   }
 }
 
-// Check for updates at CLI startup (only if .trellis exists)
+// Check for updates at CLI startup (only if .arbor exists)
 const cwd = process.cwd();
 if (fs.existsSync(path.join(cwd, DIR_NAMES.WORKFLOW))) {
   checkForUpdates(cwd);
@@ -54,7 +54,7 @@ if (fs.existsSync(path.join(cwd, DIR_NAMES.WORKFLOW))) {
 const program = new Command();
 
 program
-  .name("trellis")
+  .name("arbor")
   .description(
     "AI-assisted development workflow framework for Claude Code and StarFactory",
   )
@@ -62,12 +62,12 @@ program
 
 program
   .command("init")
-  .description("Initialize trellis in the current project")
+  .description("Initialize arbor in the current project")
   .option("--claude", "Include Claude Code commands")
   .option("--star", "Include StarFactory skills and commands")
   .option(
     "--with-statusline",
-    "Install the Trellis statusLine for Claude Code (off by default)",
+    "Install the Arbor statusLine for Claude Code (off by default)",
   )
   .option("-y, --yes", "Skip prompts and use defaults")
   .option(
@@ -86,7 +86,7 @@ program
         chalk.red("Error:"),
         error instanceof Error ? error.message : error,
       );
-      if (process.env.DEBUG || process.env.TRELLIS_DEBUG) {
+      if (process.env.DEBUG || process.env.ARBOR_DEBUG) {
         console.error(error instanceof Error ? error.stack : error);
       }
       process.exit(1);
@@ -95,7 +95,7 @@ program
 
 program
   .command("update")
-  .description("Update trellis configuration and commands to latest version")
+  .description("Update arbor configuration and commands to latest version")
   .option("--dry-run", "Preview changes without applying them")
   .option("-f, --force", "Overwrite all changed files without asking")
   .option("-s, --skip-all", "Skip all changed files without asking")
@@ -117,7 +117,7 @@ program
         chalk.red("Error:"),
         error instanceof Error ? error.message : error,
       );
-      if (process.env.DEBUG || process.env.TRELLIS_DEBUG) {
+      if (process.env.DEBUG || process.env.ARBOR_DEBUG) {
         console.error(error instanceof Error ? error.stack : error);
       }
       process.exit(1);
@@ -127,7 +127,7 @@ program
 program
   .command("uninstall")
   .description(
-    "Remove all trellis files (managed platform files + .trellis/) from this project",
+    "Remove all arbor files (managed platform files + .arbor/) from this project",
   )
   .option("-y, --yes", "Skip confirmation prompt")
   .option("--dry-run", "List what would be removed without changing anything")
@@ -142,7 +142,7 @@ program
         chalk.red("Error:"),
         error instanceof Error ? error.message : error,
       );
-      if (process.env.DEBUG || process.env.TRELLIS_DEBUG) {
+      if (process.env.DEBUG || process.env.ARBOR_DEBUG) {
         console.error(error instanceof Error ? error.stack : error);
       }
       process.exit(1);
@@ -183,7 +183,7 @@ program
         chalk.red("Error:"),
         error instanceof Error ? error.message : error,
       );
-      if (process.env.DEBUG || process.env.TRELLIS_DEBUG) {
+      if (process.env.DEBUG || process.env.ARBOR_DEBUG) {
         console.error(error instanceof Error ? error.stack : error);
       }
       process.exit(1);
