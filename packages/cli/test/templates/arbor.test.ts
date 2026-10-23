@@ -109,34 +109,42 @@ describe("arbor template constants", () => {
     expect(workflowMdTemplate).toContain("#");
   });
 
-  it("[issue-237] workflow.md in_progress breadcrumb self-exempts implement/check sub-agents", () => {
-    // The in_progress breadcrumb may be injected into sub-agent turns on some
-    // hosts, so its main-session dispatch guidance must not recursively apply
-    // to a sub-agent that is already doing the requested work.
-    const block = inProgressBreadcrumb();
-    expect(block).toContain("Main-session default");
-    expect(block).toContain("Sub-agent self-exemption");
-    expect(block).toContain("already running as `arbor-implement`");
-    expect(block).toContain("do NOT spawn another `arbor-implement`");
-    expect(block).toContain("already running as `arbor-check`");
-    expect(block).toContain("do NOT spawn another `arbor-check`");
-    expect(block).toContain("main session only");
+  it("workflow.md in_progress breadcrumbs self-exempt dispatched sub-agents", () => {
+    for (const key of ["in_progress", "in_progress-parallel"]) {
+      const block = workflowStateBreadcrumb(key);
+      expect(block).toContain("Sub-agent self-exemption");
+      expect(block).toContain("Active task:");
+      expect(block).toContain("dispatched sub-agent");
+      expect(block).not.toMatch(/Task\/Agent tool, NOT Skill/);
+    }
+    expect(inProgressBreadcrumb()).toContain("main session only");
   });
 
-  it("[issue-237] workflow.md Phase 2 dispatch steps require prompt recursion guards", () => {
-    expect(workflowMdTemplate).toContain("**Dispatch prompt guard**");
-    expect(workflowMdTemplate).toContain(
-      "already the `arbor-implement` sub-agent",
-    );
-    expect(workflowMdTemplate).toContain(
-      "not spawn another `arbor-implement` / `arbor-check`",
-    );
-    expect(workflowMdTemplate).toContain(
-      "already the `arbor-check` sub-agent",
-    );
-    expect(workflowMdTemplate).toContain(
-      "not spawn another `arbor-check` / `arbor-implement`",
-    );
+  it("workflow.md has no platform branch blocks or inline breadcrumbs", () => {
+    expect(workflowMdTemplate).not.toMatch(/^\[\/?[A-Za-z][^\]\n]*,[^\]\n]*\]\s*$/m);
+    expect(workflowMdTemplate).not.toContain("workflow-state:planning-inline");
+    expect(workflowMdTemplate).not.toContain("workflow-state:in_progress-inline");
+  });
+
+  it("workflow.md documents Dispatch and the parallel variant", () => {
+    expect(workflowMdTemplate).toContain("### Dispatch");
+    expect(workflowMdTemplate).toContain("delegate_to_agent");
+    expect(workflowMdTemplate).toContain("dispatch.py run --role");
+    for (const n of [0, 1, 2, 3, 4, 5, 6]) {
+      expect(workflowMdTemplate).toContain(`#### 2P.${n} `);
+    }
+    expect(workflowMdTemplate).toContain("execution parallel");
+  });
+
+  it("[required · once] steps appear in their phase breadcrumbs", () => {
+    const planning = workflowStateBreadcrumb("planning");
+    expect(planning).toContain("1.3");
+    expect(planning).toContain("task.py start");
+    for (const key of ["in_progress", "in_progress-parallel"]) {
+      const block = workflowStateBreadcrumb(key);
+      expect(block).toContain("3.3");
+      expect(block).toContain("3.4");
+    }
   });
 
   it("workflow.md documents parent child task tree responsibilities", () => {
@@ -167,8 +175,7 @@ describe("arbor template constants", () => {
 
   it("workflow.md planning breadcrumbs mention parent child split guidance", () => {
     const planning = workflowStateBreadcrumb("planning");
-    const planningInline = workflowStateBreadcrumb("planning-inline");
-    for (const block of [planning, planningInline]) {
+    for (const block of [planning]) {
       expect(block).toContain("Multi-deliverable scope");
       expect(block).toContain("parent task plus independently verifiable child tasks");
       expect(block).toContain("not implied by tree position");
@@ -255,35 +262,16 @@ describe("getAllAgents", () => {
     expect(agents.get("check.md")).toBe(checkAgentTemplate);
   });
 
-  it("each agent card carries the commented provider/model hints", () => {
-    // Users switch a role to another worker CLI by editing these two lines;
-    // the hints must stay in the frontmatter so the option is discoverable.
-    const agents = getAllAgents();
-    for (const [file, content] of agents) {
-      expect(content, `${file} should hint provider: star`).toContain("# provider: star");
-      expect(content, `${file} should hint model:`).toContain("# model:");
-    }
+  it("ships research too", () => {
+    expect(getAllAgents().has("research.md")).toBe(true);
   });
 
-  it("each agent body starts with `---` frontmatter and a matching name field", () => {
-    const agents = getAllAgents();
-    for (const [file, content] of agents) {
-      expect(content.startsWith("---\n"), `${file} must start with --- frontmatter`).toBe(true);
-      // Frontmatter must close on a `---\n` line.
-      const frontmatterClose = content.indexOf("\n---\n", 4);
-      expect(frontmatterClose, `${file} must have a closing --- frontmatter line`).toBeGreaterThan(0);
-      const frontmatter = content.slice(4, frontmatterClose);
-      // The agent's `name:` field must match the file basename so
-      // `arbor channel spawn --agent <name>` resolves correctly.
-      const expectedName = file.replace(/\.md$/, "");
-      const nameLine = frontmatter
-        .split("\n")
-        .find((line) => /^name\s*:/.test(line));
-      expect(nameLine, `${file} must declare a name field`).toBeTruthy();
-      expect(
-        nameLine?.split(":")[1]?.trim(),
-        `${file} name field should equal "${expectedName}"`,
-      ).toBe(expectedName);
+  it("assistant instructions have no frontmatter or provider/model fields", () => {
+    for (const [file, content] of getAllAgents()) {
+      expect(content.startsWith("---"), `${file} must not start with frontmatter`).toBe(false);
+      expect(content, file).not.toContain("provider:");
+      expect(content, file).toContain("Active task:");
+      expect(content, file).toContain("arbor-hook-injected");
     }
   });
 });

@@ -39,7 +39,7 @@ python3 ./.arbor/scripts/get_context.py --mode packages   # list packages / laye
 
 ### Task System
 
-Every task has its own directory under `.arbor/tasks/{MM-DD-name}/` holding `task.json`, `prd.md`, optional `design.md`, optional `implement.md`, optional `research/`, and context manifests (`implement.jsonl`, `check.jsonl`) for sub-agent-capable platforms.
+Every task has its own directory under `.arbor/tasks/{MM-DD-name}/` holding `task.json`, `prd.md`, optional `design.md`, optional `implement.md`, optional `research/`, and context manifests (`implement.jsonl`, `check.jsonl`) that the dispatched assistants load.
 
 ```bash
 # Task lifecycle
@@ -51,11 +51,11 @@ python3 ./.arbor/scripts/task.py archive <name>        # move to archive/{year-m
 python3 ./.arbor/scripts/task.py list [--mine] [--status <s>]
 python3 ./.arbor/scripts/task.py list-archive
 
-# Code-spec context (injected into implement/check agents via JSONL).
-# `implement.jsonl` / `check.jsonl` are seeded (empty) on `task create` for sub-agent-capable
-# platforms; the AI curates real spec + research entries during planning. `validate` fails
-# and `start` refuses while a seeded manifest is still empty — sub-agents would run with
-# zero spec context. Pass `start --allow-empty-context` when that is intentional.
+# Code-spec context (injected into implement/check assistants via JSONL).
+# `implement.jsonl` / `check.jsonl` are seeded (empty) on `task create`; the AI curates
+# real spec + research entries during planning. `validate` fails and `start` refuses while
+# a seeded manifest is still empty — assistants would run with zero spec context.
+# Pass `start --allow-empty-context` when that is intentional.
 python3 ./.arbor/scripts/task.py add-context <name> <action> <file> <reason>
 python3 ./.arbor/scripts/task.py list-context <name> [action]
 python3 ./.arbor/scripts/task.py validate <name>
@@ -64,6 +64,7 @@ python3 ./.arbor/scripts/task.py validate <name>
 python3 ./.arbor/scripts/task.py set-branch <name> <branch>
 python3 ./.arbor/scripts/task.py set-base-branch <name> <branch>    # PR target
 python3 ./.arbor/scripts/task.py set-scope <name> <scope>
+python3 ./.arbor/scripts/task.py set-meta <name> <key> <value>      # e.g. execution parallel
 
 # Hierarchy (parent/child)
 python3 ./.arbor/scripts/task.py add-subtask <parent> <child>
@@ -75,7 +76,7 @@ python3 ./.arbor/scripts/task.py create-pr [name] [--dry-run]
 
 > Run `python3 ./.arbor/scripts/task.py --help` to see the authoritative, up-to-date list.
 
-**Current-task mechanism**: `task.py create` creates the task directory and (when session identity is available) auto-sets the per-session active-task pointer so the planning breadcrumb fires immediately. `task.py start` writes the same pointer (idempotent if already set) and flips `task.json.status` from `planning` to `in_progress`. State is stored under `.arbor/.runtime/sessions/`. If no context key is available from hook input, `ARBOR_CONTEXT_ID`, or a platform-native session environment variable, there is no active task and `task.py start` fails with a session identity hint. `task.py finish` deletes the current session file (status unchanged). `task.py archive <task>` writes `status=completed`, moves the directory to `archive/`, and deletes any runtime session files that still point at the archived task.
+**Current-task mechanism**: `task.py create` creates the task directory and (when session identity is available) auto-sets the per-session active-task pointer so the planning breadcrumb fires immediately. `task.py start` writes the same pointer (idempotent if already set) and flips `task.json.status` from `planning` to `in_progress`. State is stored under `.arbor/.runtime/sessions/`. If no context key is available from hook input or `ARBOR_CONTEXT_ID`, there is no active task and `task.py start` fails with a session identity hint. `task.py finish` deletes the current session file (status unchanged). `task.py archive <task>` writes `status=completed`, moves the directory to `archive/`, and deletes any runtime session files that still point at the archived task.
 
 ### Workspace System
 
@@ -96,6 +97,49 @@ python3 ./.arbor/scripts/get_context.py --mode packages            # available p
 python3 ./.arbor/scripts/get_context.py --mode phase --step <X.Y>  # detailed guide for a workflow step
 ```
 
+### Dispatch
+
+The **implement**, **check**, and **research** roles are never performed in the main session and never through the built-in `Agent`/`Task` tool (a guard hook denies it for arbor roles). They run as **codeg assistants** on another model. The main agent plans, curates context, dispatches, verifies, and commits.
+
+**Role × target matrix.** Each role has one assistant per target. Default assistant names are `arbor-<role>-<target>`; they are configured under `dispatch:` in `.arbor/config.yaml`.
+
+| Role | Header `Role:` | Context inlined | `star` (Claude Code fork) | `pi` (pi + DeepSeek) |
+|---|---|---|---|---|
+| implement | `implement` | `implement.jsonl` → prd → design → implement.md | `arbor-implement-star` | `arbor-implement-pi` |
+| check | `check` / `check [finish]` | `check.jsonl` → prd → design → implement.md | `arbor-check-star` | `arbor-check-pi` |
+| research | `research` | prd → design → implement.md | `arbor-research-star` | `arbor-research-pi` |
+
+**Target selection** (highest wins): `Target:` header line or `--target` → `.arbor/.runtime/dispatch-target` → env `ARBOR_DISPATCH_TARGET` → `dispatch.default_target` in config. Switch with `/arbor:dispatch-target star|pi|clear`.
+
+**Header protocol.** The `task` text of every dispatch MUST start with this header, followed by a blank line and a self-contained brief:
+
+```
+Active task: <absolute path of the task directory in the MAIN checkout>
+Role: implement | check | check [finish] | research
+Target: star | pi            (optional)
+Workspace: <absolute worktree path>   (optional; parallel variant only)
+```
+
+A hook (codeg path) or `dispatch.py` (terminal path) recognises the header and inlines the jsonl-listed spec/research files plus `prd.md`, `design.md`, `implement.md`, marked `<!-- arbor-hook-injected -->`. Without the header nothing is inlined and the assistant has to pull the context itself.
+
+**Path A: inside codeg** (the MCP tools `delegate_to_agent` and `get_delegation_status` are in your tool list):
+
+1. Find the integer `assistant_id` for the role and target in the `<dispatch>` section of the session context, or run `python3 ./.arbor/scripts/dispatch.py resolve --role <role>`.
+2. `delegate_to_agent(assistant_id=<id>, working_dir=<repo root, or the worktree>, task=<header + brief>)` returns a `task_id` immediately.
+3. `get_delegation_status(task_ids=[...], wait_ms=60000)` repeatedly until every task is terminal. Independent dispatches can run concurrently.
+
+**Path B: plain terminal** (no codeg MCP tools):
+
+```bash
+python3 ./.arbor/scripts/dispatch.py run --role <role> [--target star|pi] [--task <dir>] [--workspace <worktree>] --wait   # brief on stdin, or --prompt / --prompt-file
+```
+
+`--detach` starts it in the background; `python3 ./.arbor/scripts/dispatch.py wait <run>...` collects results.
+
+**Sub-agent self-exemption.** If your own first prompt starts with `Active task:` + `Role:`, you are a dispatched sub-agent: do that role's work directly, do not dispatch anything, do not commit, push, or merge, and do not call `task.py start/current/finish`. You have no `ARBOR_CONTEXT_ID`. Dispatch is for the main agent only.
+
+**Invariants.** Sub-agents never commit, merge, or push; never touch paths outside their working directory; never write under `.arbor/` (a `check [finish]` pass may edit `.arbor/spec/`; research writes only `<task>/research/*.md`). Only the main agent commits (Phase 3.4).
+
 ---
 
 <!--
@@ -103,10 +147,8 @@ python3 ./.arbor/scripts/get_context.py --mode phase --step <X.Y>  # detailed gu
 
   The [workflow-state:STATUS] blocks embedded in the ## Phase Index section
   below are the SINGLE source of truth for the per-turn `<workflow-state>`
-  breadcrumb that every supported AI platform's UserPromptSubmit hook
-  reads. inject-workflow-state.py (Python platforms) and
-  inject-workflow-state.js (OpenCode plugin) only parse them — there is no
-  fallback dict baked into the scripts after v0.5.0-rc.0.
+  breadcrumb that the UserPromptSubmit hook reads. inject-workflow-state.py
+  only parses them — there is no fallback dict baked into the script.
 
   STATUS charset: [A-Za-z0-9_-]+. When the hook can't find a tag, it
   degrades to a generic "Refer to workflow.md for current step." line —
@@ -123,11 +165,13 @@ python3 ./.arbor/scripts/get_context.py --mode phase --step <X.Y>  # detailed gu
     [workflow-state:no_task]      → no active task; before Phase 1
     [workflow-state:task_error]   → active task record is unreadable; repair it before continuing
     [workflow-state:planning]     → all of Phase 1 (status='planning')
-    [workflow-state:planning-inline] → Codex inline variant of Phase 1
-    [workflow-state:in_progress]  → Phase 2 + Phase 3.2-3.4
+    [workflow-state:in_progress]  → Phase 2 + Phase 3.2-3.4, serial execution
                                     (status stays 'in_progress' from
                                     task.py start until task.py archive)
-    [workflow-state:in_progress-inline] → Codex inline variant of Phase 2/3
+    [workflow-state:in_progress-parallel] → Phase 2P + Phase 3.2-3.4 when the
+                                    task has meta.execution=parallel (the hook
+                                    picks this key; if the block is missing it
+                                    falls back to in_progress)
     [workflow-state:completed]    → currently DEAD: cmd_archive flips
                                     status and moves the dir in the same
                                     call, so the resolver loses the
@@ -148,14 +192,14 @@ python3 ./.arbor/scripts/get_context.py --mode phase --step <X.Y>  # detailed gu
 
 ```
 Phase 1: Plan    → classify, get task-creation consent, then write planning artifacts
-Phase 2: Execute → implement only after task status is in_progress
+Phase 2: Execute → dispatch implement/check to codeg assistants (serial), or 2P for parallel worktrees
 Phase 3: Finish  → verify, update spec, commit, and wrap up
 ```
 
 ### Request Triage
 
-- Simple conversation or small task: ask only whether this turn should create a Arbor task. If the user says no, skip Arbor for this session.
-- Complex task: ask whether you may create a Arbor task and enter planning. If the user says no, do not do broad inline implementation; explain, clarify scope, or suggest a smaller split.
+- Simple conversation or small task: ask only whether this turn should create an Arbor task. If the user says no, skip Arbor for this session.
+- Complex task: ask whether you may create an Arbor task and enter planning. If the user says no, do not do broad inline implementation; explain, clarify scope, or suggest a smaller split.
 - User approval to create a task is not approval to start implementation. Planning still happens first.
 
 ### Planning Artifacts
@@ -163,7 +207,7 @@ Phase 3: Finish  → verify, update spec, commit, and wrap up
 - `prd.md` — requirements, constraints, and acceptance criteria. Do not put technical design or execution checklists here.
 - `design.md` — technical design for complex tasks: boundaries, contracts, data flow, tradeoffs, compatibility, rollout / rollback shape.
 - `implement.md` — execution plan for complex tasks: ordered checklist, validation commands, review gates, and rollback points.
-- `implement.jsonl` / `check.jsonl` — spec and research manifests for sub-agent context. They do not replace `implement.md`.
+- `implement.jsonl` / `check.jsonl` — spec and research manifests for the dispatched assistants. They do not replace `implement.md`.
 - Lightweight tasks may be PRD-only. Complex tasks must have `prd.md`, `design.md`, and `implement.md` before `task.py start`.
 
 ### Parent / Child Task Trees
@@ -174,12 +218,14 @@ Use child tasks for deliverables that can be planned, implemented, checked, and 
 
 Create new children with `task.py create "<title>" --slug <name> --parent <parent-dir>`. Link existing tasks with `task.py add-subtask <parent> <child>`, and unlink mistakes with `task.py remove-subtask <parent> <child>`.
 
+A parent task whose children run concurrently in separate git worktrees uses the parallel execution mode (step 1.4, Phase 2P).
+
 <!-- Per-turn breadcrumb: shown when there is no active task (before Phase 1) -->
 
 [workflow-state:no_task]
 No active task. First classify the current turn and ask for task-creation consent before creating any Arbor task.
-Simple conversation / small task: ask only whether this turn should create a Arbor task. If the user says no, skip Arbor for this session.
-Complex task: ask the user if you can create a Arbor task and enter the planning phase. If the user says no, explain, clarify scope, or suggest a smaller split.
+Simple conversation / small task: ask only whether this turn should create an Arbor task. If the user says no, skip Arbor for this session.
+Complex task: ask the user if you can create an Arbor task and enter the planning phase. If the user says no, explain, clarify scope, or suggest a smaller split.
 [/workflow-state:no_task]
 
 <!-- Per-turn breadcrumb: shown when the active task record cannot be read. -->
@@ -193,63 +239,51 @@ Preserve existing task fields and artifacts. If the correct status cannot be det
 ### Phase 1: Plan
 - 1.0 Create task `[required · once]` (only after task-creation consent)
 - 1.1 Requirement exploration `[required · repeatable]` (`prd.md`; complex tasks also need `design.md` + `implement.md`)
-- 1.2 Research `[optional · repeatable]`
-- 1.3 Configure context `[required · once]` — Claude Code, Cursor, OpenCode, Codex, Kiro, Gemini, Qoder, CodeBuddy, Copilot, Droid, Pi, Oh My Pi, ZCode, Snow, Reasonix, Grok, Kimi Code (sub-agent-dispatch platforms only; inline platforms skip)
-- 1.4 Activate task `[required · once]` (review gate, then `task.py start`; status → in_progress)
+- 1.2 Research `[optional · repeatable]` (dispatch the research role)
+- 1.3 Configure context `[required · once]` (curate `implement.jsonl` + `check.jsonl`)
+- 1.4 Activate task `[required · once]` (choose serial or parallel execution mode, review gate, then `task.py start`; status → in_progress)
 - 1.5 Completion criteria
 
 <!-- Per-turn breadcrumb: shown throughout Phase 1 (status='planning') -->
 
 [workflow-state:planning]
 Load `arbor-brainstorm`; stay in planning.
-Lightweight: `prd.md` can be enough. Complex: finish `prd.md`, `design.md`, and `implement.md`; ask for review before `task.py start`.
-Multi-deliverable scope: consider a parent task plus independently verifiable child tasks; dependencies must be written in child artifacts, not implied by tree position.
-Sub-agent mode: curate `implement.jsonl` and `check.jsonl` as spec/research manifests before start.
+Lightweight: `prd.md` can be enough. Complex: finish `prd.md`, `design.md`, and `implement.md`; ask for review before `task.py start` (1.4).
+Curate `implement.jsonl` and `check.jsonl` (1.3, required): the dispatch hook inlines exactly those files into the codeg assistants.
+Multi-deliverable scope: consider a parent task plus independently verifiable child tasks (`task.py create --parent`); dependencies must be written in child artifacts, not implied by tree position.
+Decide the execution mode in 1.4: serial (default) or parallel (`task.py set-meta <task> execution parallel` plus child tasks), before `task.py start`.
 [/workflow-state:planning]
 
-<!-- Per-turn breadcrumb: shown throughout Phase 1 when codex.dispatch_mode=inline.
-     Codex-only opt-in alternate to [workflow-state:planning]. The main agent
-     edits code directly in Phase 2, so jsonl curation is skipped —
-     the inline workflow loads `arbor-before-dev` instead of injecting JSONL
-     into a sub-agent. -->
-
-[workflow-state:planning-inline]
-Load `arbor-brainstorm`; stay in planning.
-Lightweight: `prd.md` can be enough. Complex: finish `prd.md`, `design.md`, and `implement.md`; ask for review before `task.py start`.
-Multi-deliverable scope: consider a parent task plus independently verifiable child tasks; dependencies must be written in child artifacts, not implied by tree position.
-Inline mode: skip jsonl curation; Phase 2 reads artifacts/specs via `arbor-before-dev`.
-[/workflow-state:planning-inline]
-
 ### Phase 2: Execute
-- 2.1 Implement `[required · repeatable]`
-- 2.2 Quality check `[required · repeatable]`
+- 2.1 Implement `[required · repeatable]` (dispatch the implement role)
+- 2.2 Quality check `[required · repeatable]` (dispatch the check role)
 - 2.3 Rollback `[on demand]`
+- Phase 2P replaces 2.1–2.2 when `meta.execution=parallel`: 2P.0 Split · 2P.1 Worktrees · 2P.2 Implement · 2P.3 Check · 2P.4 Merge · 2P.5 Final check · 2P.6 Cleanup
 
-<!-- Per-turn breadcrumb: shown while status='in_progress'.
+<!-- Per-turn breadcrumb: shown while status='in_progress' (serial execution).
      Scope: all of Phase 2 + Phase 3.2-3.4 (status stays 'in_progress' from
      task.py start until task.py archive; only archive flips it). The body
      therefore must cover every required step from implementation through
      commit, including Phase 3.3 spec update and Phase 3.4 commit. -->
 
-Sub-agent dispatch protocol applies to all platforms and all sub-agents, including native Codex `SubagentStart` context injection with child-side pull fallback, class-2 Gemini/Qoder/Copilot/Reasonix/Trae/Grok/Kimi Code, hook-backed ZCode/Snow, and `arbor-research`: every dispatch prompt starts with `Active task: <task path from task.py current>` before role-specific instructions. On Grok Build, use `spawn_subagent` with `subagent_type` set to the Arbor agent name (e.g. `arbor-implement`). On Kimi Code, dispatch the built-in `coder` / `explore` sub-agent with the matching `.kimi-code/skills/arbor-<role>/SKILL.md` instructions.
-
 [workflow-state:in_progress]
-Tools: `arbor-implement` / `arbor-research` are sub-agent types only (Task/Agent tool, NOT Skill; there is no skill by these names). `arbor-update-spec` is a skill. `arbor-check` exists as both; prefer the Agent form when verifying after code changes.
-Flow: `arbor-implement` -> `arbor-check` -> `arbor-update-spec` -> commit (Phase 3.4) -> `/arbor:finish-work`.
-Main-session default: dispatch implement/check sub-agents. Sub-agent self-exemption: if already running as `arbor-implement`, do NOT spawn another `arbor-implement` or `arbor-check`; if already running as `arbor-check`, do NOT spawn another `arbor-check` or `arbor-implement`. Dispatch is main session only.
-Dispatch prompt starts with `Active task: <task path from task.py current>`. Read context: jsonl entries -> `prd.md` -> `design.md if present` -> `implement.md if present`.
+Roles implement / check / research run as codeg assistants, never via the built-in Agent/Task tool. Dispatch with `delegate_to_agent(assistant_id=<from the <dispatch> context or dispatch.py resolve>, working_dir=<repo root>, task=<header + brief>)` and wait with `get_delegation_status`; without those tools run `python3 ./.arbor/scripts/dispatch.py run --role <role> --wait`.
+The task text starts with `Active task: <absolute task dir>` then `Role: <role>`; the hook inlines the jsonl entries -> prd.md -> design.md -> implement.md.
+Flow: implement (2.1) -> check (2.2; the last one full-scope, `Role: check [finish]`) -> `arbor-update-spec` (3.3, required) -> batched commit (3.4, required; no amend, no push) -> `/arbor:finish-work`.
+Sub-agent self-exemption: if you are already a dispatched sub-agent (your prompt starts with `Active task:` / `Role:`), perform that role directly; do not dispatch, commit, or call task.py start/current/finish. Dispatch is main session only.
 [/workflow-state:in_progress]
 
-<!-- Per-turn breadcrumb: shown while status='in_progress' when
-     codex.dispatch_mode=inline. Codex-only opt-in alternate to
-     [workflow-state:in_progress]. The main session edits code directly
-     instead of dispatching sub-agents. -->
+<!-- Per-turn breadcrumb: shown while status='in_progress' and the task has
+     meta.execution=parallel. Same scope as [workflow-state:in_progress] but
+     for Phase 2P. -->
 
-[workflow-state:in_progress-inline]
-Flow: `arbor-before-dev` -> edit -> `arbor-check` -> validation -> `arbor-update-spec` -> commit (Phase 3.4) -> `/arbor:finish-work`.
-Do not dispatch implement/check sub-agents in inline mode.
-Read context: `prd.md` -> `design.md if present` -> `implement.md if present`, plus relevant spec/research loaded by skills.
-[/workflow-state:in_progress-inline]
+[workflow-state:in_progress-parallel]
+Parallel execution is enabled for this task (meta.execution=parallel). Same dispatch rules as serial (codeg assistants only, header `Active task:` + `Role:`, never the built-in Agent/Task tool), plus Phase 2P:
+Each child task gets its own worktree (`git worktree add <WT_ROOT>/<parent>-<child> -b wip/<parent>/<child> <task-branch>`, 2P.1). Dispatch up to dispatch.max_parallel implement roles at once (2P.2) with `working_dir=<worktree>` and header `Active task: <absolute child dir in the MAIN checkout>`, `Role: implement`, `Workspace: <worktree>`.
+Then check each child in its worktree and commit it yourself (2P.3), merge serially with `git merge --no-ff` into the task branch (2P.4), run one full-scope `Role: check [finish]` on the merged tree for the parent task (2P.5), and remove the worktrees (2P.6).
+Finish on the parent task: `arbor-update-spec` (3.3, required) -> batched commit (3.4, required; no amend, no push) -> `/arbor:finish-work` (archives parent and children).
+Sub-agent self-exemption: if you are already a dispatched sub-agent, perform your role in your worktree only; never merge, commit, or dispatch.
+[/workflow-state:in_progress-parallel]
 
 ### Phase 3: Finish
 - 3.2 Debug retrospective `[on demand]`
@@ -283,27 +317,16 @@ Code committed. Run `/arbor:finish-work`; if dirty, return to Phase 3.4 first.
 
 When a user request matches one of these intents inside an active task, route first, then load the detailed phase step if needed.
 
-[Claude Code, Cursor, OpenCode, codex-sub-agent, Kiro, Gemini, Qoder, CodeBuddy, Copilot, Droid, Pi, Oh My Pi, ZCode, Snow, Reasonix, Trae, Grok, Kimi Code, StarFactory]
-
 - Planning or unclear requirements -> `arbor-brainstorm`.
-- `in_progress` implementation/check -> dispatch `arbor-implement` / `arbor-check`.
+- `in_progress` implementation/check -> dispatch the implement / check role (codeg `delegate_to_agent`, or `dispatch.py run`); with `meta.execution=parallel` follow Phase 2P.
 - Repeated debugging -> `arbor-break-loop`; spec updates -> `arbor-update-spec`.
-
-[/Claude Code, Cursor, OpenCode, codex-sub-agent, Kiro, Gemini, Qoder, CodeBuddy, Copilot, Droid, Pi, Oh My Pi, ZCode, Snow, Reasonix, Trae, Grok, Kimi Code, StarFactory]
-
-[codex-inline, Kilo, Antigravity, Devin, DeepSeek Harness]
-
-- Planning or unclear requirements -> `arbor-brainstorm`.
-- Before editing -> `arbor-before-dev`; after editing -> `arbor-check`.
-- Repeated debugging -> `arbor-break-loop`; spec updates -> `arbor-update-spec`.
-
-[/codex-inline, Kilo, Antigravity, Devin, DeepSeek Harness]
 
 ### Guardrails
 
 - Task creation approval is not implementation approval; implementation waits for `task.py start` after artifact review.
 - PRD-only is valid for lightweight tasks; complex tasks need `design.md` + `implement.md`.
 - Planning must be persisted to task artifacts; checks must run before reporting completion.
+- Never perform the implement / check / research roles in the main session or through the built-in Agent/Task tool; dispatch them (see Dispatch).
 
 ### Loading Step Detail
 
@@ -364,21 +387,13 @@ Return to this step whenever requirements change and revise the relevant artifac
 
 Research can happen at any time during requirement exploration. It isn't limited to local code — you can use any available tool (MCP servers, skills, web search, etc.) to look up external information, including third-party library docs, industry practices, API references, etc.
 
-[Claude Code, Cursor, OpenCode, codex-sub-agent, Kiro, Gemini, Qoder, CodeBuddy, Copilot, Droid, Pi, Oh My Pi, ZCode, Snow, Reasonix, Trae, Grok, Kimi Code, StarFactory]
+For larger questions, dispatch the **research** role (see Dispatch in the Arbor System section):
 
-Spawn the research sub-agent:
+- **Header**: `Active task: <absolute task dir>` then `Role: research`
+- **Brief**: the specific question to research
+- **Key requirement**: research output MUST be persisted to `{TASK_DIR}/research/` (one file per topic)
 
-- **Agent type**: `arbor-research`
-- **Task description**: Research <specific question>
-- **Key requirement**: Research output MUST be persisted to `{TASK_DIR}/research/`
-
-[/Claude Code, Cursor, OpenCode, codex-sub-agent, Kiro, Gemini, Qoder, CodeBuddy, Copilot, Droid, Pi, Oh My Pi, ZCode, Snow, Reasonix, Trae, Grok, Kimi Code, StarFactory]
-
-[codex-inline, Kilo, Antigravity, Devin, DeepSeek Harness]
-
-Do the research in the main session directly and write findings into `{TASK_DIR}/research/`. `codex-inline` is the explicit mode that keeps work in the main session.
-
-[/codex-inline, Kilo, Antigravity, Devin, DeepSeek Harness]
+Small questions you can answer by reading a few files directly; just write the finding into `{TASK_DIR}/research/` yourself.
 
 **Research artifact conventions**:
 - One file per research topic (e.g. `research/auth-library-comparison.md`)
@@ -391,9 +406,7 @@ Brainstorm and research can interleave freely — pause to research a technical 
 
 #### 1.3 Configure context `[required · once]`
 
-[Claude Code, Cursor, OpenCode, codex-sub-agent, Kiro, Gemini, Qoder, CodeBuddy, Copilot, Droid, Pi, Oh My Pi, ZCode, Snow, Reasonix, Trae, Grok, Kimi Code, StarFactory]
-
-Curate `implement.jsonl` and `check.jsonl` so the Phase 2 sub-agents get the right spec/research context. These files were seeded on `task create` with a single self-describing `_example` line; your job here is to fill in real entries.
+Curate `implement.jsonl` and `check.jsonl` so the dispatched implement/check assistants get the right spec/research context. The hook inlines exactly the files listed here; an empty manifest means the assistant runs with no spec. These files were seeded on `task create` with a single self-describing `_example` line; your job here is to fill in real entries.
 
 **Location**: `{TASK_DIR}/implement.jsonl` and `{TASK_DIR}/check.jsonl` (already exist).
 
@@ -401,17 +414,17 @@ Curate `implement.jsonl` and `check.jsonl` so the Phase 2 sub-agents get the rig
 
 **What to put in**:
 - **Spec files** — `.arbor/spec/<package>/<layer>/index.md` and any specific guideline files (`error-handling.md`, `conventions.md`, etc.) relevant to this task
-- **Research files** — `{TASK_DIR}/research/*.md` that the sub-agent will need to consult
+- **Research files** — `{TASK_DIR}/research/*.md` that the assistant will need to consult
 
 **What NOT to put in**:
-- Code files (`src/**`, `packages/**/*.ts`, etc.) — those are read by the sub-agent during implementation, not pre-registered here
+- Code files (`src/**`, `packages/**/*.ts`, etc.) — those are read by the assistant during implementation, not pre-registered here
 - Files you're about to modify — same reason
 
 **Split between the two files**:
-- `implement.jsonl` → specs + research the implement sub-agent needs to write code correctly
-- `check.jsonl` → specs for the check sub-agent (quality guidelines, check conventions, same research if needed)
+- `implement.jsonl` → specs + research the implement role needs to write code correctly
+- `check.jsonl` → specs for the check role (quality guidelines, check conventions, same research if needed)
 
-These manifests do not replace `implement.md`. `implement.md` is the human-readable execution plan for a complex task; jsonl files only list context files to inject or load.
+These manifests do not replace `implement.md`. `implement.md` is the human-readable execution plan for a complex task; jsonl files only list context files to inject.
 
 **How to discover relevant specs**:
 
@@ -432,19 +445,22 @@ python3 ./.arbor/scripts/task.py add-context "$TASK_DIR" check "<path>" "<reason
 
 Delete the seed `_example` line once real entries exist (optional — it's skipped automatically by consumers).
 
-Ready gate: both `implement.jsonl` and `check.jsonl` must contain at least one real `{"file": "...", "reason": "..."}` entry before `task.py start`. The seed `_example` row alone is not ready.
+Ready gate: both `implement.jsonl` and `check.jsonl` must contain at least one real `{"file": "...", "reason": "..."}` entry before `task.py start`. The seed `_example` row alone is not ready. For a parallel parent task, curate the manifests of every child task too (children may start from a copy of the parent's).
 
 Skip this step only when both files already have real curated entries.
 
-[/Claude Code, Cursor, OpenCode, codex-sub-agent, Kiro, Gemini, Qoder, CodeBuddy, Copilot, Droid, Pi, Oh My Pi, ZCode, Snow, Reasonix, Trae, Grok, Kimi Code, StarFactory]
-
-[codex-inline, Kilo, Antigravity, Devin, DeepSeek Harness]
-
-Skip this step. Context is loaded directly by the `arbor-before-dev` skill in Phase 2.
-
-[/codex-inline, Kilo, Antigravity, Devin, DeepSeek Harness]
-
 #### 1.4 Activate task `[required · once]`
+
+**Decide the execution mode first.**
+
+- **serial** (default): one implement → check loop in the main checkout (Phase 2.1–2.2).
+- **parallel**: choose it only when the work splits into child tasks that touch disjoint files and can be verified independently. Mark the parent, then follow Phase 2P:
+
+  ```bash
+  python3 ./.arbor/scripts/task.py set-meta <parent-dir> execution parallel
+  ```
+
+  This stores `meta.execution = "parallel"` in the parent's `task.json`; the breadcrumb key becomes `in_progress-parallel` after `task.py start`. Child tasks are created in 2P.0 (or earlier, in planning, with `task.py create --parent`).
 
 After artifact review, flip the task status to `in_progress`:
 
@@ -452,11 +468,11 @@ After artifact review, flip the task status to `in_progress`:
 python3 ./.arbor/scripts/task.py start <task-dir>
 ```
 
-For lightweight tasks, `prd.md` can be enough. For complex tasks, `prd.md`, `design.md`, and `implement.md` must exist and be reviewed before start. On sub-agent-dispatch platforms, `implement.jsonl` and `check.jsonl` must both have real curated entries before start. Runtime consumers tolerate missing or seed-only manifests for compatibility, but that tolerance is not a planning-ready state.
+For lightweight tasks, `prd.md` can be enough. For complex tasks, `prd.md`, `design.md`, and `implement.md` must exist and be reviewed before start. `implement.jsonl` and `check.jsonl` must both have real curated entries before start. Runtime consumers tolerate missing or seed-only manifests for compatibility, but that tolerance is not a planning-ready state.
 
-After this command succeeds, the breadcrumb auto-switches to `[workflow-state:in_progress]`, and the rest of Phase 2 / 3 follows.
+After this command succeeds, the breadcrumb auto-switches to `[workflow-state:in_progress]` (or `in_progress-parallel`), and the rest of Phase 2 / 3 follows.
 
-If `task.py start` errors with a session-identity message (no context key from hook input, `ARBOR_CONTEXT_ID`, or platform-native session env), follow the hint in the error to set up session identity, then retry.
+If `task.py start` errors with a session-identity message (no context key from hook input or `ARBOR_CONTEXT_ID`), follow the hint in the error to set up session identity, then retry.
 
 #### 1.5 Completion criteria
 
@@ -468,110 +484,105 @@ If `task.py start` errors with a session-identity message (no context key from h
 | `research/` has artifacts (complex tasks) | recommended |
 | `design.md` exists (complex tasks) | ✅ |
 | `implement.md` exists (complex tasks) | ✅ |
-
-[Claude Code, Cursor, OpenCode, codex-sub-agent, Kiro, Gemini, Qoder, CodeBuddy, Copilot, Droid, Pi, Oh My Pi, ZCode, Snow, Reasonix, Trae, Grok, Kimi Code, StarFactory]
-
 | `implement.jsonl` and `check.jsonl` each contain at least one real curated entry (seed row does not count) | ✅ |
-
-[/Claude Code, Cursor, OpenCode, codex-sub-agent, Kiro, Gemini, Qoder, CodeBuddy, Copilot, Droid, Pi, Oh My Pi, ZCode, Snow, Reasonix, Trae, Grok, Kimi Code, StarFactory]
+| Execution mode chosen; `meta.execution=parallel` set when parallel | ✅ |
 
 ---
 
 ## Phase 2: Execute
 
-Goal: turn reviewed planning artifacts into code that passes quality checks.
+Goal: turn reviewed planning artifacts into code that passes quality checks, by dispatching the implement and check roles to codeg assistants. Dispatch mechanics (header protocol, the two paths, target selection) are in the Dispatch subsection of the Arbor System section. Serial mode uses 2.1–2.3 below; parallel mode (`meta.execution=parallel`) uses Phase 2P instead.
 
 #### 2.1 Implement `[required · repeatable]`
 
-[Claude Code, Cursor, OpenCode, codex-sub-agent, CodeBuddy, Droid, Pi, ZCode, Snow, Oh My Pi, StarFactory]
+Dispatch the **implement** role. With codeg: `delegate_to_agent(assistant_id=<id from <dispatch> or dispatch.py resolve>, working_dir=<repo root>, task=<header + brief>)`, then `get_delegation_status(task_ids, wait_ms=60000)` until terminal. Without codeg: `python3 ./.arbor/scripts/dispatch.py run --role implement --wait`. The hook (or `dispatch.py`) inlines the jsonl entries, `prd.md`, `design.md` if present, and `implement.md` if present. The task text MUST begin with the header block:
 
-Spawn the implement sub-agent:
+```
+Active task: <absolute task dir>
+Role: implement
+```
 
-- **Agent type**: `arbor-implement`
-- **Task description**: Implement the reviewed task artifacts, consulting materials under `{TASK_DIR}/research/`; finish by running project lint and type-check
-- **Dispatch prompt guard**: The prompt MUST start with `Active task: <task path>`, then tell the spawned agent it is already the `arbor-implement` sub-agent and must implement directly, not spawn another `arbor-implement` / `arbor-check`.
-
-The platform hook/plugin auto-handles:
-- Reads `implement.jsonl` and injects referenced spec/research files into the agent prompt
-- Injects `prd.md`, `design.md` if present, and `implement.md` if present
-- For Codex, `SubagentStart` supplies native context injection; the agent profile keeps child-side loading as the fallback
-
-[/Claude Code, Cursor, OpenCode, codex-sub-agent, CodeBuddy, Droid, Pi, ZCode, Snow, Oh My Pi, StarFactory]
-
-[Gemini, Qoder, Copilot, Reasonix, Trae, Grok, Kimi Code]
-
-Spawn the implement sub-agent:
-
-- **Agent type**: `arbor-implement`
-- **Task description**: Implement the reviewed task artifacts, consulting materials under `{TASK_DIR}/research/`; finish by running project lint and type-check
-- **Dispatch prompt guard**: The prompt MUST start with `Active task: <task path>`, then explicitly say the spawned agent is already `arbor-implement` and must implement directly without spawning another `arbor-implement` / `arbor-check`.
-
-The pull-based sub-agent definition auto-handles the context load requirement:
-- Resolves the active task with `task.py current --source`, then reads `prd.md`, `design.md` if present, and `implement.md` if present
-- Reads `implement.jsonl` and requires the agent to load each referenced spec/research file before coding
-
-[/Gemini, Qoder, Copilot, Reasonix, Trae, Grok, Kimi Code]
-
-[Kiro]
-
-Spawn the implement sub-agent:
-
-- **Agent type**: `arbor-implement`
-- **Task description**: Implement the reviewed task artifacts, consulting materials under `{TASK_DIR}/research/`; finish by running project lint and type-check
-- **Dispatch prompt guard**: Tell the spawned agent it is already the `arbor-implement` sub-agent and must implement directly, not spawn another `arbor-implement` / `arbor-check`.
-
-The platform prelude auto-handles the context load requirement:
-- Reads `implement.jsonl` and injects referenced spec/research files into the agent prompt
-- Injects `prd.md`, `design.md` if present, and `implement.md` if present
-
-[/Kiro]
-
-[codex-inline, Kilo, Antigravity, Devin, DeepSeek Harness]
-
-1. Load the `arbor-before-dev` skill to read project guidelines
-2. Read `{TASK_DIR}/prd.md`, then `design.md` if present, then `implement.md` if present
-3. Consult materials under `{TASK_DIR}/research/`
-4. Implement the code per reviewed artifacts
-5. Run project lint and type-check
-
-[/codex-inline, Kilo, Antigravity, Devin, DeepSeek Harness]
+- **Brief** (after the header): implement the reviewed task artifacts, consulting materials under `{TASK_DIR}/research/`; finish by running project lint and type-check. Add anything the artifacts do not say (known pitfalls, files to avoid).
+- **Dispatch prompt guard**: the assistant's own instructions already say it is the `implement` role and must not dispatch; keep the brief free of instructions to delegate or to spawn another implement/check run.
+- On completion, read the assistant's report (files modified, verification, open questions) and skim `git diff --stat` before moving on. The assistant does not commit.
 
 #### 2.2 Quality check `[required · repeatable]`
 
-[Claude Code, Cursor, OpenCode, codex-sub-agent, Kiro, Gemini, Qoder, CodeBuddy, Copilot, Droid, Pi, Oh My Pi, ZCode, Snow, Reasonix, Trae, Grok, Kimi Code, StarFactory]
+Dispatch the **check** role the same way (`Role: check`; `dispatch.py run --role check --wait` in a terminal):
 
-Spawn the check sub-agent:
+- **Brief**: review all code changes against specs and task artifacts; fix any findings directly; ensure lint and type-check pass.
+- The check assistant reviews the diff against specs, `prd.md`, `design.md` if present, and `implement.md` if present; auto-fixes what it finds; runs lint and type-check; and reports PASS or FAIL with a fix list.
+- On FAIL or open issues, decide whether to re-dispatch implement (design-level problem) or check again.
 
-- **Agent type**: `arbor-check`
-- **Task description**: Review all code changes against specs and task artifacts; fix any findings directly; ensure lint and type-check pass
-- **Dispatch prompt guard**: The prompt MUST start with `Active task: <task path>`, then tell the spawned agent it is already the `arbor-check` sub-agent and must review/fix directly, not spawn another `arbor-check` / `arbor-implement`.
-
-The check agent's job:
-- Review code changes against specs
-- Review code changes against `prd.md`, `design.md` if present, and `implement.md` if present
-- Auto-fix issues it finds
-- Run lint and typecheck to verify
-
-[/Claude Code, Cursor, OpenCode, codex-sub-agent, Kiro, Gemini, Qoder, CodeBuddy, Copilot, Droid, Pi, Oh My Pi, ZCode, Snow, Reasonix, Trae, Grok, Kimi Code, StarFactory]
-
-[codex-inline, Kilo, Antigravity, Devin, DeepSeek Harness]
-
-Load the `arbor-check` skill and verify the code per its guidance:
-- Spec compliance
-- lint / type-check / tests
-- Cross-layer consistency (when changes span layers)
-
-If issues are found → fix → re-check, until green.
-
-[/codex-inline, Kilo, Antigravity, Devin, DeepSeek Harness]
-
-**Final pass (before Phase 3.4 commit)**: the last 2.2 of a task must run full-scope, not just on the latest implement chunk. List all affected packages with `python3 ./.arbor/scripts/get_context.py --mode packages`, then load each package's spec index Quality Check section. This catches cross-layer / multi-package issues a mid-iteration local 2.2 cannot.
+**Final pass (before Phase 3.4 commit)**: the last 2.2 of a task must run full-scope, not just on the latest implement chunk. Use `Role: check [finish]`; list all affected packages with `python3 ./.arbor/scripts/get_context.py --mode packages` and tell the assistant to load each package's spec index Quality Check section. This catches cross-layer / multi-package issues a mid-iteration local 2.2 cannot.
 
 #### 2.3 Rollback `[on demand]`
 
 - `check` reveals a prd defect → return to Phase 1, fix `prd.md`, then redo 2.1
 - Implementation went wrong → revert code, redo 2.1
-- Need more research → research (same as Phase 1.2), write findings into `research/`
+- Need more research → dispatch the research role (same as Phase 1.2), write findings into `research/`
+- A dispatch failed, timed out, or returned nothing useful → read its result, tighten the brief, and re-dispatch (optionally with a different `Target:`). Do not silently do the role's work in the main session.
+
+---
+
+## Phase 2P: Execute (parallel variant)
+
+Applies only when the parent task has `meta.execution=parallel`. Goal: implement independent child tasks concurrently, each in its own git worktree, then merge serially. Use it instead of 2.1–2.2; Phase 3 runs on the parent task afterwards.
+
+Invariants: sub-agents never commit, merge, or touch paths outside their worktree, and never write under `.arbor/`. The `Active task:` header line is **always** the absolute path of the task directory in the MAIN checkout, even when `working_dir` is a worktree (the `.arbor/tasks` copy inside a worktree is read-only noise). Runtime state (`.arbor/.runtime`, `.arbor/.developer`) is resolved from the main checkout only.
+
+#### 2P.0 Split `[required · repeatable]`
+
+Write the waves and file ownership into the parent `implement.md`: which child owns which files, and which children must wait for others. Children in the same wave must not modify the same file. Create each child:
+
+```bash
+python3 ./.arbor/scripts/task.py create "<title>" --slug <name> --parent <parent-dir>
+```
+
+Give each child its own `prd.md` and curated `implement.jsonl` / `check.jsonl` (copying the parent's is fine).
+
+#### 2P.1 Worktrees `[required · repeatable]`
+
+One worktree and branch per child. Keep worktrees outside the repo:
+
+```bash
+REPO=$(git rev-parse --show-toplevel)
+WT_ROOT="$(dirname "$REPO")/$(basename "$REPO")-wt"
+git worktree add "$WT_ROOT/<parent>-<child>" -b "wip/<parent>/<child>" <task-branch>
+```
+
+#### 2P.2 Implement `[required · repeatable]`
+
+Dispatch up to `dispatch.max_parallel` implement roles at once (more children → next wave). Each header:
+
+```
+Active task: <absolute child task dir in the MAIN checkout>
+Role: implement
+Workspace: <absolute worktree path>
+```
+
+with `working_dir=<worktree path>`. Collect all `task_id`s and wait with `get_delegation_status(task_ids, wait_ms=60000)`; in a terminal use `dispatch.py run --role implement --task <child-dir> --workspace <worktree> --detach` then `dispatch.py wait`. Handle failures as in 2.3, per child.
+
+#### 2P.3 Check `[required · repeatable]`
+
+Dispatch a `Role: check` in each worktree (`Active task` = that child, `Workspace` = its worktree, `working_dir` = the worktree). When a child is green, commit it yourself inside its worktree: `git -C <worktree> add -A && git -C <worktree> commit -m "<msg>"`.
+
+#### 2P.4 Merge `[required · repeatable]`
+
+In the main checkout, on the task branch, merge children serially: `git merge --no-ff wip/<parent>/<child>`. Resolve conflicts yourself. Run the project checks after each merge.
+
+#### 2P.5 Final check `[required · repeatable]`
+
+On the merged tree, dispatch one full-scope check: `Active task:` = the **parent** task, `Role: check [finish]`, `working_dir` = the main checkout.
+
+#### 2P.6 Cleanup `[required · repeatable]`
+
+```bash
+git worktree remove "$WT_ROOT/<parent>-<child>"
+git branch -d "wip/<parent>/<child>"
+```
+
+for every merged child. Then continue with Phase 3 on the parent task (3.3 spec update, 3.4 commit of any remaining changes). `/arbor:finish-work` archives the parent and its children.
 
 ---
 
@@ -607,7 +618,7 @@ The AI drives a batched commit of this task's code changes so `/finish-work` can
 
 **Step-by-step**:
 
-1. **Inspect dirty state**:
+1. **Inspect dirty state** (parallel tasks: the children were already committed in their worktrees and merged; only parent-level changes such as spec updates remain):
    ```bash
    git status --porcelain
    ```
@@ -664,7 +675,7 @@ This section is for developers who want to modify the Arbor workflow itself. All
 ### Changing what a step means
 
 Edit the corresponding step's walkthrough body in the Phase 1 / 2 / 3 sections above. Critical invariants:
-- No active task must triage first and ask for task-creation consent before creating a Arbor task.
+- No active task must triage first and ask for task-creation consent before creating an Arbor task.
 - Planning must distinguish lightweight PRD-only tasks from complex tasks that require `prd.md`, `design.md`, and `implement.md` before start.
 - Every required execution path must keep the Phase 3.4 commit reminder reachable before `/arbor:finish-work`.
 
@@ -675,10 +686,13 @@ All tag blocks live in the `## Phase Index` section above, immediately after eac
 | No active task (before Phase 1) | `[workflow-state:no_task]` (after the Phase Index ASCII art) |
 | Active task record unreadable | `[workflow-state:task_error]` (repair the existing task before continuing) |
 | All of Phase 1 (task created → ready for implementation) | `[workflow-state:planning]` (after Phase 1 summary) |
-| Codex inline Phase 1 | `[workflow-state:planning-inline]` |
-| Phase 2 + Phase 3.2–3.4 (implementation + check + wrap-up) | `[workflow-state:in_progress]` (after Phase 2 summary) |
-| Codex inline Phase 2 + Phase 3.2–3.4 | `[workflow-state:in_progress-inline]` |
+| Phase 2 + Phase 3.2–3.4, serial (implementation + check + wrap-up) | `[workflow-state:in_progress]` (after Phase 2 summary) |
+| Phase 2P + Phase 3.2–3.4, parallel (task has `meta.execution=parallel`) | `[workflow-state:in_progress-parallel]` (right after `in_progress`) |
 | After Phase 3.5 (archived) | `[workflow-state:completed]` (after Phase 3 summary; **currently DEAD**) |
+
+### Breadcrumb key selection
+
+`inject-workflow-state.py` normally uses `task.json.status` as the block name. For a task whose status is `in_progress` and whose `meta.execution` is `parallel`, it uses `in_progress-parallel` instead, and falls back to `in_progress` when that block is missing.
 
 ### Changing the per-turn prompt text
 

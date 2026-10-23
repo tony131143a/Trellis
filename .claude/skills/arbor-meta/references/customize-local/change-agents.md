@@ -1,56 +1,38 @@
-# Change Local Agents
+# Change Local Agents (Assistant Instructions)
 
-When the user wants to change `arbor-research`, `arbor-implement`, or `arbor-check` behavior, edit platform agent files in the user project.
+When the user wants to change `research`, `implement`, or `check` role behavior, edit the assistant instruction sources in `.arbor/agents/`. These roles run as codeg assistants, not as platform sub-agents, so there are no `.claude/agents/` or `.starFactory/agents/` files to edit.
 
 ## Read These Files First
 
-1. Target platform agent directory
-2. `.arbor/workflow.md` Phase 2 / research routing
-3. Current task `prd.md`
-4. Current task `implement.jsonl` / `check.jsonl`
-5. Relevant hook or agent prelude
+1. `.arbor/agents/{implement,check,research}.md` (plain markdown, no frontmatter)
+2. `.arbor/workflow.md` Phase 2 and research routing
+3. `.arbor/config.yaml` `dispatch:` section
+4. Current task `prd.md`, `implement.jsonl` / `check.jsonl`
+5. `../local-architecture/dispatch.md`
 
-## Common Paths
+## Edit And Re-Install
 
-| Platform | Path |
-| --- | --- |
-| Claude Code | `.claude/agents/arbor-*.md` |
-| Cursor | `.cursor/agents/arbor-*.md` |
-| OpenCode | `.opencode/agents/arbor-*.md` |
-| Codex | `.codex/agents/arbor-*.toml` |
-| Kiro | `.kiro/agents/arbor-*.json` |
-| Gemini CLI | `.gemini/agents/arbor-*.md` |
-| Qoder | `.qoder/agents/arbor-*.md` |
-| CodeBuddy | `.codebuddy/agents/arbor-*.md` |
-| Factory Droid | `.factory/droids/arbor-*.md` |
-| Pi Agent | `.pi/agents/arbor-*.md` |
-| Reasonix | `.reasonix/skills/arbor-*/SKILL.md` (subagent frontmatter) |
-| ZCode | `.zcode/agents/arbor-*.md` |
+1. Edit the relevant `.arbor/agents/<role>.md`.
+2. Run `python3 ./.arbor/scripts/dispatch.py codeg-setup` to re-render `.arbor/.runtime/codeg-assistants/<target>-<role>.md` for every target (`star`, `pi`).
+3. Paste the rendered text into the matching codeg assistants following the printed UI steps, or run `codeg-setup --install` (macOS only) to upsert the codeg database rows.
 
-Use the actual paths in the user project as authoritative.
+An installed assistant keeps its old text until step 3 is done. Editing `.arbor/agents/` alone changes nothing at runtime.
 
 ## Common Needs
 
-| Need | Which agent to edit |
+| Need | Which file to edit |
 | --- | --- |
-| Research must write files, not only reply in chat | `arbor-research` |
-| Certain local specs must be read before implementation | `arbor-implement` + `implement.jsonl` configuration rules |
-| Specific commands must run during checking | `arbor-check` |
-| Agent must not modify certain directories | The corresponding agent's write boundary instructions |
-| Agent output format must be fixed | The corresponding agent's final/reporting instructions |
+| Research must write files, not only reply in chat | `research.md` |
+| Certain local specs must be read before implementation | `implement.jsonl` of the task, or spec rules; `implement.md` only for the read-order rule |
+| Specific commands must run during checking | `check.md` |
+| Role must not modify certain directories | The write-boundary section of that role file |
+| Role output format must be fixed | The report section of that role file |
+| Change which assistant a role uses | `dispatch:` in `.arbor/config.yaml`, then `codeg-setup` |
 
 ## Modification Principles
 
-1. **Preserve role boundaries**: research investigates and persists; implement writes implementation; check reviews and fixes.
-2. **Do not hard-code project specs into agents**: long-term specs belong in `.arbor/spec/`; agents are responsible for reading them.
-3. **Make read order explicit**: active task -> PRD -> info -> JSONL -> spec/research.
-4. **Make write boundaries explicit**: which directories may be written and which may not.
-5. **Synchronize across platforms**: when the user configured multiple platforms, decide whether to change only the current platform or all platform agents.
-
-## Agent Pull Platforms
-
-If an agent file contains a prelude for "read task/context after startup," do not remove those steps when editing. Otherwise the agent will work only from chat context and bypass Arbor's core mechanism.
-
-## Hook Push Platforms
-
-If context is injected by a hook, the agent file should still retain responsibility boundaries. Do not remove PRD/spec requirements from the agent just because a hook injects context.
+1. Preserve role boundaries: research investigates and persists; implement writes implementation; check reviews and fixes.
+2. Do not hard-code project specs into role files; long-term rules belong in `.arbor/spec/`.
+3. Keep the read order explicit: injected payload (or active task JSONL) then `prd.md`, `design.md`, `implement.md`.
+4. Keep the hard limits: no commit, merge, or stash; stay inside the working directory; never write under `.arbor/`; never dispatch.
+5. Keep the pull-based context steps; the hook only injects when the dispatch header is present.

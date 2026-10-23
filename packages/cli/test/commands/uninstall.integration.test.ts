@@ -338,7 +338,10 @@ describe("uninstall() integration", () => {
                     const cmd = (entry as { command: string }).command;
                     expect(cmd).not.toContain(".claude/hooks/session-start.py");
                     expect(cmd).not.toContain(
-                      ".claude/hooks/inject-subagent-context.py",
+                      ".claude/hooks/inject-delegation-context.py",
+                    );
+                    expect(cmd).not.toContain(
+                      ".claude/hooks/guard-builtin-agent.py",
                     );
                     expect(cmd).not.toContain(
                       ".claude/hooks/inject-workflow-state.py",

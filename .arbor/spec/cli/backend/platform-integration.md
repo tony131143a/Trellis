@@ -16,7 +16,7 @@ Platform support uses a **centralized registry pattern** (similar to Turborepo's
 - **Function registry**: `src/configurators/index.ts` — `PLATFORM_FUNCTIONS`, one line per platform. It holds no per-platform logic; the doc-comment at `index.ts:1-11` is the authoritative add-a-platform list
 - **Shared configurator utilities**: `src/configurators/shared.ts` — renderers (`resolvePlaceholders()`, `resolvePlaceholdersNeutral()`), resolvers (`resolveCommands()`, `resolveSkills()`, `resolveAllAsSkills()`, `resolveBundledSkills()`), map builders (`collectSkillTemplates()`, `collectBothTemplates()`, `collectSharedHooks()`), and the render/write pair (`renderTemplateMap()`, `writeTemplateMap()`). See `configurator-shared.md`
 - **Shared template utilities**: `src/templates/template-utils.ts` — `createTemplateReader()` factory that eliminates boilerplate across platform template modules
-- **Shared hooks**: `src/templates/shared-hooks/` — platform-independent Python hook scripts (session-start, inject-workflow-state, inject-subagent-context, inject-shell-session-context) written as-is to platform hook directories according to `SHARED_HOOKS_BY_PLATFORM`. Claude Code `statusLine` is not installed by default.
+- **Shared hooks**: `src/templates/shared-hooks/` — platform-independent Python hook scripts (session-start, inject-workflow-state, inject-delegation-context, guard-builtin-agent, inject-shell-session-context) written as-is to platform hook directories according to `SHARED_HOOKS_BY_PLATFORM`. Claude Code `statusLine` is not installed by default.
 - **Common templates**: `src/templates/common/` — single source of truth for commands (start, finish-work), single-file workflow skills (before-dev, brainstorm, check, break-loop, update-spec), and multi-file bundled skills (arbor-channel, arbor-meta, arbor-session-insight, arbor-spec-bootstrap) with `{{placeholder}}` resolution per platform
 - **Shared utilities**: `src/utils/compare-versions.ts` — `compareVersions()` with full prerelease support (used by cli, update, migrations)
 - **Derived helpers**: `ALL_MANAGED_DIRS`, `getConfiguredPlatforms()`, etc. — consumed by update, init, hash tracking
@@ -890,7 +890,7 @@ Bad:
 
 ```text
 .pi/hooks/session-start.py
-.pi/hooks/inject-subagent-context.py
+.pi/hooks/inject-delegation-context.py
 ```
 
 ### 6. Tests Required
@@ -1135,7 +1135,7 @@ Commands emitted by `resolveCommands(ctx)` / `resolveAllAsSkills(ctx)` / `resolv
 
 These three groups are computed from `AI_TOOLS[id].templateContext`; if you change a flag, recount rather than editing one line.
 
-> ZCode joined `agentCapable && hasHooks` in the zcode-hook-support task: it ships a workspace hook config at `.zcode/config.json` covering SessionStart + UserPromptSubmit (reusing the shared `session-start.py` / `inject-workflow-state.py`). Live probing confirmed ZCode PreToolUse with matcher `Agent|Task` can mutate the sub-agent prompt through `hookSpecificOutput.updatedInput`, so ZCode is **class-1** for sub-agent context and ships `inject-subagent-context.py`.
+> ZCode joined `agentCapable && hasHooks` in the zcode-hook-support task: it ships a workspace hook config at `.zcode/config.json` covering SessionStart + UserPromptSubmit (reusing the shared `session-start.py` / `inject-workflow-state.py`). Live probing confirmed ZCode PreToolUse with matcher `Agent|Task` can mutate the sub-agent prompt through `hookSpecificOutput.updatedInput`, so ZCode is **class-1** for sub-agent context and ships `inject-delegation-context.py`.
 
 > **Gotcha**: do not treat `hasHooks=false` as "platform has no automation at all". For OpenCode it means "no SessionStart hook protocol" — its plugin still injects context. The flag is a hook-protocol marker, not a capability summary. When filtering by capability, query the actual capability you need, never assume a default pairing from one boolean.
 
@@ -1151,7 +1151,7 @@ Arbor sub-agents (implement / check / research) need task context (`prd.md` + sp
 
 ### Class-1 — Hook-inject (9 platforms)
 
-Platform's native sub-agent-start hook delivers context before the child runs. Most platforms rewrite the spawn prompt; Codex emits developer context through `SubagentStart`. Arbor's `inject-subagent-context.py` (or the platform's own plugin/hook) reads `prd.md` + the JSONL-referenced spec files for that delivery.
+Platform's native sub-agent-start hook delivers context before the child runs. Most platforms rewrite the spawn prompt; Codex emits developer context through `SubagentStart`. Arbor's `inject-delegation-context.py` (or the platform's own plugin/hook) reads `prd.md` + the JSONL-referenced spec files for that delivery.
 
 | Platform      | Hook event                            | Mechanism                               |
 | ------------- | ------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1177,7 +1177,7 @@ import { isArborSubagent } from "../lib/arbor-context.js"
 "chat.message": async (input, output) => {
   if (isArborSubagent(input)) {
     // input.agent matched /^arbor-(implement|check|research)$/
-    // Sub-agent context is injected by inject-subagent-context.js on the
+    // Sub-agent context is injected by inject-delegation-context.js on the
     // parent's tool.execute.before — do not double-inject here.
     return
   }
@@ -1187,7 +1187,7 @@ import { isArborSubagent } from "../lib/arbor-context.js"
 
 `isArborSubagent()` lives in `lib/arbor-context.js`; the regex matches `arbor-implement` / `arbor-check` / `arbor-research` exactly.
 
-**Sub-agent task resolution order** in `inject-subagent-context.js` `tool.execute.before` (only later steps run when earlier ones miss):
+**Sub-agent task resolution order** in `inject-delegation-context.js` `tool.execute.before` (only later steps run when earlier ones miss):
 
 1. Exact session runtime context lookup for `input.sessionID` (writes a `session:<key>` source)
 2. `Active task: <path>` line parsed from `args.prompt` first non-empty line (source `prompt-hint`) — explicit per-dispatch override, beats single-session inference so multi-window users can disambiguate
@@ -1332,10 +1332,10 @@ A drift between the two is silent: the model will still see _some_ dispatch guid
 
 Pull-based prelude is injected by `injectPullBasedPreludeMarkdown()` / `injectPullBasedPreludeToml()` in `src/configurators/shared.ts`. Each pull-based platform's configurator:
 
-1. Calls `collectSharedHooks(dir, platform)` where `SHARED_HOOKS_BY_PLATFORM[platform]` excludes `inject-subagent-context.py` — no prompt-mutation hook installed
+1. Calls `collectSharedHooks(dir, platform)` where `SHARED_HOOKS_BY_PLATFORM[platform]` excludes `inject-delegation-context.py` — no prompt-mutation hook installed
 2. Calls `detectSubAgentType(name)` → `injectPullBasedPrelude*()` on every sub-agent definition before adding it to the map
 
-Hook-inject platforms use the same `collectSharedHooks(dir, platform)` call with a capability-table entry that includes `inject-subagent-context.py`, and their hook-config template references that hook as before. ZCode follows this path through `.zcode/config.json` `PreToolUse` entries matching `Agent|Task`; its generated `.zcode/agents/*.md` files carry only the hook-failure fallback protocol, not the pull-based prelude.
+Hook-inject platforms use the same `collectSharedHooks(dir, platform)` call with a capability-table entry that includes `inject-delegation-context.py` and `guard-builtin-agent.py`, and their hook-config template references that hook as before. ZCode follows this path through `.zcode/config.json` `PreToolUse` entries matching `Agent|Task`; its generated `.zcode/agents/*.md` files carry only the hook-failure fallback protocol, not the pull-based prelude.
 
 ### Recursion guard in implement/check agent definitions
 
@@ -1353,7 +1353,7 @@ some hosts can surface per-turn breadcrumbs inside sub-agent turns, while other
 hosts rely only on the agent definition text. The two channels must both be
 safe.
 
-For Cursor, `.cursor/hooks.json` must match both `Task` and `Subagent` on `preToolUse`. Current Cursor 3.2.11 emits native sub-agent spawns as `tool_name: "Subagent"` even though the docs still describe the generic Task tool under `Task`. `inject-subagent-context.py` must parse both legacy/string and native protobuf-shaped Task inputs. Custom agents can arrive as `subagent_type: "arbor-implement"`, `subagent_type: { "custom": { "name": "arbor-implement" } }`, or `subagent_type: { "type": { "case": "custom", "value": { "name": "arbor-implement" } } }`. All three forms must resolve to the Arbor agent name before deciding whether to inject context.
+For Cursor, `.cursor/hooks.json` must match both `Task` and `Subagent` on `preToolUse`. Current Cursor 3.2.11 emits native sub-agent spawns as `tool_name: "Subagent"` even though the docs still describe the generic Task tool under `Task`. `inject-delegation-context.py` must parse both legacy/string and native protobuf-shaped Task inputs. Custom agents can arrive as `subagent_type: "arbor-implement"`, `subagent_type: { "custom": { "name": "arbor-implement" } }`, or `subagent_type: { "type": { "case": "custom", "value": { "name": "arbor-implement" } } }`. All three forms must resolve to the Arbor agent name before deciding whether to inject context.
 
 Extension-backed platforms must not call `collectSharedHooks()` for their config directory — they are not keys in `SHARED_HOOKS_BY_PLATFORM`, so the call would not typecheck. They generate platform-native extension files and tests must assert that no Python hook files are installed under the platform config root.
 
@@ -1469,7 +1469,7 @@ leave every unrelated path on normal repository-root resolution.
 ### Tests Required
 
 - **Create behavior**: `task.py create` creates default `prd.md` and empty jsonl only on sub-agent-capable platforms, and prints the curation instructions to the console.
-- **Consumer tolerance**: `inject-subagent-context.py` skips rows without a `file` key and still injects task artifacts.
+- **Consumer tolerance**: `inject-delegation-context.py` skips rows without a `file` key and still injects task artifacts.
 - **Validate placeholder**: `task.py validate` passes for empty jsonl and fails with a remediation message for a legacy `{"_example": …}` row, in both active and archived tasks.
 - **Validate archive binding**: cover archived self files and directories, unrelated paths, a missing archive copy with a recreated active task, traversal, symlink escape, and unchanged active-task behavior.
 - **List-context empty**: `task.py list-context` prints "(no curated entries yet)" for an uncurated jsonl.
@@ -1485,7 +1485,7 @@ caps how much task context is inlined into a sub-agent's first prompt. Added for
 caps, binary detection, or config keys MUST be applied to **all three**
 implementations:
 
-- `packages/cli/src/templates/shared-hooks/inject-subagent-context.py`
+- `packages/cli/src/templates/shared-hooks/inject-delegation-context.py`
 - `packages/cli/src/templates/pi/extensions/arbor/index.ts.txt`
 - `packages/cli/src/templates/opencode/lib/arbor-context.js`
 
@@ -1897,7 +1897,7 @@ One line inside the block that is already contracted to become spoken output; id
 }
 ```
 
-Each host ignores keys it does not recognize, so dual emission is safe. **Do not refactor to single-format output** — dropping the Cursor key breaks Cursor's auto-context injection for all models (not just GPT). The same multi-format convention exists in `inject-subagent-context.py` (Cursor's `permission` + `updated_input` alongside Claude's `hookSpecificOutput`). ZCode is the exception: its PreToolUse hook should emit the live-tested nested `hookSpecificOutput.updatedInput` shape only, because ZCode's hook diagnostics describe strict stdout schemas.
+Each host ignores keys it does not recognize, so dual emission is safe. **Do not refactor to single-format output** — dropping the Cursor key breaks Cursor's auto-context injection for all models (not just GPT). The same multi-format convention exists in `inject-delegation-context.py` (Cursor's `permission` + `updated_input` alongside Claude's `hookSpecificOutput`). ZCode is the exception: its PreToolUse hook should emit the live-tested nested `hookSpecificOutput.updatedInput` shape only, because ZCode's hook diagnostics describe strict stdout schemas.
 
 ### Constraint
 
@@ -1988,7 +1988,7 @@ resolution or file reads. Contract:
 - Config: `.arbor/config.yaml` → `prompt_injection.skip_keyword`
   (ships commented; default in code via `common.config.get_prompt_injection_config()`;
   quoted `""` explicitly disables the hatch).
-- Scope: per-turn breadcrumb ONLY. `session-start.py`, `inject-subagent-context.py`,
+- Scope: per-turn breadcrumb ONLY. `session-start.py`, `inject-delegation-context.py`,
   and `inject-shell-session-context.py` must never gain keyword handling.
 - Coverage gap: the Pi extension cannot implement this — it has no `input` handler
   (must not rewrite user text) and its `systemPrompt` must stay byte-identical per
@@ -2056,7 +2056,7 @@ The same rule applies to every other hook that's positioned as "repeated reminde
 | Copilot CLI     | `userPromptSubmitted` (camelCase)                                                                     | `.github/copilot/hooks.json`                                                                                       | `bash` + `powershell` dual field                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | Codex           | `UserPromptSubmit`                                                                                    | `.codex/hooks.json`                                                                                                | **Requires `features.hooks = true` in user's `~/.codex/config.toml` (Codex 0.129+; legacy: `codex_hooks = true`).** Codex 0.129+ also requires running `/hooks` once to approve the installed hook before it activates — until approved, hooks never fire (the arbor-bootstrap fallback in inject-workflow-state.py covers the gap by directing the AI to read `arbor-start` skill manually)                                                                                                                                                                                                                                                                                                                                                                                        |
 | OpenCode        | `chat.message` (Bun plugin)                                                                           | `plugins/inject-workflow-state.js`                                                                                 | Equivalent JS implementation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| Kiro            | CLI: `userPromptSubmit` (main `arbor` agent JSON) · IDE: `promptSubmit` (`.kiro/hooks/*.kiro.hook`) | CLI: `.kiro/agents/arbor.json` `hooks` · IDE: `.kiro/hooks/arbor-workflow-state.kiro.hook` (`then.runCommand`) | Plain stdout (NOT the `hookSpecificOutput` JSON envelope) — Kiro adds a hook's raw stdout to conversation context. `inject-workflow-state.py` has a `platform == "kiro"` branch (detected via `KIRO_PROJECT_DIR` env or `.kiro` script path) that prints the bare breadcrumb. **Activation:** CLI users must make `arbor` the active agent (`kiro-cli settings chat.defaultAgent arbor` or `/agent swap arbor`) — Kiro defaults to built-in `kiro_default`. **Real-machine note:** the plain-stdout→context contract (and whether IDE `runCommand` stdout is injected vs only `askAgent`) is per official docs, pending Kiro hardware verification; fallback is `askAgent` + static steering. Sub-agent context injection unchanged via `agentSpawn → inject-subagent-context.py` |
+| Kiro            | CLI: `userPromptSubmit` (main `arbor` agent JSON) · IDE: `promptSubmit` (`.kiro/hooks/*.kiro.hook`) | CLI: `.kiro/agents/arbor.json` `hooks` · IDE: `.kiro/hooks/arbor-workflow-state.kiro.hook` (`then.runCommand`) | Plain stdout (NOT the `hookSpecificOutput` JSON envelope) — Kiro adds a hook's raw stdout to conversation context. `inject-workflow-state.py` has a `platform == "kiro"` branch (detected via `KIRO_PROJECT_DIR` env or `.kiro` script path) that prints the bare breadcrumb. **Activation:** CLI users must make `arbor` the active agent (`kiro-cli settings chat.defaultAgent arbor` or `/agent swap arbor`) — Kiro defaults to built-in `kiro_default`. **Real-machine note:** the plain-stdout→context contract (and whether IDE `runCommand` stdout is injected vs only `askAgent`) is per official docs, pending Kiro hardware verification; fallback is `askAgent` + static steering. Sub-agent context injection unchanged via `agentSpawn → inject-delegation-context.py` |
 | Trae IDE        | `UserPromptSubmit`                                                                                    | `.trae/hooks.json`                                                                                                 | Auto; shared Python hook written under `.trae/hooks/inject-workflow-state.py`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | ZCode           | `UserPromptSubmit`                                                                                    | `.zcode/config.json`                                                                                               | Shared Python hook under `.zcode/hooks/`. Hook config is read at session start with no hot-reload, so `configureZcode` prints a one-shot "open a new session" notice                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | Snow CLI        | `onUserMessage`                                                                                       | `.snow/hooks/onUserMessage.json`                                                                                   | Platform-specific `write-arbor-context.py user` (not the shared hook) — Snow is absent from `SHARED_HOOKS_BY_PLATFORM` and bundles its own three inject hooks                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
@@ -2330,3 +2330,16 @@ Note this is *only* about `{{…}}` placeholders. The separate `python3` → `py
 | #71                           | Qoder            | Skills (like Codex/Kiro)                       | Skills with YAML frontmatter; Trae was dropped (IDE-only, no deterministic invocation trigger) |
 | feat/v0.5.0-beta              | All platforms (13 at the time; 21 today) | Unified template architecture | Common templates + shared hooks + `createTemplateReader()` factory                    |
 | `04-21-bootstrap-onboard-gap` | n/a              | Three-branch init dispatch + joiner onboarding | `.developer` file as per-checkout signal; documents the `handleReinit` two-point wiring        |
+
+---
+
+## Arbor dispatch hooks (current mechanism)
+
+Claude Code and StarFactory register two PreToolUse hooks (see `templates/claude/settings.json`):
+
+| Hook | Matcher | Timeout | Behavior |
+|---|---|---|---|
+| `inject-delegation-context.py` | `^mcp__codeg[-_]mcp__delegate_to_agent$` | 30 | Inlines task context into `tool_input.task`, marked `<!-- arbor-hook-injected -->`. Role resolution: `Role:` header line, then `.arbor/.runtime/codeg-assistants.json` `by_id[assistant_id].role`, else no-op. Task: `Active task:` header, else the session active task. Output is `updatedInput` with only `task` replaced. Prompt assembly is shared with `dispatch.py` via `common/dispatch_context.py`. |
+| `guard-builtin-agent.py` | `^(Agent\|Task)$` | 10 | Denies the built-in Agent/Task tool when the call is an Arbor role dispatch (prompt carries `Active task:` / `Role:`, or `subagent_type` starts with `arbor-`), unless `dispatch.guard_builtin_agent` is false. Other calls pass through. |
+
+Older sections of this file that describe other platforms' sub-agent hooks (Cursor, OpenCode, Pi, Codex, ZCode, Kiro) are historical and no longer apply to Arbor; see `dispatch.md`.

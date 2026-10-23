@@ -1,6 +1,6 @@
 # Spec Task Planning
 
-Use a single agent as the default execution model. The agent may create Arbor tasks for traceability, but the skill should not require a specific platform, CLI, or parallel worker model.
+Use a single agent as the default execution model. The agent may create Arbor tasks for traceability, but the skill does not require a parallel worker model.
 
 ## Decomposition
 
@@ -50,7 +50,7 @@ Summarize the concrete findings from repository analysis.
 
 ## Optional Helper Agents
 
-If the host supports subagents, helpers can inspect independent packages or run verification. They are optional. The main agent still owns integration and final quality.
+Helpers can inspect independent packages or run verification. In Arbor they run as codeg assistants (research, check) dispatched by the main agent, not as platform sub-agents. They are optional. The main agent still owns integration and final quality.
 
 Helper tasks must have clear ownership:
 
@@ -58,4 +58,4 @@ Helper tasks must have clear ownership:
 - Write tasks should own disjoint spec directories.
 - Verification tasks should check placeholder removal, broken links, and consistency.
 
-Do not encode helper-agent names, vendor-specific commands, or platform-specific routing in the skill. Put only the required work and acceptance criteria in the task.
+Do not encode assistant ids or dispatch commands in the spec task. Put only the required work and acceptance criteria in the task.

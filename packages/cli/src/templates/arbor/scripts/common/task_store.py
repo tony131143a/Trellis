@@ -239,30 +239,6 @@ def _restore_child_links(unlinked: dict[Path, str | None]) -> None:
         )
 
 
-# =============================================================================
-# Sub-agent platform detection + JSONL context files
-# =============================================================================
-
-# Config directories of platforms that consume implement.jsonl / check.jsonl.
-# Keep in sync with src/types/ai-tools.ts AI_TOOLS entries — these are the
-# platforms listed in workflow.md's "agent-capable" Skill Routing block.
-_SUBAGENT_CONFIG_DIRS: tuple[str, ...] = (
-    ".claude",
-    ".starFactory", # StarFactory
-)
-
-
-def _has_subagent_platform(repo_root: Path) -> bool:
-    """Return True if any sub-agent-capable platform is configured.
-
-    Detected by probing well-known config directories at the repo root.
-    """
-    for config_dir in _SUBAGENT_CONFIG_DIRS:
-        if (repo_root / config_dir).is_dir():
-            return True
-    return False
-
-
 def _parse_meta_pairs(pairs: list[str] | None) -> dict[str, str] | None:
     """Parse repeatable ``--meta key=value`` pairs into a dict.
 
@@ -562,18 +538,16 @@ def cmd_create(args: argparse.Namespace) -> int:
             encoding="utf-8",
         )
 
-    # Create empty implement.jsonl / check.jsonl for sub-agent-capable
-    # platforms. They stay empty until the agent curates real entries during
-    # planning — a placeholder row would read as unresolved scaffolding to
-    # `task.py validate` and to PR preflight, so the curation instructions go
-    # to the console below instead of into the files.
-    created_jsonl = False
-    if _has_subagent_platform(repo_root):
-        for jsonl_name in ("implement.jsonl", "check.jsonl"):
-            jsonl_path = task_dir / jsonl_name
-            if not jsonl_path.exists():
-                jsonl_path.write_text("", encoding="utf-8")
-        created_jsonl = True
+    # Create empty implement.jsonl / check.jsonl. Every Arbor project
+    # dispatches implement / check through codeg, and the dispatch context
+    # assembler reads these manifests. They stay empty until the agent curates
+    # real entries during planning — a placeholder row would read as
+    # unresolved scaffolding to `task.py validate` and to PR preflight, so the
+    # curation instructions go to the console below instead of into the files.
+    for jsonl_name in ("implement.jsonl", "check.jsonl"):
+        jsonl_path = task_dir / jsonl_name
+        if not jsonl_path.exists():
+            jsonl_path.write_text("", encoding="utf-8")
 
     # Establish the bidirectional link. Both sides were validated above, so a
     # failure here is a write failure, not a bad argument.
@@ -671,21 +645,20 @@ def cmd_create(args: argparse.Namespace) -> int:
     print("  - Fill prd.md with requirements and acceptance criteria", file=sys.stderr)
     print("  - Lightweight task: PRD-only is valid", file=sys.stderr)
     print("  - Complex task: add design.md and implement.md before task.py start", file=sys.stderr)
-    if created_jsonl:
-        print(
-            "  - Curate implement.jsonl / check.jsonl (created empty) as spec/research "
-            "manifests before task.py start when sub-agents need context:",
-            file=sys.stderr,
-        )
-        print(
-            '      one JSON object per line — {"file": "<path>", "reason": "<why>"}; '
-            "spec/research docs only, no code paths",
-            file=sys.stderr,
-        )
-        print(
-            "      list available specs: python3 .arbor/scripts/get_context.py --mode packages",
-            file=sys.stderr,
-        )
+    print(
+        "  - Curate implement.jsonl / check.jsonl (created empty) as spec/research "
+        "manifests before task.py start, then dispatch implement / check via codeg:",
+        file=sys.stderr,
+    )
+    print(
+        '      one JSON object per line — {"file": "<path>", "reason": "<why>"}; '
+        "spec/research docs only, no code paths",
+        file=sys.stderr,
+    )
+    print(
+        "      list available specs: python3 .arbor/scripts/get_context.py --mode packages",
+        file=sys.stderr,
+    )
     print("  - Use /arbor:continue or phase context to decide the next step", file=sys.stderr)
     print("", file=sys.stderr)
 

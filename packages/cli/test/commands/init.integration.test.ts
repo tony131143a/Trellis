@@ -173,7 +173,8 @@ describe("init() integration", () => {
     for (const hook of [
       "session-start.py",
       "inject-workflow-state.py",
-      "inject-subagent-context.py",
+      "inject-delegation-context.py",
+      "guard-builtin-agent.py",
       "inject-shell-session-context.py",
     ]) {
       expect(fs.existsSync(starFactory(`hooks/${hook}`))).toBe(true);

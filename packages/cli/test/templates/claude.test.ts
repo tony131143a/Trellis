@@ -65,6 +65,41 @@ describe("settingsTemplate SessionStart matchers", () => {
   });
 });
 
+// =============================================================================
+// settingsTemplate — PreToolUse dispatch hooks
+// =============================================================================
+
+describe("settingsTemplate PreToolUse hooks", () => {
+  const settings = JSON.parse(settingsTemplate);
+  const preToolUse = settings.hooks.PreToolUse as {
+    matcher: string;
+    hooks: { type: string; command: string; timeout: number }[];
+  }[];
+
+  it("injects delegation context on the anchored codeg delegate_to_agent matcher", () => {
+    const entry = preToolUse.find(
+      (e) => e.matcher === "^mcp__codeg[-_]mcp__delegate_to_agent$",
+    );
+    expect(entry).toBeDefined();
+    expect(entry?.hooks[0].command).toBe(
+      "{{PYTHON_CMD}} .claude/hooks/inject-delegation-context.py",
+    );
+    expect(entry?.hooks[0].timeout).toBe(30);
+  });
+
+  it("guards the built-in Agent|Task tool and drops the bare Task / Agent matchers", () => {
+    const entry = preToolUse.find((e) => e.matcher === "^(Agent|Task)$");
+    expect(entry).toBeDefined();
+    expect(entry?.hooks[0].command).toBe(
+      "{{PYTHON_CMD}} .claude/hooks/guard-builtin-agent.py",
+    );
+    expect(entry?.hooks[0].timeout).toBe(10);
+    const matchers = preToolUse.map((e) => e.matcher);
+    expect(matchers).not.toContain("Task");
+    expect(matchers).not.toContain("Agent");
+  });
+});
+
 // Commands are now sourced from common/ templates and tested in platforms.test.ts
 
 // =============================================================================

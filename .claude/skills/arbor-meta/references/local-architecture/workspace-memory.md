@@ -1,6 +1,6 @@
 # Local Workspace Memory System
 
-`.arbor/workspace/` stores cross-session memory. Its purpose is to let AI and humans understand what happened before across different windows and different days.
+`.arbor/workspace/` stores deliberately written developer journals. Its purpose is to let AI and humans understand what happened before across different windows and different days.
 
 ## Directory Structure
 

@@ -9,7 +9,7 @@ Context loading determines when AI reads workflow, task, spec, research, workspa
 3. `.arbor/scripts/common/session_context.py`
 4. `.arbor/scripts/common/task_context.py`
 5. `.arbor/scripts/common/active_task.py`
-6. Current platform hooks or agent files
+6. Current hooks and `.arbor/agents/*.md`
 7. The current task's `implement.jsonl` / `check.jsonl`
 
 ## Context Sources
@@ -30,10 +30,10 @@ Context loading determines when AI reads workflow, task, spec, research, workspa
 
 | Need | Edit point |
 | --- | --- |
-| Inject more/less information in new sessions | `session_context.py` or the platform `session-start` hook. |
+| Inject more/less information in new sessions | `session_context.py` or the `session-start.py` hook. |
 | Change hints on each user input | `[workflow-state:STATUS]` block in `.arbor/workflow.md`. The `inject-workflow-state` hook is parser-only and reads the block verbatim. |
-| Agent did not read specs | Task JSONL, agent prelude, `inject-subagent-context` hook. |
-| Active task is lost | `active_task.py` and platform session identity propagation. |
+| Agent did not read specs | Task JSONL, `.arbor/agents/<role>.md`, `inject-delegation-context.py` hook, and the dispatch header (`dispatch.md`). |
+| Active task is lost | `active_task.py` and session identity propagation. |
 | Change JSONL validation rules | `task_context.py`. |
 
 ## JSONL Rules
@@ -52,16 +52,16 @@ Include only spec/research files. Do not put code files that will be modified in
 If the user wants every new session to see more project state, edit:
 
 - `.arbor/scripts/common/session_context.py`
-- the corresponding platform `session-start` hook
+- the `session-start.py` hook
 
 Context cannot grow without bound. Prefer injecting indexes and paths so the AI can read detailed files on demand.
 
-## Change Sub-Agent Context
+## Change Dispatched-Role Context
 
-First determine which mode the platform uses:
+Two paths feed a dispatched role:
 
-- hook push: edit the `inject-subagent-context` hook.
-- agent pull: edit the read steps in the corresponding `arbor-implement` / `arbor-check` agent file.
+- hook push: edit `inject-delegation-context.py` (and the shared assembler it uses). `dispatch.py` builds the same text.
+- role pull: edit the read steps in `.arbor/agents/<role>.md`, then re-run `dispatch.py codeg-setup`.
 
 In both modes, make sure the agent ultimately reads:
 
@@ -81,4 +81,4 @@ python3 ./.arbor/scripts/task.py validate <task>
 python3 ./.arbor/scripts/get_context.py --mode packages
 ```
 
-Confirm the task and JSONL are correct before editing hooks/agents.
+Confirm the task and JSONL are correct before editing hooks or role files. `dispatch.py print-context` shows what a role would receive.

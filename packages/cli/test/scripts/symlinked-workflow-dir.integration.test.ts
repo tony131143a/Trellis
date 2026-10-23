@@ -5,7 +5,7 @@
  * 0.6.15 enforced path containment with physical paths only
  * (`Path.resolve()` / `os.path.realpath()` against the repo root), so every
  * ref through the symlinked workflow dir resolved outside the repo and was
- * refused: `task start` failed with "Task not found" and the subagent hook
+ * refused: `task start` failed with "Task not found" and the context hook
  * exited silently. The fix keeps the physical check but adds the workflow
  * dir's own real location as a second containment base, and maps accepted
  * refs back to their in-repo (lexical) form for storage.
@@ -24,10 +24,6 @@ import path from "node:path";
 const TEMPLATE_SCRIPTS = path.resolve(
   __dirname,
   "../../src/templates/arbor/scripts",
-);
-const HOOK_PATH = path.resolve(
-  __dirname,
-  "../../src/templates/shared-hooks/inject-subagent-context.py",
 );
 
 const TASK = "08-21-demo";
@@ -57,16 +53,14 @@ function runTask(
   return { status: r.status, stdout: r.stdout, stderr: r.stderr };
 }
 
-/** Run a Python snippet with the hook module preloaded as `mod`. */
+/** Run a Python snippet with the repo's dispatch_context module preloaded as `mod`. */
 function runHookProbe(repo: string, code: string): string {
   const probePath = path.join(repo, "probe.py");
   const script = `
-import sys, importlib.util
-sys.argv[0] = ${JSON.stringify(path.join(repo, "hook.py"))}
+import sys
+sys.path.insert(0, ${JSON.stringify(path.join(repo, ".arbor", "scripts"))})
 REPO_ROOT = ${JSON.stringify(repo)}
-spec = importlib.util.spec_from_file_location("h", ${JSON.stringify(HOOK_PATH)})
-mod = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(mod)
+from common import dispatch_context as mod
 ${code}
 `;
   fs.writeFileSync(probePath, script, "utf-8");

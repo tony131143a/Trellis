@@ -1,11 +1,11 @@
 ---
 name: arbor-spec-bootstrap
-description: "Bootstrap project-specific Arbor coding specs with a platform-neutral single-agent workflow. Use when creating or refreshing .arbor/spec guidelines, analyzing a codebase with GitNexus, ABCoder, or source inspection, decomposing package/layer spec work, and writing real codebase-backed spec docs without placeholder text."
+description: "Bootstrap project-specific Arbor coding specs with a single-agent workflow in Claude Code or StarFactory. Use when creating or refreshing .arbor/spec guidelines, analyzing a codebase with GitNexus, ABCoder, or source inspection, decomposing package/layer spec work, and writing real codebase-backed spec docs without placeholder text."
 ---
 
 # Arbor Spec Bootstrap
 
-Use this skill to create or refresh `.arbor/spec/` guidelines from the real codebase. One capable agent owns the full loop: analyze the repository, choose the spec boundaries, write the docs, and verify the result. The workflow does not depend on a specific host, CLI, or agent brand.
+Use this skill to create or refresh `.arbor/spec/` guidelines from the real codebase. One capable agent owns the full loop: analyze the repository, choose the spec boundaries, write the docs, and verify the result. The main agent owns the loop; it may use codeg assistants for read-only research, but the work does not depend on them.
 
 ## Workflow
 
@@ -28,8 +28,7 @@ Use this skill to create or refresh `.arbor/spec/` guidelines from the real code
 
 - Treat templates as starting points, not contracts. Delete, rename, split, or add spec files when the repository calls for it.
 - Prefer source-backed rules over generic advice. Every important recommendation should point at a real file or repeated local pattern.
-- Keep execution single-owner by default. Optional helper agents are an implementation detail, not a requirement or user-visible dependency.
-- Do not write platform-specific instructions unless the target project already standardizes on that platform.
+- Keep execution single-owner by default. Where helpers are used, implement/check/research run as codeg assistants dispatched by the main agent (see the `arbor-meta` skill, `dispatch.md`); they are optional.
 - Do not leave placeholder text, empty headings, or copied boilerplate in `.arbor/spec/`.
 
 ## Done Criteria

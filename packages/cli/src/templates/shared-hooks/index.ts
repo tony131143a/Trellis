@@ -28,7 +28,8 @@ export type SharedHookName =
   | "session-start.py"
   | "inject-shell-session-context.py"
   | "inject-workflow-state.py"
-  | "inject-subagent-context.py";
+  | "inject-delegation-context.py"
+  | "guard-builtin-agent.py";
 
 export type SharedHookPlatform = "claude" | "star";
 
@@ -42,8 +43,11 @@ export type SharedHookPlatform = "claude" | "star";
  *   hook event.
  * - `inject-workflow-state.py` — every platform with a UserPromptSubmit
  *   (or equivalent) event.
- * - `inject-subagent-context.py` — platforms with native sub-agent context
- *   delivery via a PreToolUse prompt mutation.
+ * - `inject-delegation-context.py` — PreToolUse on codeg
+ *   `delegate_to_agent`: inlines Arbor task context into the delegated
+ *   `task` text for the implement / check / research roles.
+ * - `guard-builtin-agent.py` — PreToolUse on the built-in `Agent|Task` tool:
+ *   denies Arbor role dispatches that bypass codeg.
  * - `inject-shell-session-context.py` — platforms with a hook that fires
  *   *before* a shell command and receives both the session id and the pending
  *   command. That hook is the only channel by which session identity reaches
@@ -64,21 +68,23 @@ export const SHARED_HOOKS_BY_PLATFORM: Record<
   claude: [
     "session-start.py",
     "inject-workflow-state.py",
-    "inject-subagent-context.py",
+    "inject-delegation-context.py",
+    "guard-builtin-agent.py",
   ],
-  // StarFactory is a Claude Code-compatible fork and ships the same trio as
+  // StarFactory is a Claude Code-compatible fork and ships the same set as
   // Claude Code. Verified on star 1.0.49: SessionStart, UserPromptSubmit, and
-  // PreToolUse (matcher Agent|Task) all fire, and PreToolUse can mutate the
-  // sub-agent prompt, so StarFactory is class-1 and takes the subagent-context
-  // hook. It also takes inject-shell-session-context.py: unlike Claude Code,
-  // StarFactory exports no session id into its shell children (a live probe of
-  // a Bash child found only CLAUDECODE / CLAUDE_CONFIG_DIR / STARFACTORY_*),
-  // so PreToolUse matcher Bash is its only route to session identity.
+  // PreToolUse all fire, and PreToolUse can rewrite tool input, so the
+  // delegation-context and built-in-agent guard hooks work unchanged. It also
+  // takes inject-shell-session-context.py: unlike Claude Code, StarFactory
+  // exports no session id into its shell children (a live probe of a Bash
+  // child found only CLAUDECODE / CLAUDE_CONFIG_DIR / STARFACTORY_*), so
+  // PreToolUse matcher Bash is its only route to session identity.
   star: [
     "session-start.py",
     "inject-shell-session-context.py",
     "inject-workflow-state.py",
-    "inject-subagent-context.py",
+    "inject-delegation-context.py",
+    "guard-builtin-agent.py",
   ],
 };
 

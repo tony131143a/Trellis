@@ -288,7 +288,7 @@ Classify each hit:
 | Kind | Example | Action |
 |------|---------|--------|
 | **Schema / creator** | `task_store.cmd_create`, `@tony131143a/arbor-core/task:emptyTaskRecord` (re-exported by `utils/task-json.ts:emptyTaskJson` for legacy CLI call sites) | Drop field from output |
-| **Writer / updater** | `inject-subagent-context.py:update_current_phase`, OpenCode plugin equivalent | **Drop the write call OR delete the function entirely** |
+| **Writer / updater** | `inject-delegation-context.py:update_current_phase`, OpenCode plugin equivalent | **Drop the write call OR delete the function entirely** |
 | **Reader / getter** | `tasks.py:load_task` (defaults via `data.get("field", default)` on `TaskInfo`) | Keep with tolerance default (`data.get("field", null)`) — handles legacy files |
 | **Docs / comments** | spec, README, PRDs | Update references |
 | **Tests** | Assertions on field presence | Flip to "must NOT contain field" |
@@ -312,7 +312,7 @@ Classify each hit:
 task_data = {"status": "planning", ...}  # current_phase removed
 ```
 ```python
-# inject-subagent-context.py — still writes it on every spawn
+# inject-delegation-context.py — still writes it on every spawn
 def update_current_phase(task_dir, subagent_type):
     task = read_json(task_dir / "task.json")
     task["current_phase"] = next_phase(...)  # ← re-populates deprecated field
@@ -323,7 +323,7 @@ Net: after the first `implement` spawn, `task.json` contains `current_phase` aga
 #### Correct — delete every writer, or route through a single entry point
 Option A: delete the writer function.
 ```python
-# inject-subagent-context.py
+# inject-delegation-context.py
 # (update_current_phase + its call removed; the hook no longer writes phase)
 ```
 Option B: keep the writer but have it stop emitting the field.

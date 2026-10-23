@@ -1,73 +1,44 @@
 # Hooks And Settings
 
-Hooks/settings are the entry layer that connects a platform to Arbor. They decide which scripts, plugins, or extensions a platform runs for which events.
+Hooks and settings connect the AI tool to Arbor. `.claude/settings.json` and `.starFactory/settings.json` register command hooks; the hook scripts under `.claude/hooks/` and `.starFactory/hooks/` define behavior. Both platforms use Claude-shaped hook events.
 
-## Settings Responsibilities
+## Registered Hooks
 
-settings/config files usually register:
+| Event | Script | Purpose |
+| --- | --- | --- |
+| SessionStart (startup, clear, compact) | `session-start.py` | Injects the Arbor overview: workflow summary, current task, active tasks, spec indexes, git status, and a `<dispatch>` section with assistant ids. |
+| UserPromptSubmit | `inject-workflow-state.py` | Parses `[workflow-state:STATUS]` blocks from `.arbor/workflow.md` and emits the body matching the current task status. Falls back to `Refer to workflow.md for current step.` when no block matches. |
+| PreToolUse, matcher `^mcp__codeg[-_]mcp__delegate_to_agent$`, timeout 30 | `inject-delegation-context.py` | Inlines task context into `delegate_to_agent.task`. Role comes from the `Role:` header, else `codeg-assistants.json` `by_id`, else no-op. |
+| PreToolUse, matcher `^(Agent\|Task)$`, timeout 10 | `guard-builtin-agent.py` | Denies built-in Agent/Task for Arbor role dispatches (`Active task:` / `Role:` prompt, or `subagent_type` starting `arbor-`) unless `dispatch.guard_builtin_agent` is false. |
+| PreToolUse (Bash) | `inject-shell-session-context.py` | Lets shell commands inherit Arbor session identity (`ARBOR_CONTEXT_ID`). |
 
-- session-start hook: injects a Arbor overview when a new session starts or context resets.
-- workflow-state hook: parses `[workflow-state:STATUS]` blocks from `.arbor/workflow.md` and emits the body matching the current task `status` on each user input. Parser-only; the script does not embed fallback content.
-- sub-agent context hook: injects task context when implementation/check/research agents start.
-- shell/session bridge: lets shell commands see the same Arbor session identity.
-- platform plugin or extension entry points.
+Read `settings.json` in the project for the exact matchers and the set actually registered. Claude Code may additionally have `.claude/hooks/statusline.py` when a statusline was configured.
 
-Common files:
-
-| Platform | settings/config |
-| --- | --- |
-| Claude Code | `.claude/settings.json` |
-| Cursor | `.cursor/hooks.json` |
-| Codex | `.codex/hooks.json`, `.codex/config.toml` |
-| OpenCode | `.opencode/package.json`, `.opencode/plugins/*` |
-| Kiro | `.kiro/hooks/` + platform config |
-| Gemini CLI | `.gemini/settings.json` |
-| Qoder | `.qoder/settings.json` |
-| CodeBuddy | `.codebuddy/settings.json` |
-| GitHub Copilot | `.github/copilot/hooks.json` |
-| Factory Droid | `.factory/settings.json` |
-| Pi Agent | `.pi/settings.json`, `.pi/extensions/arbor/` |
-| Trae IDE | `.trae/hooks.json` |
-| StarFactory | `.starFactory/settings.json` |
-
-Reasonix is a pull-based platform whose agent files contain prelude instructions to read context after startup. ZCode uses `.zcode/config.json` with shared hooks, including PreToolUse for sub-agent prompt injection. Kimi Code is likewise pull-based and has no project-level settings/hooks file Arbor writes (hooks live only in the user-level `~/.kimi-code/config.toml`), so its agent prompts ship as skills and `.kimi-code/agents/` sub-agent definitions with the same prelude. StarFactory is a Claude Code-compatible fork that writes `.starFactory/settings.json` — note that its project-level config dir is `.starFactory/`, not `.claude/`, and a project-level `.claude/` is ignored by the CLI.
-
-Whether these files exist in a project depends on which `arbor init --<platform>` flags the user ran.
-
-## Hook Script Types
-
-| Script | Purpose |
-| --- | --- |
-| `session-start.py` | Generates session-start context. |
-| `inject-workflow-state.py` | Parses `[workflow-state:STATUS]` blocks in `.arbor/workflow.md` and emits the body matching the current task status. Falls back to `Refer to workflow.md for current step.` when no matching block exists. |
-| `inject-subagent-context.py` | Injects PRD, JSONL context, and related spec/research into sub-agents. |
-| `inject-shell-session-context.py` | Lets shell commands inherit Arbor session identity. |
-
-Not every platform has every hook. Do not copy files from another platform just because a platform lacks a hook; first confirm whether that platform supports the corresponding event.
+The scripts are generated from `shared-hooks` templates, so `.claude/hooks/` and `.starFactory/hooks/` contain the same logic with different platform directory names.
 
 ## Local Change Scenarios
 
 | User need | Edit location |
 | --- | --- |
-| AI should see more/less context in a new session | Platform `session-start` hook. |
-| Per-turn hint policy should change | `[workflow-state:STATUS]` block in `.arbor/workflow.md`. The hook parses workflow.md verbatim — no script edit required. |
-| Sub-agent cannot read PRD/spec | `inject-subagent-context` hook or agent prelude. |
-| `task.py current` in shell has no active task | Shell/session bridge hook or platform environment variable configuration. |
-| Disable an automatic injection | The corresponding hook registration in settings/config. |
+| AI should see more/less context in a new session | `session-start.py` or `.arbor/scripts/common/session_context.py`. |
+| Per-turn hint policy should change | `[workflow-state:STATUS]` block in `.arbor/workflow.md`; no script edit needed. |
+| Dispatched role cannot read PRD/spec | `inject-delegation-context.py`, and the task's `implement.jsonl` / `check.jsonl`. |
+| `task.py current` in shell shows no active task | Shell/session bridge hook or session environment. |
+| Disable an automatic injection | Remove the corresponding hook registration in `settings.json`. |
 
 ## Modification Principles
 
-1. **Settings wire things up; hooks define behavior**. If only the hook changes, the platform may never call it. If only settings change, behavior may not change.
-2. **Confirm platform event names first**. Different platforms use different names for SessionStart, UserPromptSubmit, AgentSpawn, shell execution, and similar events.
-3. **Hooks read local `.arbor/`, not upstream source**. `.arbor/scripts/` and `.arbor/workflow.md` in the user project are the default targets.
-4. **Errors must be visible**. Hook failures should tell the user what was not injected instead of silently leaving the AI without context.
+1. Settings wire things up; hooks define behavior. Change both when needed.
+2. Hooks read local `.arbor/`, never upstream source.
+3. Errors must be visible: a hook failure should say what was not injected.
+4. Apply the same change to `.claude/` and `.starFactory/` when both exist.
 
 ## Troubleshooting Path
 
-If the user says "AI did not read Arbor state":
+If the user says "the AI did not read Arbor state":
 
-1. Check whether the platform settings register the hook.
-2. Check whether the hook file exists.
-3. Manually run the `.arbor/scripts/get_context.py` or `task.py current --source` command that the hook depends on.
-4. Check whether active task state exists in `.arbor/.runtime/sessions/`.
-5. Check whether the platform shell passes session identity.
+1. Check that `settings.json` registers the hook and the script file exists.
+2. Run `python3 ./.arbor/scripts/get_context.py` or `task.py current --source` manually.
+3. Check for active task state in `.arbor/.runtime/sessions/`.
+4. Check that the shell passes session identity.
+5. For dispatch problems, use `dispatch.py print-context` (see `../local-architecture/dispatch.md`).

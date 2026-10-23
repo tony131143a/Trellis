@@ -79,8 +79,6 @@ packages:
 # Default package used when --package is not specified.
 default_package: cli
 
-
-
 #-------------------------------------------------------------------------------
 # Sub-agent context injection limits
 #-------------------------------------------------------------------------------
@@ -108,3 +106,33 @@ default_package: cli
 #
 # prompt_injection:
 #   skip_keyword: "no-arbor"   # "" disables the escape hatch entirely
+
+#-------------------------------------------------------------------------------
+# Dispatch (codeg assistants)
+#-------------------------------------------------------------------------------
+# implement / check / research run as codeg assistants, never as the host's
+# built-in Agent/Task tool. The effective target is resolved at runtime:
+# .arbor/.runtime/dispatch-target > ARBOR_DISPATCH_TARGET > default_target.
+# Role names sit directly under each target; any other scalar key under a
+# target (model, thought_level) is passed as an agent option.
+dispatch:
+  default_target: star
+  max_parallel: 3
+  guard_builtin_agent: true
+  hook_decision: allow
+  codeg_cli: ""
+  permissions: allow
+  timeout: 90m
+  targets:
+    star:
+      agent_type: "custom:star"
+      implement: arbor-implement-star
+      check: arbor-check-star
+      research: arbor-research-star
+    pi:
+      agent_type: pi
+      model: deepseek/DeepSeek-V4.1-Flash
+      thought_level: max
+      implement: arbor-implement-pi
+      check: arbor-check-pi
+      research: arbor-research-pi

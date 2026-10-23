@@ -37,22 +37,22 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Task",
+        "matcher": "^mcp__codeg[-_]mcp__delegate_to_agent$",
         "hooks": [
           {
             "type": "command",
-            "command": "{{PYTHON_CMD}} .starFactory/hooks/inject-subagent-context.py",
+            "command": "{{PYTHON_CMD}} .starFactory/hooks/inject-delegation-context.py",
             "timeout": 30
           }
         ]
       },
       {
-        "matcher": "Agent",
+        "matcher": "^(Agent|Task)$",
         "hooks": [
           {
             "type": "command",
-            "command": "{{PYTHON_CMD}} .starFactory/hooks/inject-subagent-context.py",
-            "timeout": 30
+            "command": "{{PYTHON_CMD}} .starFactory/hooks/guard-builtin-agent.py",
+            "timeout": 10
           }
         ]
       },

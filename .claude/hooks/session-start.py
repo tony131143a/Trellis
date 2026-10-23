@@ -517,6 +517,44 @@ def _load_arbor_config(arbor_dir: Path, input_data: dict) -> tuple:
         return False, {}, None, None, None
 
 
+DISPATCH_ROUTING = (
+    "If `mcp__codeg-mcp__delegate_to_agent` is among your tools, call it; "
+    "otherwise run `python3 ./.arbor/scripts/dispatch.py run --role <role>`. "
+    "Never use the built-in Agent/Task tool for arbor roles."
+)
+
+
+def _build_dispatch_section(arbor_dir: Path) -> str | None:
+    """Effective codeg dispatch target, per-role assistant names, routing rule.
+
+    Best-effort: an older scripts tree without the dispatch config accessors
+    simply omits the section.
+    """
+    scripts_dir = arbor_dir / "scripts"
+    if str(scripts_dir) not in sys.path:
+        sys.path.insert(0, str(scripts_dir))
+    try:
+        from common.config import get_dispatch_config, resolve_dispatch_target  # type: ignore[import-not-found]
+
+        repo_root = arbor_dir.parent
+        config = get_dispatch_config(repo_root)
+        target, source = resolve_dispatch_target(repo_root)
+        assistants = config["targets"][target]["assistants"]
+    except Exception:
+        return None  # Optional section; keep session-start non-fatal.
+
+    roles = ", ".join(
+        f"{role}=`{assistants[role]}`" for role in ("implement", "check", "research")
+    )
+    return (
+        f"Target: {target} (source: {source})\n"
+        f"Assistants: {roles}\n"
+        "Start every delegated task with `Active task: <task dir>` and "
+        "`Role: implement|check|check [finish]|research` lines.\n"
+        f"{DISPATCH_ROUTING}"
+    )
+
+
 def _check_legacy_spec(arbor_dir: Path, is_mono: bool, packages: dict) -> str | None:
     """Check for legacy spec directory structure in monorepo.
 
@@ -838,6 +876,10 @@ Arbor compact SessionStart context. Use it to orient the session; load details o
     output.write("<arbor-workflow>\n")
     output.write(_build_workflow_overview(arbor_dir / "workflow.md"))
     output.write("\n</arbor-workflow>\n\n")
+
+    dispatch_section = _build_dispatch_section(arbor_dir)
+    if dispatch_section:
+        output.write(f"<dispatch>\n{dispatch_section}\n</dispatch>\n\n")
 
     output.write("<guidelines>\n")
     output.write(

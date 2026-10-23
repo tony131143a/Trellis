@@ -1,59 +1,42 @@
 # Platform Files Overview
 
-Arbor connects the same local architecture to different AI tools. `.arbor/` stores the shared runtime; platform directories store adapter files that define how each AI tool enters Arbor.
+Arbor supports two AI tool platforms: Claude Code (`.claude/`) and StarFactory (`.starFactory/`, a Claude Code fork). Two root files, `CLAUDE.md` and `AGENTS.md`, carry a managed Arbor block. `.arbor/` stores the shared runtime; the platform directories store adapter files that let the AI tool read Arbor state, call Arbor scripts, and load Arbor skills and commands.
 
-When a local AI modifies Arbor, it should distinguish two file categories first:
+Distinguish two file categories before editing:
 
-- **Shared files**: `.arbor/workflow.md`, `.arbor/tasks/`, `.arbor/spec/`, `.arbor/scripts/`.
-- **Platform files**: `.claude/`, `.snow/`, `.codex/`, `.cursor/`, `.opencode/`, `.kiro/`, `.gemini/`, `.qoder/`, `.codebuddy/`, `.github/`, `.factory/`, `.pi/`, `.trae/`, `.kilocode/`, `.agent/`, `.devin/`, `.reasonix/`, `.zcode/`, `.kimi-code/`, `.starFactory/`, and similar directories.
+- **Shared files**: `.arbor/workflow.md`, `.arbor/tasks/`, `.arbor/spec/`, `.arbor/scripts/`, `.arbor/agents/`, `.arbor/config.yaml`.
+- **Platform files**: `.claude/`, `.starFactory/`, `CLAUDE.md`, `AGENTS.md`.
 
-Platform files do not store business state. They let the corresponding AI tool read Arbor state, call Arbor scripts, and load Arbor skills/agents/hooks.
+Platform files do not store business state.
 
 ## Platform File Categories
 
-| Category | Common paths | Purpose |
+| Category | Paths | Purpose |
 | --- | --- | --- |
-| settings/config | `.claude/settings.json`, `.codex/hooks.json`, `.qoder/settings.json`, `.trae/hooks.json` | Register hooks, plugins, extensions, or platform behavior. |
-| hooks/plugins/extensions | `.claude/hooks/`, `.opencode/plugins/`, `.pi/extensions/` | Inject context at session start, user input, agent startup, shell execution, and similar events. |
-| agents | `.claude/agents/`, `.codex/agents/`, `.kiro/agents/`, `.zcode/agents/` | Define `arbor-research`, `arbor-implement`, and `arbor-check`. |
-| skills | `.claude/skills/`, `.agents/skills/`, `.qoder/skills/`, `.zcode/skills/` | Capability descriptions that auto-trigger or can be read on demand. |
-| commands/prompts/workflows | `.cursor/commands/`, `.github/prompts/`, `.devin/workflows/`, `.zcode/commands/` | Entry points explicitly invoked by the user. |
+| settings | `.claude/settings.json`, `.starFactory/settings.json` | Register hooks. Hook commands use the project-relative path of the platform directory. |
+| hooks | `.claude/hooks/`, `.starFactory/hooks/` | Session-start context, per-turn workflow-state, dispatch context injection, dispatch guard, shell session bridge. |
+| skills | `.claude/skills/`, `.starFactory/skills/` | Workflow skills (brainstorm, before-dev, check, update-spec, break-loop) plus bundled skills (`arbor-meta`, `arbor-spec-bootstrap`). |
+| commands | `.claude/commands/arbor/`, `.starFactory/commands/arbor/` | Explicit entry points such as `/arbor:continue`, `/arbor:finish-work`, `/arbor:start`, `/arbor:dispatch-target`. |
+| root files | `CLAUDE.md`, `AGENTS.md` | Managed block between `<!-- ARBOR:START -->` and `<!-- ARBOR:END -->`; content outside the block is user-owned. |
 
-## Three Platform Integration Modes
+There are no platform-native sub-agent files. The implement, check, and research roles are not Claude Code sub-agents; the main agent dispatches them to codeg assistants (see `../local-architecture/dispatch.md`). Their instruction text lives in `.arbor/agents/*.md`.
 
-### 1. Hook / Extension Driven
+## Integration Mode
 
-These platforms can trigger scripts or plugins on specific events and actively inject Arbor context into AI.
+Both platforms are hook driven:
 
-Common capabilities:
+- SessionStart injects a `.arbor/` overview, including a `<dispatch>` section listing assistant ids.
+- UserPromptSubmit emits the `[workflow-state:STATUS]` breadcrumb for the current task.
+- PreToolUse on the codeg `delegate_to_agent` tool inlines task context into a role dispatch; a guard hook denies the built-in Agent/Task tool for Arbor roles.
 
-- session-start injection of a `.arbor/` overview.
-- workflow-state hints for each user turn.
-- PRD/spec/research injection when sub-agents start.
-- Shell commands inheriting session identity.
-
-To change "when the AI knows what," inspect hooks/plugins/extensions and settings first.
-
-### 2. Agent Prelude / Pull-Based
-
-Some platforms cannot reliably let hooks rewrite sub-agent prompts, so the agent file itself instructs the agent to read the active task, PRD, and JSONL context after startup.
-
-To change how sub-agents load context, inspect the agent files themselves.
-
-### 3. Main-Session Workflow
-
-Some platforms do not have Arbor sub-agent or hook capabilities. They rely on workflows/skills/commands to guide the main-session AI to read files, run scripts, and move tasks forward.
-
-To change behavior, inspect platform workflows/skills/commands and `.arbor/workflow.md`.
+To change "when the AI knows what", inspect settings and hooks first.
 
 ## Local Modification Order
 
-When the user asks to customize behavior for a platform, the AI should inspect files in this order:
-
 1. Read `.arbor/workflow.md` to confirm the shared flow.
-2. Read the target platform's settings/config to see which hooks/agents/skills/commands are registered.
-3. Read the target platform's agents/skills/commands/hooks.
+2. Read the target platform's `settings.json` to see which hooks are registered.
+3. Read the relevant hooks, skills, and commands.
 4. Modify the local file closest to the user's need.
 5. If the change affects the shared flow, synchronize `.arbor/workflow.md` or `.arbor/spec/`.
 
-Do not modify only platform files and forget the shared workflow. Do not modify only `.arbor/workflow.md` and forget that platform entry points may still contain old descriptions.
+Do not modify only platform files and forget the shared workflow. Do not modify only `.arbor/workflow.md` and forget that platform skills and commands may still contain old descriptions. When both `.claude/` and `.starFactory/` exist, keep them semantically in sync.

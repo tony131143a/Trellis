@@ -65,6 +65,9 @@ export const commonSafeCommit = readTemplate("scripts/common/safe_commit.py");
 export const commonSpecMeta = readTemplate("scripts/common/spec_meta.py");
 export const commonSpecLint = readTemplate("scripts/common/spec_lint.py");
 export const commonSpecTrace = readTemplate("scripts/common/spec_trace.py");
+export const commonDispatchContext = readTemplate(
+  "scripts/common/dispatch_context.py",
+);
 
 // Python scripts - main
 export const getDeveloperScript = readTemplate("scripts/get_developer.py");
@@ -121,6 +124,7 @@ export function getAllScripts(): Map<string, string> {
   scripts.set("common/spec_meta.py", commonSpecMeta);
   scripts.set("common/spec_lint.py", commonSpecLint);
   scripts.set("common/spec_trace.py", commonSpecTrace);
+  scripts.set("common/dispatch_context.py", commonDispatchContext);
 
   // Main
   scripts.set("get_developer.py", getDeveloperScript);

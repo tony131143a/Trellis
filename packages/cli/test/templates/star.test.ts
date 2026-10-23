@@ -43,16 +43,30 @@ describe("star settings.json", () => {
     }
   });
 
-  it("registers the sub-agent context hook on the Task and Agent PreToolUse matchers", () => {
+  it("registers the delegation-context hook on the anchored codeg delegate_to_agent matcher", () => {
+    const entry = settings.hooks.PreToolUse.find(
+      (e) => e.matcher === "^mcp__codeg[-_]mcp__delegate_to_agent$",
+    );
+    expect(entry, "PreToolUse must match codeg delegate_to_agent").toBeDefined();
+    expect(entry?.hooks[0].command).toContain(
+      ".starFactory/hooks/inject-delegation-context.py",
+    );
+    expect(entry?.hooks[0].timeout).toBe(30);
+  });
+
+  it("registers the built-in agent guard on the anchored Agent|Task matcher", () => {
+    const entry = settings.hooks.PreToolUse.find(
+      (e) => e.matcher === "^(Agent|Task)$",
+    );
+    expect(entry, "PreToolUse must guard Agent|Task").toBeDefined();
+    expect(entry?.hooks[0].command).toContain(
+      ".starFactory/hooks/guard-builtin-agent.py",
+    );
+    expect(entry?.hooks[0].timeout).toBe(10);
+    // The pre-dispatch bare Task / Agent matchers are gone.
     const matchers = settings.hooks.PreToolUse.map((e) => e.matcher);
-    expect(matchers).toContain("Task");
-    expect(matchers).toContain("Agent");
-    for (const entry of settings.hooks.PreToolUse) {
-      if (entry.matcher === "Bash") continue;
-      expect(entry.hooks[0].command).toContain(
-        ".starFactory/hooks/inject-subagent-context.py",
-      );
-    }
+    expect(matchers).not.toContain("Task");
+    expect(matchers).not.toContain("Agent");
   });
 
   // StarFactory exports no session id into its shell children, so the
@@ -101,7 +115,8 @@ describe("collectStarTemplates", () => {
     for (const hook of [
       "session-start.py",
       "inject-workflow-state.py",
-      "inject-subagent-context.py",
+      "inject-delegation-context.py",
+      "guard-builtin-agent.py",
       "inject-shell-session-context.py",
     ]) {
       expect(files.has(`.starFactory/hooks/${hook}`)).toBe(true);

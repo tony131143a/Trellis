@@ -1,159 +1,47 @@
 # Bundled Skills
 
-"Bundled skills" are multi-file built-in skills shipped inside the Arbor CLI npm package. Unlike marketplace skills (which a user installs separately into their own `.claude/skills/` or other platform skill root), bundled skills are written automatically into every supported platform's skill root by `arbor init` and kept in sync by `arbor update`. They are part of Arbor itself, not third-party content.
+Bundled skills are multi-file built-in skills shipped inside the Arbor CLI package. They are written automatically into each platform's skill root by `arbor init` and kept in sync by `arbor update`. They are part of Arbor itself, not third-party content.
 
-A bundled skill is a directory under `packages/cli/src/templates/common/bundled-skills/<skill>/` that already contains its own `SKILL.md` (with YAML frontmatter) plus optional `references/`, assets, or other supporting files. Arbor copies the whole directory tree as-is into each platform's skill root, so references stay lazy-loadable instead of being flattened into one oversized `SKILL.md`.
+A bundled skill is a directory under `packages/cli/src/templates/common/bundled-skills/<skill>/` that contains its own `SKILL.md` (with YAML frontmatter) plus optional `references/` files. The whole tree is copied as-is, so references stay lazy-loadable.
 
-## What Counts As Bundled (vs. Adjacent Concepts)
-
-| Source path | Type | How it ships |
-| --- | --- | --- |
-| `templates/common/bundled-skills/<name>/` | Bundled skill (multi-file) | Whole directory copied to every platform skill root |
-| `templates/common/skills/<name>.md` | Single-file workflow skill | Wrapped with frontmatter, written as `<root>/<name>/SKILL.md` |
-| `templates/common/commands/<name>.md` | Slash command / prompt | Written to each platform's command directory (`.claude/commands/arbor/`, `.cursor/commands/arbor-*.md`, `.gemini/commands/arbor/*.toml`, etc.) |
-| `templates/<platform>/skills/` | Platform-specific skill | Written only into that platform's directory (e.g. `.codex/skills/`) |
-| User skills under `.claude/skills/<my-skill>/` etc. | Marketplace or user-authored | Not managed by Arbor at all |
-
-The Arbor CLI never touches anything that is not produced by one of its own template loaders. Anything a user drops into a platform skill root by hand is left alone.
-
-## Current Bundled Skills (v0.6.0)
-
-The set is discovered at runtime by listing directories under `templates/common/bundled-skills/`:
+## Bundled Skills Today
 
 | Skill | Purpose |
 | --- | --- |
-| `arbor-meta` | This skill. Explains the local Arbor architecture and customization entry points to an AI working inside a user project. |
-| `arbor-session-insight` | Wraps the `arbor mem` CLI so an AI knows when and how to reach into past Claude Code / Codex / Pi Agent conversation logs. |
-| `arbor-spec-bootstrap` | Platform-neutral workflow for creating or refreshing `.arbor/spec/` from the real codebase (with optional GitNexus / ABCoder integration). |
-| `arbor-channel` | Capability skill teaching an AI when to reach for `arbor channel` for multi-agent collaboration, forum/thread persistent boards, and dispatcher-wait patterns. |
+| `arbor-meta` | This skill: how the local Arbor architecture works and how to customize it. |
+| `arbor-spec-bootstrap` | Single-agent workflow for creating or refreshing `.arbor/spec/` from the real codebase (optional GitNexus / ABCoder integration). |
 
-The list is discovered at runtime, so adding a new directory under `bundled-skills/` is the only step required to register a new skill (see "Adding a New Bundled Skill" below).
-
-## Where Bundled Skills Land Per Platform
-
-A platform's whole file set — commands, workflow skills, agents, hooks, bundled skills — is described exactly once, by `collect<Platform>Templates()` in `packages/cli/src/configurators/<platform>.ts`. For bundled skills that description is two calls: `resolveBundledSkills(ctx)` reads every directory under `templates/common/bundled-skills/`, resolves placeholders, and returns a flat list of `{relativePath, content}` entries; `collectSkillTemplates(<skillsRoot>, <workflowSkills>, <bundledSkills>)` folds them into the platform's `Map<filePath, content>` under `<skillsRoot>/<skill>/<relativePath>`.
-
-All 21 platforms receive the full bundled-skill set:
+## Where They Land
 
 | Platform | Bundled skill root |
 | --- | --- |
 | Claude Code | `.claude/skills/<skill>/` |
-| Cursor | `.cursor/skills/<skill>/` |
-| OpenCode | `.opencode/skills/<skill>/` |
-| Codex | `.agents/skills/<skill>/` |
-| Gemini CLI | `.agents/skills/<skill>/` |
-| Pi | `.agents/skills/<skill>/` |
-| Kimi | `.agents/skills/<skill>/` |
-| Kilo | `.kilocode/skills/<skill>/` |
-| Kiro | `.kiro/skills/<skill>/` |
-| Antigravity | `.agent/skills/<skill>/` |
-| Devin | `.devin/skills/<skill>/` |
-| Qoder | `.qoder/skills/<skill>/` |
-| Codebuddy | `.codebuddy/skills/<skill>/` |
-| Copilot | `.github/skills/<skill>/` |
-| Droid | `.factory/skills/<skill>/` |
-| Reasonix | `.reasonix/skills/<skill>/` |
-| ZCode | `.zcode/skills/<skill>/` |
-| Trae | `.trae/skills/<skill>/` |
-| OMP | `.omp/skills/<skill>/` |
-| Grok | `.grok/skills/<skill>/` |
-| Snow | `.snow/skills/<skill>/` |
+| StarFactory | `.starFactory/skills/<skill>/` |
 
-Codex, Gemini CLI, Pi and Kimi share the `.agents/skills/` root (the upstream Agent Skills workspace alias). Their collectors are required to emit byte-identical content for every file more than one of them writes there.
+`resolveBundledSkills(ctx)` in `configurators/shared.ts` reads every directory returned by `getBundledSkillTemplates()` (`templates/common/index.ts`), resolves placeholders such as `python3`, and returns flat `{relativePath, content}` entries. Each platform collector (`configurators/claude.ts`, `configurators/star.ts`) folds them into its template map via `collectSkillTemplates`. `arbor init` writes that map; `arbor update` diffs it against `.arbor/.template-hashes.json`.
 
-One description, two consumers:
+Other template sources in `templates/common/`: `skills/` (workflow skills), `commands/` (slash commands written to `commands/arbor/`).
 
-1. `arbor init` → `configurePlatform(platformId, cwd)` → `writeTemplateMap(cwd, collect<Platform>Templates())`. For 18 of the 21 platforms the registry entry in `configurators/index.ts` is literally `fromTemplates(collect<Platform>Templates)`, which *is* that composition. Claude Code, Codex and ZCode spell out a `configure` of their own, each for work a `Map<path, content>` cannot express (an opt-in `--with-statusline` flag, an intentionally empty `.codex/skills/` directory, a one-shot console notice) — none of them restates the file list.
-2. `arbor update` → `collectPlatformTemplates(platformId)` (in `configurators/index.ts`) → the same map, used to detect drift and to populate `.arbor/.template-hashes.json`.
+## Local Overrides
 
-Because both consumers read the one description, init and update cannot disagree about which files a bundled skill produces.
+There is no `.arbor/skills/` mechanism. Overrides are platform-rooted:
 
-## Dispatch Wiring (Code Path)
+- Editing a file inside `.claude/skills/arbor-meta/` works until the next `arbor update`, which flags it as modified by the user and offers overwrite, keep, or `.new`.
+- To override on both platforms, edit both `.claude/skills/<name>/` and `.starFactory/skills/<name>/`.
+- To add behavior, create a skill under a different folder name (for example `.claude/skills/my-custom-meta/`); Arbor never touches it.
+- To remove a bundled skill, delete its directory in each skill root; `arbor update` treats deletion as a user modification and does not re-create it unless forced.
+- There is no flag to disable all bundled skills.
 
-The mechanism that auto-dispatches bundled skills to platform skill roots lives in two files:
+## Adding A New Bundled Skill (Arbor Source Contributors)
 
-1. `packages/cli/src/templates/common/index.ts`
-   - `listDirectories("bundled-skills")` enumerates the on-disk skills.
-   - `listBundledSkillFiles(skillDir)` walks each skill's directory recursively and returns `{relativePath, content}` for every file.
-   - `getBundledSkillTemplates()` returns the cached `CommonBundledSkill[]`.
+1. Create `templates/common/bundled-skills/<name>/SKILL.md` with `name:` and a single-line quoted `description:` that states user-intent triggers.
+2. Put long content in `references/` and index it from `SKILL.md`.
+3. Use placeholders where needed; they are resolved per platform.
+4. No dispatch wiring is required: `listDirectories("bundled-skills")` discovers the directory.
+5. Verify with a fresh temp project that `arbor init` writes `.claude/skills/<name>/SKILL.md` and `.starFactory/skills/<name>/SKILL.md`.
 
-2. `packages/cli/src/configurators/shared.ts`
-   - `resolveBundledSkills(ctx)` flattens that list into `ResolvedSkillFile[]` with `<skill>/<relativePath>` paths and resolved placeholders.
-   - `collectSkillTemplates(skillsRoot, workflowSkills, bundledSkills)` returns workflow skills and bundled skill files together as a `Map<filePath, content>` rooted at `skillsRoot`.
-   - `writeTemplateMap(cwd, files)` is the single writer that puts a collected map on disk.
+## Rules
 
-Every platform that supports skills reaches those two helpers from its own `collect<Platform>Templates()` — either directly (`claude.ts`, `codex.ts`, `copilot.ts`, `gemini.ts`, `grok.ts`, `kimi.ts`, `kiro.ts`, `omp.ts`, `opencode.ts`, `pi.ts`, `reasonix.ts`, `snow.ts`, `zcode.ts`) or through `collectBothTemplates(ctx, cmdPath, skillRoot)` in `shared.ts`, which makes the same two calls on behalf of platforms that have both a commands directory and a skills root (`antigravity.ts`, `codebuddy.ts`, `cursor.ts`, `devin.ts`, `droid.ts`, `kilo.ts`, `qoder.ts`, `trae.ts`).
-
-## Adding a New Bundled Skill
-
-The shape and dispatch wiring are already generic, so adding a skill requires only file changes plus distribution verification.
-
-1. **Create the directory tree.**
-
-   ```
-   packages/cli/src/templates/common/bundled-skills/<my-skill>/
-     SKILL.md                     # YAML frontmatter + body
-     references/                  # optional
-       <topic>.md
-     assets/                      # optional (anything readable as utf-8)
-   ```
-
-2. **Write a valid `SKILL.md` header.** The frontmatter must include at minimum:
-
-   ```yaml
-   ---
-   name: <my-skill>
-   description: "When the AI should reach for this skill. Triggering phrases go here."
-   ---
-   ```
-
-   The `description` is what each platform's auto-trigger mechanism matches against, so it should describe the user-intent triggers, not the skill's internals.
-
-3. **Use placeholders where appropriate.** Bundled skill content runs through `resolvePlaceholders(file.content, ctx)`. Any `{{platform_name}}`, `{{python_cmd}}`, etc. token supported by `resolvePlaceholders` will be substituted per platform.
-
-4. **No dispatch wiring is required.** `listDirectories("bundled-skills")` discovers the new directory automatically, so all platforms receive it on the next `arbor init` or `arbor update`.
-
-5. **Verify the distribution path** before shipping. Skipping any of these steps has historically caused features to be documented as bundled while the published npm tarball was missing the files:
-
-   - Source files exist on the branch being tagged.
-   - `pnpm --filter @tony131143a/arbor build` copies the asset into `dist/templates/common/bundled-skills/<skill>/`.
-   - `npm pack --dry-run --json` includes the expected `dist/**` paths.
-   - In a fresh temp project, `arbor init` writes `.claude/skills/<skill>/SKILL.md`, `.agents/skills/<skill>/SKILL.md`, `.zcode/skills/<skill>/SKILL.md`, etc.
-   - `.arbor/.template-hashes.json` lists the generated files.
-   - `arbor update --dry-run` in that temp project reports "Already up to date!".
-
-6. **Add a migration manifest entry** if the skill is added in a release that other projects will upgrade into. Without an explicit manifest entry the file will land via the standard "missing file" branch of `arbor update`, but a manifest makes the change visible in the changelog.
-
-## Overriding a Bundled Skill Locally
-
-There is no formal "project-local skill" mechanism (e.g. `.arbor/skills/`). Bundled skills are platform-rooted, so any override is platform-rooted too.
-
-The supported pattern relies on the existing template-hash diff in `arbor update`:
-
-1. Edit the local file directly. Example: `.claude/skills/arbor-meta/SKILL.md`.
-2. The file's hash now diverges from the entry in `.arbor/.template-hashes.json`.
-3. The next `arbor update` detects the user modification and leaves the file untouched (Arbor never overwrites user-modified files without an explicit `--force`).
-
-Caveats:
-
-- The override only applies to the one platform whose directory you edited. To override the same skill across, for example, Claude Code and Codex, you must edit both `.claude/skills/<name>/` and `.agents/skills/<name>/`.
-- A future `arbor update --force` will overwrite local edits. Keep the override under version control so it can be reapplied if needed.
-- Marketplace skills installed under the same platform skill root with a different folder name (e.g. `.claude/skills/my-custom-meta/`) are untouched by Arbor and are the cleaner option when the goal is to add behavior, not to mutate the bundled skill.
-- Team-private conventions belong in `.arbor/spec/` or in a separate marketplace-style local skill, not in modifications to `arbor-meta` itself. See `customize-local/add-project-local-conventions.md`.
-
-## Removing a Bundled Skill From a Project
-
-There is no per-project opt-out flag for bundled skills. Two options:
-
-1. **Delete the directory in each platform skill root.** `arbor update` will see the file missing, compare against `.template-hashes.json`, and treat the deletion the same as any other user modification — it will not silently re-create the directory unless `--force` is passed.
-
-2. **Pin a Arbor version that did not ship the skill.** The bundled-skill set is determined at build time, so installing an older release of the CLI is the only way to permanently exclude a skill that the current release ships.
-
-A third option — globally disabling all bundled skills — is not supported. The dispatch is unconditional: `collect<Platform>Templates()` takes no arguments, so there is nowhere for a flag to enter. Adding one would mean changing that signature across all 21 platforms plus `collectPlatformTemplates` in `configurators/index.ts`.
-
-## Operating Rules
-
-- Treat `templates/common/bundled-skills/` as the single source of truth for what bundled skills exist. Do not hand-maintain platform-by-platform skill lists.
-- Do not add platform-specific logic inside a bundled `SKILL.md`. If a behavior is platform-specific, put it in `templates/<platform>/skills/` instead.
-- Do not couple bundled skills to a specific CLI binary (e.g. `arbor mem`) without surfacing the dependency in the skill's description and references — users on older releases may not have the command.
-- Do not store project-private content in a bundled skill. Bundled skills are public, shipped to every user; project rules belong in `.arbor/spec/` or a local skill.
+- `templates/common/bundled-skills/` is the single source of truth for which bundled skills exist.
+- Keep team-private rules out of bundled skills; use `.arbor/spec/` or a project-local skill.
+- Do not couple a bundled skill to a CLI command without stating the dependency in its description and references.

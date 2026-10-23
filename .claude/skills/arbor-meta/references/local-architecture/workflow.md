@@ -22,12 +22,9 @@ Each phase contains numbered steps, such as `1.3 Configure context`. These numbe
 
 ## Skill Routing
 
-`workflow.md` separates routing by platform capability:
+`workflow.md` routes work by intent. For implementation, checking, and research, the main agent dispatches the `implement`, `check`, or `research` role to a codeg assistant (see `dispatch.md`) rather than doing it in its own session. Small steps such as reading skills like `before-dev` stay in the main session.
 
-- Platforms with sub-agent support: dispatch `arbor-implement` by default for implementation and `arbor-check` for checking.
-- Platforms without sub-agent support: the main session reads skills such as `arbor-before-dev`, then executes directly.
-
-When changing local AI behavior, update the routing descriptions in `workflow.md` first, then check whether the corresponding platform skill, command, or agent files need to stay in sync.
+When changing local AI behavior, update the routing descriptions in `workflow.md` first, then check whether the corresponding skill, command, or `.arbor/agents/*.md` file needs to stay in sync.
 
 ## Workflow-State Prompt Blocks
 
@@ -60,16 +57,16 @@ Common changes:
 | Change task creation policy | Update the `no_task` state block and Phase 1 description. |
 | Change the default implementation/check path | Update Phase 2 and skill routing. |
 | Change the wrap-up flow | Update Phase 3 and `finish-work` related descriptions. Note the current split: Phase 3.4 = AI-driven code commits (batched, user-confirmed), Phase 3.5 = `/finish-work` (archive + record session). `/finish-work` refuses to run if the working tree is dirty. |
-| Change platform differences | Update routing descriptions grouped by platform. |
+| Change dispatch behavior | Update Phase 2 routing, and `dispatch.md`-related config in `.arbor/config.yaml`. |
 
 After editing, make the AI reread `.arbor/workflow.md`; do not assume the flow from the old conversation is still valid.
 
 ## Relationship To Platform Files
 
-`workflow.md` is the semantic center of the local workflow, but each platform can also have its own entry files:
+`workflow.md` is the semantic center of the local workflow, but each platform directory also has its own entry files:
 
-- skills, such as `arbor-brainstorm` and `arbor-check`.
-- commands/prompts/workflows, such as continue and finish-work.
+- skills, such as `brainstorm` and `check`.
+- commands, such as continue, finish-work, and dispatch-target.
 - hooks, such as session-start or workflow-state injection.
 
-If only `workflow.md` changes, platform entry files may still contain old language. When the user wants to change "what the AI actually does," also inspect the relevant platform directory.
+If only `workflow.md` changes, platform entry files may still contain old language. When the user wants to change "what the AI actually does," also inspect `.claude/` and `.starFactory/`.

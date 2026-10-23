@@ -8,7 +8,7 @@ Often the user does not need to change Arbor mechanics; they need local AI to un
 | --- | --- |
 | Rules code must follow | `.arbor/spec/<layer>/` |
 | Cross-layer thinking methods | `.arbor/spec/guides/` |
-| AI capability for a project-specific flow | Platform-local skill |
+| AI capability for a project-specific flow | Project-local skill |
 | One-off task material | `.arbor/tasks/<task>/` |
 | Session summary | `.arbor/workspace/<developer>/journal-N.md` |
 
@@ -48,7 +48,7 @@ This skill documents this repository's Arbor customizations only.
 - ...
 ```
 
-For multi-platform projects, place equivalent versions in other platform skill directories, or use `.agents/skills/` for platforms that support the shared layer.
+If both platforms are in use, place equivalent versions in `.claude/skills/` and `.starFactory/skills/`.
 
 ## Write To `.arbor/spec/`
 
@@ -57,7 +57,7 @@ If the content is a coding convention, write it to spec. Examples:
 ```text
 .arbor/spec/backend/error-handling.md
 .arbor/spec/frontend/components.md
-.arbor/spec/guides/cross-platform-thinking-guide.md
+.arbor/spec/guides/cross-layer-thinking-guide.md
 ```
 
 After writing it, update the corresponding `index.md` so AI can find the new rule from the entry point.

@@ -1,6 +1,6 @@
 # MCP Setup
 
-GitNexus and ABCoder are recommended when bootstrapping Arbor specs because they expose architecture and AST context to the agent. They are tool choices, not platform requirements. Configure them through whatever MCP mechanism your agent host provides.
+GitNexus and ABCoder are recommended when bootstrapping Arbor specs because they expose architecture and AST context to the agent. They are optional tool choices. In Claude Code (and StarFactory) register MCP servers with `claude mcp add <name> -- <command>` (project scope writes `.mcp.json`), or add them to the MCP settings the CLI reads. MCP servers configured in the main agent are not automatically available to dispatched codeg assistants; configure them in the assistant too if a role needs them.
 
 ## GitNexus
 
@@ -23,7 +23,7 @@ The index is written to `.gitnexus/`. Keep embeddings only if the project alread
 
 ### MCP Server Command
 
-Use this server command in the host's MCP configuration:
+Use this server command in the MCP configuration (for example `claude mcp add gitnexus -- npx -y gitnexus mcp`):
 
 ```bash
 npx -y gitnexus mcp
@@ -64,7 +64,7 @@ For monorepos, parse each package with a stable `--name` so task notes can refer
 
 ### MCP Server Command
 
-Use this server command in the host's MCP configuration:
+Use this server command in the MCP configuration (for example `claude mcp add gitnexus -- npx -y gitnexus mcp`):
 
 ```bash
 abcoder mcp ~/abcoder-asts
@@ -82,7 +82,7 @@ abcoder mcp ~/abcoder-asts
 
 ## Verification
 
-After configuration, verify from the agent host that both MCP servers are visible. Then run one simple query against each server before starting the spec writing pass.
+After configuration, verify in the agent session (for example with `/mcp`) that both MCP servers are visible. Then run one simple query against each server before starting the spec writing pass.
 
 ```bash
 ls .gitnexus/meta.json

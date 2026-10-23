@@ -14,7 +14,7 @@ Platform marker syntax in workflow.md:
 
 Provides:
     get_phase_index   - Extract the Phase Index section (no --step)
-    get_step          - Extract a single step (#### X.X) section
+    get_step          - Extract a single step (#### X.X or #### XP.X) section
     filter_platform   - Strip platform blocks that don't include the given name
 """
 
@@ -31,8 +31,9 @@ def _workflow_md_path():
 # Match a line that *is* a platform marker: "[A, B, C]" or "[/A, B, C]"
 _MARKER_RE = re.compile(r"^\[(/?)([A-Za-z][^\[\]]*)\]\s*$")
 
-# Step heading: "#### 1.0 Title" or "#### 1.0 ..."
-_STEP_HEADING_RE = re.compile(r"^####\s+(\d+\.\d+)\b.*$")
+# Step heading: "#### 1.0 Title", or "#### 2P.0 Title" for the parallel
+# variant of a phase.
+_STEP_HEADING_RE = re.compile(r"^####\s+(\d+P?\.\d+)\b.*$")
 
 # Phase Index starts here; Phase 1/2/3 step bodies follow; ends at Breadcrumbs.
 _PHASE_INDEX_HEADING = "## Phase Index"
@@ -98,17 +99,20 @@ def get_phase_index() -> str:
 
 
 def get_step(step_id: str) -> str:
-    """Return the `#### X.X` section matching step_id (header + body).
+    """Return the `#### X.X` / `#### XP.X` section matching step_id (header + body).
 
-    Body ends at the next `####` or `---` or `##` heading (whichever comes first).
+    The `P` of a parallel-variant id matches case-insensitively (`2p.1` finds
+    `#### 2P.1`). Body ends at the next `####` or `---` or `##` heading
+    (whichever comes first).
     """
     text = _read_workflow()
     lines = text.splitlines()
+    wanted = step_id.strip().upper()
 
     start: int | None = None
     for i, line in enumerate(lines):
         m = _STEP_HEADING_RE.match(line)
-        if m and m.group(1) == step_id:
+        if m and m.group(1) == wanted:
             start = i
             break
     if start is None:

@@ -352,7 +352,8 @@ describe("configurePlatform", () => {
     for (const hook of [
       "session-start.py",
       "inject-workflow-state.py",
-      "inject-subagent-context.py",
+      "inject-delegation-context.py",
+      "guard-builtin-agent.py",
       "inject-shell-session-context.py",
     ]) {
       expect(fs.existsSync(starFactory(`hooks/${hook}`))).toBe(true);
@@ -405,7 +406,7 @@ describe("configurePlatform", () => {
       false,
     );
     expect(
-      templates?.has(".starFactory/hooks/inject-subagent-context.py"),
+      templates?.has(".starFactory/hooks/inject-delegation-context.py"),
     ).toBe(true);
     // .claude/ belongs to the claude-code platform; star must not write it.
     expect([...(templates?.keys() ?? [])].some((k) => k.startsWith(".claude/"))).toBe(

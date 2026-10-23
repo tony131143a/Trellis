@@ -3,5 +3,12 @@
   "description": "Initial release",
   "breaking": false,
   "recommendMigrate": false,
-  "migrations": []
+  "migrations": [],
+  "configSectionsAdded": [
+    {
+      "file": ".arbor/config.yaml",
+      "sentinel": "dispatch:",
+      "sectionHeading": "Dispatch (codeg assistants)"
+    }
+  ]
 }

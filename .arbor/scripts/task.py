@@ -196,8 +196,8 @@ def cmd_start(args: argparse.Namespace) -> int:
     # Context-manifest gate (#573): a seeded-but-uncurated implement/check
     # manifest means every sub-agent dispatched for this task runs with zero
     # spec context, and nothing downstream surfaces that to the main session.
-    # An absent manifest is not gated — create seeds the files only on
-    # sub-agent-capable platforms, so absence means no sub-agent reads them.
+    # An absent manifest is not gated — `task.py create` always seeds both
+    # files, so absence means a task created by hand or before seeding.
     if not getattr(args, "allow_empty_context", False):
         empty_manifests = [
             name

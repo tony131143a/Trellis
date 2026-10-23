@@ -7,6 +7,7 @@ Reads settings from .arbor/config.yaml with sensible defaults.
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -220,6 +221,204 @@ def get_prompt_injection_config(repo_root: Path | None = None) -> dict[str, str]
     if isinstance(raw, str):
         result["skip_keyword"] = raw
     return result
+
+
+DISPATCH_ROLES = ("implement", "check", "research")
+DISPATCH_HOOK_DECISIONS = ("allow", "ask")
+# Runtime override written by `/arbor:dispatch-target`, relative to .arbor/.
+DISPATCH_TARGET_FILE = ".runtime/dispatch-target"
+ENV_DISPATCH_TARGET = "ARBOR_DISPATCH_TARGET"
+
+DEFAULT_DISPATCH: dict = {
+    "default_target": "star",
+    "max_parallel": 3,
+    "guard_builtin_agent": True,
+    "hook_decision": "allow",
+    "codeg_cli": "",
+    "permissions": "allow",
+    "timeout": "90m",
+    "targets": {
+        "star": {
+            "agent_type": "custom:star",
+            "options": {},
+            "assistants": {
+                "implement": "arbor-implement-star",
+                "check": "arbor-check-star",
+                "research": "arbor-research-star",
+            },
+        },
+        "pi": {
+            "agent_type": "pi",
+            "options": {
+                "model": "deepseek/DeepSeek-V4.1-Flash",
+                "thought_level": "max",
+            },
+            "assistants": {
+                "implement": "arbor-implement-pi",
+                "check": "arbor-check-pi",
+                "research": "arbor-research-pi",
+            },
+        },
+    },
+}
+
+
+def _warn_dispatch(key: str, raw: object, default: object) -> None:
+    print(
+        f"[WARN] invalid dispatch.{key} value: {raw!r}; using default {default!r}",
+        file=sys.stderr,
+    )
+
+
+def _dispatch_target(name: str, raw: object, default: dict | None) -> dict:
+    """Normalise one ``dispatch.targets.<name>`` block.
+
+    The template keeps role names directly under the target (the parser has
+    no flow mappings, and a fourth nesting level is noise); they are collected
+    into ``assistants``. Any other scalar key (``model``, ``thought_level``)
+    lands in ``options``. A missing role falls back to the shipped name, or to
+    ``arbor-<role>-<target>`` for a target Arbor does not ship.
+    """
+    base = default or {"agent_type": name, "options": {}, "assistants": {}}
+    agent_type = str(base.get("agent_type") or name)
+    options = dict(base.get("options") or {})
+    assistants = {
+        role: str((base.get("assistants") or {}).get(role) or f"arbor-{role}-{name}")
+        for role in DISPATCH_ROLES
+    }
+    if not isinstance(raw, dict):
+        if raw is not None and raw != {}:
+            _warn_dispatch(f"targets.{name}", raw, "defaults")
+        return {"agent_type": agent_type, "options": options, "assistants": assistants}
+
+    for key, value in raw.items():
+        if key == "agent_type":
+            if isinstance(value, str) and value.strip():
+                agent_type = value.strip()
+            else:
+                _warn_dispatch(f"targets.{name}.agent_type", value, agent_type)
+        elif key in DISPATCH_ROLES:
+            if isinstance(value, str) and value.strip():
+                assistants[key] = value.strip()
+            else:
+                _warn_dispatch(f"targets.{name}.{key}", value, assistants[key])
+        elif isinstance(value, str):
+            options[key] = value
+        else:
+            _warn_dispatch(f"targets.{name}.{key}", value, "ignored")
+    return {"agent_type": agent_type, "options": options, "assistants": assistants}
+
+
+def get_dispatch_config(repo_root: Path | None = None) -> dict:
+    """Return the ``dispatch:`` section of config.yaml merged over defaults.
+
+    Shape (always complete)::
+
+        {"default_target": "star", "max_parallel": 3,
+         "guard_builtin_agent": True, "hook_decision": "allow",
+         "codeg_cli": "", "permissions": "allow", "timeout": "90m",
+         "targets": {"<name>": {"agent_type": str, "options": {str: str},
+                                "assistants": {"implement": str,
+                                               "check": str,
+                                               "research": str}}}}
+
+    Invalid values fall back to the default with a stderr warning.
+    """
+    defaults = DEFAULT_DISPATCH
+    section = _load_config(repo_root).get("dispatch")
+    if section is not None and not isinstance(section, dict):
+        _warn_dispatch("", section, "defaults")
+        section = None
+    section = section or {}
+
+    result: dict = {"default_target": defaults["default_target"]}
+
+    raw = section.get("max_parallel", defaults["max_parallel"])
+    try:
+        max_parallel = int(raw)
+    except (TypeError, ValueError):
+        max_parallel = 0
+    if max_parallel < 1:
+        _warn_dispatch("max_parallel", raw, defaults["max_parallel"])
+        max_parallel = defaults["max_parallel"]
+    result["max_parallel"] = max_parallel
+
+    result["guard_builtin_agent"] = coerce_config_bool(
+        section.get("guard_builtin_agent", defaults["guard_builtin_agent"]),
+        defaults["guard_builtin_agent"],
+        "dispatch.guard_builtin_agent",
+    )
+
+    raw = section.get("hook_decision", defaults["hook_decision"])
+    decision = str(raw).strip().lower() if isinstance(raw, str) else ""
+    if decision not in DISPATCH_HOOK_DECISIONS:
+        _warn_dispatch("hook_decision", raw, defaults["hook_decision"])
+        decision = defaults["hook_decision"]
+    result["hook_decision"] = decision
+
+    for key in ("codeg_cli", "permissions", "timeout"):
+        raw = section.get(key, defaults[key])
+        if not isinstance(raw, str) or (key != "codeg_cli" and not raw.strip()):
+            _warn_dispatch(key, raw, defaults[key])
+            raw = defaults[key]
+        result[key] = raw.strip()
+
+    raw_targets = section.get("targets")
+    if raw_targets is not None and not isinstance(raw_targets, dict):
+        _warn_dispatch("targets", raw_targets, "defaults")
+        raw_targets = None
+    raw_targets = raw_targets or {}
+    names = list(defaults["targets"]) + [
+        name for name in raw_targets if name not in defaults["targets"]
+    ]
+    result["targets"] = {
+        name: _dispatch_target(name, raw_targets.get(name), defaults["targets"].get(name))
+        for name in names
+    }
+
+    raw = section.get("default_target", defaults["default_target"])
+    target = raw.strip() if isinstance(raw, str) else ""
+    if target not in result["targets"]:
+        _warn_dispatch("default_target", raw, defaults["default_target"])
+        target = defaults["default_target"]
+    result["default_target"] = target
+
+    return result
+
+
+def resolve_dispatch_target(repo_root: Path | None = None) -> tuple[str, str]:
+    """Return ``(target, source)`` for the effective dispatch target.
+
+    Precedence: ``.arbor/.runtime/dispatch-target`` > ``ARBOR_DISPATCH_TARGET``
+    > ``dispatch.default_target``. An override naming an unknown target is
+    reported on stderr and skipped.
+    """
+    root = repo_root or get_repo_root()
+    config = get_dispatch_config(root)
+    override_file = root / DIR_WORKFLOW / DISPATCH_TARGET_FILE
+    try:
+        file_value = override_file.read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeDecodeError):
+        file_value = ""
+    candidates = (
+        (file_value, f"{DIR_WORKFLOW}/{DISPATCH_TARGET_FILE}"),
+        (os.environ.get(ENV_DISPATCH_TARGET, "").strip(), ENV_DISPATCH_TARGET),
+    )
+    for value, source in candidates:
+        if not value:
+            continue
+        if value in config["targets"]:
+            return value, source
+        print(
+            f"[WARN] unknown dispatch target {value!r} from {source}; ignoring",
+            file=sys.stderr,
+        )
+    return config["default_target"], "config"
+
+
+def get_dispatch_target(repo_root: Path | None = None) -> str:
+    """Effective dispatch target name (see ``resolve_dispatch_target``)."""
+    return resolve_dispatch_target(repo_root)[0]
 
 
 def get_hooks(event: str, repo_root: Path | None = None) -> list[str]:

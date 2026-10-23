@@ -220,6 +220,8 @@ const COMMAND_DESCRIPTIONS: Record<string, string> = {
   continue: "Resume work on the current task at the correct phase.",
   "finish-work":
     "Wrap up the current session: quality gate, commit reminder, archive, journal.",
+  "dispatch-target":
+    "Switch the codeg dispatch target for implement/check/research roles: star, pi, or clear.",
 };
 
 /** Wrap resolved command content with YAML frontmatter (name + description). */

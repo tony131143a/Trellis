@@ -38,7 +38,7 @@ From Step 1 you know the current task and status. Check the task directory:
 
 - **Active task status `planning` + no `prd.md`** → Phase 1.1. Load the `arbor-brainstorm` skill.
 - **Active task status `planning` + `prd.md` exists** → stay in Phase 1. Lightweight tasks can be PRD-only; complex tasks need `design.md` + `implement.md`. Load the relevant Phase 1 step detail before `task.py start`.
-- **Active task status `in_progress`** → Phase 2 step 2.1. Load the step detail:
+- **Active task status `in_progress`** → Phase 2 step 2.1 (or Phase 2P when `meta.execution=parallel`). Implement/check are dispatched to codeg assistants, not done here. Load the step detail:
   ```bash
   {{PYTHON_CMD}} ./.arbor/scripts/get_context.py --mode phase --step 2.1 --platform {{CLI_FLAG}}
   ```

@@ -1,10 +1,10 @@
 /**
- * Integration tests for sub-agent context injection limits (issue #441).
+ * Integration tests for dispatch context injection limits (issue #441).
  *
- * Covers two templates:
+ * Covers three templates:
  *   - `src/templates/arbor/scripts/common/config.py` — config parsing
  *     (`get_context_injection_limits`)
- *   - `src/templates/shared-hooks/inject-subagent-context.py` — truncation,
+ *   - `src/templates/arbor/scripts/common/dispatch_context.py` — truncation,
  *     total-budget degradation, UTF-8 safety
  *   - `src/templates/arbor/scripts/common/task_context.py` — `task.py
  *     validate` path resolution and hygiene warnings
@@ -27,10 +27,6 @@ const TASK_CONTEXT_PATH = path.join(
   TEMPLATE_SCRIPTS,
   "common",
   "task_context.py",
-);
-const HOOK_PATH = path.resolve(
-  __dirname,
-  "../../src/templates/shared-hooks/inject-subagent-context.py",
 );
 
 describe("task_context.py Python compatibility", () => {
@@ -62,18 +58,16 @@ function writeConfig(tmp: string, yaml: string): void {
   fs.writeFileSync(path.join(tmp, ".arbor", "config.yaml"), yaml, "utf-8");
 }
 
-/** Run a Python snippet with the hook module preloaded as `mod` and the repo
- * root available as `REPO_ROOT`. Returns trimmed stdout. Throws with stderr
- * on non-zero exit. */
+/** Run a Python snippet with the stamped `common.dispatch_context` module
+ * preloaded as `mod` and the repo root available as `REPO_ROOT`. Returns
+ * trimmed stdout. Throws with stderr on non-zero exit. */
 function runHookProbe(tmp: string, code: string): string {
   const probePath = path.join(tmp, "probe.py");
   const script = `
-import sys, importlib.util
-sys.argv[0] = ${JSON.stringify(path.join(tmp, "hook.py"))}
+import sys
+sys.path.insert(0, ${JSON.stringify(path.join(tmp, ".arbor", "scripts"))})
 REPO_ROOT = ${JSON.stringify(tmp)}
-spec = importlib.util.spec_from_file_location("h", ${JSON.stringify(HOOK_PATH)})
-mod = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(mod)
+from common import dispatch_context as mod
 ${code}
 `;
   fs.writeFileSync(probePath, script, "utf-8");
@@ -274,7 +268,7 @@ print(get_context_injection_limits(Path(${JSON.stringify(tmp)}))["max_artifact_b
       });
     });
 
-    describe("inject-subagent-context.py: truncate_utf8", () => {
+    describe("dispatch_context.py: truncate_utf8", () => {
       it("leaves data untouched when cap is 0 (unlimited)", () => {
         const out = runHookProbe(
           tmp,
@@ -340,7 +334,7 @@ print("all-valid")
       });
     });
 
-    describe("inject-subagent-context.py: per-file and per-artifact caps", () => {
+    describe("dispatch_context.py: per-file and per-artifact caps", () => {
       it("under-cap content is byte-identical to unlimited output (golden)", () => {
         const taskDir = makeTask(tmp, "task-golden");
         fs.writeFileSync(
@@ -623,7 +617,7 @@ print("all-valid")
       });
     });
 
-    describe("inject-subagent-context.py: jsonl file reference containment (#580)", () => {
+    describe("dispatch_context.py: jsonl file reference containment (#580)", () => {
       it("does not read a file outside base_path via an absolute jsonl reference", () => {
         const taskDir = makeTask(tmp, "task-absolute-escape");
         const secretDir = fs.mkdtempSync(
@@ -693,7 +687,7 @@ print("all-valid")
       });
     });
 
-    describe("inject-subagent-context.py: empty-manifest notice (#573)", () => {
+    describe("dispatch_context.py: empty-manifest notice (#573)", () => {
       it("puts a visible notice in the prompt when the manifest has no curated entries", () => {
         // The stderr WARN never reaches any session; the sub-agent must see
         // in its own prompt that no spec context was injected.

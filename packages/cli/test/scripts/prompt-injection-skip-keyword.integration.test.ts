@@ -6,7 +6,7 @@
  * "no-arbor") right after resolving `.arbor/config.yaml`, before any
  * task resolution or breadcrumb template loading. On a hit it exits 0 with
  * empty stdout for that turn only. `session-start.py` (SessionStart) and
- * `inject-subagent-context.py` (sub-agent context) must ignore the keyword
+ * `inject-delegation-context.py` (dispatch context) must ignore the keyword
  * entirely — the escape hatch only mutes the per-turn breadcrumb.
  *
  * Scripts are stamped into a fresh temp dir and exercised through the real
@@ -298,13 +298,20 @@ describeFn("no-arbor skip keyword (issue #427)", () => {
       expect(r.stdout).toContain("<session-context>");
     });
 
-    it("inject-subagent-context.py has no skip-keyword handling (module source check)", () => {
-      const source = fs.readFileSync(
-        path.join(SHARED_HOOKS, "inject-subagent-context.py"),
-        "utf-8",
-      );
-      expect(source).not.toContain("skip_keyword");
-      expect(source).not.toContain("prompt_has_skip_keyword");
+    it("dispatch context injection has no skip-keyword handling (module source check)", () => {
+      for (const source of [
+        fs.readFileSync(
+          path.join(SHARED_HOOKS, "inject-delegation-context.py"),
+          "utf-8",
+        ),
+        fs.readFileSync(
+          path.join(TEMPLATE_SCRIPTS, "common", "dispatch_context.py"),
+          "utf-8",
+        ),
+      ]) {
+        expect(source).not.toContain("skip_keyword");
+        expect(source).not.toContain("prompt_has_skip_keyword");
+      }
     });
   });
 });

@@ -72,7 +72,7 @@ Before a task enters implementation, planning may write relevant specs into `imp
 {"file": ".arbor/spec/cli/unit-test/conventions.md", "reason": "Test expectations"}
 ```
 
-Sub-agents or platform preludes read these JSONL files and load the referenced specs. On platforms without sub-agent support, the AI should read the relevant specs directly according to the workflow.
+The PreToolUse hook (or the dispatched role itself) reads these JSONL files and loads the referenced specs. When the main agent works without dispatching, it should read the relevant specs directly according to the workflow.
 
 ## What Specs Should Contain
 

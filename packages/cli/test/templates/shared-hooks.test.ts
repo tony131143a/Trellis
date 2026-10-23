@@ -15,7 +15,8 @@ const ALL_HOOK_FILES = [
   "session-start.py",
   "inject-shell-session-context.py",
   "inject-workflow-state.py",
-  "inject-subagent-context.py",
+  "inject-delegation-context.py",
+  "guard-builtin-agent.py",
 ] as const;
 
 const EMPTY_EXCEPT_PASS_RE = /except[^\n]*:\n\s*pass\s*$/m;

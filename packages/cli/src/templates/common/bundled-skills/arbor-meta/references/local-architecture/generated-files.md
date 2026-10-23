@@ -10,6 +10,7 @@ This page only describes files that are visible and editable inside the user pro
 .arbor/
 ├── workflow.md
 ├── config.yaml
+├── agents/
 ├── .developer
 ├── .version
 ├── .template-hashes.json
@@ -24,6 +25,7 @@ This page only describes files that are visible and editable inside the user pro
 | --- | --- | --- |
 | `.arbor/workflow.md` | Yes | Local workflow documentation and AI routing rules. |
 | `.arbor/config.yaml` | Yes | Project configuration, hooks, packages, journal line limits, and related settings. |
+| `.arbor/agents/` | Yes | Assistant instruction sources for implement/check/research; re-run `dispatch.py codeg-setup` after editing. |
 | `.arbor/spec/` | Yes | Project specs, intended to be updated regularly by users and AI. |
 | `.arbor/tasks/` | Yes | Task material and research artifacts, maintained by the task workflow. |
 | `.arbor/workspace/` | Yes | Session records, usually written by `add_session.py`. |
@@ -33,19 +35,17 @@ This page only describes files that are visible and editable inside the user pro
 | `.arbor/.version` | No | Arbor version record used by update/migration logic. |
 | `.arbor/.template-hashes.json` | No | Template hash record. Do not hand-write business rules here. |
 
-## Platform Directories
+## Platform Directories And Root Files
 
-Different platforms generate different directories. Common categories:
+| Path | Purpose |
+| --- | --- |
+| `.claude/settings.json`, `.starFactory/settings.json` | Tell the platform when to run hooks. |
+| `.claude/hooks/`, `.starFactory/hooks/` | Session context, workflow-state, dispatch context injection, dispatch guard, shell session bridge. |
+| `.claude/skills/`, `.starFactory/skills/` | Workflow skills and bundled skills (`arbor-meta`, `arbor-spec-bootstrap`). |
+| `.claude/commands/arbor/`, `.starFactory/commands/arbor/` | `/arbor:*` commands. |
+| `CLAUDE.md`, `AGENTS.md` | Managed Arbor block between `<!-- ARBOR:START -->` and `<!-- ARBOR:END -->`. |
 
-| Category | Example paths | Purpose |
-| --- | --- | --- |
-| hooks | `.claude/hooks/`, `.codex/hooks/`, `.cursor/hooks/` | Inject session context, workflow-state, and sub-agent context. |
-| settings | `.claude/settings.json`, `.codex/hooks.json`, `.qoder/settings.json`, `.trae/hooks.json` | Tell the platform when to run hooks or plugins. |
-| agents | `.claude/agents/`, `.codex/agents/`, `.kiro/agents/`, `.zcode/agents/` | Define agents such as `arbor-research`, `arbor-implement`, and `arbor-check`. |
-| skills | `.claude/skills/`, `.agents/skills/`, `.qoder/skills/`, `.zcode/skills/` | Skills that auto-trigger or can be read by AI. |
-| commands/prompts/workflows | `.cursor/commands/`, `.github/prompts/`, `.devin/workflows/`, `.zcode/commands/` | Explicit user-invoked command or workflow entry points. |
-
-When modifying a platform directory, also confirm whether `.arbor/workflow.md` still describes the same flow.
+There are no platform sub-agent directories. When modifying a platform directory, also confirm whether `.arbor/workflow.md` still describes the same flow.
 
 ## Meaning Of Template Hashes
 
@@ -67,7 +67,8 @@ Editable by default:
 - `.arbor/config.yaml`
 - `.arbor/spec/**`
 - `.arbor/scripts/**`
-- Platform hooks, settings, agents, skills, commands, prompts, and workflows
+- `.arbor/agents/**`
+- Platform hooks, settings, skills, and commands
 
 Do not edit by default:
 

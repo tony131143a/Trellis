@@ -1544,7 +1544,7 @@ describe("regression: JSON read/write failure reporting", () => {
     const name = `${datePrefix}-rot`;
     fs.writeFileSync(taskJsonPath(name), "{ not json");
 
-    const r = runTask(["start", name], env);
+    const r = runTask(["start", name, "--allow-empty-context"], env);
     // Tolerant: the session pointer is the point of the command.
     expect(r.status).toBe(0);
     expect(r.stdout).toContain("Current task set to");
@@ -1570,7 +1570,9 @@ describe("regression: JSON read/write failure reporting", () => {
       ).status,
     ).toBe(0);
     const name = `${datePrefix}-live`;
-    expect(runTask(["start", name], env).status).toBe(0);
+    expect(
+      runTask(["start", name, "--allow-empty-context"], env).status,
+    ).toBe(0);
 
     const healthy = runTask(["current", "--json"], env);
     expect(healthy.status).toBe(0);
@@ -1630,7 +1632,10 @@ describe("regression: JSON read/write failure reporting", () => {
           env,
         ).status,
       ).toBe(0);
-      expect(runTask(["start", `${datePrefix}-one`], env).status).toBe(0);
+      expect(
+        runTask(["start", `${datePrefix}-one`, "--allow-empty-context"], env)
+          .status,
+      ).toBe(0);
 
       const sessionsDir = path.join(tmpDir, ".arbor", ".runtime", "sessions");
       const sessionFile = path.join(sessionsDir, "json-io-session.json");
@@ -1641,7 +1646,10 @@ describe("regression: JSON read/write failure reporting", () => {
       // needs no directory permission) and truncated it before writing.
       fs.chmodSync(sessionsDir, 0o555);
       try {
-        const r = runTask(["start", `${datePrefix}-two`], env);
+        const r = runTask(
+          ["start", `${datePrefix}-two`, "--allow-empty-context"],
+          env,
+        );
         expect(r.status).not.toBe(0);
         expect(r.stdout + r.stderr).toContain("Failed to set current task");
       } finally {
@@ -3207,7 +3215,7 @@ describe("regression: current-task path normalization", () => {
     let startOutput = "";
     try {
       startOutput = execSync(
-        `${pythonCmd} ${JSON.stringify(taskScriptPath)} start ${JSON.stringify(relTaskDir)}`,
+        `${pythonCmd} ${JSON.stringify(taskScriptPath)} start ${JSON.stringify(relTaskDir)} --allow-empty-context`,
         {
           cwd: tmpDir,
           encoding: "utf-8",
@@ -5312,9 +5320,11 @@ describe("regression: current-task path normalization", () => {
   // v0.5.0-beta.12: init-context removal + jsonl seeding on task create
   // ------------------------------------------------------------
 
-  it("[init-context-removal] task.py create does NOT seed jsonl when no sub-agent platform configured", () => {
+  it("[init-context-removal] task.py create seeds jsonl even when no platform dir exists", () => {
     setupTaskRepo();
-    // setupTaskRepo does not create any .{platform}/ dir → agent-less mode
+    // setupTaskRepo does not create any .{platform}/ dir. Dispatch through
+    // codeg reads implement.jsonl / check.jsonl on every project, so the
+    // manifests are seeded unconditionally.
     const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     execSync(
       `${pythonCmd} ${JSON.stringify(taskScriptPath)} create "plain task" --description "regression fixture" --slug plain-task --assignee test-dev`,
@@ -5326,8 +5336,8 @@ describe("regression: current-task path normalization", () => {
       .filter((d) => d.includes("plain-task"));
     expect(newDirs.length).toBeGreaterThan(0);
     const taskDir = path.join(tasksDir, newDirs[0]);
-    expect(fs.existsSync(path.join(taskDir, "implement.jsonl"))).toBe(false);
-    expect(fs.existsSync(path.join(taskDir, "check.jsonl"))).toBe(false);
+    expect(fs.readFileSync(path.join(taskDir, "implement.jsonl"), "utf-8")).toBe("");
+    expect(fs.readFileSync(path.join(taskDir, "check.jsonl"), "utf-8")).toBe("");
   });
 
   it("[validation-preflight] task.py create writes EMPTY jsonl when a sub-agent platform dir exists", () => {
@@ -5403,15 +5413,11 @@ describe("regression: current-task path normalization", () => {
     expect(stderr).toContain("add-context");
   });
 
-  it("[init-context-removal] inject-subagent-context.py skips seed rows (no `file` field)", () => {
-    // Hook's read_jsonl_entries should return empty list when jsonl contains
-    // only a seed row — not crash, not treat `_example` as a path.
-    const hookContent = getSharedHookScripts().find(
-      (h) => h.name === "inject-subagent-context.py",
-    )?.content;
-    expect(hookContent).toBeDefined();
-    const hookPath = path.join(tmpDir, "hook.py");
-    fs.writeFileSync(hookPath, hookContent as string, "utf-8");
+  it("[init-context-removal] dispatch_context.py skips seed rows (no `file` field)", () => {
+    // read_jsonl_entries should return empty list when jsonl contains only a
+    // seed row — not crash, not treat `_example` as a path.
+    writeArborScripts();
+    const scriptsDir = path.join(tmpDir, ".arbor", "scripts");
 
     // Minimal fake jsonl with only seed
     const jsonlDir = path.join(tmpDir, "repo");
@@ -5425,10 +5431,9 @@ describe("regression: current-task path normalization", () => {
     // Run a tiny Python snippet that imports the hook module and calls
     // read_jsonl_entries. Capturing the stderr warning proves the code path.
     const probeScript = `
-import sys, importlib.util
-spec = importlib.util.spec_from_file_location("h", ${JSON.stringify(hookPath)})
-mod = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(mod)
+import sys
+sys.path.insert(0, ${JSON.stringify(scriptsDir)})
+from common import dispatch_context as mod
 entries = mod.read_jsonl_entries(${JSON.stringify(jsonlDir)}, "seed.jsonl")
 print(len(entries))
 `;
@@ -5761,7 +5766,7 @@ print(len(entries))
     );
     expect(match).toBeTruthy();
     const body = match?.[1] ?? "";
-    expect(body).toMatch(/commit \(Phase 3\.4\)/i);
+    expect(body).toMatch(/commit \(3\.4/i);
   });
 
   it("[workflow-state-r2] template workflow.md [workflow-state:planning] mentions artifact gates + required jsonl curation", () => {
@@ -5775,9 +5780,7 @@ print(len(entries))
     expect(body).toMatch(
       /Complex: finish `prd\.md`, `design\.md`, and `implement\.md`/,
     );
-    expect(body).toContain(
-      "curate `implement.jsonl` and `check.jsonl` as spec/research manifests before start",
-    );
+    expect(body).toContain("Curate `implement.jsonl` and `check.jsonl` (1.3, required)");
   });
 
   it("[#292] workflow and brainstorm templates treat seed-only jsonl as not planning-ready", () => {
@@ -5795,6 +5798,7 @@ print(len(entries))
     expect(wf).toContain(
       "`implement.jsonl` and `check.jsonl` each contain at least one real curated entry (seed row does not count)",
     );
+    expect(wf).toContain("Runtime consumers tolerate missing or seed-only manifests");
 
     const templateRoot = path.join(
       path.dirname(fileURLToPath(import.meta.url)),
@@ -5810,7 +5814,7 @@ print(len(entries))
         "utf-8",
       );
       expect(content, relativePath).toContain(
-        "Sub-agent-dispatch tasks have real curated entries in both `implement.jsonl` and `check.jsonl`; seed-only manifests are not ready.",
+        "Both `implement.jsonl` and `check.jsonl` have real curated entries",
       );
     }
   });
@@ -5937,6 +5941,46 @@ print(len(entries))
     expect(output).not.toContain("#### 2.1 Implement");
   });
 
+  it("[workflow-v2] get_context.py --mode phase --step resolves parallel-variant 2P.x steps", () => {
+    writeArborScripts();
+    writeProjectFile(path.join(".arbor", ".developer"), "name=test\n");
+    writeProjectFile(
+      path.join(".arbor", "workflow.md"),
+      templateWorkflowMd(),
+    );
+    const contextScript = path.join(
+      tmpDir,
+      ".arbor",
+      "scripts",
+      "get_context.py",
+    );
+    const step = (id: string) =>
+      spawnSync(
+        pythonCmd,
+        [contextScript, "--mode", "phase", "--step", id],
+        { cwd: tmpDir, encoding: "utf-8" },
+      );
+
+    const parallel = step("2P.1");
+    expect(parallel.status, parallel.stderr).toBe(0);
+    expect(parallel.stdout).toMatch(/^#### 2P\.1 Worktrees/);
+    expect(parallel.stdout).toContain("git worktree add");
+    expect(parallel.stdout).not.toContain("#### 2P.2");
+
+    // The `P` matches case-insensitively.
+    expect(step("2p.1").stdout).toBe(parallel.stdout);
+
+    // Serial ids are unaffected and never resolve to the parallel variant.
+    const serial = step("2.1");
+    expect(serial.status, serial.stderr).toBe(0);
+    expect(serial.stdout).toMatch(/^#### 2\.1 Implement/);
+    expect(serial.stdout).not.toContain("2P.");
+
+    const missing = step("2P.9");
+    expect(missing.status).toBe(2);
+    expect(missing.stderr).toContain("Step not found: 2P.9");
+  });
+
   // ------------------------------------------------------------
   // session-start.py <arbor-workflow> + <guidelines> compact context
   // ------------------------------------------------------------
@@ -6026,13 +6070,13 @@ print(len(entries))
   });
 
   // ------------------------------------------------------------
-  // inject-subagent-context.py update_current_phase() removal
-  //   Hook must NOT write current_phase back to task.json on spawn.
+  // dispatch context injection must not write task state
+  //   Hook must NOT write current_phase back to task.json on dispatch.
   // ------------------------------------------------------------
 
-  it("[workflow-v2] inject-subagent-context.py does NOT write current_phase when implement spawns", () => {
+  it("[workflow-v2] inject-delegation-context.py does NOT write current_phase when implement is dispatched", () => {
     const sharedInject = getSharedHookScripts().find(
-      (hook) => hook.name === "inject-subagent-context.py",
+      (hook) => hook.name === "inject-delegation-context.py",
     )?.content;
 
     writeArborScripts();
@@ -6072,24 +6116,26 @@ print(len(entries))
       '{"file":"src/example.ts","reason":"spec"}\n',
     );
     writeProjectFile(
-      path.join(".claude", "hooks", "inject-subagent-context.py"),
-      expectTemplateContent(sharedInject, "shared inject-subagent-context"),
+      path.join(".claude", "hooks", "inject-delegation-context.py"),
+      expectTemplateContent(sharedInject, "shared inject-delegation-context"),
     );
 
-    // Simulate Task tool spawn (Claude-style input)
+    // Simulate a codeg delegate_to_agent call resolved via the session pointer
     const input = JSON.stringify({
-      tool_name: "Task",
+      tool_name: "mcp__codeg-mcp__delegate_to_agent",
       tool_input: {
-        subagent_type: "arbor-implement",
-        prompt: "do work",
+        assistant_id: 1,
+        task: "Role: implement\n\ndo work",
       },
       cwd: tmpDir,
       session_id: "phase-a",
     });
-    runPython(
-      path.join(".claude", "hooks", "inject-subagent-context.py"),
+    const output = runPython(
+      path.join(".claude", "hooks", "inject-delegation-context.py"),
       input,
+      { CLAUDE_PROJECT_DIR: tmpDir },
     );
+    expect(output).toContain("arbor-hook-injected");
 
     // Assert task.json is NOT modified with current_phase
     const taskJson = JSON.parse(
@@ -6104,15 +6150,20 @@ print(len(entries))
     expect(taskJson.status).toBe("in_progress");
   });
 
-  it("[workflow-v2] inject-subagent-context.py source does NOT contain update_current_phase function", () => {
-    const sharedInject = getSharedHookScripts().find(
-      (hook) => hook.name === "inject-subagent-context.py",
-    )?.content;
-    expect(sharedInject).toBeTruthy();
-    expect(sharedInject).not.toContain("def update_current_phase");
-    expect(sharedInject).not.toContain("update_current_phase(");
-    // AGENTS_NO_PHASE_UPDATE constant was only used by the removed function
-    expect(sharedInject).not.toContain("AGENTS_NO_PHASE_UPDATE");
+  it("[workflow-v2] dispatch context sources do NOT contain update_current_phase function", () => {
+    const sources = [
+      getSharedHookScripts().find(
+        (hook) => hook.name === "inject-delegation-context.py",
+      )?.content,
+      getAllScripts().get("common/dispatch_context.py"),
+    ];
+    for (const source of sources) {
+      expect(source).toBeTruthy();
+      expect(source).not.toContain("def update_current_phase");
+      expect(source).not.toContain("update_current_phase(");
+      // AGENTS_NO_PHASE_UPDATE constant was only used by the removed function
+      expect(source).not.toContain("AGENTS_NO_PHASE_UPDATE");
+    }
   });
 
   it("[issue-395] task.py list --json emits a stable machine-readable schema", () => {
@@ -6690,16 +6741,13 @@ describe("regression: cli_adapter platform support (beta.9, beta.13, beta.16)", 
     expect(taskContext as string).toMatch(/def cmd_list_context\b/);
   });
 
-  it("[init-context-removal] task_store.cmd_create creates jsonl for sub-agent platforms", () => {
+  it("[init-context-removal] task_store.cmd_create always creates jsonl manifests", () => {
     const taskStore = getAllScripts().get("common/task_store.py");
     expect(taskStore).toBeDefined();
-    // Sub-agent platform probe.
-    expect(taskStore as string).toMatch(/_SUBAGENT_CONFIG_DIRS/);
-    expect(taskStore as string).toContain('".claude"');
-    // StarFactory is class-1 (native agents + PreToolUse injection) and
-    // ignores a project-level .claude/, so a star-only project must still
-    // get implement.jsonl / check.jsonl seeded on `task.py create`.
-    expect(taskStore as string).toContain('".starFactory"');
+    // Dispatch reads the manifests on every project, so there is no platform
+    // probe gating their creation any more.
+    expect(taskStore as string).not.toMatch(/_SUBAGENT_CONFIG_DIRS/);
+    expect(taskStore as string).not.toMatch(/_has_subagent_platform/);
     // Manifests are created empty — no placeholder row that PR preflight
     // would later reject as unresolved scaffolding.
     expect(taskStore as string).not.toMatch(/_write_seed_jsonl/);
@@ -6707,8 +6755,6 @@ describe("regression: cli_adapter platform support (beta.9, beta.13, beta.16)", 
     expect(taskStore as string).toContain(
       'jsonl_path.write_text("", encoding="utf-8")',
     );
-    // cmd_create calls into the jsonl-creation path.
-    expect(taskStore as string).toMatch(/_has_subagent_platform\(repo_root\)/);
 
     // The validator is the second half of the contract: placeholder rows left
     // by older versions are a hard error, not a silently skipped comment.
@@ -7044,7 +7090,8 @@ describe("regression: hook templates honor the ARBOR_HOOKS kill switch", () => {
     const sharedHookTargets = [
       "session-start.py",
       "inject-workflow-state.py",
-      "inject-subagent-context.py",
+      "inject-delegation-context.py",
+      "guard-builtin-agent.py",
       "inject-shell-session-context.py",
     ];
     for (const name of sharedHookTargets) {
@@ -7131,43 +7178,37 @@ describe("regression: sub-agent context injection fallback (0.5.3)", () => {
   // sub-agent to load context itself when the marker is absent.
   const HOOK_INJECTED_MARKER = "<!-- arbor-hook-injected -->";
 
-  it("inject-subagent-context.py emits the marker for implement / check / finish", () => {
-    const hook = getSharedHookScripts().find(
-      (h) => h.name === "inject-subagent-context.py",
-    );
-    expect(hook).toBeDefined();
-    const src = hook?.content ?? "";
-    // Marker must appear in build_implement_prompt / build_check_prompt /
-    // build_finish_prompt (research is intentionally NOT marker'd — it has no
-    // task binding).
-    expect(src).toContain(HOOK_INJECTED_MARKER);
-    // Must appear at least three times (one per implement / check / finish).
-    const matches = src.match(/<!--\s*arbor-hook-injected\s*-->/g) ?? [];
-    expect(matches.length).toBeGreaterThanOrEqual(3);
+  it("dispatch_context.py emits the marker for every role prompt", () => {
+    const src = getAllScripts().get("common/dispatch_context.py") ?? "";
+    expect(src).toContain(`MARKER = "${HOOK_INJECTED_MARKER}"`);
+    // Every role template (implement / check / finish / research) opens with
+    // the marker, so the delegation hook stays idempotent on retries.
+    for (const builder of [
+      "build_implement_prompt",
+      "build_check_prompt",
+      "build_finish_prompt",
+      "build_research_prompt",
+    ]) {
+      const body = src.split(`def ${builder}(`)[1] ?? "";
+      expect(body, `${builder} must exist`).not.toBe("");
+      expect(body.slice(0, 200), builder).toContain('return f"""{MARKER}');
+    }
   });
 
   const __dirnameFb = path.dirname(fileURLToPath(import.meta.url));
   const repoRootFb = path.resolve(__dirnameFb, "../../..");
 
-  it("workflow.md dispatch protocol covers all platforms (not class-2 only)", () => {
+  it("workflow.md dispatch protocol requires the Active task header for every role", () => {
     const workflowPath = path.join(
       repoRootFb,
       "packages/cli/src/templates/arbor/workflow.md",
     );
     const wf = fs.readFileSync(workflowPath, "utf-8");
-    // The protocol enforces `Active task: <path>` for ALL sub-agents (no
-    // arbor-research carve-out as of 0.5.8 — research sub-agents need the
-    // task path to know which `{task_dir}/research/` to write into).
-    expect(wf).toContain("Sub-agent dispatch protocol");
-    expect(wf).toContain("all platforms");
-    expect(wf).toContain("all sub-agents");
-    expect(wf).not.toContain("EXCEPT arbor-research");
-    expect(wf).toContain("arbor-research");
-    expect(wf).toContain("Active task:");
-    // Must NOT scope the rule to class-2 only — that was the pre-0.5.3 limit.
-    expect(wf).not.toMatch(
-      /Sub-agent dispatch protocol \(class-2 platforms[^)]*\)/,
-    );
+    expect(wf).toContain("**Header protocol.**");
+    expect(wf).toContain("Active task: <absolute path of the task directory in the MAIN checkout>");
+    expect(wf).toContain("Role: implement | check | check [finish] | research");
+    expect(wf).toContain("`arbor-research-star`");
+    expect(wf).toContain("never through the built-in `Agent`/`Task` tool");
   });
 });
 
@@ -8521,7 +8562,11 @@ describe("regression: a linked worktree inherits developer identity", () => {
       ["inherited", "main-dev"],
     ]);
 
-    const started = runTask(worktreeDir, ["start", `${datePrefix}-inherited`]);
+    const started = runTask(worktreeDir, [
+      "start",
+      `${datePrefix}-inherited`,
+      "--allow-empty-context",
+    ]);
     expect(started.status, started.stderr).toBe(0);
 
     // Inheritance is read-only: copying the file in would go stale and shadow

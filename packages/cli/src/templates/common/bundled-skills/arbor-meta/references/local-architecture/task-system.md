@@ -71,7 +71,7 @@ python3 ./.arbor/scripts/task.py remove-subtask <parent-dir> <child-dir>
 
 `children` on the parent is a historical list. When a child is archived, Arbor keeps that child name in the parent so progress like `[2/3 done]` remains meaningful after completed children move to `archive/`.
 
-The AI should not treat phase numbers as task status. Task progress is mainly determined by `status`, artifact presence (`prd.md`, optional `design.md` / `implement.md`), whether JSONL context is configured for sub-agent mode, and the phase descriptions in `workflow.md`.
+The AI should not treat phase numbers as task status. Task progress is mainly determined by `status`, artifact presence (`prd.md`, optional `design.md` / `implement.md`), whether JSONL context is configured for dispatched roles, and the phase descriptions in `workflow.md`.
 
 ## Active Task
 
@@ -87,7 +87,7 @@ If the platform or shell environment has no stable session identity, `task.py st
 
 ## JSONL Context
 
-`implement.jsonl` and `check.jsonl` are context manifests for sub-agents to read first. They do not replace `implement.md`; `implement.md` is the human-readable execution plan.
+`implement.jsonl` and `check.jsonl` are context manifests for dispatched roles to read first. They do not replace `implement.md`; `implement.md` is the human-readable execution plan.
 
 Format:
 
@@ -124,7 +124,7 @@ When modifying the task system, the AI should prefer script commands to maintain
 | Change the default task template | `.arbor/scripts/common/task_store.py` and task creation instructions. |
 | Change status semantics | `.arbor/workflow.md`, workflow-state hook logic, and task usage conventions. |
 | Add task lifecycle actions | `hooks.after_*` in `.arbor/config.yaml`. |
-| Change context rules | Planning artifact guidance in `.arbor/workflow.md` and related platform agent/hook instructions. |
+| Change context rules | Planning artifact guidance in `.arbor/workflow.md` and related hook and `.arbor/agents/*.md` instructions. |
 | Change archive policy | `.arbor/scripts/common/task_store.py` / `task_utils.py`. |
 
 These are local files in the user project. Do not default to editing Arbor CLI source code unless the user wants to contribute upstream.
