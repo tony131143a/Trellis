@@ -1,0 +1,153 @@
+.github/workflows/ci.yml
+  s_0519108ba1d962::t_01c8c3ae45034b 53,57,59,63-64,67
+package.json
+  s_0519108ba1d962::t_1814b2d9c9044a 6-9
+packages/cli/package.json
+  s_0519108ba1d962::t_62e3a43ca5b2dc 29
+packages/cli/src/cli/index.ts
+  s_2303349de7dd2c::t_19f91e145259d2 44,59
+packages/cli/src/commands/init.ts
+  s_2303349de7dd2c::t_80bad83a457ffa 39,760,1112
+packages/cli/src/commands/update.ts
+  s_685f47e97c493e::t_4806fed4bc5b2d 7,604-607,637,742,1791,1827,1831,1862
+packages/cli/src/configurators/claude.ts
+  s_0519108ba1d962::t_afa03adfff65ca 41,43,50-58
+packages/cli/src/configurators/index.ts
+  s_d956e6c36f7197::t_7e385dfd4301bc 50-52,78
+packages/cli/src/configurators/star.ts
+  s_685f47e97c493e::t_4d5244be7b305b 7,10,12,21
+packages/cli/src/configurators/workflow.ts
+  s_0519108ba1d962::t_f01ad4bfb88a35 128,131,175-177
+packages/cli/src/migrations/manifests/0.1.0.json
+  s_d956e6c36f7197::t_ffbd386fd8f931 2-3,6
+packages/cli/src/templates/claude/index.ts
+  s_a77e17f81fb4d5::t_2d6d0747c36aca 12
+packages/cli/src/templates/extract.ts
+  s_685f47e97c493e::t_3a33f202a23089 31
+packages/cli/src/templates/shared-hooks/index.ts
+  s_26cbf09cd5f71c::t_18e17bc8810f83 33,42,44,46,50-53,76
+packages/cli/src/templates/shared-hooks/inject-shell-session-context.py
+  s_26cbf09cd5f71c::t_f19db0d34d02bc 4-9,62-65,102-103,105-107,115,117,123-124,128-129,213-217,243
+packages/cli/src/templates/shared-hooks/inject-subagent-context.py
+  s_685f47e97c493e::t_2edfeae0d68c9a 4,90-96,131,840-841,848,851-852,858-859,952,954-957,959-960
+packages/cli/src/templates/shared-hooks/inject-workflow-state.py
+  s_2303349de7dd2c::t_d941e2df976385 8-9,18-21,87-91,255,269-272,320,323,327
+packages/cli/src/templates/shared-hooks/session-start.py
+  s_ceca19ee02e7db::t_32bc0711570f83 154,161,207-211,872
+packages/cli/src/templates/star/index.ts
+  s_2303349de7dd2c::t_4f41ae04477cdf 7,15,18,20
+packages/cli/src/templates/trellis/scripts/common/active_task.py
+  s_0519108ba1d962::t_c2daca29f464f5 41-44,50-51,57-60,271,354,371-373
+packages/cli/src/templates/trellis/scripts/common/git_context.py
+  s_685f47e97c493e::t_5c1e77537a0392 70
+packages/cli/src/templates/trellis/scripts/common/task_store.py
+  s_2303349de7dd2c::t_f594f4304fa945 258,569
+packages/cli/src/templates/trellis/scripts/common/workflow_phase.py
+  s_685f47e97c493e::t_60a89265bbe1e6 11,13,135,150,162,166,168
+packages/cli/src/types/ai-tools.ts
+  s_2303349de7dd2c::t_bc37b48439bd68 10,15,18,21,55,81,130,139
+packages/cli/src/utils/managed-removal.ts
+  s_685f47e97c493e::t_73fee3ea3ee2d3 2,6-13,27-222,253,350-351,355,359,450-451
+packages/cli/src/utils/task-json.ts
+  s_26cbf09cd5f71c::t_744012fa95bb69 3,5-8,11-135
+packages/cli/test/configurators/index.test.ts
+  s_ea6ab5a300b7af::t_d68bf13c205e22 249
+packages/cli/test/configurators/platforms.test.ts
+  s_0519108ba1d962::t_2d6f97fcc2aeb7 71,332
+packages/cli/test/registry-invariants.test.ts
+  s_6fdd99ea352832::t_0ae1caf405c7d9 104-105
+packages/cli/test/setup.ts
+  s_d956e6c36f7197::t_916402945bce09 1-3,13,16
+packages/cli/test/templates/star.test.ts
+  s_6fdd99ea352832::t_b332e612a93af8 2,96
+packages/cli/test/templates/trellis.test.ts
+  s_89909573a1c4a0::t_0e49fbe5e2de52 39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "841ece54e749ed4041fd98c09d05d883e70fca18",
+  "prompts": {},
+  "sessions": {
+    "s_0519108ba1d962": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3c211409-f8ab-4058-9ab8-4c7f9e8f76f0",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_2303349de7dd2c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cbf803fa-9816-48ca-a2a3-a235a5d7848a",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_26cbf09cd5f71c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3714100a-c100-4056-8c87-3590b0b447ca",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_685f47e97c493e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5401ee01-f9a2-461c-97a8-9fada2f5bc87",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_6fdd99ea352832": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0c05407e-0e8d-4c1d-9820-e1d56f1cfcca",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_89909573a1c4a0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "17514ab7-64fd-4da4-9203-77cc06c585b9",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_a77e17f81fb4d5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "04c4ed90-fa93-4eff-be25-aa2be90500a4",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_ceca19ee02e7db": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "89717fdf-de40-43fd-9ee5-17b61040676e",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_d956e6c36f7197": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "38f6a1e9-7bf1-4863-b52d-727538889516",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_ea6ab5a300b7af": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "658ca8bd-dd48-4e4b-afb8-e49832a7ab67",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
