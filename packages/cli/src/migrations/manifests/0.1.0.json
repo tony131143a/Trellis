@@ -1,0 +1,7 @@
+{
+  "version": "0.1.0",
+  "description": "Initial release",
+  "breaking": false,
+  "recommendMigrate": false,
+  "migrations": []
+}

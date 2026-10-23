@@ -1,12 +1,8 @@
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import path from "node:path";
 import { AI_TOOLS } from "../types/ai-tools.js";
-import { getClaudeTemplatePath } from "../templates/extract.js";
 import {
   getSettingsTemplate,
   getStatuslineHook,
 } from "../templates/claude/index.js";
-import { toPosix } from "../utils/posix.js";
 import {
   resolvePlaceholders,
   resolveCommands,
@@ -17,24 +13,6 @@ import {
   writeTemplateMap,
   type PlatformConfigureOptions,
 } from "./shared.js";
-
-const EXCLUDE_PATTERNS = [
-  ".d.ts",
-  ".d.ts.map",
-  ".js",
-  ".js.map",
-  ".ts", // TypeScript source — dev-only; not part of user-shipped templates
-  "__pycache__",
-];
-
-function shouldExclude(filename: string): boolean {
-  for (const pattern of EXCLUDE_PATTERNS) {
-    if (filename.endsWith(pattern) || filename === pattern) {
-      return true;
-    }
-  }
-  return false;
-}
 
 /**
  * Inject the opt-in `statusLine` block into the settings.json template.
@@ -59,56 +37,25 @@ function injectStatusLine(content: string): string {
 }
 
 /**
- * Walk the claude template directory into a `Map<relPath, content>` rooted at
- * `.claude/`, excluding build artifacts. Yields `agents/*.md` and
- * `settings.json`.
- *
- * `commands/` is skipped (sourced from the common template context) and so is
- * `hooks/` — the default hooks come from shared-hooks/ and the only file in
- * this tree's hooks/ is the opt-in statusline, which `configureClaude` adds
- * on request.
- */
-function walkClaudeTemplateDir(): Map<string, string> {
-  const files = new Map<string, string>();
-  const sourcePath = getClaudeTemplatePath();
-
-  function walk(relDir: string): void {
-    const absDir = path.join(sourcePath, relDir);
-    for (const entry of readdirSync(absDir)) {
-      if (shouldExclude(entry)) continue;
-      const absEntry = path.join(absDir, entry);
-      const relEntry = relDir ? path.join(relDir, entry) : entry;
-      if (statSync(absEntry).isDirectory()) {
-        if (relEntry === "commands" || relEntry === "hooks") continue;
-        walk(relEntry);
-      } else {
-        const content = readFileSync(absEntry, "utf-8");
-        // Map keys are logical paths used as cross-platform hash keys
-        // downstream. Always POSIX, regardless of host OS.
-        files.set(
-          toPosix(path.join(".claude", relEntry)),
-          entry === "settings.json" ? resolvePlaceholders(content) : content,
-        );
-      }
-    }
-  }
-
-  walk("");
-  return files;
-}
-
-/**
  * The Claude Code file set — written at init and diffed by `trellis update`.
- * - agents/, settings.json from the platform template directory
+ * - settings.json from the platform template directory
  * - hooks/ from shared-hooks/ (unified with other platforms)
- * - commands/trellis/ — start + finish-work as slash commands
+ * - commands/trellis/ — continue + finish-work as slash commands
  * - skills/trellis-{name}/SKILL.md — auto-triggered skills from `common/skills/`
  *
  * The opt-in statusline is deliberately absent — see `configureClaude`.
  */
 export function collectClaudeTemplates(): Map<string, string> {
   const ctx = AI_TOOLS["claude-code"].templateContext;
-  const files = walkClaudeTemplateDir();
+  const files = new Map<string, string>();
+
+  // Map keys are logical paths used as cross-platform hash keys downstream.
+  // Always POSIX, regardless of host OS.
+  const settings = getSettingsTemplate();
+  files.set(
+    `.claude/${settings.targetPath}`,
+    resolvePlaceholders(settings.content),
+  );
 
   for (const cmd of resolveCommands(ctx)) {
     files.set(`.claude/commands/trellis/${cmd.name}.md`, cmd.content);

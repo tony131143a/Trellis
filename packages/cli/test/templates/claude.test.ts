@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   settingsTemplate,
-  getAllAgents,
   getSettingsTemplate,
 } from "../../src/templates/claude/index.js";
 
@@ -71,16 +70,6 @@ describe("settingsTemplate SessionStart matchers", () => {
 // =============================================================================
 // getAllAgents — reads agent templates
 // =============================================================================
-
-describe("getAllAgents", () => {
-  it("each agent has name and content", () => {
-    const agents = getAllAgents();
-    for (const agent of agents) {
-      expect(agent.name.length).toBeGreaterThan(0);
-      expect(agent.content.length).toBeGreaterThan(0);
-    }
-  });
-});
 
 // =============================================================================
 // getSettingsTemplate — returns settings as SettingsTemplate

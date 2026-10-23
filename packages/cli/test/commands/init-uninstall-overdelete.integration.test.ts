@@ -64,12 +64,12 @@ describe("init + uninstall: manifest accuracy + homedir guard", () => {
 
   // ----- R1: manifest accuracy after init -----
 
-  it("#R1.1 init does not hash pre-existing .codex/sessions/ user data (issue #221)", async () => {
-    // Repro from the issue body. User has codex chat history before they ever
+  it("#R1.1 init does not hash pre-existing .starFactory/sessions/ user data (issue #221)", async () => {
+    // Repro from the issue body. User has star chat history before they ever
     // ran trellis.
     const userSession = path.join(
       tmpDir,
-      ".codex",
+      ".starFactory",
       "sessions",
       "2026",
       "x.jsonl",
@@ -77,13 +77,13 @@ describe("init + uninstall: manifest accuracy + homedir guard", () => {
     fs.mkdirSync(path.dirname(userSession), { recursive: true });
     fs.writeFileSync(userSession, "user-chat-data\n");
 
-    await init({ yes: true, codex: true, force: true });
+    await init({ yes: true, star: true, force: true });
 
     const hashes = loadHashes(tmpDir);
-    expect(hashes).not.toHaveProperty(".codex/sessions/2026/x.jsonl");
-    // Sanity: trellis's own codex files ARE tracked.
+    expect(hashes).not.toHaveProperty(".starFactory/sessions/2026/x.jsonl");
+    // Sanity: trellis's own star files ARE tracked.
     const trackedCodex = Object.keys(hashes).filter((k) =>
-      k.startsWith(".codex/"),
+      k.startsWith(".starFactory/"),
     );
     expect(trackedCodex.length).toBeGreaterThan(0);
   });
@@ -132,10 +132,10 @@ describe("init + uninstall: manifest accuracy + homedir guard", () => {
 
   // ----- R1 → uninstall outcome: user data survives -----
 
-  it("#R1.4 init → uninstall preserves user data under .codex/sessions/", async () => {
+  it("#R1.4 init → uninstall preserves user data under .starFactory/sessions/", async () => {
     const userSession = path.join(
       tmpDir,
-      ".codex",
+      ".starFactory",
       "sessions",
       "2026",
       "x.jsonl",
@@ -143,7 +143,7 @@ describe("init + uninstall: manifest accuracy + homedir guard", () => {
     fs.mkdirSync(path.dirname(userSession), { recursive: true });
     fs.writeFileSync(userSession, "user-chat-data\n");
 
-    await init({ yes: true, codex: true, force: true });
+    await init({ yes: true, star: true, force: true });
     await uninstall({ yes: true });
 
     // The user's session JSONL survives.

@@ -36,59 +36,16 @@ import {
   type ProjectType,
   type DetectedPackage,
 } from "../utils/project-detector.js";
-import { initializeHashes, removeHash } from "../utils/template-hash.js";
-import {
-  NATIVE_WORKFLOW_ID,
-  resolveWorkflowTemplate,
-} from "../utils/workflow-resolver.js";
+import { initializeHashes } from "../utils/template-hash.js";
 import {
   isCwdHomedir,
   homedirGuardMessage,
   homedirBypassEnabled,
 } from "../utils/cwd-guard.js";
-import {
-  writeSpecRegistryConfig,
-  type SpecRegistryConfig,
-} from "../utils/registry-config.js";
-import {
-  fetchTemplateIndex,
-  probeRegistryIndex,
-  downloadTemplateById,
-  downloadRegistryDirect,
-  parseRegistrySource,
-  TIMEOUTS,
-  TEMPLATE_INDEX_URL,
-  type SpecTemplate,
-  type TemplateStrategy,
-  type RegistrySource,
-  type RegistryBackend,
-} from "../utils/template-fetcher.js";
-import { setupProxy, maskProxyUrl } from "../utils/proxy.js";
-import { toPosix } from "../utils/posix.js";
-import { updateHashes } from "../utils/template-hash.js";
 
 const MIN_PYTHON_MAJOR = 3;
 const MIN_PYTHON_MINOR = 9;
 const PYTHON_VERSION_RE = /Python (\d+)\.(\d+)/;
-
-function collectSpecPaths(cwd: string): Set<string> {
-  const specRoot = path.join(cwd, PATHS.SPEC);
-  const paths = new Set<string>();
-  if (!fs.existsSync(specRoot)) return paths;
-
-  const walk = (dir: string): void => {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        walk(fullPath);
-      } else if (entry.isFile()) {
-        paths.add(toPosix(path.relative(cwd, fullPath)));
-      }
-    }
-  };
-  walk(specRoot);
-  return paths;
-}
 
 export function isSupportedPythonVersion(versionOutput: string): boolean {
   const match = versionOutput.match(PYTHON_VERSION_RE);
@@ -800,7 +757,7 @@ async function handleReinit(
       console.log(chalk.gray(`Already initialized with: ${configuredNames}`));
       console.log(
         chalk.gray(
-          "Use platform flags (e.g., --codex) or -u <name> to add platforms/developer.",
+          "Use platform flags (e.g., --star) or -u <name> to add platforms/developer.",
         ),
       );
       return true;
@@ -1002,44 +959,15 @@ async function maybePromptStatuslineOptIn(
 }
 
 interface InitOptions {
-  cursor?: boolean;
   claude?: boolean;
-  opencode?: boolean;
-  codex?: boolean;
-  kilo?: boolean;
-  kiro?: boolean;
-  gemini?: boolean;
-  antigravity?: boolean;
-  devin?: boolean;
-  /** Deprecated alias for `devin` — Windsurf was renamed to Devin. */
-  windsurf?: boolean;
-  qoder?: boolean;
-  codebuddy?: boolean;
-  copilot?: boolean;
-  droid?: boolean;
-  dsh?: boolean;
-  pi?: boolean;
-  reasonix?: boolean;
-  zcode?: boolean;
-  trae?: boolean;
-  omp?: boolean;
-  grok?: boolean;
-  kimi?: boolean;
-  snow?: boolean;
   star?: boolean;
   yes?: boolean;
   user?: string;
   force?: boolean;
   skipExisting?: boolean;
-  template?: string;
-  overwrite?: boolean;
-  append?: boolean;
-  registry?: string;
   monorepo?: boolean;
   /** Claude Code only: install the opt-in Trellis statusLine (--with-statusline) */
   withStatusline?: boolean;
-  workflow?: string;
-  workflowSource?: string;
 }
 
 // Compile-time check: every CliFlag must be a key of InitOptions.
@@ -1097,8 +1025,6 @@ function writeMonorepoConfig(cwd: string, packages: DetectedPackage[]): void {
 
 interface InitAnswers {
   tools: string[];
-  template?: string;
-  existingDirAction?: TemplateStrategy;
 }
 
 export async function init(options: InitOptions): Promise<void> {
@@ -1108,14 +1034,6 @@ export async function init(options: InitOptions): Promise<void> {
   if (isCwdHomedir() && !homedirBypassEnabled()) {
     console.error(chalk.red(homedirGuardMessage("init")));
     process.exit(1);
-  }
-
-  // Deprecated alias: --windsurf → --devin (Windsurf was renamed to Devin).
-  // Normalize here too so programmatic callers (not just the CLI action) map
-  // correctly. The CLI action prints the deprecation notice.
-  if (options.windsurf) {
-    options.devin = true;
-    delete options.windsurf;
   }
 
   const cwd = process.cwd();
@@ -1135,12 +1053,6 @@ export async function init(options: InitOptions): Promise<void> {
       "\n   All-in-one AI framework & toolkit for Claude Code & Cursor\n",
     ),
   );
-
-  // Set up proxy before any network calls
-  const proxyUrl = setupProxy();
-  if (proxyUrl) {
-    console.log(chalk.gray(`   Using proxy: ${maskProxyUrl(proxyUrl)}\n`));
-  }
 
   // Set write mode based on options
   let writeMode: WriteMode = "ask";
@@ -1192,14 +1104,12 @@ export async function init(options: InitOptions): Promise<void> {
   const tasksDirEarly = path.join(cwd, PATHS.TASKS);
   const tasksEmptyEarly =
     !fs.existsSync(tasksDirEarly) || fs.readdirSync(tasksDirEarly).length === 0;
-  const hasTemplateRequest = !!options.template || !!options.registry;
 
   if (
     !isFirstInit &&
     !options.force &&
     !options.skipExisting &&
-    !tasksEmptyEarly &&
-    !hasTemplateRequest
+    !tasksEmptyEarly
   ) {
     const reinitDone = await handleReinit(
       cwd,
@@ -1231,37 +1141,11 @@ export async function init(options: InitOptions): Promise<void> {
   // Detect project type (silent - no output)
   const detectedType = detectProjectType(cwd);
 
-  // Parse custom registry source early (needed by both monorepo + single-repo flows)
-  let registry: RegistrySource | undefined;
-  let registrySourceForConfig: string | undefined;
-  if (options.registry) {
-    try {
-      registry = parseRegistrySource(options.registry);
-      registrySourceForConfig = options.registry;
-    } catch (error) {
-      console.log(
-        chalk.red(
-          error instanceof Error ? error.message : "Invalid registry source",
-        ),
-      );
-      return;
-    }
-  }
-
-  // Determine template strategy from flags (needed before monorepo template downloads)
-  let templateStrategy: TemplateStrategy = "skip";
-  if (options.overwrite) {
-    templateStrategy = "overwrite";
-  } else if (options.append) {
-    templateStrategy = "append";
-  }
-
   // ==========================================================================
   // Monorepo Detection
   // ==========================================================================
 
   let monorepoPackages: DetectedPackage[] | undefined;
-  let remoteSpecPackages: Set<string> | undefined;
 
   if (options.monorepo !== false) {
     // options.monorepo: true = --monorepo, false = --no-monorepo, undefined = auto
@@ -1333,99 +1217,6 @@ export async function init(options: InitOptions): Promise<void> {
 
       if (enableMonorepo) {
         monorepoPackages = detected;
-        remoteSpecPackages = new Set<string>();
-
-        // Per-package template selection (unless -y mode: all use blank spec)
-        if (!options.yes && !options.template) {
-          for (const pkg of detected) {
-            const { specSource } = await inquirer.prompt<{
-              specSource: string;
-            }>([
-              {
-                type: "list",
-                name: "specSource",
-                message: `Spec source for ${pkg.name} (${pkg.path}):`,
-                choices: [
-                  { name: "From scratch (Trellis default)", value: "blank" },
-                  { name: "Download remote template", value: "remote" },
-                ],
-                default: "blank",
-              },
-            ]);
-
-            if (specSource === "remote") {
-              // Use existing template download flow, targeting spec/<name>/
-              const destDir = path.join(
-                cwd,
-                PATHS.SPEC,
-                sanitizePkgName(pkg.name),
-              );
-              console.log(chalk.blue(`📦 Select template for ${pkg.name}...`));
-              // Fetch templates if not already done
-              const templates = await fetchTemplateIndex();
-              const specTemplates = templates
-                .filter((t) => t.type === "spec")
-                .map((t) => ({
-                  name: `${t.id} (${t.name})`,
-                  value: t.id,
-                }));
-
-              if (specTemplates.length > 0) {
-                const { templateId } = await inquirer.prompt<{
-                  templateId: string;
-                }>([
-                  {
-                    type: "list",
-                    name: "templateId",
-                    message: `Select template for ${pkg.name}:`,
-                    choices: specTemplates,
-                  },
-                ]);
-
-                const result = await downloadTemplateById(
-                  cwd,
-                  templateId,
-                  templateStrategy,
-                  templates.find((t) => t.id === templateId),
-                  undefined,
-                  destDir,
-                );
-
-                if (result.success) {
-                  console.log(chalk.green(`   ${result.message}`));
-                  remoteSpecPackages.add(sanitizePkgName(pkg.name));
-                } else {
-                  console.log(chalk.yellow(`   ${result.message}`));
-                  console.log(chalk.gray("   Falling back to blank spec..."));
-                }
-              } else {
-                console.log(
-                  chalk.gray("   No templates available. Using blank spec."),
-                );
-              }
-            }
-          }
-        } else if (options.template) {
-          // --template as default for all packages
-          for (const pkg of detected) {
-            const destDir = path.join(
-              cwd,
-              PATHS.SPEC,
-              sanitizePkgName(pkg.name),
-            );
-            const result = await downloadTemplateById(
-              cwd,
-              options.template,
-              templateStrategy,
-              undefined,
-              registry,
-              destDir,
-            );
-            if (result.success && !result.skipped) {
-              remoteSpecPackages.add(sanitizePkgName(pkg.name));
-            }
-          }
-        }
       }
     }
   }
@@ -1478,431 +1269,6 @@ export async function init(options: InitOptions): Promise<void> {
   await maybePromptStatuslineOptIn(options, tools);
 
   // ==========================================================================
-  // Template Selection (single-repo only; monorepo handles templates above)
-  // ==========================================================================
-
-  let selectedTemplate: string | null = null;
-
-  // Pre-fetched templates list (used to pass selected SpecTemplate to downloadTemplateById)
-  let fetchedTemplates: SpecTemplate[] = [];
-  let registryBackend: RegistryBackend | undefined;
-
-  // Determine the index URL based on registry
-  const indexUrl = registry
-    ? `${registry.rawBaseUrl}/index.json`
-    : TEMPLATE_INDEX_URL;
-
-  if (monorepoPackages) {
-    // Monorepo: template selection already handled above
-  } else if (options.template) {
-    // Template specified via --template flag
-    selectedTemplate = options.template;
-    if (registry) {
-      const probeResult = await probeRegistryIndex(indexUrl, registry);
-      registryBackend = probeResult.backend;
-      if (probeResult.error) {
-        console.log(chalk.red(`Error: ${probeResult.error.message}`));
-        return;
-      }
-      if (probeResult.isNotFound) {
-        console.log(
-          chalk.red(
-            "Error: Registry has no index.json. Remove --template to use direct download mode.",
-          ),
-        );
-        return;
-      }
-      fetchedTemplates = probeResult.templates;
-    }
-  } else if (!options.yes) {
-    // Interactive mode: show template selection
-    const timeoutSec = TIMEOUTS.INDEX_FETCH_MS / 1000;
-    const sourceLabel = registry ? registry.gigetSource : TEMPLATE_INDEX_URL;
-    console.log(
-      chalk.gray(`   Fetching available templates from ${sourceLabel}`),
-    );
-    let elapsed = 0;
-    const ticker = setInterval(() => {
-      elapsed++;
-      process.stdout.write(
-        `\r${chalk.gray(`   Loading... ${elapsed}s/${timeoutSec}s`)}`,
-      );
-    }, 1000);
-    process.stdout.write(chalk.gray(`   Loading... 0s/${timeoutSec}s`));
-    let templates: SpecTemplate[];
-    let registryProbeNotFound = false;
-    let registryProbeError: Error | undefined;
-    if (registry) {
-      const probeResult = await probeRegistryIndex(indexUrl, registry);
-      templates = probeResult.templates;
-      registryProbeNotFound = probeResult.isNotFound;
-      registryProbeError = probeResult.error;
-      registryBackend = probeResult.backend;
-    } else {
-      templates = await fetchTemplateIndex(indexUrl);
-    }
-    clearInterval(ticker);
-    // Clear the loading line
-    process.stdout.write("\r\x1b[2K");
-    fetchedTemplates = templates;
-
-    if (templates.length === 0 && registry && registryProbeNotFound) {
-      // Custom registry: confirmed no index.json — will try direct download later
-      console.log(
-        chalk.gray(
-          "   No index.json found at registry. Will download as direct spec template.",
-        ),
-      );
-    } else if (templates.length === 0 && registry) {
-      // Custom registry: transient error (not a 404) — abort, don't misclassify
-      console.log(
-        chalk.red(
-          `   ${registryProbeError?.message ?? "Could not reach registry. Check your connection and try again."}`,
-        ),
-      );
-      return;
-    } else if (templates.length === 0) {
-      console.log(
-        chalk.gray(
-          "   Could not fetch templates (offline or server unavailable).",
-        ),
-      );
-      console.log(chalk.gray("   Using blank templates.\n"));
-    }
-
-    if (templates.length > 0) {
-      // Build template choices
-      const specTemplates = templates
-        .filter((t) => t.type === "spec")
-        .map((t) => ({
-          name: `${t.id} (${t.name})`,
-          value: t.id,
-        }));
-
-      const templateChoices = registry
-        ? specTemplates
-        : [
-            {
-              name: "from scratch (default)",
-              value: "blank",
-            },
-            ...specTemplates,
-            {
-              name: "custom (enter a registry source)",
-              value: "__custom__",
-            },
-          ];
-
-      // Loop to allow returning from custom source input back to the picker
-      let templatePicked = false;
-      while (templateChoices.length > 0 && !templatePicked) {
-        const templateAnswer = await inquirer.prompt<{ template: string }>([
-          {
-            type: "list",
-            name: "template",
-            message: "Select a spec template:",
-            choices: templateChoices,
-            default: registry ? undefined : "blank",
-          },
-        ]);
-
-        if (templateAnswer.template === "__custom__") {
-          // Prompt for custom registry source (empty → back to picker)
-          const customSource = await askInput(
-            "Enter registry source (e.g., gh:myorg/myrepo/specs), or press Enter to go back: ",
-          );
-          if (!customSource) {
-            continue; // Back to picker
-          }
-          try {
-            registry = parseRegistrySource(customSource);
-            registrySourceForConfig = customSource;
-            fetchedTemplates = []; // Reset so direct-download guard works correctly
-            // Probe index.json to detect marketplace vs direct download
-            const customIndexUrl = `${registry.rawBaseUrl}/index.json`;
-            console.log(
-              chalk.gray(
-                `   Checking for templates at ${registry.gigetSource}...`,
-              ),
-            );
-            const customProbe = await probeRegistryIndex(
-              customIndexUrl,
-              registry,
-            );
-            const customTemplates = customProbe.templates;
-            registryBackend = customProbe.backend;
-            if (customTemplates.length > 0) {
-              // Marketplace mode: show picker with custom templates
-              fetchedTemplates = customTemplates;
-              const customChoices = customTemplates
-                .filter((t) => t.type === "spec")
-                .map((t) => ({
-                  name: `${t.id} (${t.name})`,
-                  value: t.id,
-                }));
-              if (customChoices.length > 0) {
-                const customAnswer = await inquirer.prompt<{
-                  template: string;
-                }>([
-                  {
-                    type: "list",
-                    name: "template",
-                    message: "Select a spec template:",
-                    choices: customChoices,
-                  },
-                ]);
-                selectedTemplate = customAnswer.template;
-
-                // Check if spec directory already exists and ask what to do
-                const specDir = path.join(cwd, PATHS.SPEC);
-                if (
-                  fs.existsSync(specDir) &&
-                  !options.overwrite &&
-                  !options.append
-                ) {
-                  const actionAnswer = await inquirer.prompt<{
-                    action: TemplateStrategy;
-                  }>([
-                    {
-                      type: "list",
-                      name: "action",
-                      message: `Directory ${PATHS.SPEC} already exists. What do you want to do?`,
-                      choices: [
-                        { name: "Skip (keep existing)", value: "skip" },
-                        {
-                          name: "Overwrite (replace all)",
-                          value: "overwrite",
-                        },
-                        {
-                          name: "Append (add missing files only)",
-                          value: "append",
-                        },
-                      ],
-                      default: "skip",
-                    },
-                  ]);
-                  templateStrategy = actionAnswer.action;
-                }
-              }
-              templatePicked = true;
-            } else if (customProbe.isNotFound) {
-              // No index.json → direct download mode
-              templatePicked = true;
-            } else {
-              // Transient error (not 404) — loop back, don't misclassify
-              console.log(
-                chalk.yellow(
-                  `   ${customProbe.error?.message ?? "Could not reach registry. Try again or enter a different source."}`,
-                ),
-              );
-              registry = undefined; // Reset so we don't fall through to direct download
-              registrySourceForConfig = undefined;
-            }
-          } catch (error) {
-            console.log(
-              chalk.red(
-                error instanceof Error
-                  ? error.message
-                  : "Invalid registry source",
-              ),
-            );
-            // Loop back to picker
-          }
-        } else {
-          templatePicked = true;
-          if (templateAnswer.template !== "blank") {
-            selectedTemplate = templateAnswer.template;
-
-            // Check if spec directory already exists and ask what to do
-            const specDir = path.join(cwd, PATHS.SPEC);
-            if (
-              fs.existsSync(specDir) &&
-              !options.overwrite &&
-              !options.append
-            ) {
-              const actionAnswer = await inquirer.prompt<{
-                action: TemplateStrategy;
-              }>([
-                {
-                  type: "list",
-                  name: "action",
-                  message: `Directory ${PATHS.SPEC} already exists. What do you want to do?`,
-                  choices: [
-                    { name: "Skip (keep existing)", value: "skip" },
-                    { name: "Overwrite (replace all)", value: "overwrite" },
-                    {
-                      name: "Append (add missing files only)",
-                      value: "append",
-                    },
-                  ],
-                  default: "skip",
-                },
-              ]);
-              templateStrategy = actionAnswer.action;
-            }
-          }
-        }
-      }
-    }
-  }
-  // -y mode with --registry (no --template): probe index.json to detect mode
-  // Skip when monorepo mode already handled templates above
-  if (options.yes && registry && !selectedTemplate && !monorepoPackages) {
-    const probeResult = await probeRegistryIndex(
-      `${registry.rawBaseUrl}/index.json`,
-      registry,
-    );
-    registryBackend = probeResult.backend;
-    if (probeResult.templates.length > 0) {
-      // Marketplace mode requires interactive selection — can't auto-select
-      console.log(
-        chalk.red(
-          "Error: Registry is a marketplace with multiple templates. " +
-            "Use --template <id> to specify which one, or remove -y for interactive selection.",
-        ),
-      );
-      return;
-    }
-    if (!probeResult.isNotFound) {
-      // Transient error (not 404) — abort, don't misclassify as direct-download
-      console.log(
-        chalk.red(
-          `Error: ${probeResult.error?.message ?? "Could not reach registry. Check your connection and try again."}`,
-        ),
-      );
-      return;
-    }
-    // isNotFound=true → no index.json, proceed with direct download (fetchedTemplates stays empty)
-  }
-
-  // ==========================================================================
-  // Download Remote Template (if selected or direct registry download)
-  // ==========================================================================
-
-  let useRemoteTemplate = false;
-  let registrySpecConfigToPersist: SpecRegistryConfig | null = null;
-
-  if (selectedTemplate) {
-    // Marketplace mode: download specific template by ID
-    console.log(chalk.blue(`📦 Downloading template "${selectedTemplate}"...`));
-    console.log(chalk.gray("   This may take a moment on slow connections."));
-
-    // Find pre-fetched SpecTemplate to avoid double-fetch
-    const prefetched = fetchedTemplates.find((t) => t.id === selectedTemplate);
-
-    const result = await downloadTemplateById(
-      cwd,
-      selectedTemplate,
-      templateStrategy,
-      prefetched,
-      registry,
-      undefined,
-      registryBackend,
-    );
-
-    if (result.success) {
-      if (result.skipped) {
-        console.log(chalk.gray(`   ${result.message}`));
-      } else {
-        console.log(chalk.green(`   ${result.message}`));
-        useRemoteTemplate = true;
-        if (registry) {
-          registrySpecConfigToPersist = {
-            source: registrySourceForConfig ?? registry.gigetSource,
-            template: selectedTemplate,
-          };
-        }
-      }
-    } else {
-      console.log(chalk.yellow(`   ${result.message}`));
-      console.log(chalk.gray("   Falling back to blank templates..."));
-      const retryCmd = registry
-        ? `trellis init --registry ${registry.gigetSource} --template ${selectedTemplate}`
-        : `trellis init --template ${selectedTemplate}`;
-      console.log(chalk.gray(`   You can retry later: ${retryCmd}`));
-    }
-  } else if (registry && fetchedTemplates.length === 0) {
-    // Direct download mode: registry has no index.json, download directory directly
-    console.log(
-      chalk.blue(`📦 Downloading spec from ${registry.gigetSource}...`),
-    );
-    console.log(chalk.gray("   This may take a moment on slow connections."));
-
-    // Ask about existing spec dir in interactive mode
-    if (!options.yes && !options.overwrite && !options.append) {
-      const specDir = path.join(cwd, PATHS.SPEC);
-      if (fs.existsSync(specDir)) {
-        const actionAnswer = await inquirer.prompt<{
-          action: TemplateStrategy;
-        }>([
-          {
-            type: "list",
-            name: "action",
-            message: `Directory ${PATHS.SPEC} already exists. What do you want to do?`,
-            choices: [
-              { name: "Skip (keep existing)", value: "skip" },
-              { name: "Overwrite (replace all)", value: "overwrite" },
-              { name: "Append (add missing files only)", value: "append" },
-            ],
-            default: "skip",
-          },
-        ]);
-        templateStrategy = actionAnswer.action;
-      }
-    }
-
-    const result = await downloadRegistryDirect(
-      cwd,
-      registry,
-      templateStrategy,
-      undefined,
-      registryBackend,
-    );
-
-    if (result.success) {
-      if (result.skipped) {
-        console.log(chalk.gray(`   ${result.message}`));
-      } else {
-        console.log(chalk.green(`   ${result.message}`));
-        useRemoteTemplate = true;
-        registrySpecConfigToPersist = {
-          source: registrySourceForConfig ?? registry.gigetSource,
-        };
-      }
-    } else {
-      console.log(chalk.yellow(`   ${result.message}`));
-      console.log(chalk.gray("   Falling back to blank templates..."));
-      console.log(
-        chalk.gray(
-          `   You can retry later: trellis init --registry ${registry.gigetSource}`,
-        ),
-      );
-    }
-  }
-
-  // ==========================================================================
-  // Resolve workflow template (default: native bundled)
-  // ==========================================================================
-
-  const workflowIdInput = options.workflow?.trim();
-  const workflowId =
-    workflowIdInput && workflowIdInput.length > 0
-      ? workflowIdInput
-      : NATIVE_WORKFLOW_ID;
-  let workflowMdOverride: string | undefined;
-  if (workflowId !== NATIVE_WORKFLOW_ID || options.workflowSource) {
-    const resolved = await resolveWorkflowTemplate(workflowId, {
-      source: options.workflowSource,
-    });
-    if (resolved.id !== NATIVE_WORKFLOW_ID) {
-      workflowMdOverride = resolved.content;
-      console.log(
-        chalk.blue(`🧭 Using workflow template: ${chalk.cyan(resolved.id)}`),
-      );
-    }
-  }
-
-  // ==========================================================================
   // Create Workflow Structure
   // ==========================================================================
 
@@ -1917,10 +1283,7 @@ export async function init(options: InitOptions): Promise<void> {
     console.log(chalk.blue("📁 Creating workflow structure..."));
     await createWorkflowStructure(cwd, {
       projectType,
-      skipSpecTemplates: useRemoteTemplate,
       packages: monorepoPackages,
-      remoteSpecPackages,
-      workflowMdOverride,
     });
 
     // Write monorepo packages to config.yaml (non-destructive patch)
@@ -1965,34 +1328,12 @@ export async function init(options: InitOptions): Promise<void> {
     stopRecordingWrites();
   }
 
-  if (registrySpecConfigToPersist) {
-    writeSpecRegistryConfig(cwd, registrySpecConfigToPersist);
-  }
-
   // Initialize template hashes for modification tracking
   const hashedCount = initializeHashes(cwd, { trackedPaths: writtenPaths });
-  if (useRemoteTemplate) {
-    const specFilesToHash = new Map<string, string>();
-    for (const relativePath of collectSpecPaths(cwd)) {
-      const content = fs.readFileSync(path.join(cwd, relativePath), "utf-8");
-      specFilesToHash.set(relativePath, content);
-    }
-    if (specFilesToHash.size > 0) {
-      updateHashes(cwd, specFilesToHash);
-    }
-  }
   if (hashedCount > 0) {
     console.log(
       chalk.gray(`📋 Tracking ${hashedCount} template files for updates`),
     );
-  }
-
-  // Non-native workflow is user-managed local content. Drop the
-  // `.trellis/workflow.md` hash entry so `trellis update` classifies it as
-  // modified and does not silently restore native bytes. See design.md
-  // "Durable-state contract".
-  if (workflowMdOverride !== undefined && workflowId !== NATIVE_WORKFLOW_ID) {
-    removeHash(cwd, PATHS.WORKFLOW_GUIDE_FILE);
   }
 
   // Initialize developer identity (silent - no output)

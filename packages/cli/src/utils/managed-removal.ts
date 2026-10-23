@@ -1,9 +1,16 @@
 /**
- * Shared ownership-aware removal planning used by `uninstall` and `ablate`.
+ * Ownership-aware removal planning used by `uninstall`.
  *
  * The template hash manifest is the ownership boundary. This module deliberately
  * keeps planning pure with respect to mutations: it reads manifest-listed files,
- * runs the existing pure scrubbers, and returns the exact post-removal content.
+ * runs the pure scrubbers below, and returns the exact post-removal content.
+ *
+ * Structured config files (settings.json / AGENTS.md) are passed through a
+ * scrubber that strips just the trellis fields, leaving user-added neighbors
+ * intact. Each scrubber returns `{ content, fullyEmpty }`:
+ * - `content` is the post-scrub text to write back if the file should remain.
+ * - `fullyEmpty` is true when, after stripping every trellis-managed value,
+ *   nothing meaningful is left. The caller deletes the file in that case.
  */
 
 import fs from "node:fs";
@@ -12,23 +19,206 @@ import path from "node:path";
 import { DIR_NAMES, FILE_NAMES } from "../constants/paths.js";
 import { ALL_MANAGED_DIRS } from "../configurators/index.js";
 import {
-  COPILOT_INSTRUCTIONS_BLOCK_END,
-  COPILOT_INSTRUCTIONS_BLOCK_START,
-  COPILOT_INSTRUCTIONS_PATH,
-} from "../templates/copilot/index.js";
-import {
-  scrubCodexConfigToml,
-  scrubHooksJson,
-  scrubManagedMarkdownBlock,
-  scrubOpencodePackageJson,
-  scrubPiSettings,
-  type ScrubResult,
-} from "./uninstall-scrubbers.js";
-import {
   cleanupEmptyDirs,
   TRELLIS_BLOCK_END,
   TRELLIS_BLOCK_START,
 } from "./managed-paths.js";
+
+export interface ScrubResult {
+  content: string;
+  fullyEmpty: boolean;
+}
+
+/**
+ * Test whether a hook command string references any of the given manifest paths.
+ *
+ * Trellis-emitted hook commands always have the shape
+ *   `<python-cmd> <manifest-path>`
+ * so the trailing whitespace-delimited token is the script path. We compare
+ * that last token (with surrounding quotes stripped) against the manifest
+ * delete-set. This is intentionally stricter than substring matching: a
+ * user-added hook whose body merely mentions a deleted path inside an `echo`
+ * or comment argument (`echo "see .claude/hooks/session-start.py"`) does NOT
+ * match, because the trailing token is `inspiration"` (or similar) — not the
+ * path. We also accept absolute-path variants like
+ * `/Users/me/proj/.claude/hooks/session-start.py` via `endsWith("/" + p)`.
+ */
+function commandMatchesDeletedPath(
+  command: string,
+  deletedPaths: readonly string[],
+): boolean {
+  const trimmed = command.trim();
+  if (trimmed.length === 0) return false;
+
+  const tokens = trimmed.split(/\s+/);
+  const lastToken = tokens[tokens.length - 1].replace(/^["']|["']$/g, "");
+  if (lastToken.length === 0) return false;
+
+  for (const p of deletedPaths) {
+    if (lastToken === p || lastToken.endsWith("/" + p)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Read the `command` string out of an arbitrary hook entry. */
+function getEntryCommand(entry: unknown): string | null {
+  if (entry === null || typeof entry !== "object") {
+    return null;
+  }
+  const obj = entry as Record<string, unknown>;
+  if (typeof obj.command === "string") return obj.command;
+  return null;
+}
+
+const CLAUDE_TRELLIS_STATUSLINE = ".claude/hooks/statusline.py";
+
+function isTrellisClaudeStatusLine(
+  value: unknown,
+  deletedPaths: readonly string[],
+): boolean {
+  if (!deletedPaths.includes(CLAUDE_TRELLIS_STATUSLINE)) return false;
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const command = getEntryCommand(value);
+  return (
+    command !== null &&
+    commandMatchesDeletedPath(command, [CLAUDE_TRELLIS_STATUSLINE])
+  );
+}
+
+/**
+ * Scrub a Claude-style nested hooks settings JSON file:
+ * `hooks.{Event}.[ {matcher?, hooks: [ {command,...} ]} ]`.
+ *
+ * Strips every entry whose command references a path in `deletedPaths`,
+ * then bottom-up cleans empty containers (matcher block, event array, hooks
+ * object). The exact opt-in Trellis Claude statusLine command is also removed;
+ * other keys outside `hooks` (e.g. `env`, `model`, `permissions`) are
+ * preserved.
+ */
+export function scrubHooksJson(
+  content: string,
+  deletedPaths: readonly string[],
+): ScrubResult {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    // Malformed JSON — leave it untouched, caller will skip.
+    return { content, fullyEmpty: false };
+  }
+
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { content, fullyEmpty: false };
+  }
+
+  const root = parsed as Record<string, unknown>;
+  if (isTrellisClaudeStatusLine(root.statusLine, deletedPaths)) {
+    delete root.statusLine;
+  }
+  const hooks = root.hooks;
+
+  if (hooks === undefined) {
+    // No hooks block — nothing to scrub. Treat as fully empty only if the
+    // entire file has no other keys.
+    const fullyEmpty = Object.keys(root).length === 0;
+    return { content: JSON.stringify(root, null, 2) + "\n", fullyEmpty };
+  }
+
+  if (hooks === null || typeof hooks !== "object" || Array.isArray(hooks)) {
+    // hooks is some unexpected shape — leave it alone.
+    return { content, fullyEmpty: false };
+  }
+
+  const hooksObj = hooks as Record<string, unknown>;
+
+  for (const eventName of Object.keys(hooksObj)) {
+    const eventArr = hooksObj[eventName];
+    if (!Array.isArray(eventArr)) continue;
+
+    const filteredEvent: unknown[] = [];
+
+    for (const entry of eventArr) {
+      // entry is { matcher?, hooks: [...] }
+      if (entry === null || typeof entry !== "object") {
+        filteredEvent.push(entry);
+        continue;
+      }
+      const matcherBlock = entry as Record<string, unknown>;
+      const inner = matcherBlock.hooks;
+      if (!Array.isArray(inner)) {
+        filteredEvent.push(entry);
+        continue;
+      }
+
+      const filteredInner = inner.filter((sub) => {
+        const cmd = getEntryCommand(sub);
+        return !(cmd !== null && commandMatchesDeletedPath(cmd, deletedPaths));
+      });
+
+      if (filteredInner.length === 0) {
+        // Whole matcher block is now empty → drop the block.
+        continue;
+      }
+
+      // Reconstruct the block with the filtered inner list.
+      const rebuilt: Record<string, unknown> = { ...matcherBlock };
+      rebuilt.hooks = filteredInner;
+      filteredEvent.push(rebuilt);
+    }
+
+    if (filteredEvent.length === 0) {
+      // Drop the whole event array.
+      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+      delete hooksObj[eventName];
+    } else {
+      hooksObj[eventName] = filteredEvent;
+    }
+  }
+
+  // If hooks is empty → drop the key.
+  if (Object.keys(hooksObj).length === 0) {
+    delete root.hooks;
+  } else {
+    root.hooks = hooksObj;
+  }
+
+  const fullyEmpty = Object.keys(root).length === 0;
+  return {
+    content: JSON.stringify(root, null, 2) + "\n",
+    fullyEmpty,
+  };
+}
+
+export function scrubManagedMarkdownBlock(
+  content: string,
+  startMarker: string,
+  endMarker: string,
+): ScrubResult {
+  const start = content.indexOf(startMarker);
+  if (start === -1) {
+    return { content, fullyEmpty: false };
+  }
+
+  const end = content.indexOf(endMarker, start);
+  if (end === -1) {
+    return { content, fullyEmpty: false };
+  }
+
+  const blockEnd = end + endMarker.length;
+  const result = (content.slice(0, start) + content.slice(blockEnd))
+    .replace(/\n{3,}/g, "\n\n")
+    .trimEnd();
+  const normalized = result.length > 0 ? `${result}\n` : "";
+
+  return {
+    content: normalized,
+    fullyEmpty: normalized.trim().length === 0,
+  };
+}
 
 export interface StructuredFileSpec {
   /** Manifest path (POSIX). */
@@ -60,7 +250,7 @@ export interface ManagedRemovalPlan {
 }
 
 export interface BuildManagedRemovalPlanOptions {
-  /** Strict path/symlink handling required by reversible ablation. */
+  /** Strict path/symlink handling (validates manifest keys, refuses escapes). */
   strictPaths?: boolean;
 }
 
@@ -157,65 +347,18 @@ export function assertSafeManagedPath(
 }
 
 /**
- * Build the one structured-file registry shared by permanent uninstall and
- * reversible ablation. Keep path ownership here; scrubber behavior remains in
- * `uninstall-scrubbers.ts`.
+ * Build the structured-file registry used by uninstall. Path ownership and
+ * scrubber behavior both live in this module.
  */
 export function buildStructuredFileSpecs(): Map<string, StructuredFileSpec> {
   const specs: StructuredFileSpec[] = [
-    ...(
-      [
-        ".claude/settings.json",
-        ".starFactory/settings.json",
-        ".gemini/settings.json",
-        ".factory/settings.json",
-        ".codebuddy/settings.json",
-        ".qoder/settings.json",
-        ".codex/hooks.json",
-        ".trae/hooks.json",
-      ] as const
-    ).map(
+    ...([".claude/settings.json", ".starFactory/settings.json"] as const).map(
       (posixPath): StructuredFileSpec => ({
         posixPath,
         reason: "Strip trellis hooks; preserve user fields",
-        scrub: (content, deletedPaths) =>
-          scrubHooksJson(content, deletedPaths, "nested"),
+        scrub: (content, deletedPaths) => scrubHooksJson(content, deletedPaths),
       }),
     ),
-    ...([".cursor/hooks.json", ".github/copilot/hooks.json"] as const).map(
-      (posixPath): StructuredFileSpec => ({
-        posixPath,
-        reason: "Strip trellis hooks; preserve user fields",
-        scrub: (content, deletedPaths) =>
-          scrubHooksJson(content, deletedPaths, "flat"),
-      }),
-    ),
-    {
-      posixPath: ".opencode/package.json",
-      reason: "Remove @opencode-ai/plugin dep; preserve other deps",
-      scrub: (content) => scrubOpencodePackageJson(content),
-    },
-    {
-      posixPath: ".pi/settings.json",
-      reason:
-        "Strip trellis extension/skills/prompts entries; preserve user fields",
-      scrub: (content) => scrubPiSettings(content),
-    },
-    {
-      posixPath: ".codex/config.toml",
-      reason: "Remove trellis project_doc_fallback_filenames and notes",
-      scrub: (content) => scrubCodexConfigToml(content),
-    },
-    {
-      posixPath: COPILOT_INSTRUCTIONS_PATH,
-      reason: "Remove Trellis Copilot guidance; preserve repo instructions",
-      scrub: (content) =>
-        scrubManagedMarkdownBlock(
-          content,
-          COPILOT_INSTRUCTIONS_BLOCK_START,
-          COPILOT_INSTRUCTIONS_BLOCK_END,
-        ),
-    },
     {
       posixPath: FILE_NAMES.AGENTS,
       reason: "Strip Trellis managed block; preserve user instructions",
@@ -304,8 +447,8 @@ export function buildManagedRemovalPlan(
 }
 
 /**
- * Preserve the uninstall execution semantics after planner extraction. Ablate
- * uses the same plan but applies its own backup/rollback transaction around it.
+ * Execute a removal plan: write scrubbed files, unlink deletions, remove
+ * `.trellis/`, then clean up directories that became empty.
  */
 export function executeManagedRemovalPlan(
   cwd: string,

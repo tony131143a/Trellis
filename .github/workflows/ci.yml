@@ -5,7 +5,6 @@ on:
     branches: [main]
     paths:
       - 'packages/cli/**'
-      - 'packages/core/**'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
       - 'package.json'
@@ -15,7 +14,6 @@ on:
     branches: [main]
     paths:
       - 'packages/cli/**'
-      - 'packages/core/**'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
       - 'package.json'
@@ -28,7 +26,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -53,30 +50,26 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Typecheck (core + cli)
+      - name: Typecheck
         run: pnpm typecheck
 
       - name: Typecheck Python
-        run: pnpm --filter @mindfoldhq/trellis lint:py
+        run: pnpm --filter @tony131143a/arbor lint:py
 
-      - name: Lint (core + cli)
+      - name: Lint
         run: pnpm lint
 
       # Build before test: integration tests spawn the real CLI via
-      # bin/trellis.js, which imports dist/ and needs build output to exist.
-      - name: Build (core then cli)
+      # bin/arbor.js, which imports dist/ and needs build output to exist.
+      - name: Build
         run: pnpm build
 
-      - name: Test (core + cli)
+      - name: Test
         run: pnpm test
 
       - name: Verify build output
         run: |
           set -euo pipefail
-          test -d packages/core/dist
-          test -f packages/core/dist/index.js
-          test -f packages/core/dist/channel/index.js
-          test -f packages/core/dist/task/index.js
           test -d packages/cli/dist
           test -f packages/cli/dist/index.js
           echo "Build verification passed"

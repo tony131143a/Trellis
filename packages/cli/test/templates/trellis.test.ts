@@ -1,11 +1,4 @@
 import { describe, expect, it } from "vitest";
-import fs from "node:fs";
-import path from "node:path";
-import {
-  collectPlatformTemplates,
-  PLATFORM_IDS,
-} from "../../src/configurators/index.js";
-import type { AITool } from "../../src/types/ai-tools.js";
 import {
   scriptsInit,
   commonInit,
@@ -15,7 +8,6 @@ import {
   commonTaskQueue,
   commonTaskUtils,
   commonActiveTask,
-  commonCliAdapter,
   getDeveloperScript,
   initDeveloperScript,
   taskScript,
@@ -44,8 +36,7 @@ describe("trellis template constants", () => {
     commonTaskQueue,
     commonTaskUtils,
     commonActiveTask,
-    commonCliAdapter,
-    getDeveloperScript,
+      getDeveloperScript,
     initDeveloperScript,
     taskScript,
     getContextScript,
@@ -85,19 +76,6 @@ describe("trellis template constants", () => {
     return match[1];
   }
 
-  function platformBlock(section: string, openingMarker: string): string {
-    const normalizedSection = section.replace(/\r\n/g, "\n");
-    const escaped = openingMarker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const closingMarker = openingMarker.replace("[", "[/");
-    const escapedClosing = closingMarker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const pattern = new RegExp(`${escaped}\\n([\\s\\S]*?)\\n${escapedClosing}`);
-    const match = pattern.exec(normalizedSection);
-    if (!match) {
-      throw new Error(`workflow.md block ${openingMarker} must exist`);
-    }
-    return match[0];
-  }
-
   it("all templates are non-empty strings", () => {
     for (const [name, content] of Object.entries(allTemplates)) {
       expect(content.length, `${name} should be non-empty`).toBeGreaterThan(0);
@@ -129,132 +107,6 @@ describe("trellis template constants", () => {
 
   it("workflowMdTemplate is markdown", () => {
     expect(workflowMdTemplate).toContain("#");
-  });
-
-  it("marketplace native workflow mirror matches the bundled workflow", () => {
-    const repoRoot = fs.existsSync(path.join(process.cwd(), "marketplace"))
-      ? process.cwd()
-      : path.resolve(process.cwd(), "../..");
-    const marketplaceNative = fs.readFileSync(
-      path.join(repoRoot, "marketplace/workflows/native/workflow.md"),
-      "utf-8",
-    );
-    expect(marketplaceNative).toBe(workflowMdTemplate);
-  });
-
-  it("marketplace TDD workflow planning breadcrumbs include behavior gates", () => {
-    const repoRoot = fs.existsSync(path.join(process.cwd(), "marketplace"))
-      ? process.cwd()
-      : path.resolve(process.cwd(), "../..");
-    const tddWorkflow = fs.readFileSync(
-      path.join(repoRoot, "marketplace/workflows/tdd/workflow.md"),
-      "utf-8",
-    );
-    const planning = /\[workflow-state:planning\]([\s\S]*?)\[\/workflow-state:planning\]/.exec(
-      tddWorkflow,
-    )?.[1];
-    const planningInline = /\[workflow-state:planning-inline\]([\s\S]*?)\[\/workflow-state:planning-inline\]/.exec(
-      tddWorkflow,
-    )?.[1];
-
-    for (const block of [planning, planningInline]) {
-      expect(block).toContain("observable behavior slices");
-      expect(block).toContain("public interface under test");
-      expect(block).toContain("mock boundaries");
-    }
-  });
-
-  it("[codex-native-subagents] workflow.md preserves the dispatch prompt for Codex native fallback", () => {
-    // The in_progress breadcrumb instructs the main agent to prefix
-    // dispatch prompts with "Active task: <path>". Codex uses native
-    // SubagentStart context injection, but retains this child-side fallback
-    // whenever a project hook is unavailable or untrusted.
-    const block = inProgressBreadcrumb();
-    expect(block).toContain("Active task:");
-    expect(workflowMdTemplate).toContain("native Codex `SubagentStart`");
-    expect(workflowMdTemplate).toContain("child-side pull fallback");
-  });
-
-  it("[codex-native-subagents] Codex uses the native hook implement block, while class-2 platforms stay pull-based", () => {
-    const implement = stepSection("2.1");
-    const hookAutoBlock = platformBlock(
-      implement,
-      "[Claude Code, Cursor, OpenCode, codex-sub-agent, CodeBuddy, Droid, Pi, ZCode, Snow, Oh My Pi, StarFactory]",
-    );
-    const pullBasedMarker =
-      "[Gemini, Qoder, Copilot, Reasonix, Trae, Grok, Kimi Code]";
-    const pullBasedBlock = platformBlock(implement, pullBasedMarker);
-
-    const workflowLabelByPlatform: Partial<Record<AITool, string>> = {
-      gemini: "Gemini",
-      qoder: "Qoder",
-      copilot: "Copilot",
-      trae: "Trae",
-      grok: "Grok",
-      kimi: "Kimi Code",
-    };
-    // Pi templates keep a pull-based fallback, but workflow 2.1 routes Pi
-    // through the extension-backed context path.
-    const extensionBackedPreludeFallbackPlatforms = new Set<AITool>(["pi"]);
-    // Codex retains a child-side prelude as a compatibility fallback, but
-    // its primary workflow route is the native SubagentStart hook block.
-    const nativePushPreludeFallbackPlatforms = new Set<AITool>(["codex"]);
-    const generatedPullBasedLabels = PLATFORM_IDS.flatMap((id) => {
-      if (
-        extensionBackedPreludeFallbackPlatforms.has(id) ||
-        nativePushPreludeFallbackPlatforms.has(id)
-      ) {
-        return [];
-      }
-      const templates = collectPlatformTemplates(id);
-      const hasPullBasedPrelude =
-        templates !== undefined &&
-        [...templates.entries()].some(
-          ([filePath, content]) =>
-            /trellis-(implement|check)/.test(filePath) &&
-            content.includes("Required: Load Trellis Context First"),
-        );
-      if (!hasPullBasedPrelude) {
-        return [];
-      }
-      const label = workflowLabelByPlatform[id];
-      expect(
-        label,
-        `${id} generates pull-based agent definitions but has no workflow marker mapping`,
-      ).toBeDefined();
-      return [label as string];
-    });
-
-    const pullBasedLabels = [...generatedPullBasedLabels, "Reasonix"];
-    for (const label of pullBasedLabels) {
-      expect(pullBasedBlock, `${label} must use pull-based 2.1 guidance`).toContain(
-        label,
-      );
-      expect(
-        hookAutoBlock,
-        `${label} must not use hook/plugin auto-handles 2.1 guidance`,
-      ).not.toContain(label);
-    }
-    expect(pullBasedBlock).toContain(
-      "The pull-based sub-agent definition auto-handles the context load requirement",
-    );
-    expect(hookAutoBlock).toContain("codex-sub-agent");
-    expect(hookAutoBlock).toContain("SubagentStart");
-  });
-
-  it("[codex-native-subagents] template mode helpers default to auto and fail invalid values closed to inline", () => {
-    const scripts = getAllScripts();
-    const config = scripts.get("common/config.py") ?? "";
-    const workflowPhase = scripts.get("common/workflow_phase.py") ?? "";
-    const taskStore = scripts.get("common/task_store.py") ?? "";
-
-    expect(config).toContain('DEFAULT_CODEX_DISPATCH_MODE = "auto"');
-    expect(config).toContain('if mode == "sub-agent":');
-    expect(config).toContain('return "auto"');
-    expect(config).toContain("using inline");
-    expect(workflowPhase).toContain('mode = "auto"');
-    expect(workflowPhase).toContain('return "codex-sub-agent" if mode == "auto" else "codex-inline"');
-    expect(taskStore).toContain('get_codex_dispatch_mode(repo_root) == "auto"');
   });
 
   it("[issue-237] workflow.md in_progress breadcrumb self-exempts implement/check sub-agents", () => {

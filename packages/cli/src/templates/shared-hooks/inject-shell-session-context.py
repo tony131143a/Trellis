@@ -1,16 +1,12 @@
 #!/usr/bin/env python3
 """Pre-shell hook: bridge the host's session identity into task.py.
 
-No researched platform exports a session id into its shell tool's child
-process, but every hook-capable one puts that id on hook stdin. So the hook
-that fires just before a shell command writes a short-lived runtime ticket
-whenever the pending command calls `task.py start/current/finish`, and the
-task script consumes it when it has no native session environment.
-
-Registered on whichever pre-shell event the host provides — Cursor's
-`beforeShellExecution`, Claude-shaped `PreToolUse`, Gemini's `BeforeTool` —
-which is why the only thing here that knows about payload variation is
-`_pending_shell_command`.
+The host does not export a session id into its shell tool's child process,
+but it puts that id on hook stdin. So the hook that fires just before a shell
+command (Claude-shaped `PreToolUse` on the Bash tool) writes a short-lived
+runtime ticket whenever the pending command calls `task.py
+start/current/finish`, and the task script consumes it when it has no native
+session environment.
 """
 from __future__ import annotations
 
@@ -51,11 +47,6 @@ CONTEXT_IDENTITY_KEYS = (
 # Tool-call payloads nest the command one level down; same casing spread as
 # CONTEXT_IDENTITY_KEYS above.
 TOOL_INPUT_KEYS = ("tool_input", "toolInput")
-# Answering a shell-execution event with an explicit allow is what keeps
-# Cursor from re-prompting for a command Trellis itself asked for. Tool-call
-# hosts read a different response schema, so they get no answer at all rather
-# than a key they would have to ignore.
-SHELL_EVENT_RESPONSE = {"permission": "allow"}
 
 
 def _string_value(value: Any) -> str | None:
@@ -68,12 +59,10 @@ def _string_value(value: Any) -> str | None:
 def _resolve_trellis_root(hook_input: dict[str, Any]) -> Path | None:
     """Locate the project root, trying the payload cwd and then our own.
 
-    Hosts disagree about what `cwd` means. CodeBuddy IDE 4.10.4 sends `"/"` for
-    every PreToolUse event, so trusting the payload alone finds no `.trellis`
-    and the bridge silently does nothing — the hook is invoked, writes no
-    ticket, and `task.py start` degrades. Observed with a wildcard probe:
-
-        {"cwd": "/", "tool_name": "Bash", "tool_input": {"command": "ls …"}}
+    A host may send a `cwd` that is not the project root (e.g. `"/"`), in
+    which case trusting the payload alone finds no `.trellis` and the bridge
+    silently does nothing — the hook is invoked, writes no ticket, and
+    `task.py start` degrades.
 
     The hook's own cwd is reliable where the payload is not: hosts launch it
     from the project root, which is why a relative `command` in settings.json
@@ -110,43 +99,34 @@ def _runtime_ticket_dir(root: Path) -> Path:
     return root / DIR_WORKFLOW / DIR_RUNTIME / DIR_SHELL_TICKETS
 
 
-def _pending_shell_command(hook_input: dict[str, Any]) -> tuple[str, dict[str, Any] | None]:
-    """Read the pending shell command out of either hook payload shape.
+def _pending_shell_command(hook_input: dict[str, Any]) -> str:
+    """Read the pending shell command out of a `PreToolUse` payload.
 
-    Returns the command plus the response envelope that shape expects:
-
-    - shell-execution event (Cursor `beforeShellExecution`) — the command sits
-      at the top level and the host wants a permission decision back;
-    - tool-call event (`PreToolUse`, `BeforeTool`) — the command sits under
-      `tool_input`, and the host reads a schema this hook has no opinion on.
-
-    An ordered fallback, not a platform switch: a third payload shape extends
-    the same function. Anything else yields ("", None) so main() no-ops.
+    The command sits under `tool_input` (or its camelCase twin). The host
+    reads a response schema this hook has no opinion on, so main() prints
+    nothing. Anything else yields "" so main() no-ops.
     """
-    command = _string_value(hook_input.get("command"))
-    if command:
-        return command, SHELL_EVENT_RESPONSE
-
     for key in TOOL_INPUT_KEYS:
         tool_input = hook_input.get(key)
         if not isinstance(tool_input, dict):
             continue
         command = _string_value(tool_input.get("command"))
         if command:
-            return command, None
+            return command
 
-    return "", None
+    return ""
 
 
 def _host_platform_name() -> str | None:
     """Name the host from the config directory this hook was installed into.
 
-    Every platform puts its hooks under its own dotted directory
-    (`.cursor/hooks/`, `.factory/hooks/`, …), so the deepest dotted path
+    Each platform puts its hooks under its own dotted directory
+    (`.claude/hooks/`, `.starFactory/hooks/`), so the deepest dotted path
     segment identifies the host without a table of platform names here. It
     matters because the context key must agree with the one the platform's
     other hooks compute — a ticket keyed differently would write a session
-    file no later hook ever reads.
+    file no later hook ever reads. (`starFactory` is canonicalized to `star`
+    by `common.active_task`.)
     """
     for part in reversed(Path(sys.argv[0]).parts):
         if part.startswith(".") and part not in (".", "..") and len(part) > 1:
@@ -230,11 +210,11 @@ def _write_ticket(
         "session_id": _string_value(hook_input.get("session_id")),
         "generation_id": _string_value(hook_input.get("generation_id")),
         # The resolved project root, not the payload's cwd. The consumer
-        # rejects a ticket whose cwd is outside the repo, and CodeBuddy IDE
-        # 4.10.4 reports "/" for every PreToolUse event — a ticket carrying
-        # that is written correctly and then discarded on arrival. Recording
-        # the root we actually resolved keeps the containment check meaningful
-        # without trusting a field the host may not populate.
+        # rejects a ticket whose cwd is outside the repo, and a host that
+        # reports "/" for a PreToolUse event would have its ticket written
+        # correctly and then discarded on arrival. Recording the root we
+        # actually resolved keeps the containment check meaningful without
+        # trusting a field the host may not populate.
         "cwd": str(root),
         # Kept separately so a wrong host cwd stays visible when debugging.
         "host_cwd": _string_value(hook_input.get("cwd")),
@@ -260,7 +240,7 @@ def main() -> int:
     if not isinstance(hook_input, dict):
         hook_input = {}
 
-    command, response = _pending_shell_command(hook_input)
+    command = _pending_shell_command(hook_input)
     subcommands = _extract_task_subcommands(command)
     if not subcommands:
         return 0
@@ -283,8 +263,6 @@ def main() -> int:
     except OSError:
         return 0
 
-    if response is not None:
-        print(json.dumps(response, ensure_ascii=False))
     return 0
 
 

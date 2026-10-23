@@ -1,12 +1,10 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import chalk from "chalk";
 import inquirer from "inquirer";
 
 import { DIR_NAMES, FILE_NAMES, PATHS } from "../constants/paths.js";
-import type { AITool } from "../types/ai-tools.js";
-import { VERSION, PACKAGE_NAME } from "../constants/version.js";
+import { VERSION } from "../constants/version.js";
 import {
   getMigrationsForVersion,
   getAllMigrations,
@@ -33,7 +31,6 @@ import {
 } from "../utils/template-hash.js";
 import { compareVersions } from "../utils/compare-versions.js";
 import { toPosix } from "../utils/posix.js";
-import { setupProxy } from "../utils/proxy.js";
 import { emptyTaskJson } from "../utils/task-json.js";
 
 // Import templates for comparison
@@ -46,12 +43,6 @@ import {
   workflowMdTemplate,
 } from "../templates/trellis/index.js";
 import { agentsMdContent } from "../templates/markdown/index.js";
-import {
-  COPILOT_INSTRUCTIONS_BLOCK_END,
-  COPILOT_INSTRUCTIONS_BLOCK_START,
-  COPILOT_INSTRUCTIONS_PATH,
-  getCopilotInstructions,
-} from "../templates/copilot/index.js";
 
 import {
   ALL_MANAGED_DIRS,
@@ -59,20 +50,8 @@ import {
   collectPlatformTemplates,
 } from "../configurators/index.js";
 import { replacePythonCommandLiterals } from "../configurators/shared.js";
-import { preserveCodexAgentModelKeys } from "../configurators/codex.js";
-import { printZcodeSetupHint } from "../configurators/zcode.js";
 import { ensureGitattributes } from "../configurators/workflow.js";
 import { pruneOrphanManifestKeys } from "../utils/manifest-prune.js";
-import {
-  fetchRegistrySpecTemplates,
-  collectDirectoryFiles,
-  removeDirectory,
-  parseRegistrySource,
-  probeRegistryIndex,
-  downloadTemplateById,
-  type RegistrySource,
-} from "../utils/template-fetcher.js";
-import { loadSpecRegistryConfig } from "../utils/registry-config.js";
 import {
   cleanupEmptyDirs,
   TRELLIS_BLOCK_END,
@@ -113,13 +92,6 @@ interface ChangeAnalysis {
 type ConflictAction = "overwrite" | "skip" | "create-new";
 
 const CLAUDE_SETTINGS_PATH = ".claude/settings.json";
-const LEGACY_UNTRACKED_AGENTS_MD_BLOCK_HASHES = new Set<string>([
-  // v0.5.0-beta.17 and earlier wrote AGENTS.md but did not hash-track it.
-  // This hash is the pristine Trellis-managed block before the Subagents
-  // section was added, so old untouched projects can be updated without a
-  // false "modified by you" conflict.
-  "c1f511b1cfc1902f2147da159f09cc51f380b0c9e341cdb3ac5dea5233f3e307",
-]);
 
 // Paths that should never be touched (true user data)
 // spec/ is user-customized content created during init; update should never modify it
@@ -147,10 +119,6 @@ function getManagedBlock(
   }
 
   return content.slice(start, end + endMarker.length);
-}
-
-function getTrellisManagedBlock(content: string): string | null {
-  return getManagedBlock(content, TRELLIS_BLOCK_START, TRELLIS_BLOCK_END);
 }
 
 function replaceManagedBlock(
@@ -242,61 +210,6 @@ function buildAgentsMdTemplate(cwd: string): string {
     agentsMdContent,
     TRELLIS_BLOCK_START,
     TRELLIS_BLOCK_END,
-  );
-}
-
-function buildCopilotInstructionsTemplate(cwd: string): string {
-  return buildManagedBlockTemplate(
-    cwd,
-    COPILOT_INSTRUCTIONS_PATH,
-    getCopilotInstructions(),
-    COPILOT_INSTRUCTIONS_BLOCK_START,
-    COPILOT_INSTRUCTIONS_BLOCK_END,
-  );
-}
-
-function isKnownUntrackedTemplate(
-  relativePath: string,
-  existingContent: string,
-): boolean {
-  if (relativePath !== FILE_NAMES.AGENTS) {
-    return false;
-  }
-
-  const managedBlock = getTrellisManagedBlock(existingContent);
-  if (!managedBlock) {
-    return false;
-  }
-
-  return LEGACY_UNTRACKED_AGENTS_MD_BLOCK_HASHES.has(computeHash(managedBlock));
-}
-
-function isSafeUntrackedCopilotInstructionsMerge(
-  relativePath: string,
-  existingContent: string,
-  newContent: string,
-): boolean {
-  if (relativePath !== COPILOT_INSTRUCTIONS_PATH) {
-    return false;
-  }
-
-  if (
-    getManagedBlock(
-      existingContent,
-      COPILOT_INSTRUCTIONS_BLOCK_START,
-      COPILOT_INSTRUCTIONS_BLOCK_END,
-    )
-  ) {
-    return false;
-  }
-
-  return (
-    mergeManagedBlockContent(
-      existingContent,
-      getCopilotInstructions(),
-      COPILOT_INSTRUCTIONS_BLOCK_START,
-      COPILOT_INSTRUCTIONS_BLOCK_END,
-    ) === newContent
   );
 }
 
@@ -650,59 +563,6 @@ export function applyConfigSectionsAdded(
   return { appended };
 }
 
-/**
- * Collect all template files that should be managed by update
- * Only collects templates for platforms that are already configured (have directories)
- */
-/**
- * Detect if legacy Codex upgrade is needed.
- *
- * Old Trellis versions used `.agents/skills/` as codex's configDir.
- * New versions use `.codex/` for Codex-specific config and `.agents/skills/`
- * as a shared layer.
- *
- * Detection: Trellis-tracked hashes contain `.agents/skills/` entries
- * but `.codex/` does not exist. This avoids misclassifying repos that
- * have `.agents/skills/` from other tools (Kimi CLI, Amp, etc.).
- *
- * Returns true if upgrade is needed. Does NOT perform the upgrade —
- * caller should run configurePlatform("codex") after backup/confirm.
- */
-function needsCodexUpgrade(cwd: string): boolean {
-  if (fs.existsSync(path.join(cwd, ".codex"))) {
-    return false;
-  }
-
-  // Legacy Codex marker: old Codex installs tracked command-as-skill files
-  // under `.agents/skills/` before `.codex/` existed as a separate config dir.
-  // A current or future non-Codex platform may own those paths too, so do not
-  // trigger the Codex backfill when a configured non-Codex platform declares
-  // the marker paths in its templates.
-  const hashes = loadHashes(cwd);
-  const legacyMarkers = [
-    ".agents/skills/trellis-continue/SKILL.md",
-    ".agents/skills/trellis-finish-work/SKILL.md",
-  ];
-  const hasLegacyMarker = legacyMarkers.some(
-    (key) => hashes[key] !== undefined,
-  );
-  if (!hasLegacyMarker) {
-    return false;
-  }
-
-  for (const platformId of getConfiguredPlatforms(cwd)) {
-    if (platformId === "codex") {
-      continue;
-    }
-    const platformFiles = collectPlatformTemplates(platformId);
-    if (platformFiles && legacyMarkers.some((key) => platformFiles.has(key))) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
 function preserveExistingClaudeStatusLine(
   cwd: string,
   templates: Map<string, string>,
@@ -741,121 +601,12 @@ function preserveExistingClaudeStatusLine(
   }
 }
 
-function preserveExistingRegistryConfig(cwd: string, template: string): string {
-  const registry = loadSpecRegistryConfig(cwd);
-  if (!registry) return template;
-  return (
-    template.trimEnd() +
-    "\n\n" +
-    "#-------------------------------------------------------------------------------\n" +
-    "# Registry\n" +
-    "#-------------------------------------------------------------------------------\n\n" +
-    "# Source used to install .trellis/spec. trellis update refreshes this\n" +
-    "# hash-tracked spec template while preserving local edits through the\n" +
-    "# normal update conflict flow.\n" +
-    "registry:\n" +
-    "  spec:\n" +
-    `    source: ${registry.source}\n` +
-    (registry.template ? `    template: ${registry.template}\n` : "")
-  );
-}
-
-async function collectRegistrySpecTemplates(
-  cwd: string,
-): Promise<Map<string, string>> {
-  const config = loadSpecRegistryConfig(cwd);
-  if (!config) return new Map();
-
-  let registry: RegistrySource;
-  try {
-    registry = parseRegistrySource(config.source);
-  } catch (error) {
-    console.log(
-      chalk.yellow(
-        `Warning: invalid registry.spec.source in .trellis/config.yaml: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      ),
-    );
-    return new Map();
-  }
-
-  const probe = await probeRegistryIndex(
-    `${registry.rawBaseUrl}/index.json`,
-    registry,
-  );
-  if (probe.templates.length > 0) {
-    if (!config.template) {
-      console.log(
-        chalk.gray(
-          "Registry spec update skipped: marketplace registries require registry.spec.template.",
-        ),
-      );
-      return new Map();
-    }
-    const template = probe.templates.find(
-      (candidate) => candidate.id === config.template,
-    );
-    if (!template) {
-      console.log(
-        chalk.yellow(
-          `Warning: registry spec update skipped: template "${config.template}" was not found in registry index.`,
-        ),
-      );
-      return new Map();
-    }
-    const tempRoot = await fs.promises.mkdtemp(
-      path.join(os.tmpdir(), "trellis-registry-template-"),
-    );
-    try {
-      const result = await downloadTemplateById(
-        tempRoot,
-        config.template,
-        "overwrite",
-        template,
-        registry,
-        undefined,
-        probe.backend,
-      );
-      if (!result.success) {
-        console.log(
-          chalk.yellow(
-            `Warning: registry spec update skipped: ${result.message}`,
-          ),
-        );
-        return new Map();
-      }
-      return collectDirectoryFiles(path.join(tempRoot, PATHS.SPEC), PATHS.SPEC);
-    } finally {
-      await removeDirectory(tempRoot);
-    }
-  }
-  if (!probe.isNotFound) {
-    console.log(
-      chalk.yellow(
-        `Warning: registry spec update skipped: ${
-          probe.error?.message ?? "could not reach registry"
-        }`,
-      ),
-    );
-    return new Map();
-  }
-
-  const result = await fetchRegistrySpecTemplates(registry, probe.backend);
-  if (!result.success) {
-    console.log(
-      chalk.yellow(
-        `Warning: registry spec update skipped: ${result.message ?? "download failed"}`,
-      ),
-    );
-    return new Map();
-  }
-  return result.files;
-}
-
+/**
+ * Collect all template files that should be managed by update
+ * Only collects templates for platforms that are already configured (have directories)
+ */
 async function collectTemplateFiles(
   cwd: string,
-  extraPlatforms?: Set<AITool>,
   /**
    * Bypass `update.skip` when collecting templates. Enable this for breaking
    * releases so new files (e.g. `continue.md` added in 0.5.0) and template
@@ -868,11 +619,6 @@ async function collectTemplateFiles(
 ): Promise<Map<string, string>> {
   const files = new Map<string, string>();
   const platforms = getConfiguredPlatforms(cwd);
-  if (extraPlatforms) {
-    for (const p of extraPlatforms) {
-      platforms.add(p);
-    }
-  }
 
   // Python scripts (single source of truth: getAllScripts())
   for (const [scriptPath, content] of getAllScripts()) {
@@ -888,10 +634,7 @@ async function collectTemplateFiles(
   }
 
   // Configuration
-  files.set(
-    `${DIR_NAMES.WORKFLOW}/config.yaml`,
-    preserveExistingRegistryConfig(cwd, configYamlTemplate),
-  );
+  files.set(`${DIR_NAMES.WORKFLOW}/config.yaml`, configYamlTemplate);
   files.set(`${DIR_NAMES.WORKFLOW}/.gitignore`, gitignoreTemplate);
   // workflow.md is included here because it is runtime-parsed by
   // get_context.py and shared hooks. Keep it on the normal template update
@@ -912,29 +655,10 @@ async function collectTemplateFiles(
       for (const [filePath, content] of platformFiles) {
         files.set(filePath, content);
       }
-      if (platformId === "copilot") {
-        files.set(
-          COPILOT_INSTRUCTIONS_PATH,
-          buildCopilotInstructionsTemplate(cwd),
-        );
-      }
     }
   }
 
-  // Users configure sub-agent models by editing `model` /
-  // `model_reasoning_effort` directly on the generated agent tomls. Preserve
-  // those two keys from the on-disk files into the freshly rendered desired
-  // content so a project whose only local edit is these keys is not flagged
-  // as a modified-file conflict by the hash comparison below.
-  if (platforms.has("codex")) {
-    preserveCodexAgentModelKeys(cwd, files);
-  }
-
   preserveExistingClaudeStatusLine(cwd, files);
-
-  for (const [filePath, content] of await collectRegistrySpecTemplates(cwd)) {
-    files.set(filePath, content);
-  }
 
   // Apply update.skip from config.yaml (unless bypassed for breaking release)
   if (!bypassUpdateSkip) {
@@ -1015,17 +739,7 @@ function analyzeChanges(
         const storedHash = hashes[relativePath];
         const currentHash = computeHash(existingContent);
 
-        if (
-          (storedHash && storedHash === currentHash) ||
-          (!storedHash &&
-            isKnownUntrackedTemplate(relativePath, existingContent)) ||
-          (!storedHash &&
-            isSafeUntrackedCopilotInstructionsMerge(
-              relativePath,
-              existingContent,
-              newContent,
-            ))
-        ) {
+        if (storedHash && storedHash === currentHash) {
           // Either the tracked hash matches, or this is a known pristine template
           // from before the path was hash-tracked. Safe to auto-update.
           change.status = "changed";
@@ -1365,24 +1079,6 @@ function getInstalledVersion(cwd: string): string {
     return fs.readFileSync(versionPath, "utf-8").trim();
   }
   return "unknown";
-}
-
-/**
- * Fetch latest version from npm registry
- */
-async function getLatestNpmVersion(): Promise<string | null> {
-  try {
-    const response = await fetch(
-      `https://registry.npmjs.org/${PACKAGE_NAME}/latest`,
-    );
-    if (!response.ok) {
-      return null;
-    }
-    const data = (await response.json()) as { version?: string };
-    return data.version ?? null;
-  } catch {
-    return null;
-  }
 }
 
 /**
@@ -2054,43 +1750,6 @@ function printMigrationResult(result: MigrationResult): void {
 }
 
 /**
- * One-time 0.2.0 migration: rename `traces-*.md` → `journal-*.md` in every
- * developer workspace directory.
- *
- * Never overwrites an existing `journal-N.md`: a newer session may already
- * have created it, and `.trellis/workspace/` is excluded from the update
- * backup (see `BACKUP_EXCLUDE_PATTERNS`), so clobbering it would be
- * unrecoverable data loss. Conflicting `traces-N.md` files are left in place
- * and reported instead.
- */
-export function renameTracesToJournal(workspaceDir: string): {
-  renamed: number;
-  skipped: string[];
-} {
-  const skipped: string[] = [];
-  let renamed = 0;
-  if (!fs.existsSync(workspaceDir)) return { renamed, skipped };
-
-  for (const dev of fs.readdirSync(workspaceDir)) {
-    const devPath = path.join(workspaceDir, dev);
-    if (!fs.statSync(devPath).isDirectory()) continue;
-
-    for (const file of fs.readdirSync(devPath)) {
-      if (!(file.startsWith("traces-") && file.endsWith(".md"))) continue;
-      const oldPath = path.join(devPath, file);
-      const newPath = path.join(devPath, file.replace("traces-", "journal-"));
-      if (fs.existsSync(newPath)) {
-        skipped.push(oldPath);
-        continue;
-      }
-      fs.renameSync(oldPath, newPath);
-      renamed++;
-    }
-  }
-  return { renamed, skipped };
-}
-
-/**
  * Main update command
  */
 export async function update(options: UpdateOptions): Promise<void> {
@@ -2106,39 +1765,17 @@ export async function update(options: UpdateOptions): Promise<void> {
   console.log(chalk.cyan("\nTrellis Update"));
   console.log(chalk.cyan("══════════════\n"));
 
-  // Set up proxy before any network calls (npm version check)
-  setupProxy();
-
   // Get versions
   const projectVersion = getInstalledVersion(cwd);
   const cliVersion = VERSION;
-  const latestNpmVersion = await getLatestNpmVersion();
 
   // Version comparison
   const cliVsProject = compareVersions(cliVersion, projectVersion);
-  const cliVsNpm = latestNpmVersion
-    ? compareVersions(cliVersion, latestNpmVersion)
-    : 0;
 
   // Display versions with context
   console.log(`Project version: ${chalk.white(projectVersion)}`);
   console.log(`CLI version:     ${chalk.white(cliVersion)}`);
-  if (latestNpmVersion) {
-    console.log(`Latest on npm:   ${chalk.white(latestNpmVersion)}`);
-  } else {
-    console.log(chalk.gray("Latest on npm:   (unable to fetch)"));
-  }
   console.log("");
-
-  // Check if CLI is outdated compared to npm
-  if (cliVsNpm < 0 && latestNpmVersion) {
-    console.log(
-      chalk.yellow(
-        `⚠️  Your CLI (${cliVersion}) is behind npm (${latestNpmVersion}).`,
-      ),
-    );
-    console.log(chalk.yellow(`   Run: trellis upgrade\n`));
-  }
 
   // Check for downgrade situation
   if (cliVsProject < 0) {
@@ -2151,7 +1788,7 @@ export async function update(options: UpdateOptions): Promise<void> {
 
     if (!options.allowDowngrade) {
       console.log(chalk.gray("Solutions:"));
-      console.log(chalk.gray(`  1. Update your CLI: trellis upgrade`));
+      console.log(chalk.gray(`  1. Update your CLI: rebuild and \`npm link\``));
       console.log(
         chalk.gray(`  2. Force downgrade: trellis update --allow-downgrade\n`),
       );
@@ -2169,7 +1806,6 @@ export async function update(options: UpdateOptions): Promise<void> {
 
   // Load template hashes for modification detection
   let hashes = loadHashes(cwd);
-  const zcodeConfigured = getConfiguredPlatforms(cwd).has("zcode");
   const isFirstHashTracking = Object.keys(hashes).length === 0;
 
   // Handle unknown version - skip regular migrations but safe-file-delete still runs
@@ -2186,31 +1822,13 @@ export async function update(options: UpdateOptions): Promise<void> {
     );
   }
 
-  // Detect legacy Codex (has .agents/skills/ tracked by Trellis but no .codex/)
-  // NOTE: this MUST happen before pruneOrphanManifestKeys below, since the
-  // detector reads the raw manifest looking for .agents/skills/ markers that
-  // the prune step would otherwise consider orphans (codex hasn't been added
-  // to configuredPlatforms yet at this point).
-  const codexUpgradeNeeded = needsCodexUpgrade(cwd);
-  if (codexUpgradeNeeded) {
-    console.log(
-      chalk.yellow(
-        "  Legacy Codex detected: .agents/skills/ tracked without .codex/ — will create .codex/ directory",
-      ),
-    );
-  }
-
   // Self-heal poisoned manifests: prune entries that no current platform
   // configurator owns. This silently removes user-owned paths that early
-  // buggy versions of `trellis init` over-hashed (e.g. .codex/sessions/*).
-  // Include codex in known-platforms when codexUpgradeNeeded so legacy Codex
-  // markers under .agents/skills/ survive into the upgrade flow.
+  // buggy versions of `trellis init` over-hashed.
   {
-    const configuredPlatforms = new Set<AITool>(getConfiguredPlatforms(cwd));
-    if (codexUpgradeNeeded) configuredPlatforms.add("codex");
     const prune = pruneOrphanManifestKeys(
       cwd,
-      [...configuredPlatforms],
+      [...getConfiguredPlatforms(cwd)],
       hashes,
     );
     if (prune.pruned.length > 0) {
@@ -2241,11 +1859,7 @@ export async function update(options: UpdateOptions): Promise<void> {
     })();
 
   // Collect templates (used for both migration classification and change analysis)
-  const templates = await collectTemplateFiles(
-    cwd,
-    codexUpgradeNeeded ? new Set<AITool>(["codex"]) : undefined,
-    breakingBypass,
-  );
+  const templates = await collectTemplateFiles(cwd, breakingBypass);
 
   // Load update.skip paths (used for both safe-file-delete and template collection)
   const skipPaths = loadUpdateSkipPaths(cwd);
@@ -2463,7 +2077,6 @@ export async function update(options: UpdateOptions): Promise<void> {
         );
       }
     }
-    if (zcodeConfigured) printZcodeSetupHint();
     return;
   }
 
@@ -2575,27 +2188,6 @@ export async function update(options: UpdateOptions): Promise<void> {
       templates,
     );
     printMigrationResult(migrationResult);
-
-    // Hardcoded: Rename traces-*.md to journal-*.md in workspace directories
-    // Why hardcoded: The migration system only supports fixed path renames, not pattern-based.
-    // traces-*.md files are in .trellis/workspace/{developer}/ with variable developer names
-    // and variable file numbers (traces-1.md, traces-2.md, etc.), so we can't enumerate them
-    // in the migration manifest. This is a one-time migration for the 0.2.0 naming redesign.
-    const workspaceDir = path.join(cwd, PATHS.WORKSPACE);
-    const { renamed: journalRenamed, skipped: journalSkipped } =
-      renameTracesToJournal(workspaceDir);
-    if (journalRenamed > 0) {
-      console.log(
-        chalk.cyan(`Renamed ${journalRenamed} traces file(s) to journal`),
-      );
-    }
-    for (const oldPath of journalSkipped) {
-      console.warn(
-        chalk.yellow(
-          `Kept ${path.relative(cwd, oldPath)}: its journal target already exists`,
-        ),
-      );
-    }
   }
 
   // Execute safe-file-delete (after backup, before template writes)
@@ -2881,7 +2473,6 @@ export async function update(options: UpdateOptions): Promise<void> {
     }
   }
 
-  if (zcodeConfigured) printZcodeSetupHint();
 
   // Display breaking change warnings at the very end (so they don't scroll off screen)
   if (cliVsProject > 0 && projectVersion !== "unknown") {

@@ -1,12 +1,5 @@
 > **Provenance.** Arbor is a derivative work of [Trellis](https://github.com/mindfold-ai/Trellis) by Mindfold LLC (AGPL-3.0, forked at `8c792c38`). See `NOTICE` and `COPYRIGHT`. The README below is being rewritten for Arbor; sections that still describe Trellis are pending.
 
-<p align="center">
-<picture>
-<source srcset="assets/trellis.png" media="(prefers-color-scheme: dark)">
-<source srcset="assets/trellis.png" media="(prefers-color-scheme: light)">
-<img src="assets/trellis.png" alt="Trellis Logo" width="500" style="image-rendering: -webkit-optimize-contrast; image-rendering: crisp-edges;">
-</picture>
-</p>
 
 <p align="center">
 <strong>An out-of-the-box engineering framework for AI coding.</strong><br/>
@@ -34,9 +27,6 @@
 <a href="https://chatgpt.com/?q=Explain+the+project+mindfold-ai/Trellis+on+GitHub"><img src="https://img.shields.io/badge/Ask-ChatGPT-74aa9c?style=flat-square&logo=openai&logoColor=white" alt="Ask ChatGPT" /></a>
 </p>
 
-<p align="center">
-<img src="assets/trellis-demo.gif" alt="Trellis workflow demo" width="100%">
-</p>
 
 ## Why Trellis?
 

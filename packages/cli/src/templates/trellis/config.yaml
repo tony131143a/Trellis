@@ -77,59 +77,6 @@ max_journal_lines: 2000
 # default_package: frontend
 
 #-------------------------------------------------------------------------------
-# Channel worker OOM guard
-#-------------------------------------------------------------------------------
-# Default safeguards for `trellis channel spawn` workers. The guard runs
-# at spawn time (cleans expired idle workers, then enforces the live-worker
-# budget) and inside each supervisor (self-terminates a worker that stays
-# continuously idle past `idle_timeout`).
-#
-# Precedence: CLI flag > env var (TRELLIS_CHANNEL_WORKER_IDLE_TIMEOUT /
-# TRELLIS_CHANNEL_MAX_LIVE_WORKERS) > this config > built-in default.
-#
-# `idle_timeout: 0` disables idle cleanup (workers can sit idle forever
-# unless explicitly killed or given `--timeout`).
-# `max_live_workers: 0` disables the spawn-time budget check.
-#
-# `trusted_context_dirs` extends the `--file`/`--jsonl`/`--agent` containment
-# check beyond the worker cwd — useful when `.trellis/tasks` or
-# `.trellis/workspace` is a symlink to an external directory. Realpaths under
-# any listed dir are accepted in addition to cwd.
-# `auto_trust_trellis_symlinks: false` disables the narrow auto-trust of
-# `.trellis/tasks` / `.trellis/workspace` when either is itself a top-level
-# symlink (auto-trust is on by default).
-#
-channel:
-  worker_guard:
-    idle_timeout: 5m
-    max_live_workers: 6
-  # trusted_context_dirs:
-  #   - /work/user/trellis_workspace
-  # auto_trust_trellis_symlinks: false
-
-#-------------------------------------------------------------------------------
-# Codex (dispatch behavior)
-#-------------------------------------------------------------------------------
-# Codex-only knob; other platforms ignore it. Default ("auto") dispatches
-# trellis-implement / trellis-check / trellis-research sub-agents. This does
-# not rely on inherited parent transcripts: `fork_turns` remains
-# caller-controlled, while Codex's native SubagentStart hook injects task
-# context when trusted and child-side loading remains the fallback when it is
-# unavailable. Set to "inline" only to keep implementation and checks in the
-# main session. "sub-agent" remains a backwards-compatible alias for "auto".
-# Invalid explicit values safely use inline mode.
-#
-# In "auto" mode, dispatched sub-agents inherit the main session's model
-# unless you pin one. To use a cheaper/faster model for implement/check/
-# research sub-agent work, edit `model` / `model_reasoning_effort` directly
-# on the generated `.codex/agents/trellis-*.toml` files (see the commented
-# hint lines in those files) — there is no config.yaml knob for this,
-# `trellis update` preserves your edits across regeneration.
-#
-# codex:
-#   dispatch_mode: auto  # or "inline"; legacy alias: "sub-agent"
-
-#-------------------------------------------------------------------------------
 # Sub-agent context injection limits
 #-------------------------------------------------------------------------------
 # Caps how much task context (implement.jsonl / check.jsonl referenced files,

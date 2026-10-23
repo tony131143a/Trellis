@@ -101,41 +101,8 @@ describe("UserPromptSubmit hook wiring", () => {
       event: "UserPromptSubmit",
     },
     {
-      platform: "qoder",
-      path: "qoder/settings.json",
-      event: "UserPromptSubmit",
-    },
-    {
-      platform: "codebuddy",
-      path: "codebuddy/settings.json",
-      event: "UserPromptSubmit",
-    },
-    {
-      platform: "droid",
-      path: "droid/settings.json",
-      event: "UserPromptSubmit",
-    },
-    {
-      // Gemini CLI 0.40+ renamed the per-turn event from `UserPromptSubmit`
-      // (Claude Code naming we initially copied) to `BeforeAgent`. The
-      // schema validator rejects the legacy name — see issue #224.
-      platform: "gemini",
-      path: "gemini/settings.json",
-      event: "BeforeAgent",
-    },
-    {
-      platform: "copilot",
-      path: "copilot/hooks.json",
-      event: "userPromptSubmitted",
-    },
-    {
-      platform: "codex",
-      path: "codex/hooks.json",
-      event: "UserPromptSubmit",
-    },
-    {
-      platform: "trae",
-      path: "trae/hooks.json",
+      platform: "star",
+      path: "star/settings.json",
       event: "UserPromptSubmit",
     },
   ] as const;
@@ -162,39 +129,6 @@ describe("UserPromptSubmit hook wiring", () => {
     });
   }
 
-  it("kiro main `trellis` agent wires userPromptSubmit; sub-agents do not", async () => {
-    // Kiro DOES support per-turn hooks (official docs: CLI agent
-    // `hooks.userPromptSubmit`). The main `trellis` agent wires the per-turn
-    // breadcrumb; the 3 sub-agents only inject sub-agent context on spawn.
-    const fs = await import("node:fs");
-    const { dirname, join } = await import("node:path");
-    const { fileURLToPath } = await import("node:url");
-    const __filename = fileURLToPath(import.meta.url);
-    const kiroAgentsDir = join(
-      dirname(__filename),
-      "..",
-      "src",
-      "templates",
-      "kiro",
-      "agents",
-    );
-    for (const entry of fs.readdirSync(kiroAgentsDir)) {
-      if (!entry.endsWith(".json")) continue;
-      const content = fs.readFileSync(join(kiroAgentsDir, entry), "utf-8");
-      const parsed = JSON.parse(content) as {
-        hooks?: Record<string, unknown>;
-      };
-      if (entry === "trellis.json") {
-        expect(Object.keys(parsed.hooks ?? {})).toContain("userPromptSubmit");
-        expect(content).toContain("inject-workflow-state.py");
-      } else {
-        expect(
-          content,
-          `kiro/agents/${entry} (sub-agent) should not wire inject-workflow-state.py`,
-        ).not.toContain("inject-workflow-state.py");
-      }
-    }
-  });
 });
 
 // =============================================================================

@@ -56,20 +56,8 @@ interface DocDefinition {
 export interface WorkflowOptions {
   /** Detected or specified project type */
   projectType: ProjectType;
-  /** Skip creating local spec templates (when using remote template) — single-repo mode */
-  skipSpecTemplates?: boolean;
   /** Detected monorepo packages (enables monorepo spec creation) */
   packages?: DetectedPackage[];
-  /** Package names that use remote templates (skip blank spec for these) */
-  remoteSpecPackages?: Set<string>;
-  /**
-   * Optional override for `.trellis/workflow.md` content. When omitted the
-   * bundled native template is written. Set by `init --workflow` (or
-   * `--workflow-source`) after the resolver has fetched marketplace content.
-   * Caller is still responsible for removing the `.trellis/workflow.md` hash
-   * entry for non-native workflows so update.ts treats them as user-managed.
-   */
-  workflowMdOverride?: string;
 }
 
 /**
@@ -127,10 +115,7 @@ export async function createWorkflowStructure(
   options?: WorkflowOptions,
 ): Promise<void> {
   const projectType = options?.projectType ?? "fullstack";
-  const skipSpecTemplates = options?.skipSpecTemplates ?? false;
   const packages = options?.packages;
-  const remoteSpecPackages = options?.remoteSpecPackages;
-  const workflowMd = options?.workflowMdOverride ?? workflowMdTemplate;
 
   // Create base .trellis directory
   ensureDir(path.join(cwd, DIR_NAMES.WORKFLOW));
@@ -140,10 +125,10 @@ export async function createWorkflowStructure(
     executable: true,
   });
 
-  // Copy workflow.md (native bundled template or selected marketplace variant)
+  // Copy workflow.md from templates
   await writeFile(
     path.join(cwd, PATHS.WORKFLOW_GUIDE_FILE),
-    replacePythonCommandLiterals(workflowMd),
+    replacePythonCommandLiterals(workflowMdTemplate),
   );
 
   // Copy .gitignore from templates
@@ -187,9 +172,9 @@ export async function createWorkflowStructure(
   // These are NOT dogfooded - they are generic templates for new projects
   if (packages && packages.length > 0) {
     // Monorepo mode: create per-package spec directories
-    await createSpecTemplates(cwd, projectType, packages, remoteSpecPackages);
-  } else if (!skipSpecTemplates) {
-    // Single-repo mode: create global spec (skip if using remote template)
+    await createSpecTemplates(cwd, projectType, packages);
+  } else {
+    // Single-repo mode: create global spec
     await createSpecTemplates(cwd, projectType);
   }
 }
@@ -267,7 +252,6 @@ async function createSpecTemplates(
   cwd: string,
   projectType: ProjectType,
   packages?: DetectedPackage[],
-  remoteSpecPackages?: Set<string>,
 ): Promise<void> {
   // Ensure spec directory exists
   ensureDir(path.join(cwd, PATHS.SPEC));
@@ -294,7 +278,6 @@ async function createSpecTemplates(
     // Monorepo mode: create spec/<name>/ for each package
     for (const pkg of packages) {
       const dirName = sanitizePkgName(pkg.name);
-      if (remoteSpecPackages?.has(dirName)) continue;
       const pkgSpecBase = path.join(cwd, `${PATHS.SPEC}/${dirName}`);
       ensureDir(pkgSpecBase);
       const pkgType = pkg.type === "unknown" ? "fullstack" : pkg.type;

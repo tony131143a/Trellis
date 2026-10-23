@@ -76,12 +76,12 @@ describe("uninstall() integration", () => {
   });
 
   it("#3 init → uninstall → project is clean", async () => {
-    await init({ yes: true, claude: true, cursor: true, force: true });
+    await init({ yes: true, claude: true, star: true, force: true });
 
     // Sanity: init wrote things.
     expect(fs.existsSync(path.join(tmpDir, ".trellis"))).toBe(true);
     expect(fs.existsSync(path.join(tmpDir, ".claude"))).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, ".cursor"))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, ".starFactory"))).toBe(true);
 
     const hashesBefore = loadHashes(tmpDir);
     expect(Object.keys(hashesBefore).length).toBeGreaterThan(0);
@@ -164,19 +164,20 @@ describe("uninstall() integration", () => {
   });
 
   it("#6 user-modified trellis file is still deleted (manifest defines scope)", async () => {
-    await init({ yes: true, cursor: true, force: true });
+    await init({ yes: true, star: true, force: true });
 
-    // Pick any manifest-tracked file under .cursor/ and overwrite it.
+    // Pick any manifest-tracked file under .starFactory/ and overwrite it.
     const hashesBefore = loadHashes(tmpDir);
-    const cursorTrackedPath = Object.keys(hashesBefore).find((p) =>
-      p.startsWith(".cursor/"),
+    // Pick an opaque (non-structured) file: settings.json is scrubbed, not deleted.
+    const starTrackedPath = Object.keys(hashesBefore).find(
+      (p) => p.startsWith(".starFactory/") && !p.endsWith("settings.json"),
     );
-    if (!cursorTrackedPath) {
+    if (!starTrackedPath) {
       throw new Error(
-        "Test fixture: expected at least one .cursor/ entry in manifest",
+        "Test fixture: expected at least one .starFactory/ entry in manifest",
       );
     }
-    const abs = path.join(tmpDir, ...cursorTrackedPath.split("/"));
+    const abs = path.join(tmpDir, ...starTrackedPath.split("/"));
     fs.writeFileSync(abs, "USER MODIFIED CONTENT\n");
 
     await uninstall({ yes: true });
@@ -201,44 +202,22 @@ describe("uninstall() integration", () => {
     expect(fs.existsSync(userHookDir)).toBe(true);
   });
 
-  it("#8a empty managed sub-dirs and root dir are pruned (kilo: no structured config)", async () => {
-    // Kilo has no hooks.json/settings.json/config.toml/package.json — every
-    // manifest file is opaque and gets deleted, so the entire .kilocode/
-    // tree should disappear, demonstrating both nested-subdir cleanup and
-    // empty-platform-root cleanup.
-    await init({ yes: true, kilo: true, force: true });
-
-    // Detect kilo's actual config dir from manifest entries.
-    const hashesBefore = loadHashes(tmpDir);
-    const kiloEntry = Object.keys(hashesBefore).find(
-      (p) => !p.startsWith(".trellis/") && p !== "AGENTS.md",
-    );
-    if (!kiloEntry) throw new Error("test fixture: no kilo entries found");
-    const kiloRoot = kiloEntry.split("/")[0];
-    expect(fs.existsSync(path.join(tmpDir, kiloRoot))).toBe(true);
-
-    await uninstall({ yes: true });
-
-    // Empty platform root dir should be removed.
-    expect(fs.existsSync(path.join(tmpDir, kiloRoot))).toBe(false);
-  });
-
   it("#8b platform root dir survives only when scrubbing leaves residual structured content", async () => {
-    // Cursor's hooks.json template contains `{ version: 1, hooks: {...} }`.
-    // After trellis hooks are stripped, `{ version: 1 }` remains — not fully
-    // empty per the scrubber, so the file (and therefore .cursor/) survive.
+    // StarFactory's settings.json template ships an `env` block alongside the
+    // trellis hooks. After the hooks are stripped, `env` remains — not fully
+    // empty per the scrubber, so the file (and therefore .starFactory/) survive.
     // This documents the boundary of the cleanup contract.
-    await init({ yes: true, cursor: true, force: true });
+    await init({ yes: true, star: true, force: true });
     await uninstall({ yes: true });
 
-    // Sub-directories under .cursor/ that became empty should be gone.
-    for (const sub of ["agents", "commands", "hooks", "skills"]) {
-      expect(fs.existsSync(path.join(tmpDir, ".cursor", sub))).toBe(false);
+    // Sub-directories under .starFactory/ that became empty should be gone.
+    for (const sub of ["commands", "hooks", "skills"]) {
+      expect(fs.existsSync(path.join(tmpDir, ".starFactory", sub))).toBe(false);
     }
-    // hooks.json residual (version: 1) keeps .cursor/ alive.
-    if (fs.existsSync(path.join(tmpDir, ".cursor"))) {
-      const remaining = fs.readdirSync(path.join(tmpDir, ".cursor"));
-      expect(remaining).toEqual(["hooks.json"]);
+    // settings.json residual (env) keeps .starFactory/ alive.
+    if (fs.existsSync(path.join(tmpDir, ".starFactory"))) {
+      const remaining = fs.readdirSync(path.join(tmpDir, ".starFactory"));
+      expect(remaining).toEqual(["settings.json"]);
     }
   });
 

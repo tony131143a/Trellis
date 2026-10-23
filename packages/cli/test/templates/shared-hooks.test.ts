@@ -61,31 +61,6 @@ describe("shared-hooks capability table", () => {
     }
   });
 
-  it("inject-subagent-context.py is restricted to platforms with native sub-agent context delivery", () => {
-    // Codex uses SubagentStart.additionalContext; these remaining platforms
-    // are class-2 and load their context from an agent-definition prelude.
-    const class2 = new Set(["copilot", "gemini", "qoder", "trae"]);
-    for (const [platform, hooks] of Object.entries(
-      SHARED_HOOKS_BY_PLATFORM,
-    )) {
-      const has = hooks.includes("inject-subagent-context.py");
-      if (class2.has(platform))
-        expect(
-          has,
-          `${platform} is class-2 pull-based and must not ship inject-subagent-context.py`,
-        ).toBe(false);
-    }
-
-    expect(SHARED_HOOKS_BY_PLATFORM.codex).toContain(
-      "inject-subagent-context.py",
-    );
-  });
-
-  it("codex + copilot do not take the shared session-start.py (they bundle their own)", () => {
-    expect(SHARED_HOOKS_BY_PLATFORM.codex).not.toContain("session-start.py");
-    expect(SHARED_HOOKS_BY_PLATFORM.copilot).not.toContain("session-start.py");
-  });
-
   // A shared hook script only does something if the platform's own hook config
   // invokes it, and those configs are per-vendor files with different event
   // names (`beforeShellExecution`, `PreToolUse`, `BeforeTool`) that cannot be
@@ -154,34 +129,6 @@ describe("shared-hooks capability table", () => {
         ).toHaveLength(0);
       }
     });
-  });
-
-  it("kiro registers session-start, workflow-state, and subagent-context hooks", () => {
-    // Kiro wires per-turn + spawn hooks on both surfaces (CLI agent
-    // userPromptSubmit/agentSpawn + IDE .kiro.hook promptSubmit), so it ships
-    // the same trio as other agent-capable push-based platforms.
-    expect([...SHARED_HOOKS_BY_PLATFORM.kiro].sort()).toEqual(
-      [
-        "inject-subagent-context.py",
-        "inject-workflow-state.py",
-        "session-start.py",
-      ].sort(),
-    );
-  });
-
-  it("zcode registers session-start, workflow-state, subagent-context, and shell-session hooks", () => {
-    // ZCode 3.x ships a workspace hook config (.zcode/config.json) covering
-    // SessionStart + UserPromptSubmit + PreToolUse Agent/Task + PreToolUse
-    // Bash. ZCode is the platform with no verified session env var name at all,
-    // so the PreToolUse Bash ticket is its only route to session identity.
-    expect([...SHARED_HOOKS_BY_PLATFORM.zcode].sort()).toEqual(
-      [
-        "inject-shell-session-context.py",
-        "inject-subagent-context.py",
-        "inject-workflow-state.py",
-        "session-start.py",
-      ].sort(),
-    );
   });
 
   it("getSharedHookScriptsForPlatform returns exactly the declared set per platform", () => {

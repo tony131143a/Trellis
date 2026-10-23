@@ -17,9 +17,6 @@ importers:
 
   packages/cli:
     dependencies:
-      '@mindfoldhq/trellis-core':
-        specifier: workspace:*
-        version: link:../core
       chalk:
         specifier: ^5.3.0
         version: 5.6.2
@@ -29,15 +26,9 @@ importers:
       figlet:
         specifier: ^1.9.4
         version: 1.9.4
-      giget:
-        specifier: ^3.1.1
-        version: 3.1.1
       inquirer:
         specifier: ^9.3.7
         version: 9.3.8(@types/node@20.19.28)
-      undici:
-        specifier: ^6.21.0
-        version: 6.23.0
       zod:
         specifier: ^4.4.2
         version: 4.4.2
@@ -66,27 +57,6 @@ importers:
       prettier:
         specifier: ^3.4.2
         version: 3.7.4
-      typescript:
-        specifier: ^5.7.2
-        version: 5.9.3
-      typescript-eslint:
-        specifier: ^8.21.0
-        version: 8.53.0(eslint@9.39.2)(typescript@5.9.3)
-      vitest:
-        specifier: ^4.0.18
-        version: 4.0.18(@types/node@20.19.28)(yaml@2.8.2)
-
-  packages/core:
-    devDependencies:
-      '@eslint/js':
-        specifier: ^9.18.0
-        version: 9.39.2
-      '@types/node':
-        specifier: ^20.17.10
-        version: 20.19.28
-      eslint:
-        specifier: ^9.18.0
-        version: 9.39.2
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
@@ -897,10 +867,6 @@ packages:
     resolution: {integrity: sha512-QZjmEOC+IT1uk6Rx0sX22V6uHWVwbdbxf1faPqJ1QhLdGgsRGCZoyaQBm/piRdJy/D2um6hM1UP7ZEeQ4EkP+Q==}
     engines: {node: '>=18'}
 
-  giget@3.1.1:
-    resolution: {integrity: sha512-wwGgnwnZuJT7v9RNssirmhWwTo/zeFkbCVF8KDzm0VrH+lPOW0OOl4degdKy6ofNxNjOMpLE0GgCuH/4AJFSzA==}
-    hasBin: true
-
   glob-parent@6.0.2:
     resolution: {integrity: sha512-XxwI8EOhVQgWp6iDL+3b0r86f4d6AX6zSU55HfB4ydCEuXLXc5FcYeOu+nnGftS4TEju/11rt4KJPTMgbfmv4A==}
     engines: {node: '>=10.13.0'}
@@ -1323,10 +1289,6 @@ packages:
 
   undici-types@6.21.0:
     resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
-
-  undici@6.23.0:
-    resolution: {integrity: sha512-VfQPToRA5FZs/qJxLIinmU59u0r7LXqoJkCzinq3ckNJp3vKEh7jTWN589YQ5+aoAC/TGRLyJLCPKcLQbM8r9g==}
-    engines: {node: '>=18.17'}
 
   uri-js@4.4.1:
     resolution: {integrity: sha512-7rKUyy33Q1yc98pQ1DAmLtwX109F7TIfWlW1Ydo8Wl1ii1SeHieeh0HHfPeL2fMXK6z0s8ecKs9frCuLJvndBg==}
@@ -2153,8 +2115,6 @@ snapshots:
 
   get-east-asian-width@1.4.0: {}
 
-  giget@3.1.1: {}
-
   glob-parent@6.0.2:
     dependencies:
       is-glob: 4.0.3
@@ -2569,8 +2529,6 @@ snapshots:
   typescript@5.9.3: {}
 
   undici-types@6.21.0: {}
-
-  undici@6.23.0: {}
 
   uri-js@4.4.1:
     dependencies:

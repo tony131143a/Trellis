@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getAllAgents, getSettingsTemplate } from "../../src/templates/star/index.js";
+import { getSettingsTemplate } from "../../src/templates/star/index.js";
 import { collectStarTemplates } from "../../src/configurators/star.js";
 
 // =============================================================================
@@ -86,27 +86,6 @@ describe("star settings.json", () => {
 // getAllAgents
 // =============================================================================
 
-describe("getAllAgents", () => {
-  it("returns the three Trellis sub-agent definitions", () => {
-    const names = getAllAgents()
-      .map((a) => a.name)
-      .sort();
-    expect(names).toEqual([
-      "trellis-check",
-      "trellis-implement",
-      "trellis-research",
-    ]);
-  });
-
-  it("each agent has non-empty content with name and tools frontmatter", () => {
-    for (const agent of getAllAgents()) {
-      expect(agent.content.length).toBeGreaterThan(0);
-      expect(agent.content).toContain(`name: ${agent.name}`);
-      expect(agent.content).toContain("tools: ");
-    }
-  });
-});
-
 // =============================================================================
 // collectStarTemplates — the full on-disk file set
 // =============================================================================
@@ -114,14 +93,7 @@ describe("getAllAgents", () => {
 describe("collectStarTemplates", () => {
   const files = collectStarTemplates();
 
-  it("writes agents and settings under .starFactory/", () => {
-    for (const name of [
-      "trellis-check",
-      "trellis-implement",
-      "trellis-research",
-    ]) {
-      expect(files.has(`.starFactory/agents/${name}.md`)).toBe(true);
-    }
+  it("writes settings under .starFactory/", () => {
     expect(files.has(".starFactory/settings.json")).toBe(true);
   });
 

@@ -3,7 +3,7 @@
  *
  * Exposes which platforms are configured in a repo in a machine-readable
  * way, so downstream tooling doesn't have to hand-maintain marker-file
- * tables per platform. Spawns the real built CLI binary (`bin/trellis.js`)
+ * tables per platform. Spawns the real built CLI binary (`bin/arbor.js`)
  * since the subcommand is wired up in `src/cli/index.ts`, which has
  * import-time side effects that make direct unit import brittle.
  */
@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 
 const CLI_BIN = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
-  "../../bin/trellis.js",
+  "../../bin/arbor.js",
 );
 
 function runCli(cwd: string, args: string[]) {
@@ -55,10 +55,10 @@ describe("trellis platforms (#396)", () => {
 
   it("--json reports configured platforms with id, displayName, configDir", () => {
     fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
-    fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, ".starFactory"), { recursive: true });
     writeTrackedPlatforms(tmpDir, [
       ".claude/commands/trellis/continue.md",
-      ".cursor/commands/trellis-continue.md",
+      ".starFactory/commands/trellis/continue.md",
     ]);
 
     const result = runCli(tmpDir, ["platforms", "--json"]);
@@ -68,7 +68,7 @@ describe("trellis platforms (#396)", () => {
       platforms: { id: string; displayName: string; configDir: string }[];
     };
     const ids = parsed.platforms.map((p) => p.id).sort();
-    expect(ids).toEqual(["claude-code", "cursor"]);
+    expect(ids).toEqual(["claude-code", "star"]);
 
     const claude = parsed.platforms.find((p) => p.id === "claude-code");
     expect(claude).toEqual({
