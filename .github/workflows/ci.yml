@@ -9,7 +9,6 @@ on:
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
       - 'package.json'
-      - 'marketplace'
       - '**/*.py'
       - '.github/workflows/ci.yml'
   pull_request:
@@ -20,7 +19,6 @@ on:
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
       - 'package.json'
-      - 'marketplace'
       - '**/*.py'
       - '.github/workflows/ci.yml'
 
@@ -31,7 +29,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          submodules: recursive
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -46,7 +43,7 @@ jobs:
       - name: Check Python 3.9 syntax
         run: |
           export PYTHONPYCACHEPREFIX="$RUNNER_TEMP/trellis-pycache"
-          git ls-files -z --recurse-submodules '*.py' | xargs -0 python -m py_compile
+          git ls-files -z '*.py' | xargs -0 python -m py_compile
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4

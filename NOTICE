@@ -1,0 +1,19 @@
+Arbor
+Copyright (C) 2026 tony131143a
+
+This project is a derivative work of Trellis
+(https://github.com/mindfold-ai/Trellis), Copyright (C) 2026 Mindfold LLC,
+forked at commit 8c792c38 and licensed under the GNU Affero General Public
+License v3.0 or later. Arbor is distributed under the same license; see
+LICENSE.
+
+Principal changes relative to Trellis:
+- Renamed the framework, its project directory (`.arbor/`), command prefix
+  (`/arbor:`), environment variables (`ARBOR_*`) and managed-block markers.
+- Removed the multi-platform matrix (only Claude Code and StarFactory remain
+  as main-agent platforms), the `channel` worker runtime, `mem`, `ablate`,
+  `upgrade`, the workflow marketplace and remote spec-template registry.
+- Replaced platform-native sub-agents with dispatch to codeg assistants
+  (`delegate_to_agent` inside codeg, `codeg-cli` from a terminal), including
+  a PreToolUse hook that inlines task context into the dispatched prompt.
+- Added a parallel execution variant (child tasks in git worktrees).

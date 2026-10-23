@@ -1,3 +1,5 @@
+> **Provenance.** Arbor is a derivative work of [Trellis](https://github.com/mindfold-ai/Trellis) by Mindfold LLC (AGPL-3.0, forked at `8c792c38`). See `NOTICE` and `COPYRIGHT`. The README below is being rewritten for Arbor; sections that still describe Trellis are pending.
+
 <p align="center">
 <picture>
 <source srcset="assets/trellis.png" media="(prefers-color-scheme: dark)">

@@ -1,13 +1,12 @@
 {
-  "name": "@mindfoldhq/trellis",
-  "version": "0.6.17",
-  "description": "AI capabilities grow like ivy — Trellis provides the structure to guide them along a disciplined path",
+  "name": "@tony131143a/arbor",
+  "version": "0.1.0",
+  "description": "Arbor: a spec-driven AI engineering workflow for Claude Code that dispatches sub-agents through codeg assistants",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "trellis": "./bin/trellis.js",
-    "tl": "./bin/trellis.js"
+    "arbor": "./bin/arbor.js"
   },
   "publishConfig": {
     "access": "public"

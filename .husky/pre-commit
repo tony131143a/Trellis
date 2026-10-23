@@ -1,9 +1,5 @@
 pnpm lint-staged
 
-# Keep the marketplace submodule initialized — several tests diff templates
-# against its mirrored content (e.g. workflows/native/workflow.md), and a
-# missing/stale checkout lets drift slip past this hook (only caught in CI).
-git submodule update --init marketplace
 
 # The full `pnpm test` suite lives in CI (.github/workflows/ci.yml), not here:
 # it takes several minutes and its integration tests are flaky under load
