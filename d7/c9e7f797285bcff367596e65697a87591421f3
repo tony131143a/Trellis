@@ -1,0 +1,91 @@
+.arbor/tasks/09-09-codex-session-fallback-isolation/prd.md
+  s_a9d4361fb73368::t_23c3d532182132 7
+.arbor/tasks/09-09-codex-session-fallback-isolation/task.json
+  s_a9d4361fb73368::t_7a461f70578dec 5
+.claude/skills/arbor-break-loop/SKILL.md.backup
+  s_a9d4361fb73368::t_af394106be687e 58-59,121
+.claude/skills/arbor-check/SKILL.md
+  s_a9d4361fb73368::t_fa80dfc683c361 2,28,34,61
+.claude/skills/arbor-check/SKILL.md.backup
+  s_a9d4361fb73368::t_f40df96edeefcd 12,17
+.claude/skills/arbor-meta/references/claude-code/agents.md
+  s_cbfc2cb6724e9d::t_b2102fff86ec87 3,9,271,279,320,387
+.claude/skills/arbor-meta/references/claude-code/hooks.md
+  s_cbfc2cb6724e9d::t_46872ddea0bff0 84,132,134
+.claude/skills/arbor-meta/references/customize-local/change-skills-or-commands.md
+  s_cbfc2cb6724e9d::t_b357a9693949fb 7-8,14,17-18,26-29,55,57-59,63,70,74,95,99,102,110-113,115,121-123
+.claude/skills/arbor-meta/references/customize-local/change-spec-structure.md
+  s_cbfc2cb6724e9d::t_1dec08b26d767f 3,7-9,16-20,28,36,53-54,59,73
+.claude/skills/arbor-meta/references/customize-local/change-task-lifecycle.md
+  s_cbfc2cb6724e9d::t_28863dc1327d90 3,7-12,18-24,28,33,35,37,39,61,63,65,69,71,76,80,82-84,88,90
+.claude/skills/arbor-meta/references/customize-local/change-workflow.md
+  s_cbfc2cb6724e9d::t_59125e8706dde4 3,7,24,27-28,44,46,48,52,56-57,59,61,65
+.claude/skills/arbor-meta/references/how-to-modify/overview.md
+  s_cbfc2cb6724e9d::t_abe7841531c43e 3,11-14,16,18-19,30,35,37,43,58-59,81,95-98,112,138,152,172,186-188,202-204
+.claude/skills/arbor-meta/references/local-architecture/bundled-skills.md
+  s_cbfc2cb6724e9d::t_47c62cf385536b 3,5,13,15,17,25-28,66-67,114,119,121-123,125,129,131,133-135,140-142,148,150,158-159
+.claude/skills/arbor-meta/references/local-architecture/context-injection.md
+  s_cbfc2cb6724e9d::t_c7ab332fc03bc5 3,9-12,17,29,31,35,47,54,63,65-66
+.claude/skills/arbor-meta/references/local-architecture/generated-files.md
+  s_cbfc2cb6724e9d::t_cb993ffeb03434 3,7,10,25-34,44,48,52,60,66-69,75-78,80
+.claude/skills/arbor-meta/references/meta/arbor-local-template.md
+  s_cbfc2cb6724e9d::t_1f8a36cc5ac48d 1,3,9-10,20,22-25,28,32,38,61-62,74-75,152,164,215-216,229,232,266,269,275,277-279,282,288,299
+packages/cli/src/templates/arbor/index.ts
+  s_a9d4361fb73368::t_9092f2cc4deb6d 2,5,8,14,17,61-62,84-86,119,138,140-141
+packages/cli/src/templates/arbor/scripts/__init__.py
+  s_cbfc2cb6724e9d::t_5c81c79b55e16a 2,4
+packages/cli/src/templates/arbor/scripts/add_session.py
+  s_cbfc2cb6724e9d::t_4ac8ff89279728 72,95,99,289,714,1071,1075,1080,1085,1110,1114,1123
+packages/cli/src/templates/arbor/scripts/common/packages_context.py
+  s_cbfc2cb6724e9d::t_c1018f8f4cf135 198,207
+packages/cli/src/templates/arbor/scripts/common/paths.py
+  s_cbfc2cb6724e9d::t_5cc88b2aee3638 3,28,42,58,66,75,106-108,259,289,292,294,335,494-495
+packages/cli/src/templates/arbor/scripts/common/task_utils.py
+  s_cbfc2cb6724e9d::t_0d55e2eeb5d48c 35,200,205,210,233-234,273,384,386,497
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/customize-local/add-project-local-conventions.md
+  s_cbfc2cb6724e9d::t_453d2b5a27f183 3,9-10,12-13,17,20,28-29,32,36,53,58-60,70-71,74,76,78,83
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/customize-local/change-agents.md
+  s_cbfc2cb6724e9d::t_7defb5002b531c 3,8,17-28,36-38,45,52
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/customize-local/overview.md
+  s_cbfc2cb6724e9d::t_d5ed6cdd804454 3,9,21-22,24,30-34,41-42,44,50,52-53,55
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/local-architecture/bundled-skills.md
+  s_cbfc2cb6724e9d::t_ba35e2e516d66f 3,5,13,15,17,25-28,66-67,114,119,121-123,125,129,131,133-135,140-142,148,150,158-159
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/local-architecture/workspace-memory.md
+  s_cbfc2cb6724e9d::t_9176aca0e2cd28 3,8,18-21,28,31,40,52-54,64-67
+.arbor/config.yaml
+  s_4a6f4b2a8330a2::t_df1e1cd7e7f5d2 1-2,27,58,105,110
+.arbor/spec/tech/repo/index.md
+  s_4a6f4b2a8330a2::t_3156a5ce430395 3-4,8,16,18-20,22-27,31-33,35,37-38,43-44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "d7c9e7f797285bcff367596e65697a87591421f3",
+  "prompts": {},
+  "sessions": {
+    "s_4a6f4b2a8330a2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a3c00972-bdaa-4a6a-98c2-6b0a90dfe308",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_a9d4361fb73368": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a169eb-2ae8-76c1-b50d-877557affe5e",
+        "model": "DeepSeek-V4.1-Flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_cbfc2cb6724e9d": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a169dd-21e7-7785-b293-4840ace5637f",
+        "model": "DeepSeek-V4.1-Flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
