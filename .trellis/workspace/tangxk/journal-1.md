@@ -85,3 +85,42 @@ Made StarFactory a trellis channel worker provider so Claude Code can plan while
 ### Next Steps
 
 - Decide how to publish the marketplace mirror fix (no push access to mindfold-ai/marketplace)
+
+
+## Session 3: spark-harness 编排引擎 v2：多编排并发与会话归属，替换上线
+<!-- trellis-session: v=2 fp=eb68be96ad6d7d97 -->
+
+**Date**: 2026-10-23
+**Task**: spark-harness 编排引擎 v2：多编排并发与会话归属，替换上线
+**Package**: cli
+**Branch**: `main`
+
+### Summary
+
+在 /private/tmp/orch-v2 构建并验证 orch 引擎 v2（无全局单例、Conductor = 会话的 Trellis current task、项目级按预留计的 worker 预算、跨编排 owns 重叠检查、finish 前基线同步），移植线上热修后原子替换进 spark-harness，线上编排 10-21-harness-audit-leftovers 已在新引擎上 resume。工作在 spark-harness 的 git-excluded .trellis/ 与 /tmp 中，本仓库无代码提交。
+
+### Main Changes
+
+- 引擎 v2：per-parent 状态、session.py 会话解析、guard 只约束本编排的 Conductor 且不写状态、预留预算 + 门禁槽位池化、base_conflict / syncing_base、spawn_failed 决策（契约 design.md §15）
+- 4 轮 star 评审（39 条）全部修复；替换前移植线上 3 处热修中的 2 处（retry 定位卡住的 inflight、异常结束保留 inflight，含集成侧）+ commit 模板回退默认中文
+- 替换：pause → rsync 暂存 + 两次 rename → active.json 迁移为 orchestration.paused → resume；旧引擎备份 ~/.cache/orch-v2-wip/spark-backup-20261023-000752/
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] 工作副本与 spark-harness 内各跑全量单测：436 通过
+- [OK] 真实 star worker 冒烟 3 轮：并行编排、跨编排重叠、预留节流、基线冲突 resolve、finish 拒绝后重同步、集成门禁修复与用完即 kill
+- [OK] 用 v2 对线上账本副本跑 tick（假 channel/git）兼容通过；真实会话 guard 模拟：397c3541 仅受本编排约束，24f87799 / 新会话不受限
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 让 Conductor 会话 397c3541 后台重跑 advance（可先 /compact 重新注入新版 conductor.md）
+- 可选：清理玩具 channel 目录（orch-v2、orch-v2-review）
+- 可选：按分析把编排流程沉淀进 Trellis（阶段 1：spec + channel 运行时问题复核修复）
