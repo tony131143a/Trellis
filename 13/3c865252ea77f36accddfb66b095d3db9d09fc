@@ -1,0 +1,29 @@
+.github/workflows/ci.yml
+  s_867f2099dd49c6::t_898c7f4fb8e51c 46
+COPYRIGHT
+  s_867f2099dd49c6::t_fe9fe7c7aeba20 1-4
+NOTICE
+  s_867f2099dd49c6::t_5c7082db411a51 1-19
+README.md
+  s_867f2099dd49c6::t_a0e1936d4edc69 1-2
+package.json
+  s_867f2099dd49c6::t_890bffcfee48a7 6,8-9,11-19
+packages/cli/package.json
+  s_867f2099dd49c6::t_315adfed96f5d4 2-4,9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "133c865252ea77f36accddfb66b095d3db9d09fc",
+  "prompts": {},
+  "sessions": {
+    "s_867f2099dd49c6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6469f7fe-1182-4416-982c-d3ffdd631639",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
