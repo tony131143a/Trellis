@@ -1,0 +1,101 @@
+.trellis/spec/cli/backend/commands-update.md
+  s_eed1d77be7ebfe::t_2e1bf51a1d3500 4-6,73,75,79,106-131
+.trellis/spec/cli/backend/commands-workflow.md
+  s_fad533a45b3b87::t_223946e8f1dee5 5-9,29-30,33,58-66,123,126-129,135-142,149-178,192-196,213-216,235-237,241-246,256-263
+.trellis/spec/cli/backend/index.md
+  s_4b48d0fe6cb9ce::t_0075457bb1e65d 28,57
+.trellis/spec/cli/backend/workflow-state-contract.md
+  s_1fb7c2dee9d389::t_1bcc8cfc73d01b 5-7,274,276-285,318,367-375,413-417
+packages/cli/src/templates/common/bundled-skills/trellis-channel/references/command-reference.md
+  s_1f0fc0470143f7::t_ffd817810456d9 174-181
+packages/cli/src/templates/common/bundled-skills/trellis-channel/references/workflows.md
+  s_6d1a2e8a548bc0::t_ef1ad7e5a315d9 135-174
+packages/cli/src/templates/common/bundled-skills/trellis-meta/references/local-architecture/workflow.md
+  s_1a9b0fe700224e::t_60dc8e70b0d851 5-13,57
+packages/cli/src/templates/common/bundled-skills/trellis-meta/references/platform-files/agents.md
+  s_1a9b0fe700224e::t_f7f7fb773e3402 21-36
+packages/cli/src/templates/common/bundled-skills/trellis-meta/references/platform-files/hooks-and-settings.md
+  s_05cb272a8f09ce::t_c5580bbe860236 48-65
+.trellis/spec/cli/backend/orchestration-contract.md
+  s_4a6f4b2a8330a2::t_7cc4d861f98676 1-390
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "28abf08ec294981454f4c53e8b52a09b20e396a4",
+  "prompts": {},
+  "sessions": {
+    "s_05cb272a8f09ce": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d0e06c7a-0002-4457-9a60-8db6f2ce841d",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_1a9b0fe700224e": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a168a5-9b12-7093-9c63-ad028dc7022f",
+        "model": "DeepSeek-V4.1-Flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_1f0fc0470143f7": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a169f5-1467-716b-9a5c-d2f6f6960021",
+        "model": "DeepSeek-V4.1-Flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_1fb7c2dee9d389": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a169f5-ad66-73ae-8c04-5d6648aeaceb",
+        "model": "DeepSeek-V4.1-Flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_4a6f4b2a8330a2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a3c00972-bdaa-4a6a-98c2-6b0a90dfe308",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_4b48d0fe6cb9ce": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a1686d-c71d-7581-9c79-f63c32d315a8",
+        "model": "DeepSeek-V4.1-Flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_6d1a2e8a548bc0": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a168a8-bbb1-77ac-905f-ecba2e9c74b9",
+        "model": "DeepSeek-V4.1-Flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_eed1d77be7ebfe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "105ce731-db64-4d05-a4a3-13ee995569a7",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_fad533a45b3b87": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3827cebd-195a-4f12-8380-8fab366224c2",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
