@@ -222,8 +222,6 @@ const COMMAND_DESCRIPTIONS: Record<string, string> = {
     "Wrap up the current session: quality gate, commit reminder, archive, journal.",
   "dispatch-target":
     "Switch the codeg dispatch target for implement/check/research roles: star, pi, or clear.",
-  dispatch:
-    "Dispatch one implement/check/research run to a codeg assistant on a chosen target: <role> [star|pi] [brief].",
 };
 
 /** Wrap resolved command content with YAML frontmatter (name + description). */

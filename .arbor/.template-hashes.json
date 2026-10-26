@@ -25,7 +25,7 @@
     "AGENTS.md": "2bef328d563bc5ff65445ab55b65ae3d30c8b514f4ed58b6a5c8cbaa01a847a4",
     ".arbor/scripts/common/workflow_phase.py": "7ed3d5ddebc3c259718fdfeed875511a5960129eb4d107dfe8d773f6b183eed2",
     ".claude/hooks/session-start.py": "35befc8893863eea13681b44e8e79d2026460ec9b6876db45a5c4f3e33474279",
-    ".arbor/workflow.md": "383e4f1e7ea27066c9aafb4982c4bf525975123fe946ad2f5138e2319972eb5d",
+    ".arbor/workflow.md": "d0a7f61f12672b3587cdf5d44357628a2f96fb4023fd8670534ce47ca8639719",
     ".claude/hooks/inject-workflow-state.py": "001d93a5c711930368b8d25d28e0d71013d94bc16636863e70399ebfb903a455",
     ".arbor/scripts/task.py": "30261dff16afbf4bcc85994c7ef27f8d101cc93603fee30924e5476c7f9aa84c",
     ".arbor/scripts/common/safe_commit.py": "07d613830ff9aecce40bf6a59249b389781a12d6795dd8eb0ce3cbb6d43ee2d5",
@@ -81,7 +81,6 @@
     ".claude/commands/arbor/dispatch-target.md": "e7bd5864290cd7a26b6d1a88536140aadf489e4dc65f0e328de169837d3c371a",
     ".claude/skills/arbor-meta/references/local-architecture/dispatch.md": "f403a57b912fff40610ed28d2802f6e3b22b197f06a60d26264b817d96bd3660",
     ".arbor/scripts/dispatch.py": "c87616d6e8ed4ac18f418d5f233edc84ffbcbbc0c5265bb7096ef19256a0410c",
-    "CLAUDE.md": "85c24fde9bf820154b74e6242b3adea21329eb21940d72675c183492e04cbd76",
-    ".claude/commands/arbor/dispatch.md": "e30303af5178377d40794c24ac71c4535d440a710f108bf36ba3ed6b3fba525b"
+    "CLAUDE.md": "8ac55c391f1643094bede07fc0fdca7f00b892c298088947659d33c7a696fcab"
   }
 }
