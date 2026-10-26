@@ -1,0 +1,32 @@
+{
+  "dimension": "accuracy",
+  "findings": [
+    {
+      "id": "r1-spec-1",
+      "file": ".trellis/spec/cli/backend/commands-channel.md",
+      "line": 1307,
+      "severity": "med",
+      "summary": "Absolute claim that every terminal event is authored by=<worker>, \"never supervisor:<worker>\", is false; several failure terminals are authored supervisor:<worker>.",
+      "failure_scenario": "An orchestrator author, told that every terminal is authored by=<worker> and never supervisor:<worker>, implements failure detection as `trellis channel wait --from <worker> --kind error` (or --kind done). When the worker fails before/around startup — pre-spawn failure, post-spawn process error, adapter handshake failure, or a stdout-pipeline error — the only error event written is `by: supervisor:<worker>` (no synthesized by=<worker> terminal is produced for those paths), so the wait never wakes and the conductor hangs until its timeout, missing the failure.",
+      "evidence": "Doc lines 1306-1309 claim \"every terminal and turn_finished is authored with by=<worker> (Pattern 5), never supervisor:<worker>\". Worktree code contradicts the absolute wording: supervisor.ts:413 (pre-spawn failure error), supervisor.ts:442 (post-spawn process error), supervisor.ts:609 (handshake failure error), stdout.ts:298 (stdout pipeline error) all append `kind:\"error\", by: \\`supervisor:${workerName}\\``. shutdown.ts:151 writes the `killed` terminal as `supervisor:<worker>`. Only the synthesized terminal (shutdown.ts:222-236) and adapter-emitted done/error (stdout.ts:204-208) use by=workerName. grep for 'by: `supervisor:' confirms 4 error sites + 1 killed site in the channel supervisor."
+    },
+    {
+      "id": "r1-spec-2",
+      "file": ".trellis/spec/cli/backend/commands-channel.md",
+      "line": 645,
+      "severity": "low",
+      "summary": "Anchor `supervisor.ts:603-614` for `writeSupervisorConfig` is stale; that range is the handshake error handler, not the config writer.",
+      "failure_scenario": "An orchestrator author follows the durability claim (\"TTL persisted at spawn before the reservation is written\") and opens supervisor.ts:603-614 to confirm it; that range is the adapter handshake-failure IIFE, so the author cannot find writeSupervisorConfig and may wrongly conclude the per-worker TTL is not durably persisted before the reservation — undermining the instruction to rely on `<worker>.config` for per-worker idle TTL.",
+      "evidence": "The doc (line 645) cites `writeSupervisorConfig, supervisor.ts:603-614`. In the worktree, supervisor.ts:603-614 is the handshake error block (`void (async () => { ... by: \\`supervisor:${workerName}\\`, kind:\"error\" ... }`). The actual writer is `export function writeSupervisorConfig(...)` at supervisor.ts:681-691. (The other supervisor.ts anchor in the added text, :195-198, is correct, so this one is an isolated stale/incorrect number.)"
+    },
+    {
+      "id": "r1-spec-3",
+      "file": ".trellis/spec/cli/backend/commands-channel.md",
+      "line": 1354,
+      "severity": "low",
+      "summary": "Claims `trusted_context_dirs` is required when `.trellis/tasks` / `.trellis/workspace` is a symlink; those two are auto-trusted by default, so the config is not required for them.",
+      "failure_scenario": "A conductor author whose `.trellis/tasks` (or `.trellis/workspace`) is a symlink to a shared directory adds `channel.trusted_context_dirs` as the doc says is required, then later sets `channel.auto_trust_trellis_symlinks: false` (or assumes the config is the only mechanism) and is surprised the behavior changes — the doc misstates which symlink cases are automatic vs config-gated. The genuinely config-gated case (a symlinked `.trellis` itself, or `.trellis/agents`) is not distinguished from the auto-trusted sub-entries.",
+      "evidence": "Symlink auto-trust is on by default: context-trust.ts:21 `AUTO_TRUST_ENTRIES = [\"tasks\", \"workspace\"]`; resolveTrustedRoots (context-trust.ts:138-154) auto-adds realpaths for those entries when symlinked unless `auto_trust_trellis_symlinks` is explicitly false. `channel.trusted_context_dirs` (context-trust.ts:127-136) is an extra, not a requirement, for the tasks/workspace symlink case. The cited anchor range `context-trust.ts:1-13,24-96` also does not cover resolveTrustedRoots (123-157) where the actual behavior lives."
+    }
+  ]
+}

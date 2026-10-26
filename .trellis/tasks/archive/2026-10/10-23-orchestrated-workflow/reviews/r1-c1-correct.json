@@ -1,0 +1,24 @@
+{
+  "dimension": "correctness",
+  "findings": [
+    {
+      "id": "r1-c1-correct-1",
+      "file": "packages/cli/src/commands/channel/supervisor.ts",
+      "line": 277,
+      "severity": "med",
+      "summary": "The per-turn terminal latch is a single boolean that any adapter done/error sets regardless of which turn it belongs to; resetting it only on the tracker's idle→mid-turn transition means a stale terminal for an already-aborted turn suppresses synthesis for the (different) turn that is actually in flight. A crash during that live turn then emits nothing and `wait` hangs until timeout — the exact C-1 failure the PRD set out to fix, in an interrupt flow.",
+      "failure_scenario": "Turn N is in flight. User calls `trellis channel interrupt` → inbox.ts:102-123 aborts turn N (pops it) and begins the interrupt turn N+1 (onIdleExit → resetTerminalEmitted → latch=false). Claude then emits `result{is_error:true}` for the interrupted turn N (adapters/claude.ts:163-175 → kind:\"error\"); applyParseResult (stdout.ts:196-222) calls markTerminalEmitted() (latch=true) against the CURRENT turn, then finish() pops the LIVE turn N+1 (turns.ts:46 is LIFO, so it emits a turn_finished with N+1's turnId but N's outcome and leaves the tracker empty). The worker process then crashes during turn N+1: finalizeOnExit sees terminalEmitted=true and shutdownReason=null, so it synthesises nothing. events.jsonl ends with only the stale error; no terminal event for the live turn; `trellis channel wait` blocks to its timeout. Requirement in prd.md ('Synthesis on process exit is keyed on \"a turn is in flight and has not emitted its terminal event\"') and AC1 are violated; design §2 explicitly offered the robust alternative (derive from turnTracker.current()).",
+      "evidence": "Reproduced with a scratch vitest run under $TMPDIR driving the REAL modules (runInboxWatcher + TurnTracker wired exactly like supervisor.ts + createShutdown + applyParseResult). Sequence: tracker.begin(2) → channelInterrupt → wait for stdin write → applyParseResult({kind:'done'}) [stands in for claude's result for the aborted turn] → shutdown.finalizeOnExit(null,'SIGSEGV'). Output: `SYNTH=[]` and `TERMINALS=[{\"kind\":\"done\",\"by\":\"worker\",\"seq\":7,...}]` — zero synthesized terminal events; assertion `expect(synthesized).toHaveLength(1)` failed (expected 1, received 0). Code reading confirms the mechanism: markTerminalEmitted is turn-agnostic (stdout.ts:201-203), reset happens only in onIdleExit (supervisor.ts:273-280 / turns.ts:41, which fires only when the tracker was empty), and finalizeOnExit's guard reads the single boolean (shutdown.ts:206).",
+      "reproduction_hint": "vitest file at $TMPDIR/c1repro/repro.test.ts run with a config whose root is packages/cli and include points at it; NOT part of the repo."
+    },
+    {
+      "id": "r1-c1-correct-2",
+      "file": "packages/cli/src/commands/channel/supervisor/shutdown.ts",
+      "line": 206,
+      "severity": "low",
+      "summary": "The synthesized cold-exit terminal only appends `done`/`error`; it never appends the `turn_finished` boundary that every other turn end emits. Consumers waiting on the turn boundary (`wait --kind turn_finished`, which design §2 names as a waiter that must return for the turn-2-crash case) hang until timeout, and the turn sequence in events.jsonl is left with a `turn_started` and no matching `turn_finished`.",
+      "failure_scenario": "Turn starts (turn_started, turnId=msg:7) → worker crashes → finalizeOnExit appends `error{by:worker, synthesized:true}` and the supervisor exits. A waiter run as `trellis channel wait --kind turn_finished` never matches (turn_finished is not in MEANINGFUL_EVENT_KINDS, and it is absent entirely), so it only returns on timeout; a consumer reconstructing turn boundaries sees turn_started/msg:7 with no turn_finished. The new test 'wakes a default `wait` on the synthesised terminal event' only exercises a kind-less wait, so it does not catch this.",
+      "evidence": "shutdown.ts:206-225 appends only kind:'done'|'error' (grep for turn_finished in shutdown.ts returns nothing), whereas stdout.ts:209-222 and inbox.ts:104-112 always pair a terminal with turn_finished. filter.ts (packages/core/src/channel/internal/store/filter.ts:8-21) shows turn_finished is not a meaningful kind, so an explicit --kind turn_finished waiter is the only way to wait on it and it never fires."
+    }
+  ]
+}

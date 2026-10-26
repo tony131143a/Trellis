@@ -1,0 +1,14 @@
+{
+  "dimension": "correctness",
+  "findings": [
+    {
+      "id": "r2-inst-correct-1",
+      "file": "packages/cli/src/utils/orchestrator-assets.ts",
+      "line": 163,
+      "severity": "low",
+      "summary": "Re-selecting the orchestrated workflow silently overwrites user-modified engine files / agent cards with the bundled bytes (no prompt, no backup), even though the same `trellis workflow` invocation refuses to overwrite an edited workflow.md and `trellis update` classifies the very same files as conflicts — so the round-1b promise that a kept engine file becomes user-owned is not honoured on the way back in.",
+      "failure_scenario": "1) `trellis init --workflow orchestrated` installs the engine; the user edits `.trellis/orchestrator/ledger.py` (a legitimate engine tweak; AC6 says update must treat it as a conflict, not an overwrite). 2) With workflow.md left pristine, the user re-runs `trellis workflow --template orchestrated` — e.g. to refresh assets after a Trellis upgrade, or after an earlier switch-away that `removeOrchestratorAssets` reported as 'Kept N modified orchestrated file(s)'. 3) `writeWorkflow` sees workflow.md byte-identical and returns early (workflow.ts:193-201) — no refusal, no prompt; `runWorkflowCommand` then calls `installOrchestratorAssets` (workflow.ts:320-321), whose write loop does an unconditional `fs.writeFileSync` (orchestrator-assets.ts:163-167) and `updateHashes`, so ledger.py is clobbered with the bundled template and re-hashed as pristine. The edit is lost with no prompt, no `.backup`, and no recovery path — whereas the identical state under `trellis update` is classified `changedFiles` (conflict) and under the workflow.md-edit branch is rejected with a WorkflowCommandError.",
+      "evidence": "Read workflow.ts:193-209 (workflow.md identical → early return / modified → refuse unless --force), 315-325 (assets install/remove after writeWorkflow), and orchestrator-assets.ts:160-175 (installOrchestratorAssets writes every collected file unconditionally via fs.writeFileSync with no existence check, prompt, or backup) plus 388-449 (removeOrchestratorAssets keep-branch: modified files kept with hash dropped and reported as user-owned). update.ts:1006-1017 includes the same paths only when selected, and update.ts:1092-1123 classifies a modified engine file as a conflict — the asymmetric guarantee. No test covers re-selection with a locally edited engine file."
+    }
+  ]
+}

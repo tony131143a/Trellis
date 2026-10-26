@@ -1,0 +1,41 @@
+{
+  "dimension": "r1-eng-pipeline",
+  "findings": [
+    {
+      "id": "r1-eng-pipeline-1",
+      "file": "packages/cli/src/templates/trellis/orchestrator/pipeline.py",
+      "line": 349,
+      "severity": "med",
+      "summary": "The channel-budget config parser does not strip trailing comments (guard.ts's stripValue does), so a `max_live_workers` value with an inline comment silently falls back to the built-in 6 instead of the configured value; R3 requires parity with guard.ts:78-121.",
+      "failure_scenario": "`.trellis/config.yaml` contains `channel:\\n  worker_guard:\\n    idle_timeout: 5m\\n    max_live_workers: 24  # allow ~5 children` (the shipped config.yaml is comment-heavy, so this is a natural edit). guard.ts stripValue (guard.ts:233-239) strips `#...` -> channel budget 24; the engine's `_worker_guard_max_live_workers` does `int(\"24  # allow ~5 children\")` -> ValueError -> returns None -> `channel_max_live_workers` returns DEFAULT_CHANNEL_MAX_LIVE_WORKERS = 6. Verified: with that config `_worker_guard_max_live_workers` = None and `channel_max_live_workers()` = 6 while guard.ts yields 24. Consequence: a plan with 5 review dimensions (`min_live = 2 + 5 = 7`) is rejected — `effective max_live_workers=6 is too small ... Raise settings.max_live_workers or channel.worker_guard.max_live_workers` (orch.py:428) although the user already raised it, and the hint tells them to raise the value they already set; without the plan rejection, `_reserve_slot` (pipeline.py:736) would cap admission at 6 units (1 child) and the run would serialise where the channel guard would have allowed 24.",
+      "evidence": "pipeline.py:346-354 `m = re.match(r\"^ {4}max_live_workers:\\s*(.+)$\", trimmed); value = m.group(1).strip().strip(\"'\\\"\"); n = int(value) except ValueError: return None`. guard.ts:206-217 matches the same line but passes the value through `stripValue` (guard.ts:233-239: `.replace(/\\s*#.*$/, \"\")` then quote stripping) and only rejects non-integers/negatives. Requirement 3 demands the channel budget use the same precedence and parsing as `packages/cli/src/commands/channel/guard.ts:78-121`. Same class of divergence on the env path: guard.ts parseEnvInt accepts `\"12.0\"`/`\"1e2\"` (Number.isInteger(12.0) is true) and throws on a negative/non-numeric value, whereas `channel_max_live_workers` (`int(raw)`) silently rejects those and falls through — so the engine's budget can differ from the guard's; the env var is documented as the highest-precedence source in the bundled config.yaml (config.yaml:87-88)."
+    },
+    {
+      "id": "r1-eng-pipeline-2",
+      "file": "packages/cli/src/templates/trellis/orchestrator/orch.py",
+      "line": 542,
+      "severity": "med",
+      "summary": "The new plan notice tells the user to set the gate commands in `.trellis/config.yaml`, but the engine never reads gates from config.yaml (only `channel.worker_guard.max_live_workers` is read there) — design §3 lists config.yaml as a gate source, so the requirement is unmet and the hint silently leaves the gates as no-ops.",
+      "failure_scenario": "A user sees `note: no quick_gate/full_gate commands are configured, so the integration gates will be no-ops. Set them in plan.json settings (or .trellis/config.yaml) ...`, adds `quick_gate: [\"pnpm lint\"]` / `full_gate: [\"pnpm -r test\"]` to `.trellis/config.yaml`, and re-runs `orch.py plan`. `ledger.merge_settings` (ledger.py:281-298) merges only DEFAULT_SETTINGS + plan.json overrides; no code path ever reads config.yaml for gates (grep: config.yaml appears only in pipeline's worker_guard parser, pipeline.py:328). So `_run_gate` (integration.py:144) gets `cmds = settings.get(\"quick_gate\") or []` = [] and `ok = all(...)` over an empty result is True: the integration branch is merged to the base by `finish` (orch.py:998) without ever running the commands the user configured, and the run reports the gates as passed. The repeated no-op notice is also consistent with the gates being unset, so the user cannot tell that their config was ignored.",
+      "evidence": "orch.py:539-544 prints the hint including `(or .trellis/config.yaml)`; orch.py:539/542 `settings` is the merged plan settings. ledger.py:73 and ledger.py:96 both claim `Overridable per plan.json / config.yaml` / `supply them via plan.json / config.yaml`, but ledger.py:281-298 only merges plan overrides, and `grep -rn config.yaml` over the engine matches only the worker_guard parser in pipeline.py. Design §3 row for `quick_gate / full_gate / integration_setup`: `plan.json settings 或 config.yaml 提供`."
+    },
+    {
+      "id": "r1-eng-pipeline-3",
+      "file": "packages/cli/src/templates/trellis/orchestrator/orch.py",
+      "line": 527,
+      "severity": "low",
+      "summary": "The plan notice's `children that can run concurrently` ignores `settings.max_parallel_children`, so it overstates the concurrency the engine actually permits whenever the effective budget is large.",
+      "failure_scenario": "plan.json settings `{\"max_live_workers\": 128}` with the channel budget not binding (env unset + config >= 128, or a config of 0 = unlimited) and the default 3 review dimensions: effective_budget = 128, `slots = 4`, so `concurrent = (128 - 1) // 4 = 31` and `plan` prints `children that can run concurrently: 31`. At runtime `_step_pending` (pipeline.py:766) refuses a child once `_active_count(led) >= settings.get(\"max_parallel_children\", 8)`, so at most 8 children are ever in progress; the user who sizes a split around the printed `31` sees children parked with `waiting for a parallel slot` / a long serialised run. Requirement 3 asks `plan` to print how many children can run concurrently under the effective budget, so the number should be `min(concurrent, max_parallel_children)`.",
+      "evidence": "orch.py:526-532 `slots = 1 + len(review_dims); concurrent = max(0, (max_live - 1) // slots)` and the printed line; pipeline.py:766 `if self._active_count(led) >= int(settings.get(\"max_parallel_children\", 8)): child[\"waiting\"] = \"waiting for a parallel slot\"`. Test `PlanNoticeTest` only covers budgets (5, 12) well under 8 parallel children, so the cap is never exercised."
+    },
+    {
+      "id": "r1-eng-pipeline-4",
+      "file": "packages/cli/src/templates/trellis/orchestrator/orch.py",
+      "line": 535,
+      "severity": "low",
+      "summary": "Both new budget messages tell the user to raise `settings.max_live_workers` / `channel.worker_guard.max_live_workers`, omitting `TRELLIS_CHANNEL_MAX_LIVE_WORKERS` — the highest-precedence source — so when that env var caps the budget the advice cannot work and the run stays blocked.",
+      "failure_scenario": "The orchestration session inherits `TRELLIS_CHANNEL_MAX_LIVE_WORKERS=4` (the bundled config.yaml documents CLI flag > env var > config > default, and hosted/harness sessions do export it — the review session itself runs with it set to 16). plan.json sets `max_live_workers: 28` and 3 review dimensions -> `effective_budget` = min(28, 4) = 4 < min_live 5, so `plan` exits 2 with `Raise settings.max_live_workers or channel.worker_guard.max_live_workers` (orch.py:431); the user raises both in plan.json and `.trellis/config.yaml` to 28/32, re-runs `plan`, and gets the identical failure because `channel_max_live_workers` (pipeline.py:368-375) reads the env first — nothing in either message names the variable that must be changed. The same hint (orch.py:535) is what a stalled `waiting for worker budget (reserved 1 + external 0 of 4)` run points the user at.",
+      "evidence": "orch.py:428-434 (too-small error) and orch.py:533-538 (`Only one child can run at a time. Raise channel.worker_guard.max_live_workers in .trellis/config.yaml (or settings.max_live_workers in plan.json) ...`); precedence implemented at pipeline.py:368-379 (env -> config -> 6) and documented in packages/cli/src/templates/trellis/config.yaml:87-88."
+    }
+  ]
+}

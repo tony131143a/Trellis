@@ -1,0 +1,59 @@
+{
+  "dimension": "tests",
+  "findings": [
+    {
+      "id": "r1-inst-tests-1",
+      "file": "packages/cli/test/commands/workflow.integration.test.ts",
+      "line": 307,
+      "severity": "med",
+      "summary": "切回 native 的用例只覆盖了“全部文件都匹配 hash 因而被删除”，没有覆盖 PRD 要求 4 的“内容仍匹配 hash 的才删、被用户改过的保留并列出”；无条件删除的实现仍然全绿。",
+      "failure_scenario": "把 removeOrchestratorAssets 的删除条件从 `if (matchesRecorded)` 改成无条件删除（忽略 hash 比对）。用例 “switching to native removes the orchestrated engine, cards and hooks” 仍然通过，但现实中用户改过的 .trellis/orchestrator/orch.py（hash 与登记不符）会被静默删除并且不打印“Kept N modified file(s)”清单，用户改动丢失。",
+      "evidence": "在 $TMPDIR 副本把 orchestrator-assets.ts:421 的条件改为 `if (matchesRecorded || true)`，运行 `npx vitest run test/commands/workflow.integration.test.ts` → 12 passed；说明没有任何用例断言被修改文件的保留行为。"
+    },
+    {
+      "id": "r1-inst-tests-2",
+      "file": "packages/cli/test/commands/workflow.integration.test.ts",
+      "line": 331,
+      "severity": "med",
+      "summary": "剥离 settings.json hooks 的断言只检查结果中不含 \".trellis/orchestrator\"，没有断言剥离后原有 Trellis hooks（.claude/hooks/session-start.py、inject-workflow-state.py）仍然保留。",
+      "failure_scenario": "让 stripOrchestratorClaudeHooks 删掉整个 hooks 对象（或所有条目）——例如把内层 `if (entryHasOrchestratorCommand(entry)) continue;` 写成无条件 continue。切回 native 的用例仍通过，但用户切走后 Trellis 自身的 SessionStart/UserPromptSubmit 注入被静默移除，Trellis 在 Claude Code 上的工作流状态注入从此失效，且无任何测试失败。",
+      "evidence": "在 $TMPDIR 副本把 orchestrator-assets.ts:348 改为 `if (true) continue;`，运行 workflow + orchestrator-assets 测试 → 22 passed。"
+    },
+    {
+      "id": "r1-inst-tests-3",
+      "file": "packages/cli/test/commands/init.integration.test.ts",
+      "line": 1667,
+      "severity": "med",
+      "summary": "D4 只覆盖了“默认值 6 → 16”这一条路径，PRD 要求 3/要求 5 中“缺失或等于 6 之外的其他值一律不动”（以及 update 侧 preserveExistingWorkerGuardConfig 对既有非默认值的保留）没有任何用例。",
+      "failure_scenario": "把 applyOrchestratorWorkerBudget 的提前返回（raw.maxLiveWorkers !== '6' → return）去掉，改成任何情况都写 16。#30 与 update #30 仍全绿；现实中用户已按机器内存调好的 max_live_workers（如 32、4）在 `trellis init --workflow orchestrated` 时被静默改成 16，与 PRD “Any other value is left alone” 相悖。",
+      "evidence": "副本中把该提前返回置为恒 false，新增的 init/update/orchestrator-assets 用例全部通过；另在副本写临时用例（config.yaml 预置 max_live_workers: 4 后调用 installOrchestratorAssets）——正确实现下通过、变异实现下失败，证明该场景现有测试未覆盖。"
+    },
+    {
+      "id": "r1-inst-tests-4",
+      "file": "packages/cli/test/utils/orchestrator-assets.test.ts",
+      "line": 46,
+      "severity": "low",
+      "summary": "PRD 要求 3 明确规定了 PreToolUse 的 matcher 正则（Bash|Edit|Write|MultiEdit|NotebookEdit|Agent|Task|mcp__.*），但没有任何断言校验该 matcher 的值。",
+      "failure_scenario": "把 matcher 收窄成 \"Bash\"（或漏掉 Machine 工具项）：guard 只对 Bash 触发，Edit/Write/Agent/Task/mcp__.* 不再被约束，而注入与 init 用例仍全绿——约束层的覆盖范围静默缩小。",
+      "evidence": "副本中把 orchestrator-assets.ts:268 的 matcher 改为 \"Bash\"，运行 orchestrator-assets + init 集成 → 66 passed。"
+    },
+    {
+      "id": "r1-inst-tests-5",
+      "file": "packages/cli/test/commands/init.integration.test.ts",
+      "line": 1711,
+      "severity": "low",
+      "summary": "AC5 要求“未选 orchestrated 时 file set 与 settings.json 字节与改动前一致（针对改动前行为断言）”，#31 只断言 config.yaml 字节等于模板、settings.json 不含 \".trellis/orchestrator\" 子串，未做 settings.json 字节比对，也未比对整体文件集合。",
+      "failure_scenario": "共享 init 路径上任何对 settings.json 的重新序列化（键序/空白/尾换行变化）或增删一个无关文件都不会被 #31 发现；AC5 声称的“byte-for-byte”仅对 config.yaml 成立。",
+      "evidence": "阅读 #31 断言（init.integration.test.ts:1711-1736）确认其只做存在性/子串断言；仓库内相关基线是 #6 的 “re-init 两次文件集一致”（:960），并非与改动前基线比对。"
+    },
+    {
+      "id": "r1-inst-tests-6",
+      "file": "packages/cli/test/commands/init.integration.test.ts",
+      "line": 1667,
+      "severity": "low",
+      "summary": "PRD 要求 3 规定“未配置 Claude Code 时打印：约束层只在 Claude Code 生效”，该分支没有任何用例（现有 orchestrated 的 init/update/workflow 用例都默认配置了 claude-code）。",
+      "failure_scenario": "删掉 installOrchestratorClaudeHooks 中的提示输出分支：Cursor/Codex 用户选择 orchestrated 后不会看到“约束层不生效”的说明，误以为已获得 guard/inject 保护；测试不会失败。",
+      "evidence": "副本中把该 existsSync 分支禁用后，orchestrator-assets/init/workflow 用例仍全绿；另写临时用例确认正确实现在缺 .claude/settings.json 时不抛错（仅缺少提示），即该路径只由提示文案承载，无断言。"
+    }
+  ]
+}

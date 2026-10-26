@@ -1,0 +1,32 @@
+{
+  "dimension": "correct",
+  "findings": [
+    {
+      "id": "r1-inst-correct-1",
+      "file": "packages/cli/src/utils/orchestrator-assets.ts",
+      "line": 425,
+      "severity": "high",
+      "summary": "Switching away keeps the user-modified orch.py AND its hash entry, so the selection signal (presence of the `.trellis/orchestrator/orch.py` hash) stays true; a later `trellis update` then silently resurrects the orchestrated workflow.",
+      "failure_scenario": "1) `trellis init --workflow orchestrated` (or `trellis workflow --template orchestrated`) installs the engine and records hash H0 for `.trellis/orchestrator/orch.py`. 2) The user edits `.trellis/orchestrator/orch.py` (the engine entry point). 3) The user switches away with `trellis workflow --template native`: `removeOrchestratorAssets` sees orch.py on disk with recorded=H0 and computeHash(edited)!=H0, so it falls into the `kept.push(rel)` branch (line 425-427) and never calls `removeHash` — that is by design for the file, but the hash entry H0 survives. `writeWorkflow` then sets workflow.md to native + its hash. State is now inconsistent: workflow.md = native, but `isOrchestratedSelected(cwd)` (line 87-89, `loadHashes[cwd]['.trellis/orchestrator/orch.py'] !== undefined`) is still TRUE. 4) Any subsequent `trellis update` runs the `if (isOrchestratedSelected(cwd))` block (update.ts:1006): desired workflow.md becomes the orchestrated body, the three cards are re-added as new files, the removed engine files are re-installed, and `injectOrchestratorHooks` re-injects guard/inject into settings.json — undoing the switch-away. Because the on-disk workflow.md still matches its recorded hash, `analyzeChanges` classifies it `autoUpdateFiles` (update.ts:1103-1117) and overwrites it with no prompt.",
+      "evidence": "Read orchestrator-assets.ts:391-447 (removeOrchestratorAssets keep-branch never removeHash) and 87-89 (marker = hash presence); workflow.ts:307-325 (switch-away calls removeOrchestratorAssets only); update.ts:1006-1018 + 1092-1125 (auto-update on hash match). `grep` for ORCHESTRATOR_ENGINE_MARKER / isOrchestratedSelected / removeOrchestratorAssets shows no other code path clears the orchestrator hashes. Existing tests only switch away with byte-identical (unmodified) files, so they never exercise this."
+    },
+    {
+      "id": "r1-inst-correct-2",
+      "file": "packages/cli/src/utils/orchestrator-assets.ts",
+      "line": 88,
+      "severity": "med",
+      "summary": "The selection signal can be manufactured by the generic `.trellis/` hash walk, so a project with a self-built engine copy becomes 'selected' after any init/re-init and `trellis update` silently overwrites it — contradicting PRD req 2 ('a self-built engine copy is never treated as selected and never touched').",
+      "failure_scenario": "Repo with a self-built `.trellis/orchestrator/orch.py` (the exact case the PRD names: spark-harness). `initializeHashes` walks `.trellis/` recursively and hashes every file except the EXCLUDE_FROM_HASH patterns (template-hash.ts:387, EXCLUDE list at 264-274 does NOT cover `.trellis/orchestrator/`). Running any init that reaches that walk — e.g. `trellis init --claude` (handleReinit add-platform branch) or `trellis init --force` — records a hash for the self-built orch.py. From then on `isOrchestratedSelected()` is true, so the next `trellis update` runs the orchestrated block: it overwrites the self-built `orch.py` with the bundled engine (the freshly recorded hash equals the on-disk self-built content, so `analyzeChanges` classifies it autoUpdate, update.ts:1103-1117 → silent overwrite, no conflict prompt), rewrites workflow.md to the orchestrated body, backfills the three cards, and injects the guard/inject hooks.",
+      "evidence": "Read template-hash.ts:358-418 (initializeHashes unconditionally walks `.trellis/`), 264-274 (EXCLUDE_FROM_HASH has no `.trellis/orchestrator` entry), and orchestrator-assets.ts:87-89. The file's own docstring (lines 13-16) justifies the invariant by 'spark-harness git-excludes .trellis/', but hashing is filesystem-based, so git-ignoring the directory does not prevent the walk from hashing files that exist on disk."
+    },
+    {
+      "id": "r1-inst-correct-3",
+      "file": "packages/cli/src/commands/workflow.ts",
+      "line": 307,
+      "severity": "low",
+      "summary": "The live-orchestration refusal and the asset removal exist only on the `trellis workflow` path; `trellis init --force` (full re-init) rewrites workflow.md back to native while leaving the engine, cards and hooks installed and without consulting findLiveOrchestrations.",
+      "failure_scenario": "An orchestrated project (engine hash present, orchestration.json stage=running). Running `trellis init --force` takes the full-init path (handleReinit is skipped when `options.force`), `workflowId` defaults to native with `workflowMdOverride === undefined`, so createWorkflowStructure overwrites `.trellis/workflow.md` with the native body, while `installOrchestratorAssets` is not called and `removeOrchestratorAssets` is never called. Result: workflow body reverted to native, engine + three cards + guard/inject hooks left behind, and no live-orchestration refusal (the check at workflow.ts:307-313 is not reached). Combined with finding 1 the stale orch.py hash then makes the next `trellis update` flip workflow.md back to orchestrated.",
+      "evidence": "Read init.ts:1188-1215 (re-init fast path gate — `--force` bypasses it), 1890-1906 (native ⇒ workflowMdOverride undefined), 1971-1978 (install gated on workflowId===orchestrated), 2002-2009 (removeHash gated on `workflowMdOverride !== undefined`); the only live-orchestration guard is workflow.ts:307-313. PRD req 6 declares the re-init fast path out of scope, so the init full-init surface may be considered out of scope — reported for completeness since it bypasses the same refusal and removal the PRD requires on the switch-away path."
+    }
+  ]
+}

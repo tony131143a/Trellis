@@ -1,0 +1,12 @@
+REPORT-ONLY review. Do NOT modify, create, or delete any file except the single output JSON named below. No git write operations. Scratch experiments only under $TMPDIR.
+
+Under review (worktree /Users/xktang/person-resources/project/my/Trellis.worktrees/orchestrated-workflow, new untracked files): packages/cli/src/templates/trellis/{workflow-orchestrated.md, orchestrator/conductor.md, orchestrator/briefs/*.md, agents/review-finder.md, agents/review-verify.md, agents/simplify.md}, packages/cli/test/templates/orchestrated-assets.test.ts. The engine .py files next to them are being edited by other workers right now — they are NOT under review; use them (and /Users/xktang/person-resources/project/spark-harness/.trellis/orchestrator/*.py) only as the reference for the command surface and brief variables.
+Task: /Users/xktang/person-resources/project/my/Trellis/.trellis/tasks/10-23-orch-workflow-assets/prd.md; parent design /Users/xktang/person-resources/project/my/Trellis/.trellis/tasks/10-23-orchestrated-workflow/design.md §5, §7.
+
+Dimension: contract-and-tests — workflow-orchestrated.md vs .trellis/spec/cli/backend/workflow-state-contract.md (block syntax, per-turn block content rules and size limits, parser/strip regex compatibility with the hook scripts under packages/cli/src/templates/shared-hooks/ or wherever inject-workflow-state lives) and vs native workflow.md (every native block and step heading still present; Phase 1/3 text consistent); can the [workflow-state:orchestrating] block actually be selected by the existing injector for status=orchestrating; do the tests in orchestrated-assets.test.ts prove each acceptance criterion and would they fail on a broken asset (run them; mutate copies in $TMPDIR if useful).
+
+Rules: report only defects that matter for the PRD or for a Conductor/worker following these texts; no style nits. Every finding needs a concrete failure_scenario (who follows which text → what goes wrong). Order by severity.
+
+Output: write JSON to /Users/xktang/person-resources/project/my/Trellis/.trellis/tasks/10-23-orchestrated-workflow/reviews/r1-as-contract.json :
+{"dimension": "contract-and-tests", "findings": [{"id": "r1-as-contract-1", "file": "...", "line": 0, "severity": "high|med|low", "summary": "...", "failure_scenario": "...", "evidence": "what you checked (file:line)"}]}
+An empty findings list is a valid result. Final message: one line per finding (id, severity, summary) or "no findings".

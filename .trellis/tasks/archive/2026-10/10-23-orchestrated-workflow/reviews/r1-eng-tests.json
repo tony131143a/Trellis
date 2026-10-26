@@ -1,0 +1,32 @@
+{
+  "dimension": "r1-eng-tests",
+  "findings": [
+    {
+      "id": "r1-eng-tests-1",
+      "file": "packages/cli/src/templates/trellis/orchestrator/orch.py",
+      "line": 40,
+      "severity": "med",
+      "summary": "The port keeps a CJK literal in the engine and the new test suite asserts it, violating PRD Requirement 6 ('English ... No CJK characters remain in engine or tests') and the acceptance check 'a CJK scan over engine and tests find nothing'. `ACCEPTANCE_HEADINGS` contains \"## 验收标准\" (orch.py:40) and test_orch.py:623 writes a prd_body containing that same CJK heading; the code comment calls it 'an allowed, documented i18n exception', but the PRD grants no such exception.",
+      "failure_scenario": "Run the acceptance check `grep -rnP '[\\x{4e00}-\\x{9fff}]'` (or any CJK scan) over packages/cli/src/templates/trellis/orchestrator and test/python/orchestrator: it matches orch.py:40 (`\"## 验收标准\"`) and test_orch.py:623 (`prd_body=\"# x\\n\\n## 验收标准\\n- ok\\n\"`). The AC item 'a CJK scan over engine and tests find nothing (generic wording only)' therefore fails, and the shipped engine still carries non-English text. (Verified: a Python CJK-range scan over both trees returns exactly these two lines and nothing else.)",
+      "evidence": "engine scan -> `orch.py:40: ACCEPTANCE_HEADINGS = (\"## Acceptance Criteria\", \"## 验收标准\")`; test scan -> `tests/test_orch.py:623: self._planned([child_spec(\"api\")], prd_body=\"# x\\n\\n## 验收标准\\n- ok\\n\")`. Both are part of the port delta (spark had no such acceptance-heading alias in this form)."
+    },
+    {
+      "id": "r1-eng-tests-2",
+      "file": "packages/cli/test/python/orchestrator/test_pipeline.py",
+      "line": 1097,
+      "severity": "med",
+      "summary": "PRD Requirement 4's reviewer card rename (`check` -> `review-finder`) has no test: no assertion anywhere pins the agent a reviewer/finder is dispatched with. Reverting the name back to the old `check` (or a typo) keeps the entire unittest suite green, so the requirement is not actually covered. (The verifier rename `check-verify` -> `review-verify` IS pinned by RespawnAgentTest at line 1819, and implement/simplify are pinned too, which makes the finder gap stand out.)",
+      "failure_scenario": "Mutate the engine — replace every `\"review-finder\"` with `\"check\"` in pipeline.py and integration.py (AGENT_BY_KIND['review'], _start_finder, _start_single_finder, _start_integration_review) — then run `python3 -m unittest test_pipeline test_orch test_guard`: 290 tests, still OK (no failure). So a regression that reverts reviewers to a card that is no longer installed would pass `pnpm test` while at runtime every review round's finder worker fails to start, stalling the orchestration at `reviewing`.",
+      "evidence": "Only agent-pinning assertions found: test_pipeline.py:1103 (`agent == 'implement'`), 1807 (`'simplify'`), 1819 (`'review-verify'`). Grep of all test files for `review-finder` yields only test_orch.py:643 (the REQUIRED_TRACKED_PATHS string), never a spawn-agent assertion. The mutation experiment above confirms the suite stays green with `review-finder`->`check`."
+    },
+    {
+      "id": "r1-eng-tests-3",
+      "file": "packages/cli/test/python/orchestrator/test_inject.py",
+      "line": 244,
+      "severity": "low",
+      "summary": "`DefaultMainRootTests.test_main_root_is_repo_root` was weakened during the port: it now compares `inject.MAIN_ROOT` against `Path(inject.__file__).resolve().parents[2]`, which is literally the expression inject.py uses to define MAIN_ROOT, so the assertion is a tautology that can never fail. In spark it compared against the actual repo root (the tests dir's parents[3]).",
+      "failure_scenario": "If `inject.MAIN_ROOT` were broken (wrong parents index / different resolution), this test still passes because both sides are derived from the same expression; a regression in inject's default MAIN_ROOT resolution is therefore undetected. Only the sibling `test_hook_runs_without_orch_main_root` gives (partial) cover.",
+      "evidence": "new: `repo_root = Path(inject.__file__).resolve().parents[2]; self.assertEqual(inject.MAIN_ROOT, repo_root)`; old (spark): `repo_root = Path(__file__).resolve().parents[3]; self.assertEqual(inject.MAIN_ROOT, repo_root)` — the old form tied MAIN_ROOT to a location independent of the module's own definition."
+    }
+  ]
+}

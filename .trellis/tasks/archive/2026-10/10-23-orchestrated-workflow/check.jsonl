@@ -1,0 +1,7 @@
+{"file": ".trellis/tasks/10-23-orchestrated-workflow/research/install-mechanism.md", "reason": "Verify install/update/hash behavior and opt-in boundaries against the researched extension points"}
+{"file": ".trellis/tasks/10-23-orchestrated-workflow/research/tests-specs-channel.md", "reason": "Verify C-1/C-2 fixes, Python 3.9/basedpyright constraints and spec updates"}
+{"file": ".trellis/spec/cli/backend/commands-channel.md", "reason": "Check channel fixes against the runtime contract and its Tests Required list"}
+{"file": ".trellis/spec/cli/backend/workflow-state-contract.md", "reason": "Check the orchestrating writer is registered and reachability is documented"}
+{"file": ".trellis/spec/cli/backend/commands-update.md", "reason": "Check update byte-parity and preserve steps (settings.json hooks, worker_guard)"}
+{"file": ".trellis/spec/cli/backend/quality-guidelines.md", "reason": "General quality bar for CLI changes"}
+{"file": ".trellis/spec/cli/unit-test/conventions.md", "reason": "Test conventions for new vitest and Python-backed tests"}

@@ -1,0 +1,12 @@
+{"file": ".trellis/tasks/10-23-orchestrated-workflow/research/install-mechanism.md", "reason": "Workflow selection, template install/hash/update, statusLine opt-in and config.yaml edit points for orch-install"}
+{"file": ".trellis/tasks/10-23-orchestrated-workflow/research/tests-specs-channel.md", "reason": "Python test placement and CI constraints, C-1/C-2 code paths, spec targets, trellis CLI resolution"}
+{"file": ".trellis/spec/cli/backend/commands-channel.md", "reason": "Channel runtime contract: ShutdownController, OOM guard, Tests Required (C-1/C-2, channel-orchestrator-spec)"}
+{"file": ".trellis/spec/cli/backend/commands-workflow.md", "reason": "Workflow marketplace/bundled switcher contract extended with the orchestrated workflow"}
+{"file": ".trellis/spec/cli/backend/commands-update.md", "reason": "Update hash/preserve semantics for workflow.md, config.yaml and settings.json"}
+{"file": ".trellis/spec/cli/backend/workflow-state-contract.md", "reason": "Custom status writer table and breadcrumb blocks for the orchestrating status"}
+{"file": ".trellis/spec/cli/backend/script-conventions.md", "reason": "Conventions for shipped Python under templates/trellis"}
+{"file": ".trellis/spec/cli/backend/platform-integration.md", "reason": "Claude Code hook registration rules for guard/inject"}
+{"file": ".trellis/spec/cli/backend/configurator-shared.md", "reason": "Configurator patterns used when installing workflow-scoped assets"}
+{"file": ".trellis/spec/cli/backend/uninstall-scrubbers.md", "reason": "Hook-entry removal pattern reused when switching away from orchestrated"}
+{"file": ".trellis/spec/cli/unit-test/index.md", "reason": "Test layout and rules (no tests in pre-commit, vitest conventions)"}
+{"file": ".trellis/spec/cli/unit-test/integration-patterns.md", "reason": "Integration test patterns for init/workflow/update and Python-via-vitest"}

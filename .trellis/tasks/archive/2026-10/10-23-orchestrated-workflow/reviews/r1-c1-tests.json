@@ -1,0 +1,32 @@
+{
+  "dimension": "tests",
+  "findings": [
+    {
+      "id": "r1-c1-tests-1",
+      "file": "packages/cli/test/commands/channel-supervisor-shutdown.test.ts",
+      "line": 85,
+      "severity": "med",
+      "summary": "The new per-turn tests build their own TurnTracker -> resetTerminalEmitted wiring (makeTracker) instead of exercising the real hook in supervisor.ts:277, so the actual C-1 fix site is untested: delete the production reset and all 8 tests still pass.",
+      "failure_scenario": "Remove/rename only `shutdown.resetTerminalEmitted();` inside the onIdleExit hook at supervisor.ts:272-281 (i.e. re-introduce C-1 in the real supervisor). Real-world result: turn 1 adapter `done` sets the latch, the latch is never cleared for turn 2, the worker process dies mid-turn-2, finalizeOnExit skips synthesis (shutdown.ts:206) -> no terminal event is appended, `trellis channel wait` runs until its timeout, and the pre-timeout supervisor_warning (AC4) never fires after turn 1. The test suite gives zero signal for this regression because it re-implements the hook locally: `makeTracker` (test:83-87) wires `onIdleExit: () => shutdown.resetTerminalEmitted()` itself, and tests 3/4/7 all use it.",
+      "evidence": "Copied packages/cli to $TMPDIR/c1check (scratch only), deleted exactly the `shutdown.resetTerminalEmitted();` line from src/commands/channel/supervisor.ts, then `npx vitest run test/commands/channel-supervisor-shutdown.test.ts` -> 'Test Files 1 passed, Tests 8 passed' (identical to the unmodified baseline). The only reason the file fails on the pre-fix tree is that the test itself calls the newly added API (shutdown.resetTerminalEmitted is not a function) — it never asserts the fix through runSupervisor's own wiring."
+    },
+    {
+      "id": "r1-c1-tests-2",
+      "file": "packages/cli/src/commands/channel/supervisor/shutdown.ts",
+      "line": 206,
+      "severity": "med",
+      "summary": "The synthesized crash terminal carries no turn identity and no `turn_finished` is appended, so kind-filtered waiters (`wait --kind done` per PRD AC1, `--kind turn_finished` per design §2) still hang after a turn-2 crash; only an unfiltered `wait` wakes, and no new test covers this.",
+      "failure_scenario": "Spawn worker; `send --to worker m1`, turn 1 done; `send --to worker m2` (turn 2 begins -> latch reset); the worker then crashes (SIGSEGV). finalizeOnExit appends only {kind:'error', by:'worker', synthesized:true} with no inputSeq/turnId, and never appends `turn_finished`. A dispatcher blocked on `trellis channel wait <ch> --from worker --kind done` (or `--kind turn_finished`, the pairing named in design.md §2) never matches: the run exits 124 after the timeout — the exact hang this PRD is supposed to remove. The new test at test:321 only passes because it uses a wait with no --kind filter, where parseChannelKinds(undefined) returns undefined (no kind filter), so `error` happens to match.",
+      "evidence": "Scratch test $TMPDIR/c1check/test/commands/zz-scratch-wait-kinds.test.ts (copied harness, file untouched in repo): crash path with `channelWait({kind:'done', timeoutMs:400})` -> process.exitCode 124; same with `kind:'turn_finished'` -> 124. readChannelEvents after finalizeOnExit shows kinds [create, turn_started, error] — no turn_finished. Code: shutdown.ts:209-224 synthesizes a bare done/error; turn_finished is emitted only on the adapter path (stdout.ts:210-221), which a crash never reaches."
+    },
+    {
+      "id": "r1-c1-tests-3",
+      "file": "packages/cli/test/commands/channel-supervisor-shutdown.test.ts",
+      "line": 333,
+      "severity": "low",
+      "summary": "Flaky: 'wakes a default `wait` on the synthesised terminal event' races the events.jsonl watcher with a fixed 25 ms sleep; channelWait attaches at EOF, so if attach loses the race the test runs to its 5 s timeout and fails the exitCode assertion.",
+      "failure_scenario": "On a loaded CI runner the watcher (channelWait -> watchEvents without fromStart, i.e. attach-at-EOF) takes longer than the hard-coded 25 ms to open events.jsonl and start tailing. `shutdown.finalizeOnExit` then appends the synthesized error before the watcher attaches, the event is missed, channelWait aborts at timeoutMs=5000, sets process.exitCode=124, and `expect(process.exitCode).not.toBe(124)` fails. The test also then consumes ~5 s of the 10 s vitest testTimeout, so subsequent slowness can turn it into a hard timeout.",
+      "evidence": "test:327-338 — waiter created, then `await new Promise((r) => setTimeout(r, 25))` with the comment 'Let the watcher attach at EOF before the fallback is appended', timeoutMs 5000. wait.ts uses `watchEvents(channelName, filter, { signal, project })` with no `fromStart`/`sinceSeq`, so any event appended before attach is invisible. The 25 ms budget is a wall-clock assumption, not a synchronization."
+    }
+  ]
+}

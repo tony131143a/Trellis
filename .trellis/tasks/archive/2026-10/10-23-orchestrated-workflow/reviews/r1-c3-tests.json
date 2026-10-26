@@ -1,0 +1,32 @@
+{
+  "dimension": "tests",
+  "findings": [
+    {
+      "id": "r1-c3-tests-1",
+      "file": "packages/cli/test/commands/channel-turn-attribution.test.ts",
+      "line": 275,
+      "severity": "low",
+      "summary": "The AC-3 case ('does not split or end a user turn when a notification arrives mid-turn') is the only test in the file that stays green on the pre-C-3 code, and its fixture is not a transcription of any recorded sequence: it feeds system{task_notification} + a fresh system{init} immediately before the channel turn's own `result`, with no <task-notification> echo, a shape research/stream-turns.md §4 says the provider does not produce (it defers the notification turn until after the user turn's terminal). So AC-3 ('notification arriving mid user turn does not split or end the user turn') has no test that fails on the pre-C-3 code, and the only implementation the case genuinely discriminates is the rejected 'key the origin off system{subtype:\"task_notification\"}' design — the shipped echo-based design is not what it guards.",
+      "failure_scenario": "Two distinct gaps. (a) Requirement check: the task dimension asks that each behavioural AC have a test that fails on the pre-C-3 code — this one cannot fail there (pre-C-3 attributes every terminal to the in-flight turn, which is exactly what the fixture asserts), so the AC is effectively covered by a design-choice guard, not a regression guard. (b) Fixture fidelity: the fixture pairs `system{subtype:\"init\"}` (line 293) with a single `result`, i.e. it models a new provider turn starting mid-turn whose terminal is nevertheless the user turn's terminal. Per Finding 2 of the research, `init` fires at the start of every provider turn and every such self turn is accompanied by a notification echo in the real recordings (§2, §3) — the scenario the fixture encodes has never been observed, so a future divergence between the real protocol and this assumption (e.g. the provider starting to echo the notification later, or to emit the notification eagerly mid-turn as seq 4 says it does not) cannot be detected from this fixture.",
+      "evidence": "Scratch copy of packages/cli with only the C-3 hunks reverted (buildClaudeArgs without --replay-user-messages; handleResult → `const selfInitiated = false`) at $TMPDIR/c3scratch: `vitest run test/commands/channel-turn-attribution.test.ts` → 5 failed, 1 passed, the pass being this test at line 275. A second mutation that keeps the adapter flag but reverts the stdout.ts `!selfInitiated` skip fails 3 others and still leaves this one green. Fixture at lines 284-299 vs research/stream-turns.md:124-141 (§4: `result` of the user turn, then task_notification, then init, then the notification echo)."
+    },
+    {
+      "id": "r1-c3-tests-2",
+      "file": "packages/cli/test/commands/channel-turn-attribution.test.ts",
+      "line": 110,
+      "severity": "low",
+      "summary": "The documented fail-safe default is pinned by no test. `createClaudeCtx()` returns `{ turnOrigin: \"channel\" }` (adapters/claude.ts:78) precisely so that a provider which never echoes — an older CLI without --replay-user-messages, or a build that ignores it — keeps the legacy attribution instead of the strictly worse 'user turns never finish'. Every case in the file feeds a replayed echo (or an echo-setting notification) before its first `result`, so flipping the default to `\"self\"` leaves the whole file green.",
+      "failure_scenario": "The flag is added unconditionally by buildClaudeArgs, but the guard against a non-conforming/echo-less provider is only a single initialiser. If that initialiser is ever refactored to `\"self\"` (or if `ClaudeCtx` is re-created per line, e.g. someone 'simplifies' startStdoutPump by calling adapter.createCtx() per line), then for a provider that never emits `{\"type\":\"user\",…,\"isReplay\":true}` every `result` is stamped `selfInitiated: true`: no `turn_finished` is ever written, `wait --kind turn_finished` (and the bundled engine's channel.py:368-375 match) blocks until timeout while the worker keeps editing — the exact F-2 symptom this task removes, reintroduced, with a fully green suite.",
+      "evidence": "Scratch mutation `return { turnOrigin: \"self\" };` at packages/cli/src/commands/channel/adapters/claude.ts:78 → `vitest run test/commands/channel-turn-attribution.test.ts` → 6 passed. No test feeds a bare `result()` with no preceding echo: grep the fixture helpers at lines 44-98 — every feed in lines 170-380 starts with channelEcho() or notificationEcho(). A single case ('a provider that never echoes still finishes the turn: `result()` with no preceding echo → one turn_finished') would pin it."
+    },
+    {
+      "id": "r1-c3-tests-3",
+      "file": "packages/cli/test/templates/orchestrated-assets.test.ts",
+      "line": 184,
+      "severity": "low",
+      "summary": "AC-5's first half ('Briefs carry the background-command rule') is asserted by no test. The asset test only pins the placeholder set per brief and the file list; nothing checks that the interim-mitigation rule line is present, so the one line added to each of the nine briefs can be dropped by a future template resync (the workflow this repo repeatedly goes through: local .trellis/ ↔ bundled template) with the suite still green.",
+      "failure_scenario": "Requirement 5 is the only mitigation that works before the supervisor fix reaches a worker: the brief tells the worker to wait for every background command it started before ending its turn. If a later template edit (or a `trellis update` that overwrites packages/cli/src/templates/trellis/orchestrator/briefs/*.md) drops the line, nothing fails: the placeholder contract still matches, so a worker with a long background test run reverts to the F-2 pattern (self turn's `done` landing while a dispatch is in flight) and the conductor advances early.",
+      "evidence": "Read packages/cli/test/templates/orchestrated-assets.test.ts:119-188 — the only brief-content assertions are the `expected` placeholder map (line 122) and `placeholders(...)` equality (line 185). Grep 'Background rule' under packages/cli/test → 0 hits; the rule text exists only in packages/cli/src/templates/trellis/orchestrator/briefs/*.md (e.g. implement.md:24, abbreviated in scan.md:24, verify.md:14). Running the file green (`vitest run test/templates/orchestrated-assets.test.ts`) proves the rule is unpinned."
+    }
+  ]
+}

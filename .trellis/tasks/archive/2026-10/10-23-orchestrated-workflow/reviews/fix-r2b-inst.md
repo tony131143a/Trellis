@@ -1,0 +1,5 @@
+Follow-up to round 2 (same scope/rules). The "kept modified file → hash dropped" part on SELECTION is wrong: if the kept file is `.trellis/orchestrator/orch.py` (the selection marker), the project the user just selected is no longer "selected"; the next `trellis update` then reverts workflow.md to native and renders settings.json without the guard/inject hooks.
+
+Rule on selection (init --workflow orchestrated / workflow --template orchestrated): for every orchestrator asset, record the hash of the BUNDLED TEMPLATE content. Write the file when it is missing, identical, or `--force`; otherwise keep the user's file on disk and list it. Because the recorded hash then differs from the on-disk content, update classifies it as a conflict (AC6) and the selection signal stays true. Switch-away behavior is unchanged (drop all hashes, delete pristine, keep modified).
+
+Tests: re-select with edited orch.py (no --force) → file kept, project selected, `update` keeps workflow.md orchestrated, hooks stay, orch.py reported as conflict not overwritten; same for a self-built orch.py with no prior hash. Mutation-check as before. Report ≤6 lines.

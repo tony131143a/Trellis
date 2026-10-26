@@ -1,0 +1,41 @@
+{
+  "dimension": "contract-and-tests",
+  "findings": [
+    {
+      "id": "r1-as-contract-1",
+      "file": "packages/cli/src/templates/trellis/orchestrator/briefs/finder.md",
+      "line": 13,
+      "severity": "med",
+      "summary": "The finder brief still says \"Follow the check card\" — a spark card name that no longer exists in this bundle; the finder card is `review-finder` (PRD: card names must match what the engine dispatches).",
+      "failure_scenario": "The engine spawns the review (`trellis channel spawn --agent review-finder`), so the worker's system prompt is `.trellis/agents/review-finder.md`. Then it delivers this brief, whose last line tells the worker to \"Follow the check card's Hard Rules, Method, and Dimension Checklists\". `.trellis/agents/check.md` DOES exist in an installed project (it is the bundled native-workflow check/fix card), so an obedient worker loads the *check* persona instead: it may auto-fix code (contradicting the finder's report-only contract and the `owns` restriction) and never emit the JSON to `$out_file`. The verifier then gets an empty/missing finder file, the review chain silently passes, and real defects ship. The workflow text itself already lists the correct names (`workflow-orchestrated.md:510` \"the dispatchable cards are `implement`, `research`, `review-finder`, `review-verify`, `simplify`\"), so the brief is the stale outlier.",
+      "evidence": "Read briefs/finder.md:13 and agents/review-finder.md (has Hard Rules/Method/Dimension Checklists). `ls packages/cli/src/templates/trellis/agents/` shows check.md, implement.md, research.md, review-finder.md, review-verify.md, simplify.md — no card named `review-finder` is referenced by the brief. spark-harness/.trellis/orchestrator/briefs/finder.md:13 is byte-identical and spark shipped a card literally named `check.md`, so the name was carried over verbatim during the rename."
+    },
+    {
+      "id": "r1-as-contract-2",
+      "file": "packages/cli/src/templates/trellis/orchestrator/briefs/verify.md",
+      "line": 12,
+      "severity": "med",
+      "summary": "The verifier brief tells the worker to \"Follow the check-verify card\", but this bundle ships no `check-verify.md` (it was renamed to `review-verify`).",
+      "failure_scenario": "The engine dispatches the verifier with `--agent review-verify` (design §5: engine dispatches by the new card names), so the worker's persona is `review-verify.md`; the brief then instructs it to \"Follow the check-verify card\". No `.trellis/agents/check-verify.md` is installed, so the worker either fails to resolve the reference (confusion / wasted turn) or falls back to an arbitrary protocol and emits findings without the CONFIRMED/PLAUSIBLE/REJECTED verdict the engine's parser expects (pipeline.py keeps only CONFIRMED/PLAUSIBLE), so the verifier's verdicts are dropped or mis-parsed and the Conductor sees an unusable decision.",
+      "evidence": "Read briefs/verify.md:12; `ls packages/cli/src/templates/trellis/agents/` has no check-verify.md (`review-verify.md` is the renamed card). spark-harness/.trellis/agents/ contains check-verify.md, hence the brief text is a verbatim carry-over (spark briefs/verify.md:12 is identical)."
+    },
+    {
+      "id": "r1-as-contract-3",
+      "file": "packages/cli/test/templates/orchestrated-assets.test.ts",
+      "line": 22,
+      "severity": "med",
+      "summary": "`stateBlocks()` only scans for `[workflow-state:NAME]` name tokens, not the injector's `\\1`-backreferenced pair regex, so a malformed block passes the test while the runtime hook drops it — AC#1's real intent (the orchestrating block must be *selectable*) is not proven.",
+      "failure_scenario": "A maintainer edits `workflow-orchestrated.md` and typos the closing tag (e.g. `[/workflow-state:orchestratin]`). `stateBlocks` still collects the opening token `orchestrating`, so the suite stays green (I ran it: 20/20 pass). But the injector's parser (`packages/cli/src/templates/shared-hooks/inject-workflow-state.py:209-212`, `[workflow-state:([A-Za-z0-9_-]+)]...[/workflow-state:\\1]`) refuses to match a mismatched pair; I confirmed with the real regex that `orchestrating` disappears from `load_breadcrumbs()` after the typo. The Conductor then receives only the generic \"Refer to workflow.md for current step.\" line and never gets the Conductor loop / decide rules, so the orchestration is driven blind. The contract spec explicitly calls out this exact `\\1`-pairing requirement (workflow-state-contract.md:58-69), yet the test does not exercise it.",
+      "evidence": "Read orchestrated-assets.test.ts:20-26 (`stateBlocks`), :59-66 (the only block assertion). Ran the suite against a $TMPDIR copy with the closing tag mutated — 20 tests passed. Ran the hook's `_TAG_RE` (inject-workflow-state.py:209) on the mutated file — 'orchestrating' absent. Contract: .trellis/spec/cli/backend/workflow-state-contract.md:54-69."
+    },
+    {
+      "id": "r1-as-contract-4",
+      "file": "packages/cli/test/templates/orchestrated-assets.test.ts",
+      "line": 76,
+      "severity": "low",
+      "summary": "The \"describes Phase 2 as orchestration through orch.py\" test is satisfied by text outside the Phase 2 walkthrough, so it does not actually guard the workflow's core change.",
+      "failure_scenario": "A regression reverts the Phase 2 walkthrough (2.1/2.2) to the native \"implement directly\" prose. All three asserted substrings survive elsewhere in the file — `orch.py scan` in the Phase Index / `[workflow-state:in_progress]` block, `orch.py advance` only in the `[workflow-state:orchestrating]` block (the Phase 2.1/2.2 bodies use the `ORCH` alias), and `.trellis/orchestrator/orch.py` in the Phase Index — so CI stays green while the file no longer tells the main session to orchestrate, and a Conductor following Phase 2 would fall back to native behavior. I proved the assertion is bound to a breadcrumb block, not Phase 2, by emptying the `[workflow-state:orchestrating]` body: that alone turned this test red.",
+      "evidence": "Read orchestrated-assets.test.ts:76-80. `grep -n 'orch.py advance' workflow-orchestrated.md` -> only line 245 (inside the [workflow-state:orchestrating] block); Phase 2 body uses `ORCH advance` (line 508). Mutation run in $TMPDIR: emptying the orchestrating block body failed this test."
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "dimension": "tests",
+  "findings": [
+    {
+      "id": "r1-c2-tests-1",
+      "file": "packages/cli/test/commands/channel-guard.test.ts",
+      "line": 662,
+      "severity": "low",
+      "summary": "'invalid .config' case only uses well-formed JSON with a bad field; the PRD's 'unreadable .config' case (truncated / non-JSON sidecar) is never exercised, so a reader that parses without try/catch would crash the guard while every new test stays green.",
+      "failure_scenario": "Worker W's sidecar `<channelDir>/W.config` is left truncated (spawn's writeSupervisorConfig does mkdirSync + a plain writeFileSync; a SIGKILL/ENOSPC mid-write leaves partial JSON, e.g. `{\"provider\":\"claude\",\"idleTimeoutM`). scanLiveWorkers -> readWorkerIdleTimeoutMs then parses it. With the shipped try/catch it returns undefined and the caller TTL is used (correct, per PRD 'missing / unreadable / invalid -> fall back'). But a natural alternative implementation — the one the research brief suggests (`fs.existsSync(p) ? JSON.parse(fs.readFileSync(p)) : undefined`) — throws on the truncated file, so scanLiveWorkers throws out of enforceSpawnBudget and the spawn is rejected with an unhandled error whenever ANY live worker has a corrupt sidecar. The new tests cannot distinguish the two implementations because none of them writes a non-JSON `.config`: the 'invalid' test writes valid JSON with a non-numeric (`{idleTimeoutMs:\"3h\"}`) and a missing (`{provider:\"claude\"}`) field.",
+      "evidence": "Read the new tests at test/commands/channel-guard.test.ts:662-679 (both fixtures are JSON.stringify'ed valid JSON) vs. the shipped reader guard.ts:461-479 whose try/catch wraps fs.readFileSync + JSON.parse; PRD requirement 'Missing / unreadable / invalid .config -> fall back'. `npx vitest run test/commands/channel-guard.test.ts` -> 30 passed (green either way)."
+    },
+    {
+      "id": "r1-c2-tests-2",
+      "file": "packages/cli/test/commands/channel-guard.test.ts",
+      "line": 108,
+      "severity": "low",
+      "summary": "The wallet-side contract the fix depends on is unpinned: the new cases hand-build `<worker>.config` with a literal `idleTimeoutMs` field and the same workerFile() path the reader uses, instead of going through the production writer; no test calls channelSpawn / writeSupervisorConfig.",
+      "failure_scenario": "C-2 only works if the spawn-time writer and the guard reader agree on path + field. If spawn.ts's persisted shape drifts (field renamed to `idle_timeout` / `timeoutMs`, sidecar moved to `<worker>.workerconfig`, or the field omitted when the flag is absent), every new test stays green — the fixture hardcodes both sides — while readWorkerIdleTimeoutMs returns undefined for every live worker and cleanupExpireIdleWorkers falls back to the caller TTL, i.e. the exact PRD defect (a 3h worker killed by a 5m spawn after 5 min) silently returns with a fully green suite. An end-to-end case (spawn --idle-timeout 3h, then enforceSpawnBudget with a 5m policy) would have caught it; none exists.",
+      "evidence": "Grep for `channelSpawn|writeSupervisorConfig` across packages/cli/test -> 0 matches. Contract verified correct today only by reading code: writer spawn.ts:259-283 (idleTimeoutMs at :271) -> supervisor.ts:609-617 (workerFile(channel, worker, 'config')) vs reader guard.ts:461-479 + store/paths.ts:117-125. Empirically, running the file against HEAD's guard.ts in a /tmp copy (`git show HEAD:...guard.ts` + symlinked node_modules) failed 3/5 new tests, i.e. the reader side is covered but the writer side is not exercised at all."
+    }
+  ]
+}

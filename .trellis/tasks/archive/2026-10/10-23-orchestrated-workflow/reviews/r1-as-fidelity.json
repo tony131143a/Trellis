@@ -1,0 +1,41 @@
+{
+  "dimension": "fidelity",
+  "findings": [
+    {
+      "id": "r1-as-fidelity-1",
+      "file": "packages/cli/src/templates/trellis/workflow-orchestrated.md",
+      "line": 518,
+      "severity": "med",
+      "summary": "Phase 2.2 groups `quick_gate` / `full_gate` with `validate_fail` and tells the Conductor that a flaky gate is answered with `retry`, but the engine's gate-failure decisions only allow fix/accept/escalate — the `retry` answer is rejected, so the run stays blocked at a decision the text cannot resolve. Spark's own playbook (conductor.md §3) never suggested `retry` for a gate; the workflow text merged two decision kinds that have different option sets.",
+      "failure_scenario": "A `full_gate` fails in the integration worktree for an environmental/flake reason. The Conductor follows workflow-orchestrated.md:518 (`environment or flake -> retry`) and runs `python3 .trellis/orchestrator/orch.py decide integration retry --parent <p>`. cmd_decide refuses it (`action=retry is not in the allowed options ['fix','accept','escalate']`), the ledger decision is left unanswered, and `advance` keeps returning the same DECISION until the Conductor guesses an option the text never listed (fix/accept/escalate). The prescribed path is a dead end.",
+      "evidence": "workflow-orchestrated.md:518 lists `validate_fail` / `quick_gate` / `full_gate` -> retry|fix. integration.py:147-154 emits the gate decision with options [\"fix\", \"accept\", \"escalate\"] (no retry); orch.py cmd_decide rejects any action not in the decision's options. pipeline.py:1298 shows `validate_fail` (a different kind) does include retry, so the grouping is only valid for validate_fail. conductor.md:54 (the authoritative playbook) correctly lists only `fix --brief` for quick_gate/full_gate."
+    },
+    {
+      "id": "r1-as-fidelity-2",
+      "file": "packages/cli/src/templates/trellis/orchestrator/briefs/finder.md",
+      "line": 13,
+      "severity": "med",
+      "summary": "The finder and verifier briefs still name the spark cards `check` / `check-verify`, but this task renamed them to `review-finder` / `review-verify`; the worker is instructed to follow a card that no longer exists under that name. In an upgrading project the old `check.md` / `check-verify.md` may still be present in `.trellis/agents/`, so the worker can end up loading the wrong (spark-derived) card instead of its own.",
+      "failure_scenario": "A worker dispatched as `review-finder` reads briefs/finder.md:13 (\"Follow the check card's Hard Rules, Method, and Dimension Checklists\"). The installed card for its role is `review-finder.md`; the text points it at `check`. If the project still has a legacy `.trellis/agents/check.md` (spark copy, Go/Chinese specifics, different rules) the worker follows those rules instead of the shipped finder card; if not, the instruction dangles and the worker falls back to generic reviewing, weakening the finder discipline (failure_scenario rule, report-only). Same for verify.md:12 pointing at `check-verify` while the card is `review-verify`.",
+      "evidence": "briefs/finder.md:13 references \"the check card\"; briefs/verify.md:12 references \"the check-verify card\". Same text byte-for-byte in spark-harness/.trellis/orchestrator/briefs/{finder,verify}.md, where the names were correct. This task's shipped card names are review-finder / review-verify (agents/review-finder.md, agents/review-verify.md; index.ts:98-99 ORCHESTRATOR_AGENT_CARD_NAMES), and the PRD (prd.md:27) fixes those names as the ones the engine dispatches."
+    },
+    {
+      "id": "r1-as-fidelity-3",
+      "file": "packages/cli/src/templates/trellis/workflow-orchestrated.md",
+      "line": 527,
+      "severity": "med",
+      "summary": "Phase 2.3 (Rollback) prescribes re-entry paths the engine does not accept: `ORCH plan` again for a prd defect found during review, and `ORCH abort` followed by \"re-scan and re-plan\". The engine only accepts `plan` at stage planning/planned and `scan` at stage planning, so both routes fail once an orchestration is running or has been aborted.",
+      "failure_scenario": "During Execute, a review decision exposes a prd defect. The Conductor follows 2.3 (\"return to Phase 1 ... fix, then re-plan (`ORCH plan` again)\") and runs `orch.py plan <parent> --file plan.json`; orch.py returns `stage=running; plan only applies to planning/planned.` (exit 2). Alternatively the split is judged wrong, the user runs `ORCH abort`, and the Conductor runs `ORCH scan` to re-plan — orch.py fails with `this parent already has an orchestration (stage=aborted); scan is planning-only.` (abort keeps the ledger at stage=aborted). The Conductor is stuck with no documented way back; spark's rollback text (workflow.md:230-234) never prescribed these unsupported re-entries (it said escalate/abandon/pause).",
+      "evidence": "workflow-orchestrated.md:527 (\"re-plan (`ORCH plan` again)\") and :529 (\"abort ... re-scan and re-plan\"). orch.py:395 `plan` fails unless stage in (planning, planned); orch.py:277 `scan` fails unless stage == planning; cmd_abort (orch.py:~1017-1040) sets led[\"stage\"]=\"aborted\" and saves the ledger (does not delete it), so a later scan hits the exists+non-planning branch."
+    },
+    {
+      "id": "r1-as-fidelity-4",
+      "file": "packages/cli/src/templates/trellis/workflow-orchestrated.md",
+      "line": 577,
+      "severity": "low",
+      "summary": "The file carries Chinese text copied verbatim from the bundled native workflow (中文, 行, 我自己来, 不行) in the Phase 3.4 commit-prompt section. The PRD requires these assets to be English-only with no CJK, and lists \"CJK / spark scan over the new and edited files is empty\" as an acceptance criterion.",
+      "failure_scenario": "Whoever verifies the AC runs the CJK scan over the new files and gets three hits in workflow-orchestrated.md; the criterion \"CJK ... scan ... is empty\" (prd.md:41) is not met, so the asset cannot be signed off as shipped (or the reviewer has to argue a PRD exception). No Conductor/worker behaviour is harmed — the strings are the native accept-reply tokens ('ok' / '行') in the 3.4 commit-plan prompt.",
+      "evidence": "workflow-orchestrated.md:577 (`中文/English`), :598 (`'ok' / '行'`), :603 (`\"不行\" / \"我自己来\"`); identical lines exist in the bundled native workflow.md (620, 641, 646) and the 3.4 section diffs empty between the two files. prd.md:31 (\"English only; ... no CJK text\") and prd.md:41 (AC \"CJK / spark scan ... is empty\")."
+    }
+  ]
+}
