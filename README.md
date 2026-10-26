@@ -62,7 +62,7 @@ python3 ./.arbor/scripts/dispatch.py codeg-setup            # print manual codeg
 python3 ./.arbor/scripts/dispatch.py codeg-setup --install  # macOS: write assistants into codeg's database
 ```
 
-Run the workflow on one target with `/arbor:workflow-star` or `/arbor:workflow-pi` (sets the target for the checkout and continues the task); `/arbor:dispatch-target star|pi|clear` only switches.
+Run the workflow on one target with `/arbor:workflow-star` or `/arbor:workflow-pi` (sets the target for the checkout and continues the task).
 
 First task, following `.arbor/workflow.md`:
 

@@ -14,7 +14,7 @@ This project is managed by Arbor. You are the **main agent**: plan, curate conte
   Role: implement | check | check [finish] | research
   ```
   Optional header lines: `Target: star|pi`, `Workspace: <worktree>`. A project hook inlines `implement.jsonl`/`check.jsonl` files and `prd.md`/`design.md`/`implement.md` for you.
-- Run the whole workflow on one target with `/arbor:workflow-star` or `/arbor:workflow-pi` (`/arbor:dispatch-target star|pi|clear` only switches); override a single call with `Target: <t>` in the header or `--target`.
+- Run the whole workflow on one target with `/arbor:workflow-star` or `/arbor:workflow-pi`; override a single call with `Target: <t>` in the header or `--target`.
 - Only you commit (Phase 3.4). Sub-agents never commit, push, merge, or run `task.py start/current`.
 - If your own first prompt starts with `Active task:` + `Role:`, you are a dispatched sub-agent: do that role directly and ignore the dispatch rules above.
 

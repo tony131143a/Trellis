@@ -1,6 +1,6 @@
 # Workflow on StarFactory
 
-Run the Arbor workflow with every dispatched role (implement / check / research) on the **star** target (Claude Code fork, same model class as the main agent) for this checkout, then continue the current task. The choice is sticky: all later dispatches in this project use star until `/arbor:workflow-pi` or `/arbor:dispatch-target clear`.
+Run the Arbor workflow with every dispatched role (implement / check / research) on the **star** target (Claude Code fork, same model class as the main agent) for this checkout, then continue the current task. The choice is sticky: all later dispatches in this project use star until `/arbor:workflow-pi`.
 
 Optional argument: a requirement or task description. If given and there is no active task, start Phase 1 with it.
 

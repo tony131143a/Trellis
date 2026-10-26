@@ -109,7 +109,7 @@ The **implement**, **check**, and **research** roles are never performed in the 
 | check | `check` / `check [finish]` | `check.jsonl` → prd → design → implement.md | `arbor-check-star` | `arbor-check-pi` |
 | research | `research` | spec directory overview + search tips (no task files) | `arbor-research-star` | `arbor-research-pi` |
 
-**Target selection** (highest wins): `Target:` header line or `--target` → `.arbor/.runtime/dispatch-target` → env `ARBOR_DISPATCH_TARGET` → `dispatch.default_target` in config. Switch with `/arbor:workflow-star` or `/arbor:workflow-pi` (sets the target and continues the task), or `/arbor:dispatch-target star|pi|clear`.
+**Target selection** (highest wins): `Target:` header line or `--target` → `.arbor/.runtime/dispatch-target` → env `ARBOR_DISPATCH_TARGET` → `dispatch.default_target` in config. Switch with `/arbor:workflow-star` or `/arbor:workflow-pi` (sets the target and continues the task).
 
 **Header protocol.** The `task` text of every dispatch MUST start with this header, followed by a blank line and a self-contained brief:
 

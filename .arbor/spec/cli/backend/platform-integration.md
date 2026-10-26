@@ -25,7 +25,7 @@ Platform support uses a **centralized registry pattern**:
 - **Shared configurator utilities**: `src/configurators/shared.ts` — renderers (`resolvePlaceholders()`), resolvers (`resolveCommands()`, `resolveSkills()`, `resolveBundledSkills()`), map builders (`collectSkillTemplates()`, `collectSharedHooks()`), and the render/write pair (`renderTemplateMap()`, `writeTemplateMap()`). See `configurator-shared.md`
 - **Shared template utilities**: `src/templates/template-utils.ts` — `createTemplateReader()` factory
 - **Shared hooks**: `src/templates/shared-hooks/` — platform-independent Python hook scripts (session-start, inject-workflow-state, inject-delegation-context, guard-builtin-agent, inject-shell-session-context) written to the platform hook directory according to `SHARED_HOOKS_BY_PLATFORM`. Claude Code `statusLine` is not installed by default (`arbor init --with-statusline` opts in).
-- **Common templates**: `src/templates/common/` — single source of truth for commands (`start`, `continue`, `finish-work`, `dispatch-target`), single-file workflow skills (before-dev, brainstorm, check, break-loop, update-spec), and multi-file bundled skills (arbor-meta, arbor-spec-bootstrap), with `{{placeholder}}` resolution per platform
+- **Common templates**: `src/templates/common/` — single source of truth for commands (`start`, `continue`, `finish-work`, `workflow-star`, `workflow-pi`), single-file workflow skills (before-dev, brainstorm, check, break-loop, update-spec), and multi-file bundled skills (arbor-meta, arbor-spec-bootstrap), with `{{placeholder}}` resolution per platform
 - **Shared utilities**: `src/utils/compare-versions.ts` — `compareVersions()` with full prerelease support
 - **Derived helpers**: `ALL_MANAGED_DIRS`, `getConfiguredPlatforms()`, etc. — consumed by update, init, hash tracking
 
@@ -55,7 +55,8 @@ StarFactory is a Claude Code-compatible fork. Its **project-level** config direc
 | Command | `start`       | Session initialization (filtered out when the platform has a SessionStart hook, as both do) |
 | Command | `continue`    | Resume the current task at the right phase                 |
 | Command | `finish-work` | Pre-commit checklist and archive                           |
-| Command | `dispatch-target` | Switch the default dispatch target (`star`, `pi`, `clear`) |
+| Command | `workflow-star` | Set the dispatch target to `star` and continue the current task |
+| Command | `workflow-pi` | Set the dispatch target to `pi` and continue the current task |
 | Skill   | `before-dev`  | Read development guidelines (auto-discovers package specs) |
 | Skill   | `brainstorm`  | Requirements discovery                                     |
 | Skill   | `check`       | Check code quality (auto-discovers relevant specs)         |

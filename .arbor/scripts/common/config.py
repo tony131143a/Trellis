@@ -225,7 +225,7 @@ def get_prompt_injection_config(repo_root: Path | None = None) -> dict[str, str]
 
 DISPATCH_ROLES = ("implement", "check", "research")
 DISPATCH_HOOK_DECISIONS = ("allow", "ask")
-# Runtime override written by `/arbor:dispatch-target`, relative to .arbor/.
+# Runtime override written by `dispatch.py target set`, relative to .arbor/.
 DISPATCH_TARGET_FILE = ".runtime/dispatch-target"
 ENV_DISPATCH_TARGET = "ARBOR_DISPATCH_TARGET"
 

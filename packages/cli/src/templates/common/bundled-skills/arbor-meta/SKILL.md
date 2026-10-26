@@ -66,7 +66,7 @@ Do not assume the user has the Arbor source repository. Do not default to modify
 - `.arbor/tasks/` stores task PRDs, design notes, implement plans, research files, and JSONL context. Tasks form parent/child trees (`task.py create --parent <slug>`).
 - `.arbor/workspace/` stores deliberately written developer journals.
 - `.arbor/agents/{implement,check,research}.md` are assistant instruction sources (plain markdown, no frontmatter). They take effect only after `python3 ./.arbor/scripts/dispatch.py codeg-setup` and installing the rendered text in codeg.
-- Target resolution for dispatch: header `Target:` / `--target`, then `.arbor/.runtime/dispatch-target`, then env `ARBOR_DISPATCH_TARGET`, then `dispatch.default_target`. Switch with `/arbor:dispatch-target star|pi|clear`.
+- Target resolution for dispatch: header `Target:` / `--target`, then `.arbor/.runtime/dispatch-target`, then env `ARBOR_DISPATCH_TARGET`, then `dispatch.default_target`. Switch with `/arbor:workflow-star` or `/arbor:workflow-pi`.
 - A guard hook denies the built-in Agent/Task tool for Arbor roles. A session whose first prompt starts with `Active task:` plus `Role:` is a dispatched sub-agent and must not dispatch, commit, or call `task.py start/current/finish`.
 - Bundled multi-file skills (`arbor-meta`, `arbor-spec-bootstrap`) are written to `.claude/skills/` and `.starFactory/skills/` by `arbor init` and refreshed by `arbor update`.
 - Platform `settings.json` files decide which hooks actually run.

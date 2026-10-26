@@ -220,8 +220,6 @@ const COMMAND_DESCRIPTIONS: Record<string, string> = {
   continue: "Resume work on the current task at the correct phase.",
   "finish-work":
     "Wrap up the current session: quality gate, commit reminder, archive, journal.",
-  "dispatch-target":
-    "Switch the codeg dispatch target for implement/check/research roles: star, pi, or clear.",
   "workflow-star":
     "Run the Arbor workflow with implement/check/research on StarFactory (star) and continue the current task.",
   "workflow-pi":

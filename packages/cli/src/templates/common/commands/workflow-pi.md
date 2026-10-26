@@ -1,6 +1,6 @@
 # Workflow on Pi + DeepSeek
 
-Run the Arbor workflow with every dispatched role (implement / check / research) on the **pi** target (pi agent with DeepSeek, cheaper and faster) for this checkout, then continue the current task. The choice is sticky: all later dispatches in this project use pi until `/arbor:workflow-star` or `/arbor:dispatch-target clear`.
+Run the Arbor workflow with every dispatched role (implement / check / research) on the **pi** target (pi agent with DeepSeek, cheaper and faster) for this checkout, then continue the current task. The choice is sticky: all later dispatches in this project use pi until `/arbor:workflow-star`.
 
 Optional argument: a requirement or task description. If given and there is no active task, start Phase 1 with it.
 
