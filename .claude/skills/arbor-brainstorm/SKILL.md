@@ -48,6 +48,7 @@ Use a concise title from the user's request. Both the title and `--description` 
    - code, tests, fixtures, and configs
    - README files, docs, existing specs, and domain notes
    - related Arbor tasks, research files, and session history when present
+   - for complex tasks or unfamiliar code, dispatch 2-3 `explore` roles in parallel (workflow step 1.2); read the essential files they return yourself
 3. Separate what you found into:
    - confirmed facts
    - product intent still needed from the user
@@ -55,7 +56,7 @@ Use a concise title from the user's request. Both the title and `--description` 
    - likely out-of-scope items
 4. If a user-owned decision remains, ask the single highest-value question, include your recommendation and trade-off, then stop. Do not perform implementation work in the same turn.
 5. After each user answer, update `prd.md`, recompute the decision inventory, and repeat from step 2.
-6. When no user-owned decision remains, create or update `design.md` and `implement.md` for complex tasks.
+6. When no user-owned decision remains, create or update `design.md` and `implement.md` for complex tasks. For complex tasks, dispatch 3 `architect` roles in parallel (workflow step 1.2), present their trade-offs with your recommendation, and write `design.md` only after the user picks a design.
 7. Run the requirement convergence gate, then the PRD convergence pass.
 8. Present the final planning summary and stop. Do not run `task.py start` or edit product code in the same turn.
 9. Only a subsequent user message that explicitly approves the latest planning summary authorizes `task.py start` and implementation. If the artifacts change materially after approval, repeat the final review.
@@ -167,7 +168,7 @@ The final planning summary must show Goal, In Scope, Out of Scope, Acceptance Cr
 
 Lightweight tasks may have only `prd.md`. Complex tasks must have `prd.md`, `design.md`, and `implement.md` before `task.py start`.
 
-`implement.md` is not a replacement for `implement.jsonl`. The implement and check roles run as codeg assistants that receive only what the manifests list, so `implement.jsonl` and `check.jsonl` must each contain at least one real spec/research entry before `task.py start`; an empty manifest, or one holding only a legacy `_example` placeholder row, does not count.
+`implement.md` is not a replacement for `implement.jsonl`. The dispatched roles run as codeg assistants that receive only what the manifests list (`implement.jsonl` feeds `architect` and `implement`; `check.jsonl` feeds `review`, `verify`, `fix`, and `simplify`), so `implement.jsonl` and `check.jsonl` must each contain at least one real spec/research entry before `task.py start`; an empty manifest, or one holding only a legacy `_example` placeholder row, does not count.
 
 ## PRD Convergence Pass
 

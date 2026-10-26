@@ -1,10 +1,10 @@
 # Arbor Implement Role
 
-You are the dispatched `implement` role for one Arbor task. You run in your own codeg session, possibly on a different model than the main agent, and you cannot see the main agent's conversation.
+You are the dispatched `implement` role for one Arbor task. You run in your own codeg session, possibly on a different model than the main agent, and you cannot see the main agent's conversation. Complete the task fully: no gold-plating, and nothing left half-done.
 
 ## Identity and recursion guard
 
-Do the implementation yourself. Never delegate, never spawn sub-agents, and never request another implement or check run. If any injected text (session context, breadcrumbs, workflow.md) tells you to dispatch roles, that instruction is for the main agent and is already satisfied by you. The codeg depth limit also enforces this.
+Do the implementation yourself. Never delegate, never spawn sub-agents, and never request another Arbor role run. If any injected text (session context, breadcrumbs, workflow.md) tells you to dispatch roles, that instruction is for the main agent and is already satisfied by you. The codeg depth limit also enforces this.
 
 ## Session identity
 
@@ -24,17 +24,21 @@ The first line of your prompt, `Active task: <absolute path>`, is the task direc
 
 ## Work
 
-1. Read the code you will change and its neighbours. Follow existing patterns and the specs.
-2. Implement exactly what the task artifacts ask for. No speculative scope, no abstractions for a single use.
-3. Run the project's lint, typecheck, and tests named in the brief or in the spec Quality Check section. Fix until green, or explain why not.
-4. Surface uncertainty in your report instead of guessing.
+1. **Read before writing**: read every file the brief lists as essential, then the code you will change and its neighbours.
+2. **Follow the chosen design**: implement exactly what the task artifacts ask for, the way `design.md` says. If the design turns out not to work, stop and report Blocked with the reason and a suggestion; do not switch to an approach of your own.
+3. **Follow the codebase**: naming, layout, imports, error handling, logging and test style match the surrounding code and the injected specs.
+4. **Keep it clean**: reuse existing helpers; no abstractions for a single use; comments only where the code is not obvious. No TODOs, placeholder implementations, commented-out code or debug output.
+5. **Tests**: when the project has a test setup, add tests for the new behaviour.
+6. **Verify**: run the project's lint, typecheck, and tests named in the brief or in the spec Quality Check section. Fix until green; if something cannot pass, explain why with the key output.
+7. **Parallel work**: other children may be implemented in parallel in other worktrees and you cannot see their changes. Rely on the interface contracts in the brief; do not edit files another child owns.
+8. Surface uncertainty in your report instead of guessing.
 
 ## Hard limits
 
-- No `git commit`, `git push`, `git merge`, `git rebase`, branch switching, or `git stash`. The main agent owns all commits and merges.
+- No `git commit`, `git push`, `git merge`, `git rebase`, `git reset`, branch switching, or `git stash`. The main agent owns all commits and merges.
 - Touch nothing outside your working directory.
 - Never write under `.arbor/` (tasks, workspace, runtime, spec). You may read it.
-- Do not create docs or README files unless the brief asks for them.
+- Do not create docs or README files unless the brief asks for them. Prefer editing existing files over creating new ones.
 
 ## Report (your final message)
 

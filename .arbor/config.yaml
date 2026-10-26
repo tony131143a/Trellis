@@ -110,7 +110,8 @@ default_package: cli
 #-------------------------------------------------------------------------------
 # Dispatch (codeg assistants)
 #-------------------------------------------------------------------------------
-# implement / check / research run as codeg assistants, never as the host's
+# The seven roles (explore, architect, implement, review, verify, fix,
+# simplify) run as codeg assistants, never as the host's
 # built-in Agent/Task tool. The effective target is resolved at runtime:
 # .arbor/.runtime/dispatch-target > ARBOR_DISPATCH_TARGET > default_target.
 # Role names sit directly under each target; any other scalar key under a
@@ -126,13 +127,21 @@ dispatch:
   targets:
     star:
       agent_type: "custom:star"
+      explore: arbor-explore-star
+      architect: arbor-architect-star
       implement: arbor-implement-star
-      check: arbor-check-star
-      research: arbor-research-star
+      review: arbor-review-star
+      verify: arbor-verify-star
+      fix: arbor-fix-star
+      simplify: arbor-simplify-star
     pi:
       agent_type: pi
       model: deepseek/DeepSeek-V4.1-Flash
       thought_level: max
+      explore: arbor-explore-pi
+      architect: arbor-architect-pi
       implement: arbor-implement-pi
-      check: arbor-check-pi
-      research: arbor-research-pi
+      review: arbor-review-pi
+      verify: arbor-verify-pi
+      fix: arbor-fix-pi
+      simplify: arbor-simplify-pi

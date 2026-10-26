@@ -1,13 +1,13 @@
 # Change Local Agents (Assistant Instructions)
 
-When the user wants to change `research`, `implement`, or `check` role behavior, edit the assistant instruction sources in `.arbor/agents/`. These roles run as codeg assistants, not as platform sub-agents, so there are no `.claude/agents/` or `.starFactory/agents/` files to edit.
+When the user wants to change the behavior of one of the seven roles (`explore`, `architect`, `implement`, `review`, `verify`, `fix`, `simplify`), edit the assistant instruction sources in `.arbor/agents/`. These roles run as codeg assistants, not as platform sub-agents, so there are no `.claude/agents/` or `.starFactory/agents/` files to edit.
 
 ## Read These Files First
 
-1. `.arbor/agents/{implement,check,research}.md` (plain markdown, no frontmatter)
-2. `.arbor/workflow.md` Phase 2 and research routing
+1. `.arbor/agents/<role>.md` for the role in question (plain markdown, no frontmatter)
+2. `.arbor/workflow.md` Dispatch section, step 1.2 (explore & design), Phase 2 (review loop), and Phase 2F (polish)
 3. `.arbor/config.yaml` `dispatch:` section
-4. Current task `prd.md`, `implement.jsonl` / `check.jsonl`
+4. Current task `prd.md`, `implement.jsonl` (feeds architect and implement) / `check.jsonl` (feeds review, verify, fix, simplify)
 5. `../local-architecture/dispatch.md`
 
 ## Edit And Re-Install
@@ -22,17 +22,19 @@ An installed assistant keeps its old text until step 3 is done. Editing `.arbor/
 
 | Need | Which file to edit |
 | --- | --- |
-| Research must write files, not only reply in chat | `research.md` |
+| Explore or architect must write files, not only reply in chat | `explore.md` / `architect.md` |
 | Certain local specs must be read before implementation | `implement.jsonl` of the task, or spec rules; `implement.md` only for the read-order rule |
-| Specific commands must run during checking | `check.md` |
+| Review must apply extra angles or severity rules | `review.md` |
+| Verify or fix must follow stricter rules | `verify.md` / `fix.md` |
+| Specific commands must run during checking | The brief in `workflow.md` 2F.5 (Quality Check commands run by the main agent) and `.arbor/spec/`; roles do not own them |
 | Role must not modify certain directories | The write-boundary section of that role file |
 | Role output format must be fixed | The report section of that role file |
 | Change which assistant a role uses | `dispatch:` in `.arbor/config.yaml`, then `codeg-setup` |
 
 ## Modification Principles
 
-1. Preserve role boundaries: research investigates and persists; implement writes implementation; check reviews and fixes.
+1. Preserve role boundaries: explore investigates and persists; architect designs; implement writes code; review finds, verify filters, fix applies, simplify cleans up. Only `explore` and `architect` write files other than code, and only under `<task>/research/`.
 2. Do not hard-code project specs into role files; long-term rules belong in `.arbor/spec/`.
 3. Keep the read order explicit: injected payload (or active task JSONL) then `prd.md`, `design.md`, `implement.md`.
-4. Keep the hard limits: no commit, merge, or stash; stay inside the working directory; never write under `.arbor/`; never dispatch.
+4. Keep the hard limits: no commit, merge, or stash; stay inside the working directory; never write under `.arbor/` (except `explore` / `architect` into `<task>/research/`); never dispatch.
 5. Keep the pull-based context steps; the hook only injects when the dispatch header is present.

@@ -6,7 +6,8 @@ Delegation Context Injection Hook (Claude Code / StarFactory)
 PreToolUse hook on codeg `delegate_to_agent`
 (matcher `^mcp__codeg[-_]mcp__delegate_to_agent$`). Inlines Arbor task
 context into `tool_input.task` before codeg hands it to the assistant that
-runs the implement / check / research role.
+runs the Arbor role (explore / architect / implement / review / verify /
+fix / simplify).
 
 Flow:
 - `ARBOR_HOOKS=0` / `ARBOR_DISABLE_HOOKS=1` -> no-op
@@ -15,8 +16,9 @@ Flow:
 - role: `Role:` header line -> `.arbor/.runtime/codeg-assistants.json`
   `by_id[assistant_id].role` -> neither: no-op (the assistant's own
   instructions load context themselves)
-- task: `Active task:` header -> session active task; implement / check
-  without a resolvable task -> no-op with a stderr warning
+- task: `Active task:` header -> session active task; a task-bound role
+  (every role but explore) without a resolvable task -> no-op with a stderr
+  warning
 - output: `updatedInput` = original tool_input with only `task` replaced
 
 Prompt assembly lives in `.arbor/scripts/common/dispatch_context.py`, shared

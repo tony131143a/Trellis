@@ -93,8 +93,8 @@ When the AI learns a new rule during implementation or debugging, it should upda
 | --- | --- |
 | Add a new spec layer | `.arbor/spec/<package>/<layer>/index.md` and corresponding guideline files. |
 | Change monorepo spec mapping | `packages` / `default_package` / `spec_scope` in `.arbor/config.yaml`. |
-| Change which specs AI reads before implementation | The task's `implement.jsonl`. |
-| Change which specs AI reads during checking | The task's `check.jsonl`. |
+| Change which specs the architect and implement roles read | The task's `implement.jsonl`. |
+| Change which specs the review, verify, fix, and simplify roles read | The task's `check.jsonl`. |
 | Change when specs should be updated | Phase 3.3 in `.arbor/workflow.md` and the `arbor-update-spec` skill. |
 
 ## Boundaries

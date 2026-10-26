@@ -223,7 +223,18 @@ def get_prompt_injection_config(repo_root: Path | None = None) -> dict[str, str]
     return result
 
 
-DISPATCH_ROLES = ("implement", "check", "research")
+DISPATCH_ROLES = (
+    "explore",
+    "architect",
+    "implement",
+    "review",
+    "verify",
+    "fix",
+    "simplify",
+)
+# Role keys from before the seven-role split; ignored with a warning so an
+# old config.yaml never passes them to codeg as agent options.
+RETIRED_DISPATCH_ROLES = ("check", "research")
 DISPATCH_HOOK_DECISIONS = ("allow", "ask")
 # Runtime override written by `dispatch.py target set`, relative to .arbor/.
 DISPATCH_TARGET_FILE = ".runtime/dispatch-target"
@@ -242,9 +253,13 @@ DEFAULT_DISPATCH: dict = {
             "agent_type": "custom:star",
             "options": {},
             "assistants": {
+                "explore": "arbor-explore-star",
+                "architect": "arbor-architect-star",
                 "implement": "arbor-implement-star",
-                "check": "arbor-check-star",
-                "research": "arbor-research-star",
+                "review": "arbor-review-star",
+                "verify": "arbor-verify-star",
+                "fix": "arbor-fix-star",
+                "simplify": "arbor-simplify-star",
             },
         },
         "pi": {
@@ -254,9 +269,13 @@ DEFAULT_DISPATCH: dict = {
                 "thought_level": "max",
             },
             "assistants": {
+                "explore": "arbor-explore-pi",
+                "architect": "arbor-architect-pi",
                 "implement": "arbor-implement-pi",
-                "check": "arbor-check-pi",
-                "research": "arbor-research-pi",
+                "review": "arbor-review-pi",
+                "verify": "arbor-verify-pi",
+                "fix": "arbor-fix-pi",
+                "simplify": "arbor-simplify-pi",
             },
         },
     },
@@ -302,6 +321,8 @@ def _dispatch_target(name: str, raw: object, default: dict | None) -> dict:
                 assistants[key] = value.strip()
             else:
                 _warn_dispatch(f"targets.{name}.{key}", value, assistants[key])
+        elif key in RETIRED_DISPATCH_ROLES:
+            _warn_dispatch(f"targets.{name}.{key}", value, "ignored (retired role)")
         elif isinstance(value, str):
             options[key] = value
         else:
@@ -318,9 +339,8 @@ def get_dispatch_config(repo_root: Path | None = None) -> dict:
          "guard_builtin_agent": True, "hook_decision": "allow",
          "codeg_cli": "", "permissions": "allow", "timeout": "90m",
          "targets": {"<name>": {"agent_type": str, "options": {str: str},
-                                "assistants": {"implement": str,
-                                               "check": str,
-                                               "research": str}}}}
+                                "assistants": {<role>: str
+                                               for role in DISPATCH_ROLES}}}}
 
     Invalid values fall back to the default with a stderr warning.
     """

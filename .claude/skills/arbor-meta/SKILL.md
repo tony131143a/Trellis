@@ -1,13 +1,13 @@
 ---
 name: arbor-meta
-description: "Understand and customize the local Arbor architecture inside a user project. Use when modifying .arbor (workflow, config, tasks, spec, scripts), the .claude/ or .starFactory/ hooks, settings, skills, and commands, CLAUDE.md / AGENTS.md managed blocks, dispatching implement/check/research roles to codeg assistants (star or pi targets, dispatch.py, codeg-setup), assistant instruction sources under .arbor/agents/, or the bundled skills including arbor-spec-bootstrap."
+description: "Understand and customize the local Arbor architecture inside a user project. Use when modifying .arbor (workflow, config, tasks, spec, scripts), the .claude/ or .starFactory/ hooks, settings, skills, and commands, CLAUDE.md / AGENTS.md managed blocks, dispatching the seven roles (explore, architect, implement, review, verify, fix, simplify) to codeg assistants (star or pi targets, dispatch.py, codeg-setup), assistant instruction sources under .arbor/agents/, or the bundled skills including arbor-spec-bootstrap."
 ---
 
 # Arbor Meta
 
 This skill is for local Arbor users who have already run `arbor init` in a project. After reading it, an AI should understand the Arbor architecture, operating model, and customization entry points inside that user project, then modify the generated files according to the user's request.
 
-In Arbor the implement, check, and research roles are not platform sub-agents. The main agent (Claude Code, inside the codeg desktop app or a terminal) dispatches them to codeg assistants running on `star` (a Claude Code fork) or `pi` (+ DeepSeek). Their instruction text lives in `.arbor/agents/*.md`.
+In Arbor the seven roles (explore, architect, implement, review, verify, fix, simplify) are not platform sub-agents. The main agent (Claude Code, inside the codeg desktop app or a terminal) dispatches them to codeg assistants running on `star` (a Claude Code fork) or `pi` (+ DeepSeek). Their instruction text lives in `.arbor/agents/*.md`.
 
 The default operating scope is local files in the user project:
 
@@ -36,14 +36,14 @@ Do not assume the user has the Arbor source repository. Do not default to modify
 - `references/local-architecture/spec-system.md`: How `.arbor/spec/` is organized and injected.
 - `references/local-architecture/workspace-memory.md`: `.arbor/workspace/` developer journals.
 - `references/local-architecture/context-injection.md`: Session-start, workflow-state, and dispatched-role context injection.
-- `references/local-architecture/dispatch.md`: Role x target matrix, header protocol, PreToolUse and guard hooks, `dispatch.py`, `codeg-setup`, `dispatch:` config, parallel variant, debugging.
+- `references/local-architecture/dispatch.md`: Role x target matrix, header protocol (`Mode:` / `Diff:`), snapshots and diffs, PreToolUse and guard hooks, `dispatch.py`, `codeg-setup`, `dispatch:` config, parallel variant, debugging.
 - `references/local-architecture/bundled-skills.md`: The bundled skills (`arbor-meta`, `arbor-spec-bootstrap`) and how they are shipped to `.claude/skills/` and `.starFactory/skills/`.
 
 ### Platform Files
 
 - `references/platform-files/overview.md`: How shared `.arbor/` files relate to `.claude/`, `.starFactory/`, `CLAUDE.md`, and `AGENTS.md`.
 - `references/platform-files/hooks-and-settings.md`: `settings.json` registrations and the hook scripts.
-- `references/platform-files/agents.md`: The `.arbor/agents/{implement,check,research}.md` assistant instruction sources.
+- `references/platform-files/agents.md`: The seven `.arbor/agents/<role>.md` assistant instruction sources.
 - `references/platform-files/skills-and-commands.md`: Skills versus commands, paths, and how to change them.
 
 ### Local Customization
@@ -63,9 +63,9 @@ Do not assume the user has the Arbor source repository. Do not default to modify
 - `.arbor/workflow.md` is the local workflow source of truth.
 - `.arbor/config.yaml` is the project-level configuration entry point: task lifecycle hooks (`hooks.after_*`), journal shape, packages, `context_injection` limits, `prompt_injection.skip_keyword`, and the `dispatch:` section (default target, assistant names, `max_parallel`, permissions, timeout).
 - `.arbor/spec/` stores project-specific coding conventions and design constraints.
-- `.arbor/tasks/` stores task PRDs, design notes, implement plans, research files, and JSONL context. Tasks form parent/child trees (`task.py create --parent <slug>`).
+- `.arbor/tasks/` stores task PRDs, design notes, implement plans, research files (written by `explore` / `architect` or the main agent), and JSONL context. Tasks form parent/child trees (`task.py create --parent <slug>`).
 - `.arbor/workspace/` stores deliberately written developer journals.
-- `.arbor/agents/{implement,check,research}.md` are assistant instruction sources (plain markdown, no frontmatter). They take effect only after `python3 ./.arbor/scripts/dispatch.py codeg-setup` and installing the rendered text in codeg.
+- `.arbor/agents/{explore,architect,implement,review,verify,fix,simplify}.md` are assistant instruction sources (plain markdown, no frontmatter). They take effect only after `python3 ./.arbor/scripts/dispatch.py codeg-setup` and installing the rendered text in codeg.
 - Target resolution for dispatch: header `Target:` / `--target`, then `.arbor/.runtime/dispatch-target`, then env `ARBOR_DISPATCH_TARGET`, then `dispatch.default_target`. Switch with `/arbor:workflow-star` or `/arbor:workflow-pi`.
 - A guard hook denies the built-in Agent/Task tool for Arbor roles. A session whose first prompt starts with `Active task:` plus `Role:` is a dispatched sub-agent and must not dispatch, commit, or call `task.py start/current/finish`.
 - Bundled multi-file skills (`arbor-meta`, `arbor-spec-bootstrap`) are written to `.claude/skills/` and `.starFactory/skills/` by `arbor init` and refreshed by `arbor update`.

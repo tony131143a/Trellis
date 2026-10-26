@@ -5,7 +5,7 @@
 Therefore, when an AI uses this skill, the default customization target is local files inside the user project:
 
 - `.arbor/`: workflow, tasks, specs, journals, scripts, and runtime state.
-- `.arbor/agents/`: assistant instruction sources for the implement, check, and research roles.
+- `.arbor/agents/`: assistant instruction sources for the seven roles (explore, architect, implement, review, verify, fix, simplify).
 - Platform directories: `.claude/` (Claude Code) and `.starFactory/` (StarFactory, a Claude Code fork).
 - Root files `CLAUDE.md` and `AGENTS.md`, which contain a managed block between `<!-- ARBOR:START -->` and `<!-- ARBOR:END -->`.
 
@@ -18,7 +18,7 @@ Arbor provides four layers inside a user project:
 1. **Workflow layer**: `.arbor/workflow.md` defines phases, routing, next actions, and prompt blocks.
 2. **Persistence layer**: `.arbor/tasks/`, `.arbor/spec/`, and `.arbor/workspace/` store tasks, specs, and session journals.
 3. **Platform integration layer**: hooks, settings, skills, and commands in `.claude/` and `.starFactory/` connect the Arbor workflow to the AI tool.
-4. **Dispatch layer**: the main agent hands implement/check/research work to codeg assistants running on `star` or `pi` (see `dispatch.md`).
+4. **Dispatch layer**: the main agent hands exploration, design, implementation, review, and fix work to codeg assistants running on `star` or `pi` (see `dispatch.md`).
 
 All four layers live inside the user project, so an AI can read and modify them directly.
 
@@ -31,7 +31,7 @@ All four layers live inside the user project, so an AI can read and modify them 
 | `.arbor/spec/` | The user's project-specific coding conventions and thinking guides. |
 | `.arbor/tasks/` | Each task's PRD, technical notes, research files, and JSONL context. |
 | `.arbor/workspace/` | Per-developer journals. |
-| `.arbor/agents/` | Assistant instruction sources (`implement.md`, `check.md`, `research.md`) installed into codeg assistants. |
+| `.arbor/agents/` | Assistant instruction sources (`explore.md`, `architect.md`, `implement.md`, `review.md`, `verify.md`, `fix.md`, `simplify.md`) installed into codeg assistants. |
 | `.arbor/scripts/` | Local Python runtime used by commands, hooks, and context injection. |
 | `.arbor/.runtime/` | Session-level runtime state, such as the current task pointer. |
 | `.arbor/.template-hashes.json` | Template hashes for Arbor-managed files, used by update to determine whether local files were modified by the user. |

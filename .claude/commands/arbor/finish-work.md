@@ -58,7 +58,7 @@ python3 ./.arbor/scripts/task.py archive <task-name>
 
 At minimum: the current active task (if any). Plus any extra tasks the user confirmed in Step 1. Each archive produces a `chore(task): archive ...` commit via the script's auto-commit.
 
-For a parallel task (`meta.execution=parallel`), archive the child tasks as well as the parent, children first. First confirm `git worktree list` shows no leftover `-wt` worktrees for this task (workflow step 2P.6); remove them before archiving.
+For a parallel task (`meta.execution=parallel`), archive the child tasks as well as the parent, children first. First confirm `git worktree list` shows no leftover `-wt` worktrees for this task (workflow step 2P.5); remove them before archiving.
 
 If there is no active task and the user did not confirm any cleanup archives, skip this step.
 
