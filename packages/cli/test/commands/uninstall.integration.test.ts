@@ -28,7 +28,7 @@ vi.mock("node:child_process", () => ({
 
 import { init } from "../../src/commands/init.js";
 import { uninstall } from "../../src/commands/uninstall.js";
-import { DIR_NAMES } from "../../src/constants/paths.js";
+import { DIR_NAMES, FILE_NAMES } from "../../src/constants/paths.js";
 import { loadHashes } from "../../src/utils/template-hash.js";
 
 // eslint-disable-next-line @typescript-eslint/no-empty-function
@@ -399,5 +399,32 @@ describe("uninstall() integration", () => {
     expect(afterText).not.toContain(
       ".starFactory/hooks/inject-workflow-state.py",
     );
+  });
+
+  it("#10 CLAUDE.md: uninstall strips only the Arbor block and keeps user text", async () => {
+    const claudeMd = path.join(tmpDir, FILE_NAMES.CLAUDE);
+    const userText = "# Team rules\n\nAlways run the tests.\n";
+    fs.writeFileSync(claudeMd, userText);
+    await init({ yes: true, claude: true, force: true });
+    expect(fs.readFileSync(claudeMd, "utf-8")).toContain(
+      "<!-- ARBOR:START -->",
+    );
+
+    await uninstall({ dryRun: true });
+    expect(fs.readFileSync(claudeMd, "utf-8")).toContain(
+      "<!-- ARBOR:START -->",
+    );
+
+    await uninstall({ yes: true });
+    expect(fs.readFileSync(claudeMd, "utf-8")).toBe(userText);
+  });
+
+  it("#10a CLAUDE.md that only held the Arbor block is removed with it", async () => {
+    await init({ yes: true, claude: true, force: true });
+    expect(fs.existsSync(path.join(tmpDir, FILE_NAMES.CLAUDE))).toBe(true);
+
+    await uninstall({ yes: true });
+
+    expect(fs.existsSync(path.join(tmpDir, FILE_NAMES.CLAUDE))).toBe(false);
   });
 });

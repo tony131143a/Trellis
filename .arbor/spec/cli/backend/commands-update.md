@@ -72,22 +72,23 @@ Note that `force` / `skipAll` / `createNew` are mutually exclusive in spirit but
 | `.arbor/.gitignore` | `templates/arbor/index.ts:gitignoreTemplate` |
 | `.arbor/workflow.md` | `templates/arbor/index.ts:workflowMdTemplate` (whole-file hash-gated, see below) |
 | Root `AGENTS.md` | `commands/update.ts:buildAgentsMdTemplate` (managed-block merge) |
+| Root `CLAUDE.md` | `commands/update.ts:buildClaudeMdTemplate` (managed-block merge; only when the Claude Code platform is configured; also in `BACKUP_FILES`) |
 | Per-platform files | `configurators/index.ts:collectPlatformTemplates` for each detected platform via `configurators/index.ts:getConfiguredPlatforms` |
 | `.claude/settings.json` `statusLine` | preserved through `commands/update.ts:preserveExistingClaudeStatusLine` |
 
-Platforms are auto-discovered by directory existence in `cwd`. There is one exception: if `commands/update.ts:needsCodexUpgrade` returns true (legacy Arbor tracked `.agents/skills/` but no `.codex/` exists yet), `commands/update.ts:update` passes `extraPlatforms: new Set(["codex"])` to force Codex template collection so the upgrade can create `.codex/`.
+Platforms are detected from the template hash manifest, not from directory existence: `configurators/index.ts:getConfiguredPlatforms` counts a platform only when `.arbor/.template-hashes.json` records a path under that platform's private config dir (`.claude/` or `.starFactory/`) that its current `collectTemplates()` also declares. A native config directory that predates Arbor therefore never activates a platform by itself.
 
 After collection, `collectTemplateFiles` runs two final passes:
 
 1. `update.skip` filtering via `commands/update.ts:loadUpdateSkipPaths` — drops paths matching the `update.skip` list in `.arbor/config.yaml`. **Bypassed** when the update is a breaking release with `recommendMigrate` (`breakingBypass`); see "Migration Trigger Semantics".
 2. `configurators/shared.ts:replacePythonCommandLiterals` is applied to every value so init-time and update-time bytes are byte-identical on the same OS. This is the load-bearing step that keeps idempotency working — see Common Pitfalls.
 
-### 2. Whole-file workflow.md update and AGENTS.md managed-block merge
+### 2. Whole-file workflow.md update and AGENTS.md / CLAUDE.md managed-block merge
 
 These two runtime-facing files have different update contracts:
 
 - **`.arbor/workflow.md`** stays on the normal whole-file template path. `collectTemplateFiles` inserts the bundled `workflowMdTemplate`; `analyzeChanges` decides whether to auto-update, prompt, skip, or create `.new` by comparing the current file hash with `.arbor/.template-hashes.json`. Do not partially merge only `[workflow-state:*]` blocks.
-- **`AGENTS.md`** (`commands/update.ts:buildAgentsMdTemplate`) merges only the `<!-- ARBOR:START -->`…`<!-- ARBOR:END -->` region via `commands/update.ts:replaceArborManagedBlock`; if no markers exist, the template managed block is appended. The legacy untracked-hash whitelist `LEGACY_UNTRACKED_AGENTS_MD_BLOCK_HASHES` lets a pristine pre-tracking AGENTS.md auto-update without a "modified by you" false positive (see `commands/update.ts:isKnownUntrackedTemplate`).
+- **`AGENTS.md`** (`commands/update.ts:buildAgentsMdTemplate`) merges only the `<!-- ARBOR:START -->`…`<!-- ARBOR:END -->` region via `commands/update.ts:replaceArborManagedBlock`; if no markers exist, the template managed block is appended. **`CLAUDE.md`** (`commands/update.ts:buildClaudeMdTemplate`) uses the same merge via `utils/managed-paths.ts` and is collected only when `.claude/` is a configured platform.
 
 Why workflow is whole-file: `.arbor/workflow.md` is parsed by `get_context.py`,
 `workflow_phase.py`, SessionStart strippers, and per-turn workflow-state hooks.
@@ -244,7 +245,7 @@ Order of operations in `commands/update.ts:update` (after the `Proceed?` confirm
 `.arbor/.template-hashes.json` is the contract that makes `analyzeChanges` work. Schema and helpers live in `utils/template-hash.ts`. Update interacts with it via:
 
 - `loadHashes(cwd)` at the top of `update()`
-- `computeHash(content)` for inline checks (`isKnownUntrackedTemplate`, `safe-file-delete` matching)
+- `computeHash(content)` for inline checks (`safe-file-delete` matching)
 - `isTemplateModified(cwd, path, hashes)` in `classifyMigrations`
 - `renameHash` / `removeHash` during migrations
 - `updateHashes(cwd, files)` at the end
@@ -302,25 +303,25 @@ This document does NOT restate any of that. When extending update behavior, deci
 
 ## Common Pitfalls
 
-### Multi-version hop chain (v0.4 → v0.5+)
+### Multi-version hop chain
 
-`getMigrationsForVersion(from, to)` walks every manifest where `manifest.version` falls strictly above `from` and ≤ `to`. A v0.4 → v0.5.6 jump applies migrations from 0.4.x.y, 0.5.0.0, 0.5.1, …, 0.5.6 in version order. If any of those manifests is `breaking` + `recommendMigrate: true`, the breaking gate fires once for the whole hop. Consequence: a user who deferred upgrades for several releases sees a single hard-fail without `--migrate`, but the migration list can be very long. Test with `--dry-run` before running `--migrate` on big hops.
+`getMigrationsForVersion(from, to)` walks every manifest where `manifest.version` falls strictly above `from` and ≤ `to`, in version order. Only `0.1.0.json` ships today, so a hop currently applies at most that one manifest; the rules below matter once more manifests exist. If any manifest in the hop is `breaking` + `recommendMigrate: true`, the breaking gate fires once for the whole hop. Consequence: a user who deferred upgrades for several releases sees a single hard-fail without `--migrate`, but the migration list can be very long. Test with `--dry-run` before running `--migrate` on big hops.
 
 ### Breaking + recommendMigrate must ship `migrationGuide`
 
-`migrations.md` documents this: a manifest with `breaking: true` AND `recommendMigrate: true` MUST also define `migrationGuide` (and conventionally `aiInstructions`). The reason update.ts cares is the migration-task generator: `getMigrationMetadata` aggregates `migrationGuides` across every manifest in the hop; if the breaking manifest is missing one, the user gets either (a) a task PRD full of older guides with no mention of the actual breaking release, or (b) no task at all if every guide in the range is missing. Historical incident: 0.5.0-beta.0 shipped without a `migrationGuide` and was hotfixed in 0.5.0-beta.9. The `packages/cli/scripts/create-manifest.js` `--stdin` mode now hard-fails on this combination at manifest authoring time.
+`migrations.md` documents this: a manifest with `breaking: true` AND `recommendMigrate: true` MUST also define `migrationGuide` (and conventionally `aiInstructions`). The reason update.ts cares is the migration-task generator: `getMigrationMetadata` aggregates `migrationGuides` across every manifest in the hop; if the breaking manifest is missing one, the user gets either (a) a task PRD full of older guides with no mention of the actual breaking release, or (b) no task at all if every guide in the range is missing. Historical incident (upstream Trellis): a large breaking release shipped without a `migrationGuide`. The upstream manifest generator that hard-failed on this combination was removed with the release scripts, so reviewers must check it by hand.
 
 ### Orphan migrations
 
-If `.arbor/.version` says you're already on the latest CLI but a stale `from` path still exists on disk and the new `to` doesn't, that's an orphan. `update()` always scans `getAllMigrations()` for orphans regardless of version range and adds them to `pendingMigrations`. They show up under "⚠️ Detected incomplete migrations from previous updates" in the printed plan. Causes: a previous run was interrupted between `migrations` execution and `updateVersionFile`; a previous run skipped the migration via `[s]` and the user expected it to apply later; manifest authoring error (a v0.4 entry referencing a path that was already moved before v0.4 ever shipped). All three resolve the same way: `arbor update --migrate`.
+If `.arbor/.version` says you're already on the latest CLI but a stale `from` path still exists on disk and the new `to` doesn't, that's an orphan. `update()` always scans `getAllMigrations()` for orphans regardless of version range and adds them to `pendingMigrations`. They show up under "⚠️ Detected incomplete migrations from previous updates" in the printed plan. Causes: a previous run was interrupted between `migrations` execution and `updateVersionFile`; a previous run skipped the migration via `[s]` and the user expected it to apply later; manifest authoring error (an entry referencing a path that was already moved before that version shipped). All three resolve the same way: `arbor update --migrate`.
 
 ### Backup bloat
 
-Every non-trivial run creates `.arbor/.backup-<timestamp>/`. `BACKUP_EXCLUDE_PATTERNS` keeps user-data trees and platform worktrees out, but the snapshot still includes every managed config file in every platform directory. Power users with 8+ platforms configured can accumulate hundreds of MB of backups over a few months. There is no automatic pruning today — Arbor treats backups as user data ("cleanup is your call"). If you add automatic pruning, it must be opt-in and must not delete backups newer than the last successful version transition (otherwise a debug rollback path disappears).
+Every non-trivial run creates `.arbor/.backup-<timestamp>/`. `BACKUP_EXCLUDE_PATTERNS` keeps user-data trees and platform worktrees out, but the snapshot still includes every managed config file in every platform directory. Backups can accumulate over a few months. There is no automatic pruning today — Arbor treats backups as user data ("cleanup is your call"). If you add automatic pruning, it must be opt-in and must not delete backups newer than the last successful version transition (otherwise a debug rollback path disappears).
 
 ### `node_modules/` under managed dirs
 
-OpenCode's plugin pattern installs npm dependencies under `.opencode/`. Without `/node_modules/` in `BACKUP_EXCLUDE_PATTERNS`, every backup would snapshot the entire dependency tree (`update.integration.test.ts > #27 backup skips managed node_modules dependency trees` regression-tests this). When adding a new platform that ships dependencies, verify the pattern still catches them; if the platform uses a non-standard path, extend `BACKUP_EXCLUDE_PATTERNS`.
+`/node_modules` is in `BACKUP_EXCLUDE_PATTERNS` so a platform directory that happens to hold installed npm dependencies is not snapshotted into every backup (`update.integration.test.ts > #27 backup skips managed node_modules dependency trees` regression-tests this). Neither Claude Code nor StarFactory ships dependencies today. When adding a platform that does, verify the pattern still catches them; if the platform uses a non-standard path, extend `BACKUP_EXCLUDE_PATTERNS`.
 
 ### `.developer` raw-trim foot-gun
 
@@ -341,24 +342,16 @@ Symptom: every `arbor update` shows the same hooks/settings file as auto-updated
 
 Two failure modes here:
 
-1. The file was written before hash tracking existed for that path (legacy install). Solution for AGENTS.md is `LEGACY_UNTRACKED_AGENTS_MD_BLOCK_HASHES`. Adding the same escape hatch for other paths is acceptable but should be a last resort — the proper fix is to backfill hashes.
-2. Two writers produced byte-different content for the same path. The classic case: `.agents/skills/<skill>/SKILL.md` written by both Codex and Gemini configurators with platform-specific `{{CMD_REF:name}}` resolution. Fix: use `configurators/shared.ts:resolvePlaceholdersNeutral` for shared destinations. See `platform-integration.md > "Rule: .agents/skills/ writes use resolvePlaceholdersNeutral()"`.
+1. The file was written before hash tracking existed for that path (legacy install). Arbor 0.1.0 has no legacy installs, so no untracked-hash whitelist exists; if one is ever needed, prefer backfilling hashes over an escape hatch.
+2. Two writers produced byte-different content for the same path. This cannot happen between Claude Code and StarFactory, which write under different config dirs, but it applies to any future shared destination: both writers must render through the same code path, and their output must be byte-identical.
 
 ### `--allow-downgrade` is a foot-gun
 
 Migrations are forward-only. A user who downgrades while staying on the same major usually gets away with it (templates revert, user files preserved), but anything that depends on a migration applied since the target version (e.g., a renamed directory, a deleted legacy file restored under its new name) will be broken. `--allow-downgrade` is genuinely an escape hatch, not a supported workflow.
 
-### Codex two-layer upgrade
+### Platform detection needs two filters
 
-Old Arbor used `.agents/skills/` as the Codex configDir; current Arbor uses `.codex/` plus a shared `.agents/skills/` layer. `commands/update.ts:needsCodexUpgrade` detects the legacy state by looking for command-as-skill marker entries (`arbor-continue/SKILL.md`, `arbor-finish-work/SKILL.md`) in the hash file, then excludes any configured non-Codex platform whose current template collector declares those same marker paths. Current non-Codex platforms with a private command surface, such as ZCode, must not declare those marker paths under `.agents/skills`; this keeps combined installs from producing hash churn and keeps the Codex legacy detector unambiguous. When legacy Codex is detected, `update()` injects `codex` into `extraPlatforms` so `collectTemplateFiles` produces the missing `.codex/` files.
-
-General platform detection also uses template hashes, but with a stricter
-ownership intersection: a platform counts only when the manifest contains a
-path declared by that platform's current `collectTemplates()` output and the
-path is under its private `configDir`. Shared `.agents/skills/` entries cannot
-activate Codex, Gemini, Pi, or Kimi, and native platform directories cannot
-activate themselves. Keep both filters; dropping either one can create bogus
-platform detections and unsafe update/uninstall plans.
+Platform detection uses template hashes with an ownership intersection: a platform counts only when the manifest contains a path declared by that platform's current `collectTemplates()` output and the path is under its private `configDir`. Keep both filters; dropping either one can create bogus platform detections and unsafe update/uninstall plans.
 
 ### Things that look like bugs but aren't
 

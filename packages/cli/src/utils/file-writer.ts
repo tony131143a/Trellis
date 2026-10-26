@@ -103,6 +103,27 @@ function appendToFile(
 }
 
 /**
+ * Write a root file whose Arbor-owned part is one managed block that the
+ * caller has already merged into any existing user text. No conflict prompt:
+ * the merge keeps everything outside the block. The path is recorded even
+ * when the content is unchanged, because a file carrying the block is
+ * Arbor-managed either way (uninstall strips the block, never the file's
+ * other text). Returns true when the disk content changed.
+ */
+export function writeManagedBlockFile(
+  filePath: string,
+  content: string,
+): boolean {
+  const changed =
+    !fs.existsSync(filePath) || fs.readFileSync(filePath, "utf-8") !== content;
+  if (changed) {
+    writeFileAtomic(filePath, content);
+  }
+  recordWrite(filePath);
+  return changed;
+}
+
+/**
  * Write file with conflict handling
  * - If file doesn't exist: write directly
  * - If file exists and content is identical: skip silently

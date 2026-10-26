@@ -58,9 +58,28 @@ printed in the SessionStart `<dispatch>` section or by
 
 - **codeg MCP tools present**: `delegate_to_agent(task, working_dir, assistant_id)`
   returns a task id; `get_delegation_status(task_ids, wait_ms)` collects.
-- **Plain terminal**: `dispatch.py run --role <role> [--target] [--task]
-  [--workspace] [--wait|--detach] [--prompt|--prompt-file|stdin]`, which runs
-  `codeg-cli run`. `dispatch.py wait RUN...` collects detached runs.
+- **Plain terminal**: `dispatch.py run --role <role> [--finish] [--target]
+  [--task] [--workspace] [--wait|--detach] [--prompt|--prompt-file|stdin]`
+  (also `arbor dispatch run ...`), which pipes the assembled prompt to
+  `codeg-cli run -A <assistant> ... -p -`. `dispatch.py wait RUN...` collects
+  detached runs. Full CLI surface, runtime files, and exit codes:
+  [`commands-dispatch.md`](./commands-dispatch.md).
+
+## Assistant registry
+
+`dispatch.py codeg-setup` writes `.arbor/.runtime/codeg-assistants.json`:
+
+```json
+{"generated_at": "…Z", "by_name": {"arbor-implement-pi": 12},
+ "by_id": {"12": {"role": "implement", "target": "pi"}}}
+```
+
+Readers: the delegation hook (`by_id[assistant_id].role` when the header has
+no `Role:`), `dispatch.py resolve` (`by_name`), and the SessionStart
+`<dispatch>` section, which prints each role of the effective target as
+`- <role>: <name> (id <N>)`, or `(id unknown — run python3
+./.arbor/scripts/dispatch.py codeg-setup)` when the registry lacks it. Only
+names that `dispatch:` maps to a role are recorded.
 
 ## Sub-agent self-identification
 

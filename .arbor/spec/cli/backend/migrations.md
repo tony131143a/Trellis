@@ -1,5 +1,11 @@
 ---
-sources: []
+sources:
+  - packages/cli/src/migrations/index.ts
+  - packages/cli/src/migrations/manifests/0.1.0.json
+  - packages/cli/src/types/migration.ts
+  - packages/cli/src/commands/update.ts
+  - packages/cli/src/utils/template-hash.ts
+  - packages/cli/src/utils/manifest-prune.ts
 last_verified: 2026-07-11
 ---
 # Migration System
@@ -50,11 +56,11 @@ src/migrations/
 
 ```json
 {
-  "version": "0.5.0-beta.0",
+  "version": "0.3.0",
   "breaking": true,
   "recommendMigrate": true,
-  "migrationGuide": "## 0.4.x → 0.5.x: What This Release Actually Changes\n\n0.5.0-beta.0 is a breaking release...\n\n### 1. Skills got renamed: ...\n\n### 2. Six commands retired...",
-  "aiInstructions": "When helping a user migrate from 0.4.x to 0.5.x:\n\n1. Check for retired commands first...\n2. Run arbor update --migrate...",
+  "migrationGuide": "## 0.2.x → 0.3.x: What This Release Actually Changes\n\n0.3.0 is a breaking release...\n\n### 1. Skills got renamed: ...",
+  "aiInstructions": "When helping a user migrate from 0.2.x to 0.3.x:\n\n1. Check for renamed skills first...\n2. Run arbor update --migrate...",
   "migrations": [ /* ... */ ]
 }
 ```
@@ -64,7 +70,7 @@ src/migrations/
 - 场景 A：用户从比 current 早 N 个版本升级 → migration task PRD 里全是 N-1 / N-2 时代的老 guide，**一字不提本次 breaking**
 - 场景 B：中间所有 manifest 都没 `migrationGuide` → task **根本不生成**，用户以为 update 是安全的、实际踩一脸 breaking
 
-历史事故：**0.5.0-beta.0**（206 条 migration、真正大 breaking）manifest 漏写 `migrationGuide`，导致 0.4 → 0.5 的用户一路迁盲。`0.5.0-beta.9` hotfix 回填了这份 guide，同时在 `packages/cli/scripts/create-manifest.js` 加了强制校验（`--stdin` 模式下 `breaking && recommendMigrate && !migrationGuide` 直接 exit 1）。
+历史事故（上游 Trellis）：一个大 breaking 版本的 manifest 漏写 `migrationGuide`，导致跨版本升级的用户一路迁盲，后来在上游的 manifest 生成脚本里加了强制校验。该脚本已随 release scripts 一起移除，所以本仓库里这条检查现在靠人工 review：`breaking && recommendMigrate` 的 manifest 必须带 `migrationGuide`。
 
 **字段语义**：
 - `migrationGuide` —— 面向最终用户的 narrative，被模板化塞进 `.arbor/tasks/MM-DD-migrate-to-<version>/prd.md` 的 PRD section
@@ -143,12 +149,12 @@ src/migrations/
 
 ```jsonc
 {
-  "version": "0.5.7",
+  "version": "0.1.0",
   "configSectionsAdded": [
     {
       "file": ".arbor/config.yaml",
-      "sentinel": "codex:",                                 // 用户文件里出现这个 substring（注释或活配）就视为已存在
-      "sectionHeading": "Codex (sub-agent dispatch behavior)" // 模板里 #--- 分隔块内 `# <heading>` 行匹配此值
+      "sentinel": "dispatch:",                              // 用户文件里出现这个 substring（注释或活配）就视为已存在
+      "sectionHeading": "Dispatch (codeg assistants)"       // 模板里 #--- 分隔块内 `# <heading>` 行匹配此值
     }
   ]
 }
@@ -174,7 +180,7 @@ src/migrations/
 - `.arbor/.developer` — 开发者身份
 - `.arbor/.current-task` — 当前任务指针
 
-> 注意：`rename`/`rename-dir` 类型允许将文件迁移 **到** 受保护路径（例如 0.2.0 的 `agent-traces` → `workspace` 重命名），但不允许从受保护路径迁移。
+> 注意：`rename`/`rename-dir` 类型允许将文件迁移 **到** 受保护路径（例如把遗留的 `agent-traces` 目录重命名为 `workspace`），但不允许从受保护路径迁移。
 
 ## update.skip 配置
 
@@ -184,7 +190,7 @@ src/migrations/
 update:
   skip:
     - .claude/commands/arbor/my-custom.md
-    - .cursor/commands/
+    - .starFactory/commands/
 ```
 
 - 支持文件路径和目录路径（目录路径以 `/` 结尾，匹配所有子文件）
@@ -204,13 +210,11 @@ update:
 
 #### Why this matters
 
-`.codex/`, `.claude/`, `.opencode/` etc. contain platform-specific user data:
-- `.codex/sessions/*.jsonl` — Codex chat history
-- `.codex/history` — Codex prompt history
+`.claude/` and `.starFactory/` contain platform-specific user data:
 - `.claude/projects/<sanitized-cwd>/*.jsonl` — Claude Code conversation history
-- User-added `.codex/skills/<name>/`, `.claude/agents/<name>/`
+- User-added `.claude/agents/<name>/`, `.starFactory/skills/<name>/`
 
-If `initializeHashes` walks these dirs and hashes everything, uninstall faithfully deletes user data. Real reported incidents: GitHub Issue #221 (`.codex/sessions/` wiped), PR #271 (pre-existing `AGENTS.md` wiped).
+If `initializeHashes` walks these dirs and hashes everything, uninstall faithfully deletes user data. Real incidents reported upstream: a platform's session-history directory wiped (Issue #221), and a pre-existing `AGENTS.md` wiped (PR #271).
 
 #### Required contract
 
@@ -252,7 +256,7 @@ Existing users may have poisoned manifests from older arbor versions. `pruneOrph
 // Wrong — walk-based hashing pollutes manifest with user data
 for (const dir of ALL_MANAGED_DIRS) {
   for (const f of collectFiles(cwd, dir)) {
-    hashes[f] = sha256(read(f));   // includes .codex/sessions/foo.jsonl
+    hashes[f] = sha256(read(f));   // includes .claude/projects/x/foo.jsonl
   }
 }
 
@@ -269,7 +273,7 @@ Even with the manifest contract above, `arbor init` and `arbor uninstall` refuse
 
 #### Tests required for any change in this area
 
-- Integration: pre-populate user files under `.codex/`, `.claude/`, `.opencode/`, run init+uninstall, assert user data preserved.
+- Integration: pre-populate user files under `.claude/` and `.starFactory/`, run init+uninstall, assert user data preserved.
 - Integration: pre-existing `AGENTS.md` (skip-existing path), uninstall preserves it.
 - Integration: poisoned manifest (manually injected key) → update OR uninstall prunes it, user file survives.
 - Unit: `recordWrite` instrumentation — new/overwrite recorded, identical/skip/append NOT recorded.
@@ -293,16 +297,17 @@ template path:
 
 Reason: runtime-significant routing markers and phase headings also live
 outside `[workflow-state:*]` blocks. A partial tag-block merge can update hook
-breadcrumbs while leaving stale platform blocks, for example `[Codex]` instead
-of `[codex-inline]` / `[codex-sub-agent]`, causing `get_context.py --mode phase
---platform codex` to return empty or wrong step detail after upgrade.
+breadcrumbs while leaving stale platform blocks, for example an old
+`[Claude Code]` marker instead of `[Claude Code, StarFactory]`, causing
+`get_context.py --mode phase --platform star` to return empty or wrong step
+detail after upgrade.
 
 Regression coverage for this belongs in versioned update integration tests,
 not only fresh-init template tests: write the older `.arbor/.version`, stage
 older hash-tracked template files, run `arbor update`, then assert the
 installed files reach the current packaged shape and the version stamp advances.
 For runtime templates such as `workflow.md`, the scenario must also assert that
-runtime markers such as Codex virtual platform blocks are present after update.
+runtime markers such as the `[Claude Code, StarFactory]` platform blocks are present after update.
 
 ## CLI 使用
 

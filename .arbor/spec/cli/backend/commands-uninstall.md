@@ -15,16 +15,16 @@ How the uninstall command removes every Arbor-written file from a project, scrub
 
 `arbor uninstall` is the inverse of `arbor init` / `arbor update`: it removes everything Arbor wrote and leaves everything Arbor did not.
 
-- **Manifest is authoritative.** The single source of truth for "what arbor wrote" is `.arbor/.template-hashes.json`. Files outside that manifest are never touched, regardless of where they live (e.g. user-added scripts under `.claude/hooks/`, custom commands under `.cursor/commands/`).
+- **Manifest is authoritative.** The single source of truth for "what arbor wrote" is `.arbor/.template-hashes.json`. Files outside that manifest are never touched, regardless of where they live (e.g. user-added scripts under `.claude/hooks/`, custom commands under `.starFactory/commands/`).
 - **No user-modification gate.** Whether the user has edited a manifest-listed file or not, it is removed. `update` semantics (warn / preserve modified files) do not apply here — the user's intent is to remove Arbor entirely.
 - **Two file classes.** Manifest entries fall into:
-  1. *Opaque content files* (most `.py`, `.md`, `.toml`, `.json` agents, etc.) — unlinked outright.
-  2. *Structured config files* (`settings.json`, `hooks.json`, `package.json`, `config.toml`, and mixed-ownership markdown like `AGENTS.md`) — passed through a scrubber that removes only the arbor-owned fields/block and writes the trimmed result back. If nothing meaningful remains, the scrubber returns `fullyEmpty: true` and the file is deleted instead of rewritten.
+  1. *Opaque content files* (most `.py` and `.md` files) — unlinked outright.
+  2. *Structured config files* (`.claude/settings.json`, `.starFactory/settings.json`, and mixed-ownership markdown like `AGENTS.md`) — passed through a scrubber that removes only the arbor-owned fields/block and writes the trimmed result back. If nothing meaningful remains, the scrubber returns `fullyEmpty: true` and the file is deleted instead of rewritten.
 - **`.arbor/` is removed unconditionally once execution proceeds.** Tasks, runtime state, workspace journal, config — all of it; there is no `--keep-tasks` flag. A pre-execution guard warns about (and, for scripted `--yes` runs, can fail closed on) uncommitted specs/tasks/workspace files before that deletion happens — see *Dirty-Data Guard* under *`.arbor/` Handling* below, and [Filesystem Safety § Destructive-op ownership / backup gate](./filesystem-safety.md).
 - **Idempotent.** Re-running on a project that has no `.arbor/` is a friendly no-op. Re-running after a partial failure picks up whatever is still on disk and converges.
 - **Best-effort cleanup.** Permission errors on individual `unlink`/`rmdir` calls are swallowed; the command never aborts halfway. The summary at the end reports counts but does not enumerate per-file failures.
 
-For the *content* of each scrubber (which fields are stripped from `.claude/settings.json`, what counts as a arbor comment in `.codex/config.toml`, etc.), see `uninstall-scrubbers.md` for per-file scrubbing rules.
+The scrubbers (`scrubHooksJson`, `scrubManagedMarkdownBlock`) are defined in `utils/managed-removal.ts`; read their doc comments for the per-file rules.
 
 ---
 
@@ -41,7 +41,7 @@ arbor uninstall [-y|--yes] [--dry-run]
 | `-y, --yes` | boolean | Skip the `Continue?` confirmation prompt. |
 | `--dry-run` | boolean | Print the plan and exit without modifying anything. |
 
-There are no `--platform <name>` or `--keep-config` flags. The design is intentionally all-or-nothing: partial uninstall (e.g. "remove Arbor from Cursor only, leave Claude Code") is **out of scope** because the manifest does not partition by platform — see *Common Pitfalls* below.
+There are no `--platform <name>` or `--keep-config` flags. The design is intentionally all-or-nothing: partial uninstall (e.g. "remove Arbor from StarFactory only, leave Claude Code") is **out of scope** because the manifest does not partition by platform — see *Common Pitfalls* below.
 
 The command surface lives in `commands/uninstall.ts:uninstall` and is the only export consumed by `cli/index.ts`. The `UninstallOptions` interface in the same file mirrors the two CLI flags 1:1.
 
@@ -75,33 +75,25 @@ For every POSIX path in `hashes`:
 `removeArborDir` is set to `true` unconditionally — by the time
 `buildManagedRemovalPlan` runs, we have already verified `.arbor/` exists.
 
-The shared planner also supports `strictPaths: true` for reversible ablation.
-`uninstall` deliberately uses the default compatibility mode so this extraction
-does not change its established best-effort behavior; strict containment,
-leaf-symlink, and malformed-mixed-file refusal belong to `arbor ablate`.
+The planner also supports `strictPaths: true` (strict containment, leaf-symlink
+and malformed-mixed-file refusal). Nothing in the current CLI passes it:
+`uninstall` deliberately uses the default compatibility mode and keeps its
+established best-effort behavior.
 
 ### Structured-file dispatch table — `utils/managed-removal.ts:buildStructuredFileSpecs`
 
 A `Map<posixPath, StructuredFileSpec>` built once per command invocation. Each entry pairs a manifest-listed config file with the scrubber that knows how to surgically edit it. Current entries:
 
-| Manifest path | Scrubber | Hooks-JSON mode |
-|---|---|---|
-| `.claude/settings.json` | `scrubHooksJson` | `nested` |
-| `.gemini/settings.json` | `scrubHooksJson` | `nested` |
-| `.factory/settings.json` | `scrubHooksJson` | `nested` |
-| `.codebuddy/settings.json` | `scrubHooksJson` | `nested` |
-| `.qoder/settings.json` | `scrubHooksJson` | `nested` |
-| `.codex/hooks.json` | `scrubHooksJson` | `nested` |
-| `.cursor/hooks.json` | `scrubHooksJson` | `flat` |
-| `.github/copilot/hooks.json` | `scrubHooksJson` | `flat` |
-| `.opencode/package.json` | `scrubOpencodePackageJson` | n/a |
-| `.pi/settings.json` | `scrubPiSettings` | n/a |
-| `.codex/config.toml` | `scrubCodexConfigToml` | n/a |
-| `AGENTS.md` | `scrubManagedMarkdownBlock` | n/a |
+| Manifest path | Scrubber |
+|---|---|
+| `.claude/settings.json` | `scrubHooksJson` |
+| `.starFactory/settings.json` | `scrubHooksJson` |
+| `AGENTS.md` | `scrubManagedMarkdownBlock` |
+| `CLAUDE.md` | `scrubManagedMarkdownBlock` |
 
-`AGENTS.md` is not a hooks-JSON file — it's a mixed-ownership markdown file. Arbor owns only the `<!-- ARBOR:START/END -->` block (markers exported from `update.ts`); the user owns everything outside it. It shares `scrubManagedMarkdownBlock` with the Copilot-instructions scrubber: strip the block, keep the rest, and only fall through to deletion (`fullyEmpty`) when nothing user-authored remains. Before this spec was added, `AGENTS.md` had no dispatch-table row and was `unlinkSync`'d whole by the plain-deletion path, destroying any pre-existing user content outside the block.
+`AGENTS.md` and `CLAUDE.md` are not hooks-JSON files — they are mixed-ownership markdown files (`CLAUDE.md` is written only when the Claude Code platform is configured). Arbor owns only the `<!-- ARBOR:START/END -->` block (markers exported from `update.ts`); the user owns everything outside it. `scrubManagedMarkdownBlock` strips the block, keeps the rest, and only falls through to deletion (`fullyEmpty`) when nothing user-authored remains. Without a dispatch-table row, `AGENTS.md` / `CLAUDE.md` would be unlinked whole by the plain-deletion path, destroying any pre-existing user content outside the block.
 
-Adding a new platform that ships a structured config file means adding one row to this table — the planner picks it up automatically. **Per-file scrub semantics live in `uninstall-scrubbers.md`; do not duplicate them here.**
+Adding a new platform that ships a structured config file means adding one row to this table — the planner picks it up automatically.
 
 The `StructuredFileSpec.scrub` callback receives `(content, deletedPaths)`. `deletedPaths` is the full set of manifest-listed POSIX paths for *this uninstall*, used by hooks-JSON scrubbers to identify arbor-managed `command` strings without false-matching on user-added hooks that merely mention the path in an `echo` or comment.
 
@@ -153,16 +145,15 @@ While deleting, the parent directory of each deleted file is added to a `Set<str
 
 ### Phase 4 — Prune empty managed sub-directories
 
-For every dir in `deletedDirCandidates`, call `cleanupEmptyDirs(cwd, dirPosix)` (re-exported from `commands/update.ts`). This walks the directory bottom-up and removes any sub-directory that became empty after Phase 2 — but it explicitly **refuses to remove managed root dirs** (`.claude`, `.cursor`, `.codex`, etc.) because the normal `update` flow needs them to persist.
+For every dir in `deletedDirCandidates`, call `cleanupEmptyDirs(cwd, dirPosix)` (from `utils/managed-paths.ts`). This walks the directory bottom-up and removes any sub-directory that became empty after Phase 2 — but it explicitly **refuses to remove managed root dirs** (`.claude`, `.starFactory`) because the normal `update` flow needs them to persist.
 
 ### Phase 5 — Prune empty managed root directories
 
 This is the uninstall-only fixup that `cleanupEmptyDirs` deliberately won't do. After Phase 4, a platform root like `.claude` may be sitting empty (every nested file removed, every nested empty subdir already pruned). During uninstall there is no reason to keep it, so we walk `ALL_MANAGED_DIRS` (excluding `DIR_NAMES.WORKFLOW` because Phase 3 already handled it), sorted **deepest-first** by slash count, and `rmdirSync` each one that is empty.
 
-After removing a deepest dir (e.g. `.agents/skills`), the loop walks **upward** until it hits a non-empty parent or runs out of POSIX path. This handles cases like:
-- `.agents/skills` empty → remove → `.agents` may now be empty → remove → done.
+After removing a deepest dir, the loop walks **upward** until it hits a non-empty parent or runs out of POSIX path. This matters for any nested managed path (a platform's `extraManagedPaths` entry or the shared agent-skills layer): remove the nested dir first, then its parent if that is now empty. No registered platform declares a nested managed path today, but the sort stays so one can be added safely.
 
-The deepest-first sort matters: if we walked `ALL_MANAGED_DIRS` in registry order and tried to remove `.agents` before `.agents/skills`, the rmdir would fail because the dir was non-empty.
+The deepest-first sort matters: if we walked `ALL_MANAGED_DIRS` in registry order and tried to remove a parent before its nested child, the rmdir would fail because the dir was non-empty.
 
 Returns `{ deletedFiles, modifiedFiles, deletedDirs }` for the green summary line.
 
@@ -205,10 +196,10 @@ See [Filesystem Safety § Destructive-op ownership / backup gate](./filesystem-s
 
 ### What `uninstall` will NOT do
 
-- **Touch any file outside `.template-hashes.json`.** User-added scripts inside `.claude/hooks/`, custom commands inside `.cursor/commands/`, project-local agents the user defined themselves — all preserved. Test `#7` in `test/commands/uninstall.integration.test.ts` covers this.
-- **Mutate user-authored sections of structured config.** Scrubbers strip *only* arbor-emitted entries. Other deps in `package.json`, other event hooks in `settings.json`, custom `[features]` table entries in `config.toml` — all preserved. Test `#8` covers this for `.claude/settings.json`.
+- **Touch any file outside `.template-hashes.json`.** User-added scripts inside `.claude/hooks/`, custom commands inside `.starFactory/commands/`, project-local files the user added themselves — all preserved. Test `#7` in `test/commands/uninstall.integration.test.ts` covers this.
+- **Mutate user-authored sections of structured config.** Scrubbers strip *only* arbor-emitted entries. Other event hooks and top-level keys in `settings.json` — all preserved. Test `#8` covers this for `.claude/settings.json`.
 - **Touch git history.** No `git add`, no `git commit`, no `git rm`. The user is expected to commit the post-uninstall state themselves. (Same convention as `update`.)
-- **Touch `~/.codex/config.toml` or any other user-level config.** Codex's hook activation flag (`features.hooks = true`) lives in the user's home config; we never edit that. We do remove the project-local `.codex/config.toml`, which only contains `project_doc_fallback_filenames` + a comment block.
+- **Touch user-level config.** Anything under the user's home directory (for example `~/.claude/` or `~/.starFactory/`) is never read or edited.
 - **Reverse migrations.** If a user originally installed v0.4 and migrated to v0.5, `uninstall` removes the v0.5-shape files (whatever the current manifest contains). It does not reconstruct any v0.4 files.
 
 ### Best-effort cleanup
@@ -238,21 +229,21 @@ The corollary: when adding a new platform/template that emits a structured confi
 
 ### 1. "Per-platform uninstall" is not supported
 
-There is no `--platform claude-code` flag. Reason: the manifest does not partition by platform — it is a flat `Record<posixPath, sha256>`. Inferring "this entry belongs to Claude Code" would mean prefix-matching `.claude/`, which is fragile (`.agents/skills/` is shared by Codex and Pi; `.github/copilot/` lives outside the platform-name pattern).
+There is no `--platform claude-code` flag. Reason: the manifest does not partition by platform — it is a flat `Record<posixPath, sha256>`. Inferring "this entry belongs to Claude Code" would mean prefix-matching `.claude/`, which is fragile (a nested or shared path would not match a simple prefix rule).
 
 If a user wants to remove just one platform's files, the path is `arbor update` after editing `config.yaml`'s platform list — that flow knows how to deconfigure platforms cleanly. `uninstall` is a single-shot full removal.
 
 ### 2. Adding a new structured config file without a scrubber
 
-**Symptom**: User runs `uninstall`, finds their custom keys in `.newplatform/settings.json` are gone — the entire file got unlinked because the planner had no `StructuredFileSpec` for it.
+**Symptom**: User runs `uninstall`, finds their custom keys in a platform's `settings.json` are gone — the entire file got unlinked because the planner had no `StructuredFileSpec` for it.
 
 **Cause**: Manifest tracks the file (good — the planner sees it), but `buildStructuredFileSpecs` lacks a row for it, so the planner falls into the "plain deletion" branch.
 
-**Fix**: Always add a `StructuredFileSpec` row at the same time you add the new platform's manifest-tracked structured config. The companion scrubber goes in `utils/uninstall-scrubbers.ts` — see `uninstall-scrubbers.md` for the contract.
+**Fix**: Always add a `StructuredFileSpec` row at the same time you add the new platform's manifest-tracked structured config. The companion scrubber goes in `utils/managed-removal.ts` next to `scrubHooksJson`.
 
 ### 3. Forgetting that `cleanupEmptyDirs` won't touch root dirs
 
-**Symptom**: After uninstall, `.cursor/` is empty but still present.
+**Symptom**: After uninstall, `.starFactory/` is empty but still present.
 
 **Cause**: `cleanupEmptyDirs` (shared with `update.ts`) refuses to remove anything in `ALL_MANAGED_DIRS` because during `update` those dirs must persist. Phase 5 of `executeManagedRemovalPlan` is the uninstall-specific fixup that goes back and prunes them.
 
@@ -266,19 +257,11 @@ If a user wants to remove just one platform's files, the path is `arbor update` 
 
 **Note**: There is no "manifest is stale, please run `update` first" warning — uninstall is the user's exit hatch and should not require any prior intervention.
 
-### 5. Codex `[features] hooks = true` survives uninstall
+### 5. Hooks-JSON command-string matching is structural, not substring
 
-**Symptom**: User uninstalls Arbor but `~/.codex/config.toml` still has `[features]\nhooks = true`.
+The hooks-JSON scrubber matches on the *trailing whitespace-delimited token* of each `command`, not arbitrary substring. A user-defined hook whose body merely echoes a deleted path (`echo "see .claude/hooks/session-start.py"`) will NOT be removed — its trailing token is `inspiration"`, not the manifest path. This is the correct behavior; see `commandMatchesDeletedPath` in `utils/managed-removal.ts` for the matching contract.
 
-**Cause**: That flag is in the **user-level** Codex config, not project-local. Arbor never wrote to it (the README+the project `.codex/config.toml` comment block instruct the user to add it manually). `uninstall` therefore does not remove it.
-
-**Fix**: Document this in the future — add a closing reminder to the green summary if Codex was one of the configured platforms. Currently silent.
-
-### 6. Hooks-JSON command-string matching is structural, not substring
-
-The hooks-JSON scrubber matches on the *trailing whitespace-delimited token* of each `command`, not arbitrary substring. A user-defined hook whose body merely echoes a deleted path (`echo "see .claude/hooks/session-start.py"`) will NOT be removed — its trailing token is `inspiration"`, not the manifest path. This is the correct behavior; see `uninstall-scrubbers.md` for the full matching contract.
-
-If you ever need to extend the scrubber to match different command shapes (e.g. quoted paths, `--script=path` flags), update both `uninstall-scrubbers.ts` and the hooks-JSON tests in `test/utils/uninstall-scrubbers.test.ts` — `uninstall.ts` itself does not need to change.
+If you ever need to extend the scrubber to match different command shapes (e.g. quoted paths, `--script=path` flags), update both `utils/managed-removal.ts` and the hooks-JSON tests in `test/utils/managed-removal.test.ts` — `uninstall.ts` itself does not need to change.
 
 ---
 
@@ -294,19 +277,19 @@ Reference cases (number = test ID in the file):
 |---|---|---|
 | 1 | `.arbor/` missing | Friendly no-op exit, no error. |
 | 2 | `.arbor/` present, manifest missing | Error exit (manual cleanup hint). |
-| 3 | `init claude+cursor → uninstall` | Project is byte-clean afterwards. |
+| 3 | `init → uninstall` | Project is byte-clean afterwards. |
 | 4 | `--dry-run` | No filesystem mutation. |
 | 5 | Prompt `n` | Aborts with no mutation. |
 | 6 | User-modified manifest file is still removed | Manifest membership trumps modification state. |
 | 7 | User-added file in managed dir survives | Manifest is the scope boundary. |
 | 8 | `.claude/settings.json` with extra user fields | Scrubber preserves user fields, strips arbor hooks. |
-| 8a | Empty managed dirs pruned (Kilo case, no structured config) | Phase 4+5 cleanup. |
 | 8b | Platform root survives when scrubbing leaves residual content | Phase 5 only prunes empty roots. |
+| 9 | `.starFactory/settings.json` with extra user fields | Scrubber preserves user fields and the root dir survives. |
 
 When adding a new structured-config platform:
 
 1. Add a row to the dispatch table.
-2. Write a unit test in `test/utils/uninstall-scrubbers.test.ts` for the scrubber itself.
+2. Write a unit test in `test/utils/managed-removal.test.ts` for the scrubber itself.
 3. Add an integration test in this file mirroring `#8` — init that platform, write some user-owned fields into the structured config, uninstall, assert the user fields survive and the arbor fields are gone.
 
 Do **not** mock `fs` for these tests; they all use real tmpdirs. The pattern is: `beforeEach` makes a tmpdir and `chdir`'s into it, `afterEach` restores `cwd` and `rmSync` the tmpdir. This catches Windows path bugs, permission issues, and unintended side effects that a mocked fs would hide.
@@ -327,9 +310,9 @@ Do **not** mock `fs` for these tests; they all use real tmpdirs. The pattern is:
 | `StructuredFileSpec` | `utils/managed-removal.ts:StructuredFileSpec` |
 | `PlannedDeletion` / `PlannedModification` / `ManagedRemovalPlan` | `utils/managed-removal.ts` |
 | `loadHashes` | `utils/template-hash.ts:loadHashes` |
-| `cleanupEmptyDirs` | `commands/update.ts:cleanupEmptyDirs` (re-exported) |
+| `cleanupEmptyDirs` | `utils/managed-paths.ts:cleanupEmptyDirs` |
 | `ALL_MANAGED_DIRS` / `isManagedRootDir` | `configurators/index.ts` |
 | `DIR_NAMES.WORKFLOW` | `constants/paths.ts:DIR_NAMES` |
 | `collectUncommittedArborData` | `commands/uninstall.ts:collectUncommittedArborData` (exported) |
 | `ARBOR_ALLOW_DIRTY_UNINSTALL` (env bypass) | checked via `dirtyUninstallBypassEnabled` in `commands/uninstall.ts` |
-| Scrubbers (`scrubHooksJson`, `scrubOpencodePackageJson`, `scrubPiSettings`, `scrubCodexConfigToml`, `scrubManagedMarkdownBlock`) | `utils/uninstall-scrubbers.ts` — see `uninstall-scrubbers.md` |
+| Scrubbers (`scrubHooksJson`, `scrubManagedMarkdownBlock`) | `utils/managed-removal.ts` |

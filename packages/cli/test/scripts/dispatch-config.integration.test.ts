@@ -290,8 +290,15 @@ ${code}
       const section = /<dispatch>\n([\s\S]*?)\n<\/dispatch>/.exec(context)?.[1];
       expect(section, "missing <dispatch> section").toBeDefined();
       expect(section).toContain("Target: star (source: config)");
+      const unknown =
+        "(id unknown — run python3 ./.arbor/scripts/dispatch.py codeg-setup)";
       expect(section).toContain(
-        "implement=`arbor-implement-star`, check=`arbor-check-star`, research=`arbor-research-star`",
+        [
+          "Assistants:",
+          `- implement: arbor-implement-star ${unknown}`,
+          `- check: arbor-check-star ${unknown}`,
+          `- research: arbor-research-star ${unknown}`,
+        ].join("\n"),
       );
       expect(section).toContain(
         "If `mcp__codeg-mcp__delegate_to_agent` is among your tools, call it; otherwise run `python3 ./.arbor/scripts/dispatch.py run --role <role>`. Never use the built-in Agent/Task tool for arbor roles.",
@@ -305,7 +312,28 @@ ${code}
     it("follows the runtime target override", () => {
       const section = sessionStart({ ARBOR_DISPATCH_TARGET: "pi" });
       expect(section).toContain("Target: pi (source: ARBOR_DISPATCH_TARGET)");
-      expect(section).toContain("implement=`arbor-implement-pi`");
+      expect(section).toContain("- implement: arbor-implement-pi (id unknown");
+    });
+
+    it("prints assistant ids from the codeg-setup registry", () => {
+      fs.mkdirSync(path.join(tmp, ".arbor", ".runtime"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmp, ".arbor", ".runtime", "codeg-assistants.json"),
+        JSON.stringify({
+          by_name: { "arbor-implement-pi": 12, "arbor-check-pi": 13 },
+          by_id: {
+            "12": { role: "implement", target: "pi" },
+            "13": { role: "check", target: "pi" },
+          },
+        }),
+      );
+      const section = sessionStart({ ARBOR_DISPATCH_TARGET: "pi" });
+      expect(section).toContain("- implement: arbor-implement-pi (id 12)");
+      expect(section).toContain("- check: arbor-check-pi (id 13)");
+      // A role missing from the registry still points at codeg-setup.
+      expect(section).toContain(
+        "- research: arbor-research-pi (id unknown — run python3 ./.arbor/scripts/dispatch.py codeg-setup)",
+      );
     });
   });
 

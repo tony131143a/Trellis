@@ -16,8 +16,7 @@ load the right guidance.
 | `cli` | `packages/cli` | `@tony131143a/arbor` | `.arbor/spec/cli/**` | User-facing CLI, templates, migrations, dispatch scripts and the two platform configurators (Claude Code, StarFactory). |
 
 Arbor is a derivative of Trellis; see `provenance.md` in this directory for the
-rename table and the list of upstream packages and features that were removed
-(`packages/core`, `docs-site`, `marketplace`, `channel`, `mem`, ...).
+rename table and the list of upstream packages and features that were removed.
 
 ## Workspace
 

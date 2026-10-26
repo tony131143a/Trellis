@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import chalk from "chalk";
@@ -9,6 +10,7 @@ import { DIR_NAMES } from "../constants/paths.js";
 import { PACKAGE_NAME, VERSION } from "../constants/version.js";
 import { compareVersions } from "../utils/compare-versions.js";
 import { getConfiguredPlatforms } from "../configurators/index.js";
+import { getPythonCommandForPlatform } from "../configurators/shared.js";
 import { AI_TOOLS } from "../types/ai-tools.js";
 
 // Re-export for backwards compatibility (consumers should prefer constants/version.js)
@@ -45,9 +47,63 @@ function checkForUpdates(cwd: string): void {
   }
 }
 
-// Check for updates at CLI startup (only if .arbor exists)
+/** Nearest ancestor of `start` (inclusive) that holds `.arbor/`. */
+function findProjectRoot(start: string): string | null {
+  let dir = path.resolve(start);
+  for (;;) {
+    if (fs.existsSync(path.join(dir, DIR_NAMES.WORKFLOW))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
+/**
+ * `arbor dispatch ...`: run the project's `.arbor/scripts/dispatch.py` with
+ * the same arguments, stdin, stdout and exit code. The Python command follows
+ * the same rule as `{{PYTHON_CMD}}` in installed files (`ARBOR_PYTHON_CMD`,
+ * else `python` on Windows and `python3` elsewhere).
+ */
+function runDispatch(args: string[]): never {
+  const root = findProjectRoot(process.cwd());
+  const script = root
+    ? path.join(root, DIR_NAMES.WORKFLOW, "scripts", "dispatch.py")
+    : null;
+  if (!script || !fs.existsSync(script)) {
+    console.error(
+      chalk.red("Error:"),
+      root
+        ? "missing .arbor/scripts/dispatch.py — run `arbor update`"
+        : "no .arbor/ found here or in a parent directory — run `arbor init`",
+    );
+    process.exit(1);
+  }
+  let pythonCmd = getPythonCommandForPlatform();
+  const override = process.env.ARBOR_PYTHON_CMD?.trim();
+  if (override) pythonCmd = override;
+  const python = pythonCmd.split(/\s+/);
+  const result = spawnSync(
+    python[0] ?? "python3",
+    [...python.slice(1), script, ...args],
+    { stdio: "inherit" },
+  );
+  if (result.error) {
+    console.error(
+      chalk.red("Error:"),
+      `cannot run ${python.join(" ")}: ${result.error.message}`,
+    );
+    process.exit(127);
+  }
+  process.exit(result.status ?? 1);
+}
+
 const cwd = process.cwd();
-if (fs.existsSync(path.join(cwd, DIR_NAMES.WORKFLOW))) {
+// `arbor dispatch` output is often machine-read (`resolve --json`); keep the
+// update notice off its stdout.
+const isDispatch = process.argv[2] === "dispatch";
+
+// Check for updates at CLI startup (only if .arbor exists)
+if (!isDispatch && fs.existsSync(path.join(cwd, DIR_NAMES.WORKFLOW))) {
   checkForUpdates(cwd);
 }
 
@@ -188,6 +244,20 @@ program
       }
       process.exit(1);
     }
+  });
+
+program
+  .command("dispatch")
+  .description(
+    "Run .arbor/scripts/dispatch.py (terminal dispatch to codeg assistants); all arguments are passed through",
+  )
+  .helpOption(false)
+  .allowUnknownOption()
+  .allowExcessArguments()
+  .argument("[args...]", "dispatch.py arguments, e.g. run --role implement")
+  .action(() => {
+    // Forward the raw argv so option order and `--` survive commander.
+    runDispatch(process.argv.slice(process.argv.indexOf("dispatch", 2) + 1));
   });
 
 program.parse();

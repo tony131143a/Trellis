@@ -1,5 +1,8 @@
 ---
-sources: []
+sources:
+  - packages/cli/src/utils/atomic-write.ts
+  - packages/cli/src/utils/managed-removal.ts
+  - .arbor/scripts/common/io.py
 last_verified: 2026-08-27
 ---
 # Filesystem Safety — Atomic Writes & Destructive-Op Guards
@@ -18,7 +21,7 @@ Applies to: `commands/update.ts`, `commands/uninstall.ts`, `utils/*`,
 ## 1. Atomic writes — never truncate a state file in place
 
 **Rule**: a file that holds durable state (attribution manifest, `task.json`,
-`config.yaml`, session pointer, channel events cursor) must be written
+`config.yaml`, session pointer) must be written
 **temp-in-same-dir + rename**, never `fs.writeFileSync(path, ...)` /
 `path.write_text(...)` directly. In-place writes truncate the target as their
 first step, so a crash / Ctrl-C / ENOSPC mid-write leaves a half-file. A
@@ -145,7 +148,6 @@ without the guard**:
 
 - [`arbor update` Command](./commands-update.md) — migration classification/apply
 - [`arbor uninstall` Command](./commands-uninstall.md) — plan/execute phases
-- [`arbor channel` Command](./commands-channel.md) — store paths, project buckets
 - [Script Conventions](./script-conventions.md) — Python `io.py` contract
 - [Migrations](./migrations.md) — rename/rename-dir/delete semantics
 

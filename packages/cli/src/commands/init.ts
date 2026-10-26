@@ -15,19 +15,29 @@ import {
 } from "../configurators/index.js";
 import {
   getPythonCommandForPlatform,
+  replacePythonCommandLiterals,
   setResolvedPythonCommand,
 } from "../configurators/shared.js";
 import { AI_TOOLS, type CliFlag } from "../types/ai-tools.js";
 import { DIR_NAMES, FILE_NAMES, PATHS } from "../constants/paths.js";
 import { VERSION } from "../constants/version.js";
-import { agentsMdContent } from "../templates/markdown/index.js";
+import {
+  agentsMdContent,
+  claudeMdContent,
+} from "../templates/markdown/index.js";
 import {
   setWriteMode,
   startRecordingWrites,
   stopRecordingWrites,
   writeFile,
+  writeManagedBlockFile,
   type WriteMode,
 } from "../utils/file-writer.js";
+import {
+  ARBOR_BLOCK_END,
+  ARBOR_BLOCK_START,
+  mergeManagedBlockContent,
+} from "../utils/managed-paths.js";
 import { emptyTaskJson, type TaskJson } from "../utils/task-json.js";
 import {
   detectProjectType,
@@ -854,6 +864,9 @@ async function handleReinit(
                 ),
               );
             }
+            if (platformId === "claude-code") {
+              writeClaudeMd(cwd);
+            }
           }
         }
       }
@@ -1322,8 +1335,8 @@ export async function init(options: InitOptions): Promise<void> {
       logPythonAdaptationNotice(pythonCmd);
     }
 
-    // Create root files (skip if exists)
-    await createRootFiles(cwd);
+    // Create root files (AGENTS.md skips if exists; CLAUDE.md merges its block)
+    await createRootFiles(cwd, tools);
   } finally {
     stopRecordingWrites();
   }
@@ -1410,12 +1423,47 @@ function askInput(prompt: string): Promise<string> {
   });
 }
 
-async function createRootFiles(cwd: string): Promise<void> {
+async function createRootFiles(cwd: string, tools: string[]): Promise<void> {
   const agentsPath = path.join(cwd, FILE_NAMES.AGENTS);
 
   // Write AGENTS.md from template
   const agentsWritten = await writeFile(agentsPath, agentsMdContent);
   if (agentsWritten) {
     console.log(chalk.blue("📄 Created AGENTS.md"));
+  }
+
+  if (tools.includes(AI_TOOLS["claude-code"].cliFlag)) {
+    writeClaudeMd(cwd);
+  }
+}
+
+/**
+ * Write the Arbor main-agent block into CLAUDE.md. A missing file is created
+ * from the template; an existing one keeps all of its own text and gets the
+ * block replaced in place or appended below it.
+ */
+function writeClaudeMd(cwd: string): void {
+  const claudePath = path.join(cwd, FILE_NAMES.CLAUDE);
+  const template = replacePythonCommandLiterals(claudeMdContent);
+  const existing = fs.existsSync(claudePath)
+    ? fs.readFileSync(claudePath, "utf-8")
+    : null;
+  const content =
+    existing === null
+      ? template
+      : mergeManagedBlockContent(
+          existing,
+          template,
+          ARBOR_BLOCK_START,
+          ARBOR_BLOCK_END,
+        );
+  if (writeManagedBlockFile(claudePath, content)) {
+    console.log(
+      chalk.blue(
+        existing === null
+          ? "📄 Created CLAUDE.md"
+          : "📄 Updated the Arbor block in CLAUDE.md",
+      ),
+    );
   }
 }

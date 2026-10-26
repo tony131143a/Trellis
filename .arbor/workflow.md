@@ -107,7 +107,7 @@ The **implement**, **check**, and **research** roles are never performed in the 
 |---|---|---|---|---|
 | implement | `implement` | `implement.jsonl` → prd → design → implement.md | `arbor-implement-star` | `arbor-implement-pi` |
 | check | `check` / `check [finish]` | `check.jsonl` → prd → design → implement.md | `arbor-check-star` | `arbor-check-pi` |
-| research | `research` | prd → design → implement.md | `arbor-research-star` | `arbor-research-pi` |
+| research | `research` | spec directory overview + search tips (no task files) | `arbor-research-star` | `arbor-research-pi` |
 
 **Target selection** (highest wins): `Target:` header line or `--target` → `.arbor/.runtime/dispatch-target` → env `ARBOR_DISPATCH_TARGET` → `dispatch.default_target` in config. Switch with `/arbor:dispatch-target star|pi|clear`.
 
@@ -131,10 +131,10 @@ A hook (codeg path) or `dispatch.py` (terminal path) recognises the header and i
 **Path B: plain terminal** (no codeg MCP tools):
 
 ```bash
-python3 ./.arbor/scripts/dispatch.py run --role <role> [--target star|pi] [--task <dir>] [--workspace <worktree>] --wait   # brief on stdin, or --prompt / --prompt-file
+python3 ./.arbor/scripts/dispatch.py run --role <role> [--finish] [--target star|pi] [--task <dir>] [--workspace <worktree>] --wait   # brief on stdin, or --prompt / --prompt-file
 ```
 
-`--detach` starts it in the background; `python3 ./.arbor/scripts/dispatch.py wait <run>...` collects results.
+It runs `codeg-cli run -A <assistant>` against the running codeg app (`--url <server>` for a remote `codeg-server`; `--standalone --data-dir <codeg data dir>` while the app is closed) and prints the reply; prompt and reply are kept under `.arbor/.runtime/dispatch/`. `--finish` makes it `Role: check [finish]`. `--detach` starts it in the background and prints a run id; `python3 ./.arbor/scripts/dispatch.py wait <run>...` collects results. `--print-prompt` / `--dry-run` show the prompt / the `codeg-cli` command without running.
 
 **Sub-agent self-exemption.** If your own first prompt starts with `Active task:` + `Role:`, you are a dispatched sub-agent: do that role's work directly, do not dispatch anything, do not commit, push, or merge, and do not call `task.py start/current/finish`. You have no `ARBOR_CONTEXT_ID`. Dispatch is for the main agent only.
 

@@ -36,7 +36,7 @@ from typing import Any
 
 from .active_task import resolve_active_task
 from .config import get_context_injection_limits, get_dispatch_config
-from .paths import DIR_SPEC, DIR_WORKFLOW, resolve_task_ref
+from .paths import DIR_SPEC, DIR_WORKFLOW, get_tasks_dir, resolve_task_ref
 
 
 ROLES = ("implement", "check", "research")
@@ -154,6 +154,8 @@ def resolve_task_dir(
         resolved = resolve_task_ref(header.task_dir, repo_root)
         if resolved is None or not resolved.is_dir():
             return None
+        if not _inside_tasks_dir(repo_root, resolved):
+            return None
         return resolved
 
     active = resolve_active_task(
@@ -168,6 +170,22 @@ def resolve_task_dir(
     if resolved is None or not resolved.is_dir():
         return None
     return resolved
+
+
+def _inside_tasks_dir(repo_root: Path, resolved: Path) -> bool:
+    """True when `resolved` is a directory strictly below `.arbor/tasks/`.
+
+    `resolve_task_ref` only guarantees containment in the repo; a dispatch
+    header must point at a task directory (active or archived), never at the
+    repo root or an arbitrary source folder, or the hook would inline whatever
+    `prd.md` / `*.jsonl` happen to live there.
+    """
+    try:
+        tasks_root = get_tasks_dir(repo_root).resolve()
+        resolved.relative_to(tasks_root)
+    except (OSError, ValueError):
+        return False
+    return resolved != tasks_root
 
 
 def role_from_assistant_id(repo_root: Path, assistant_id: Any) -> str | None:

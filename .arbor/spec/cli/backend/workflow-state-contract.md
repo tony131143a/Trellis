@@ -7,8 +7,7 @@ last_verified: 2026-08-27
 # Workflow-State Breadcrumb Contract
 
 > Runtime contract for the per-turn `<workflow-state>` breadcrumb that
-> `inject-workflow-state.py` / `inject-workflow-state.js` inject into
-> every UserPromptSubmit.
+> `inject-workflow-state.py` injects into every UserPromptSubmit.
 
 ---
 
@@ -47,8 +46,7 @@ Each breadcrumb body lives in a managed block of `.arbor/workflow.md`:
 - The body is read verbatim and inlined into the `<workflow-state>` block.
 - Both the opening and closing tags must end with the same STATUS string.
 
-The regex used by both the Python hook (`packages/cli/src/templates/shared-hooks/inject-workflow-state.py`)
-and the OpenCode plugin (`packages/cli/src/templates/opencode/plugins/inject-workflow-state.js`)
+The regex used by the Python hook (`packages/cli/src/templates/shared-hooks/inject-workflow-state.py`)
 is:
 
 ```
@@ -59,8 +57,8 @@ is:
 
 There are two regex consumers of the marker syntax:
 
-1. **Parser** — extracts tag content for breadcrumb emission. Lives in `inject-workflow-state.py` (`_TAG_RE`) and `inject-workflow-state.js`.
-2. **Stripper** — removes tag blocks from the workflow.md range injected at SessionStart (so AI doesn't read each block twice — once in the workflow overview, once in the per-turn breadcrumb). Lives in `session-start.py` (shared / codex / copilot copies), `workflow_phase.py`, and any future SessionStart-equivalent script.
+1. **Parser** — extracts tag content for breadcrumb emission. Lives in `inject-workflow-state.py` (`_TAG_RE`).
+2. **Stripper** — removes tag blocks from the workflow.md range injected at SessionStart (so AI doesn't read each block twice — once in the workflow overview, once in the per-turn breadcrumb). Lives in `session-start.py`, `workflow_phase.py`, and any future SessionStart-equivalent script.
 
 Both regexes MUST use the `\1` backreference variant — `[workflow-state:([A-Za-z0-9_-]+)]...[/workflow-state:\1]` — so they only match well-formed pairs (same STATUS on open and close). A non-backreference variant like `[workflow-state:[A-Za-z0-9_-]+]...[/workflow-state:[A-Za-z0-9_-]+]` permits `STATUS_A...STATUS_B` mismatches, which can swallow surrounding content if a user typo'd the closing tag.
 
@@ -104,127 +102,26 @@ Both regexes MUST use the `\1` backreference variant — `[workflow-state:([A-Za
    for that turn.
 
    `hookEventName` MUST echo the host's per-turn event name or the host's
-   schema validator will reject the payload. The shared hook detects the
-   platform via `_detect_platform()` and emits the matching value:
-
-   | Detected platform | `hookEventName` value |
-   |---|---|
-   | gemini | `BeforeAgent` |
-   | all others (claude, cursor, codex, qoder, codebuddy, droid, copilot, kiro) | `UserPromptSubmit` |
-
-   When adding a new hook-capable platform whose per-turn event name is not
-   `UserPromptSubmit`, extend `_detect_platform()` and the `hook_event_name`
-   selector in `inject-workflow-state.py` (and the OpenCode `.js` plugin if
-   the new platform shares its transform envelope). Do NOT hardcode
-   `UserPromptSubmit` at any new emission site.
-
----
-
-## OpenCode messages.transform contract
-
-### 1. Scope / Trigger
-
-OpenCode SessionStart and per-turn workflow-state plugins inject Arbor
-context through `experimental.chat.messages.transform`. That hook runs on
-the in-memory transcript OpenCode is about to convert to model messages
-(`SessionPrompt.run` and compaction). It does not write SQLite / TUI /
-Web history. `chat.message` remains the persist path and must not be used
-for Arbor context (issue #553, replacing the persisted-synthetic-part
-contract from #524).
-
-### 2. Signatures
-
-- `findLatestUserMessageIndex(messages) -> number`
-- `latestUserPromptText(messages) -> string`
-- `platformInputFromMessages(messages) -> { sessionID, agent } | null`
-- `prependEphemeralText(messages, text) -> boolean`
-- Hook name: `experimental.chat.messages.transform`
-- Hook input from OpenCode is `{}`; session identity is read from the
-  latest user message `info`.
-
-### 3. Contracts
-
-- Only the latest `info.role === "user"` message is cloned. Earlier user
-  and assistant messages stay the original object references.
-- The clone prepends `{ type: "text", text, synthetic: true }` parts.
-  Ordinary parts on the clone keep their original objects; the original
-  message's `parts` array is not mutated.
-- Injection does not require a persisted `prt_...` identity. Attachment-only
-  latest user messages still receive the ephemeral text parts.
-- Workflow-state checks the skip keyword only against ordinary user text
-  (`findUserTextPart`), never against ephemeral or stored synthetic parts.
-- SessionStart injects rebuilt compact context onto the latest user message
-  every model call. `<first-reply-notice>` is included only when the
-  transcript has no assistant message.
-- Plugin error handling leaves `output.messages` unchanged (prepend is the
-  last step).
-- Arbor sub-agent turns (`info.agent` matching `arbor-implement` /
-  `arbor-check` / `arbor-research`) skip both plugins.
-
-### 4. Validation & Error Matrix
-
-| Condition | Required behavior |
-|---|---|
-| `messages` is missing or has no user message | No-op |
-| Latest user message has no ordinary text part | Still prepend ephemeral text (attachment-only turns) |
-| Skip keyword present in ordinary latest-user text | Workflow-state no-op; SessionStart still injects |
-| `ARBOR_HOOKS=0` / `ARBOR_DISABLE_HOOKS=1` / `OPENCODE_NON_INTERACTIVE=1` | Both plugins no-op |
-| Plugin order is reversed | Both ephemeral parts still precede ordinary latest-user parts |
-
-### 5. Good / Base / Bad Cases
-
-- Good: a two-turn transcript's first user message is byte-identical after
-  transform; only the latest user message clone carries `<session-context>`
-  and `<workflow-state>`.
-- Base: an attachment-only latest user message gets ephemeral text parts
-  prepended; the file part object is unchanged.
-- Bad: mutating `chat.message` `output.parts` persists Arbor context into
-  history and makes revert restore it into the prompt box.
-
-### 6. Tests Required
-
-- Helper tests cover latest-user selection, clone-not-mutate, and prepend
-  onto attachment-only messages.
-- Real plugin tests run both plugin orders against a multi-turn transcript
-  and deep-compare every historical message.
-- SessionStart tests cover first-reply-notice presence vs absence after an
-  assistant turn. Workflow tests cover default/custom/disabled skip keywords.
-- Existing hook-disable, non-interactive, and Arbor sub-agent exclusion
-  tests remain mandatory, aimed at the transform hook.
-- Template collection tests assert the helper ships through both fresh init
-  and `arbor update`; dogfood `.opencode/` copies must match template bytes.
-
-### 7. Wrong vs Correct
-
-#### Wrong
-
-```javascript
-parts[0].text = `${breadcrumb}\n\n${parts[0].text}`
-insertSyntheticTextPart(parts, breadcrumb, "workflowState")
-```
-
-Both persist machine context into OpenCode history. The first also rewrites
-the user's visible message.
-
-#### Correct
-
-```javascript
-if (promptHasSkipKeyword(latestUserPromptText(messages), skipKeyword)) return
-prependEphemeralText(messages, breadcrumb)
-```
-
-This changes only the in-memory model payload. Stored history and the TUI
-keep the original user message.
+   schema validator will reject the payload. Both supported platforms (Claude
+   Code and StarFactory, a Claude Code fork) use `UserPromptSubmit`, and
+   `inject-workflow-state.py` currently emits that literal. `_detect_platform()`
+   in the same file resolves `star` (via `STARFACTORY_PROJECT_DIR` or a
+   `.starFactory` hook path) before `claude`, because StarFactory also exports
+   `CLAUDE_PROJECT_DIR`, and the resulting platform name feeds the session
+   context key. When adding a new hook-capable platform whose per-turn event
+   name is not `UserPromptSubmit`, add an event-name selector keyed on
+   `_detect_platform()` instead of hardcoding `UserPromptSubmit` at a new
+   emission site.
 
 ---
 
 ## Source of truth
 
 `workflow.md` is **the only editable source** for breadcrumb body text. The
-hook scripts (`.py` and `.js`) contain only the parser, no fallback text.
+hook script (`inject-workflow-state.py`) contains only the parser, no fallback text.
 
-**Why no fallback dicts**: prior to v0.5.0-beta.20, both hook scripts shipped
-a `_FALLBACK_BREADCRUMBS` / `FALLBACK_BREADCRUMBS` dict mirroring the
+**Why no fallback dicts**: upstream Trellis before v0.5.0-beta.20 shipped
+a `_FALLBACK_BREADCRUMBS` dict in each hook script mirroring the
 workflow.md content. The mirror inevitably drifted (different word polish in
 each file), and the architecture invited copy-paste skew. Removing the
 fallback collapses three sources to one. When `workflow.md` is missing or a
@@ -249,9 +146,7 @@ arbitrary prose outside tag blocks during automatic updates.
 
 Regression invariant: an older hash-tracked workflow must be replaced by the
 current packaged template, so step detail such as Phase 2.1 still loads.
-Known gap: `workflow_phase.py` matches step headings with `\d+\.\d+`, so the
-Phase 2P steps (`2P.0` to `2P.6`) cannot be loaded with `--step` until the
-regex accepts the `P` suffix.
+`workflow_phase.py` matches step headings with `\d+P?\.\d+`, so Phase 2P steps (`2P.0` and up) load with `--step` as well.
 
 ---
 
@@ -261,18 +156,18 @@ The table below enumerates every code path that writes `task.json.status` —
 i.e., every path that can change which breadcrumb fires next turn. **Adding
 a new writer requires updating this spec.**
 
-| # | Writer | File:Line | Value | Trigger |
+| # | Writer | File | Value | Trigger |
 |---|--------|-----------|-------|---------|
-| 1 | `cmd_create` | `packages/cli/src/templates/arbor/scripts/common/task_store.py:206` | `"planning"` | `task.py create "<title>"` (also visibly auto-sets the session active-task pointer when session identity is available; `--no-start` skips pointer movement for backlog batching — see R7 in 04-30-workflow-state-commit-gap PRD) |
-| 2 | `_record_start_state` (called from both `cmd_start` branches) | `packages/cli/src/templates/arbor/scripts/task.py:111` | `"in_progress"` (gated on prior `"planning"`; the same write also records `task.json.branch` when empty) | `task.py start <dir>` |
-| 3 | `cmd_archive` | `packages/cli/src/templates/arbor/scripts/common/task_store.py:1275` | `"completed"` (flip + archive `mv`, but only after `_validate_branch_metadata` passes) | `task.py archive <dir>` |
-| 4 | `emptyTaskJson` factory | `packages/cli/src/utils/task-json.ts:54` | `"planning"` (default) | TS callers (init, update) |
-| 5 | `getBootstrapTaskJson` | `packages/cli/src/commands/init.ts:535` | `"in_progress"` (override) | `arbor init` (creator path) |
-| 6 | `getJoinerTaskJson` | `packages/cli/src/commands/init.ts:587` | `"in_progress"` (override) | `arbor init` (joiner path) |
-| 7 | migration-task via `emptyTaskJson` | `packages/cli/src/commands/update.ts:2483-2494` | `"planning"` (override on factory) | `arbor update --migrate` for breaking-change manifest |
+| 1 | `cmd_create` | `.arbor/scripts/common/task_store.py` (`cmd_create`) | `"planning"` | `task.py create "<title>"` (also visibly auto-sets the session active-task pointer when session identity is available; `--no-start` skips pointer movement for backlog batching — see R7 in 04-30-workflow-state-commit-gap PRD) |
+| 2 | `_record_start_state` (called from both `cmd_start` branches) | `.arbor/scripts/task.py` (`_record_start_state`) | `"in_progress"` (gated on prior `"planning"`; the same write also records `task.json.branch` when empty) | `task.py start <dir>` |
+| 3 | `cmd_archive` | `.arbor/scripts/common/task_store.py` (`cmd_archive`) | `"completed"` (flip + archive `mv`, but only after `_validate_branch_metadata` passes) | `task.py archive <dir>` |
+| 4 | `emptyTaskJson` factory | `packages/cli/src/utils/task-json.ts` (`emptyTaskRecord`, aliased as `emptyTaskJson`) | `"planning"` (default) | TS callers (init, update) |
+| 5 | `getBootstrapTaskJson` | `packages/cli/src/commands/init.ts` (`getBootstrapTaskJson`) | `"in_progress"` (override) | `arbor init` (creator path) |
+| 6 | `getJoinerTaskJson` | `packages/cli/src/commands/init.ts` (`getJoinerTaskJson`) | `"in_progress"` (override) | `arbor init` (joiner path) |
+| 7 | migration-task via `emptyTaskJson` | `packages/cli/src/commands/update.ts` (migration-task block) | `"planning"` (override on factory) | `arbor update --migrate` for breaking-change manifest |
 
 **No other writer exists.** No hook script writes `task.json.status` — verified
-by `grep -rn '"status"' .arbor/scripts/`. Linear-sync hook (`linear_sync.py`)
+by `grep -rn '"status"' .arbor/scripts/`. The Linear-sync hook (`linear_sync.py`)
 writes `meta.linear_issue` only.
 
 ---

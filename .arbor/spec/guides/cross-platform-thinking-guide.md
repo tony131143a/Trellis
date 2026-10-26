@@ -85,7 +85,7 @@ function warnIfPythonTooOld(): void {
 }
 ```
 
-**Rule 5**: Don't assume the Python version the AI CLI uses matches your shell's `python3`. The user's terminal may resolve `python3` → homebrew 3.11, but AI CLI hosts (including enterprise-forked Claude Code / Cursor distributions) spawn hook subprocesses with a minimal PATH that resolves `python3` → `/usr/bin/python3` → macOS system 3.9. Distributed templates must either target the lowest plausible version or use `from __future__ import annotations` for PEP 604 syntax. See `cli/backend/script-conventions.md` → **CRITICAL: PEP 604 Annotations Require `from __future__ import annotations`** for the hard rule and audit check.
+**Rule 5**: Don't assume the Python version the AI CLI uses matches your shell's `python3`. The user's terminal may resolve `python3` → homebrew 3.11, but AI CLI hosts (including enterprise-forked Claude Code distributions and StarFactory) spawn hook subprocesses with a minimal PATH that resolves `python3` → `/usr/bin/python3` → macOS system 3.9. Distributed templates must either target the lowest plausible version or use `from __future__ import annotations` for PEP 604 syntax. See `cli/backend/script-conventions.md` → **CRITICAL: PEP 604 Annotations Require `from __future__ import annotations`** for the hard rule and audit check.
 
 **Rule 6**: When calling Python from Python, use `sys.executable`:
 
@@ -132,14 +132,14 @@ A path string has two distinct roles. **Treat them differently.**
 
 **Single source of truth**: `packages/cli/src/utils/posix.ts` exports `toPosix(p)`. Don't sprinkle `replaceAll('\\', '/')` at every `path.join` site — apply `toPosix` **once at the boundary**: collector exit (Map key entering hash dictionary) or write-time (`saveHashes` before `JSON.stringify`).
 
-**This rule is now load-bearing for writes too**, not just for hash lookups: `writeTemplateMap` (`configurators/shared.ts:560`) reconstructs the target path by splitting the map key on `/`. A backslashed key would write one file named `a\b\c.md` instead of three nested directories.
+**This rule is now load-bearing for writes too**, not just for hash lookups: `writeTemplateMap` (`configurators/shared.ts`) reconstructs the target path by splitting the map key on `/`. A backslashed key would write one file named `a\b\c.md` instead of three nested directories.
 
 ```typescript
 // BAD - logical key carries OS-native separator
 function collectTemplates(): Map<string, string> {
   const files = new Map<string, string>();
   for (const entry of walk(dir)) {
-    files.set(path.join(".opencode", entry), readFile(entry));  // \ on Windows
+    files.set(path.join(".starFactory", entry), readFile(entry));  // \ on Windows
   }
   return files;
 }
@@ -150,7 +150,7 @@ import { toPosix } from "../utils/posix.js";
 function collectTemplates(): Map<string, string> {
   const files = new Map<string, string>();
   for (const entry of walk(dir)) {
-    files.set(toPosix(path.join(".opencode", entry)), readFile(entry));
+    files.set(toPosix(path.join(".starFactory", entry)), readFile(entry));
   }
   return files;
 }
@@ -196,7 +196,7 @@ export function computeHash(content: string): string {
 }
 ```
 
-Apply this rule wherever the hash crosses OS boundaries (template hash dictionary, content fingerprints stored in JSON, integrity checks against a remote registry).
+Apply this rule wherever the hash crosses OS boundaries (template hash dictionary, content fingerprints stored in JSON).
 
 ### 4. Environment Variables
 
@@ -222,6 +222,7 @@ syntax from OS alone. AI tool "Bash" surfaces on Windows may execute through
 PowerShell, Git Bash, MSYS2, or another POSIX-like shell.
 
 ```javascript
+// Illustrative: no shipped hook prefixes commands today (Claude Code uses CLAUDE_ENV_FILE).
 // BAD - breaks when the host shell is PowerShell
 command = `export ARBOR_CONTEXT_ID=${shellQuote(contextKey)}; ${command}`;
 
@@ -342,7 +343,7 @@ result = subprocess.run(
 When making platform-related changes, check **all these locations**:
 
 ### Commands / Skills Sync
-- [ ] New command/skill added to ALL platforms — the list is `PLATFORM_IDS` in `configurators/index.ts`, not a remembered set
+- [ ] New command/skill added to ALL platforms — the list is `PLATFORM_IDS` in `configurators/index.ts` (currently Claude Code and StarFactory), not a remembered set
 - [ ] Each platform's test file updated with new entry in `EXPECTED_COMMAND_NAMES` / `EXPECTED_SKILL_NAMES`
 - [ ] Platform-integration spec's required command table updated if adding a new required command
 - [ ] Command format matches platform convention (see `platform-integration.md` → Command Format by Platform)
@@ -390,7 +391,7 @@ Before committing cross-platform code:
 
 ### 7. External Tool API Contracts
 
-When integrating with external tools (Claude Code, Cursor, etc.), their API contracts are **implicit assumptions**.
+When integrating with external tools (Claude Code, StarFactory, codeg, etc.), their API contracts are **implicit assumptions**.
 
 **Rule**: Verify API formats from official documentation, don't guess.
 
@@ -596,7 +597,7 @@ ls src/migrations/manifests/
 # Test upgrade path
 node -e "
 const { getMigrationsForVersion } = require('./dist/migrations/index.js');
-console.log('From 0.2.12:', getMigrationsForVersion('0.2.12', 'CURRENT').length);
+console.log('From 0.1.0:', getMigrationsForVersion('0.1.0', 'CURRENT').length);
 "
 ```
 
@@ -606,7 +607,7 @@ When release notes or docs claim an asset is bundled, installed automatically, o
 included with Arbor, verify the whole distribution path:
 
 - [ ] Source file exists in the branch being tagged, not only in another branch,
-  docs submodule, or marketplace tree.
+  or the docs tree.
 - [ ] `pnpm build` copies the asset into `dist/templates/**`.
 - [ ] `npm pack --dry-run --json` includes the expected `dist/**` path.
 - [ ] The built binary installs the asset in a fresh temp repository.
@@ -630,9 +631,9 @@ printf '{"name":"arbor-smoke","version":"0.0.0"}\n' > "$tmpdir/package.json"
 git -C "$tmpdir" init -q
 (
   cd "$tmpdir"
-  node /path/to/Arbor/packages/cli/bin/arbor.js init -u smoke --yes --claude --codex
+  node /path/to/Arbor/packages/cli/bin/arbor.js init -u smoke --yes --claude --star
   test -f .claude/skills/<skill>/SKILL.md
-  test -f .agents/skills/<skill>/SKILL.md
+  test -f .starFactory/skills/<skill>/SKILL.md
   grep -q '<skill>' .arbor/.template-hashes.json
   node /path/to/Arbor/packages/cli/bin/arbor.js update --dry-run
 )

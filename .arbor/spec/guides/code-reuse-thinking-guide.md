@@ -150,25 +150,22 @@ of that replay model.
 
 **Symptom**: New platform works partially — some methods return Claude defaults instead of platform-specific values. No error is raised.
 
-**Example** (`cli_adapter.py`):
+**Example** (illustrative; platform ids as in `workflow_phase._PLATFORM_MARKER_LABELS`):
 ```python
-# BAD: "gemini" falls through to else, returns "claude"
-@property
-def cli_name(self) -> str:
-    if self.platform == "opencode":
-        return "opencode"
+# BAD: "star" falls through to else, returns the Claude default
+def config_dir(platform: str) -> str:
+    if platform == "claude":
+        return ".claude"
     else:
-        return "claude"  # gemini silently gets "claude"!
+        return ".claude"  # star silently gets ".claude"!
 
-# GOOD: explicit branch for every platform
-@property
-def cli_name(self) -> str:
-    if self.platform == "opencode":
-        return "opencode"
-    elif self.platform == "gemini":
-        return "gemini"
-    else:
-        return "claude"
+# GOOD: explicit branch for every platform, unknown ids fail loudly
+def config_dir(platform: str) -> str:
+    if platform == "claude":
+        return ".claude"
+    elif platform == "star":
+        return ".starFactory"
+    raise ValueError(f"unknown platform: {platform}")
 ```
 
 **Prevention**: When adding a new value to a Python `Literal` type, search for ALL if/elif/else chains that switch on that type and add explicit branches. Don't rely on `else` being correct for new values.

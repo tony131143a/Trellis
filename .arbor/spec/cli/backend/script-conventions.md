@@ -37,7 +37,6 @@ All workflow scripts target **Python 3.9+** for cross-platform compatibility (ma
 │   ├── config.py         # Config reader (config.yaml, hooks)
 │   ├── arbor_config.py # Standalone .arbor/config.yaml reader (no task/repo deps)
 │   ├── workflow_phase.py # Extract Phase Index / step sections from .arbor/workflow.md (with platform filter)
-│   ├── cli_adapter.py    # Multi-platform CLI abstraction
 │   ├── git_context.py    # Entry shim → session_context + packages_context
 │   ├── session_context.py    # Session context generation (text/json/record)
 │   └── packages_context.py  # Package discovery and context
@@ -59,7 +58,7 @@ All workflow scripts target **Python 3.9+** for cross-platform compatibility (ma
 Every file above exists **twice**: `.arbor/scripts/**` is Arbor's own
 dogfood copy, `packages/cli/src/templates/arbor/scripts/**` is what ships to
 users. Two physical copies of one thing drift, and this pair did: PR #390
-changed the `arbor upgrade` → `update` hint in the template copy only, and
+changed an update hint in the template copy only, and
 the dogfood copy sat on the old wording for a month.
 
 That is now a build failure. It is written here because until 2026-08-06 three
@@ -141,7 +140,7 @@ Three tiers:
 |------|---------|------|
 | **Foundation** | `io.py`, `log.py`, `git.py`, `paths.py` | Zero internal deps, used by everything |
 | **Domain** | `types.py`, `tasks.py`, `task_store.py`, `task_context.py`, `task_utils.py` | Task data model and operations |
-| **Infra** | `config.py`, `cli_adapter.py` | Platform abstraction and config |
+| **Infra** | `config.py`, `arbor_config.py` | Config readers |
 | **Context** | `session_context.py`, `packages_context.py`, `git_context.py` (shim) | Output generation |
 
 ### Entry Scripts (`*.py`)
@@ -559,14 +558,17 @@ for session/window scoped task state:
 4. If a session task exists but the task directory is stale, return stale
    session state.
 
-The env branch is the exception, not a peer alternative. **No researched
-platform exports a session id into a shell child** (2026-08-05 audit of all 21;
-`inject-shell-session-context.py:3-8`, `active_task.py:59-64`), so for most
-platforms the ticket — checked *last* — is the path that actually fires.
+The env branch is the exception, not a peer alternative. **A session id
+does not reliably reach a shell child** (see the
+header of `inject-shell-session-context.py` and the env table in
+`active_task.py`). Claude Code is bridged through `CLAUDE_ENV_FILE` and, when
+it exports it, `CLAUDE_CODE_SESSION_ID`. StarFactory has no verified
+shell-scope variable, so the ticket — checked *last* — is the path that
+actually fires there.
 
 | Function | Purpose |
 |----------|---------|
-| `resolve_context_key(platform_input, platform)` | Accepts `session_id` / `sessionId` / `sessionID`, Cursor `conversation_id`, and transcript path fallbacks |
+| `resolve_context_key(platform_input, platform)` | Accepts `session_id` / `sessionId` / `sessionID`, `conversation_id`, and transcript path fallbacks |
 | `resolve_active_task(repo_root, platform_input, platform)` | Returns an `ActiveTask` with `task_path`, `source_type`, `context_key`, and `stale` |
 | `set_active_task(...)` | Writes session runtime state when a context key exists; returns `None` without a context key |
 | `clear_active_task(...)` | Deletes the session file that supplied the resolved active task; returns no active task without a context key |
@@ -578,28 +580,9 @@ exports session identity in its environment or the command is launched with
 `ARBOR_CONTEXT_ID`; without that identity, `task.py start` fails and explains
 how to provide a session runtime. For Claude Code, SessionStart receives
 `CLAUDE_ENV_FILE`; Arbor must append `export ARBOR_CONTEXT_ID=<context-key>`
-there so later Bash tools inherit the same session identity. For OpenCode,
-`tool.execute.before` must prefix Bash commands with
-`ARBOR_CONTEXT_ID` from plugin session identity when the command does not
-already set it, because OpenCode exports no session identity into a
-shell child at all. The prefix must match the host shell: use
-`export ARBOR_CONTEXT_ID=<context-key>;` for POSIX shells and
-`$env:ARBOR_CONTEXT_ID = '<context-key>';` for Windows PowerShell. Keep the
-assignment before the user's command so compound commands like
-`task.py start && task.py current` keep the same context for every command in
-the Bash invocation.
-Do not choose this prefix from OS alone. On Windows, Git Bash / MSYS2 still
-parse POSIX syntax, so OpenCode must treat `MSYSTEM`, `MINGW_PREFIX`,
-`OSTYPE=msys|mingw|cygwin`, `SHELL=...bash`, or `OPENCODE_GIT_BASH_PATH` as
-POSIX-shell signals and use the PowerShell prefix only when no such signal is
-present.
+there so later Bash tools inherit the same session identity.
 `session-start.py` is not a reliable shell environment bridge on any platform.
 The general mechanism is the shell ticket — see "Shell-ticket bridge" below.
-For Pi Agent, the generated TypeScript extension must read the real session id
-from `ctx.sessionManager.getSessionId()` and mutate Bash tool calls in
-`tool_call` by prefixing `export ARBOR_CONTEXT_ID=<context-key>;`. The Python
-resolver then sees the explicit `ARBOR_CONTEXT_ID` override; Pi does not need
-a `.current-task` fallback or a Python hook directory.
 
 #### Scenario: Active Task Runtime Lifecycle
 
@@ -639,14 +622,8 @@ a `.current-task` fallback or a Python hook directory.
   runtime state untouched.
 - `task.py create` without a context key creates the task and does not create
   `.arbor/.runtime/`.
-- `task.py create` creates `implement.jsonl` / `check.jsonl` only when the
-  repo has a platform configured that consumes those files. For `.codex/`,
-  this is gated by `get_codex_dispatch_mode()`: the default is
-  `codex.dispatch_mode: auto` (native `SubagentStart` context injection with
-  a child-side pull fallback), which seeds JSONL like every other sub-agent
-  platform. `sub-agent` is a backwards-compatible alias for `auto`. Setting
-  `codex.dispatch_mode: inline` opts out and loads context through skills
-  instead, so JSONL is not seeded.
+- `task.py create` always creates empty `implement.jsonl` / `check.jsonl`
+  (`task_store.py`); there is no per-platform gate.
 - `task.py start` writes session-local state only when a context key is
   available. Otherwise it enters degraded mode: no session pointer is persisted,
   `.arbor/.current-task` is not written, and `task.json.status` may still move
@@ -657,26 +634,15 @@ a `.current-task` fallback or a Python hook directory.
 - Context filenames are derived from the resolved context key:
   - `ARBOR_CONTEXT_ID=session-demo` -> `session-demo.json`
   - `CLAUDE_CODE_SESSION_ID=cc-a` -> `claude_cc-a.json`
-  - `CODEX_THREAD_ID=thread-a` -> `codex_thread-a.json`
-  - `CURSOR_CONVERSATION_ID=conv-a` -> `cursor_conv-a.json` (`_context_key`
-    ignores the session/conversation distinction; only `transcript` changes the
-    shape)
-  - OpenCode plugin `sessionID=oc-a` -> `opencode_oc-a.json` (via the plugin's
-    `ARBOR_CONTEXT_ID` prefix — OpenCode has no env-table entry)
   - shell ticket -> whatever key the writing hook computed, unchanged
   - transcript fallback -> `<platform>_transcript_<sha256-prefix>.json`
 
   Only names that appear in `active_task.py`'s env tables, **for the platform
-  the resolver detected**, can produce a filename this way. Twelve names were
-  removed on 2026-08-05 as names no vendor ever set (`CODEX_SESSION_ID`,
-  `CURSOR_SESSION_ID`, `OPENCODE_RUN_ID`, `PI_SESSION_ID` … — the full list is
-  `PURGED_ENV_NAMES` in `regression.test.ts`) and resolve nothing for the
-  platform they were removed from. Platform scoping matters here:
-  `CLAUDE_SESSION_ID` was deleted from the **claude** entry but survives as
-  ZCode's second-choice fallback, so it still resolves in a zcode-detected
-  session — and yields `claude_<id>`, because `_CONTEXT_KEY_PLATFORM_ALIASES`
-  maps `zcode` → `claude` so both paths of a ZCode session land on one runtime
-  filename.
+  the resolver detected**, can produce a filename this way. Today that is
+  `CLAUDE_CODE_SESSION_ID` for the `claude` platform only; StarFactory has no
+  entry. `_CONTEXT_KEY_PLATFORM_ALIASES` maps `starFactory` to `star` so the
+  shell-ticket hook (named after the `.starFactory/` install directory) and
+  the shared hooks land on one runtime filename.
 - `ARBOR_CONTEXT_ID` is already a complete context key. Do not prepend a
   platform name to it.
 - `task.py finish` deletes only the session file that supplied the resolved
@@ -739,8 +705,7 @@ a `.current-task` fallback or a Python hook directory.
 | `create` with context key, default mode | Task files exist; session runtime points at the new task; activation and source are printed; no `.current-task` |
 | `create --no-start` with context key | Task files exist; existing session runtime is unchanged; skip notice is printed; no `.current-task` |
 | `create` without context key | Task files exist; no `.runtime`; no `.current-task` |
-| `create` with `.codex/` and no `codex.dispatch_mode` override (default `auto`) | Task files exist; `implement.jsonl` and `check.jsonl` exist and are empty |
-| `create` with `.codex/` and `codex.dispatch_mode: inline` | Task files exist; no `implement.jsonl`; no `check.jsonl` |
+| `create` | Task files exist; `implement.jsonl` and `check.jsonl` exist and are empty |
 | `start` without context key | Returns success in degraded mode; no `.runtime`; no `.current-task`; hints IDE/session identity or `ARBOR_CONTEXT_ID` |
 | `start` with `ARBOR_CONTEXT_ID` | Writes `.runtime/sessions/<key>.json`; does not require `.current-task` |
 | `current --source` with same context key | Prints `Source: session:<key>` |
@@ -776,10 +741,10 @@ a `.current-task` fallback or a Python hook directory.
 
 ##### 5. Good/Base/Bad Cases
 
-- Good: Cursor provides `conversation_id`; resolver writes
-  `cursor_<conversation-id>.json` and hook/plugin output includes the
+- Good: a hook payload provides `session_id`; resolver writes
+  `claude_<session-id>.json` and hook output includes the
   session source (statuslines shorten it to `[session]`).
-- Good: a Codex shell has a new thread id while exactly one older session file
+- Good: a Claude Code shell has a new session id while exactly one older session file
   supplies the active task; `finish` reports `session-fallback:<old-key>` and
   deletes that old file.
 - Good: the exact session file is empty or malformed while another session
@@ -861,57 +826,50 @@ Deletion ownership follows the resolver result and never guesses another file.
 ##### 1. Scope / Trigger
 
 Cross-layer contract: session identity has to cross from a hook process (which
-has it) into a shell child (which does not). This is now the primary identity
-path for seven platforms, and it was written down nowhere as a general rule —
-only as "what Cursor does".
+has it) into a shell child (which does not). StarFactory depends on this path;
+Claude Code normally resolves through `CLAUDE_ENV_FILE` and
+`CLAUDE_CODE_SESSION_ID` first.
 
-The premise, from a 2026-08-05 audit of all 21 platforms: **no researched
-platform exports a session id into its shell tool's child process, but every
-hook-capable one puts that id on hook stdin.** So the hook that fires just
-before a shell command writes a ticket, and `task.py` reads it back.
+The premise: the host does not export a session id into its shell tool's child
+process, but it puts that id on hook stdin. So the hook that fires just before
+a shell command writes a ticket, and `task.py` reads it back.
 
 ##### 2. Signatures
 
 ```python
 # templates/shared-hooks/inject-shell-session-context.py — the writer
-def _pending_shell_command(hook_input: dict) -> tuple[str, dict | None]
+def _pending_shell_command(hook_input: dict) -> str
 def _host_platform_name() -> str | None
 def _extract_task_subcommands(command: str) -> list[dict[str, str]]
 
 # common/active_task.py — the reader
-def _lookup_shell_ticket_context_key() -> str | None   # :438
+def _lookup_shell_ticket_context_key() -> str | None
 ```
 
 Ticket path: `.arbor/.runtime/shell-tickets/<epoch-ms>-<sha256-16>.json`.
 
 ##### 3. Contracts
 
-**Registration.** `inject-shell-session-context.py` is registered on whichever
-pre-shell event the host publishes: Cursor's `beforeShellExecution`,
-Claude-shaped `PreToolUse`, Gemini's `BeforeTool`. `_pending_shell_command` is
-the only place that knows about payload variation — it reads `command` at the
-top level (shell-execution shape) or `tool_input.command` / `toolInput.command`
-(tool-call shape). It is an ordered fallback, not a platform switch; a fourth
-shape extends the same function.
-
-**Response envelope.** A shell-execution host gets `{"permission": "allow"}` back
-so Cursor does not re-prompt for a command Arbor itself asked for. Tool-call
-hosts read a different response schema and get no answer at all, rather than a
-key they would have to ignore.
+**Registration.** `inject-shell-session-context.py` is registered as a
+`PreToolUse` hook on the `Bash` tool in `templates/star/settings.json`.
+`_pending_shell_command` reads `tool_input.command` or `toolInput.command` and
+returns `""` for anything else, which makes `main()` a no-op. The hook prints
+nothing, because the host reads a response schema it has no opinion on.
 
 **The context key comes from the install directory, not a platform table.**
 `_host_platform_name()` returns the deepest dotted path segment of `sys.argv[0]`
-(`.cursor/hooks/` → `cursor`, `.factory/hooks/` → `factory`). This matters more
-than it looks: the ticket's context key must equal the one that platform's
-*other* hooks compute. Get it wrong and `task.py start` writes a session file no
-later hook ever reads — which half-works behind the single-session fallback and
-breaks silently the moment a second window is open.
+(`.claude/hooks/` → `claude`, `.starFactory/hooks/` → `starFactory`).
+`common.active_task` canonicalizes `starFactory` to `star`. The ticket's
+context key must equal the one that platform's *other* hooks compute. Get it
+wrong and `task.py start` writes a session file no later hook ever reads —
+which half-works behind the single-session fallback and breaks silently the
+moment a second window is open.
 
 **Ticket payload** — `platform`, `context_key`, `conversation_id`, `session_id`,
-`generation_id`, `cwd`, `command`, `subcommands`, `created_at_epoch`,
-`expires_at_epoch`. The `platform` field is debugging metadata **only**; gating
-acceptance on it is exactly what kept this bridge invisible to every platform
-but Cursor.
+`generation_id`, `cwd`, `host_cwd`, `command`, `subcommands`,
+`created_at_epoch`, `expires_at_epoch`. The `platform` field is debugging
+metadata **only**; gating acceptance on it would make the bridge work for one
+platform only.
 
 **Four acceptance conditions**, all required (`_matching_ticket_context_key`):
 
@@ -924,17 +882,8 @@ but Cursor.
    pointer.
 
 **Ordering.** The ticket is checked **last**, after the env tables, and is not
-gated on platform name (`active_task.py:505-508`). A platform that genuinely
-exports identity into the shell outranks a ticket written on its behalf.
-
-**Two directories are read, one is written.** `shell-tickets/` is current;
-`cursor-shell/` is the pre-0.6.13 name from when the bridge was Cursor-only. It
-is still read so a command already in flight across an upgrade does not
-silently degrade, and it is never written. There is nothing to migrate —
-tickets are 30-second ephemera, so the old directory ages out by itself; the
-cost is a glob on a directory that is normally absent, and the alternative
-(ignore it) would land its one lost command on the platform this already worked
-for.
+gated on platform name. A platform that genuinely exports identity into the
+shell outranks a ticket written on its behalf.
 
 ##### 4. Validation & Error Matrix
 
@@ -942,7 +891,7 @@ for.
 | --- | --- |
 | `ARBOR_HOOKS=0` or `ARBOR_DISABLE_HOOKS=1` | Hook exits 0, writes nothing |
 | stdin is not JSON, or not an object | Treated as `{}`; no command found; no-op |
-| Payload has no recognizable command | `("", None)` → `main()` no-ops |
+| Payload has no recognizable command | `""` → `main()` no-ops |
 | Command contains no `task.py start/current/finish` | No ticket written |
 | `shlex.split` raises on an unbalanced quote | No subcommands → no ticket |
 | Hook payload carries no session/conversation/transcript id | No context key → no ticket |
@@ -953,17 +902,16 @@ for.
 
 ##### 5. Good / Base / Bad Cases
 
-- **Good** — one Cursor window, AI runs `python3 .arbor/scripts/task.py start .arbor/tasks/x`. `beforeShellExecution` writes a ticket keyed `cursor_<conversation-id>`; `task.py` finds exactly one and writes `cursor_<conversation-id>.json`. Every later hook in that conversation reads the same file.
-- **Base** — the platform has a real session env var (Codex `CODEX_THREAD_ID`). The env branch wins before the ticket is ever consulted; the ticket, if written, simply expires.
+- **Good** — one StarFactory window, AI runs `python3 .arbor/scripts/task.py start .arbor/tasks/x`. The `Bash` `PreToolUse` hook writes a ticket keyed `star_<session-id>`; `task.py` finds exactly one and writes `star_<session-id>.json`. Every later hook in that session reads the same file.
+- **Base** — the platform has a real session env var (Claude Code `CLAUDE_CODE_SESSION_ID`). The env branch wins before the ticket is ever consulted; the ticket, if written, simply expires.
 - **Bad** — two windows on the same repo both about to run `task.py current`. Two fresh keys match, the resolver returns `None`, and both degrade. That is the designed outcome: a wrong pointer is worse than no pointer.
 
 ##### 6. Tests Required
 
 - Ticket accepted: assert the resolved context key equals the one the hook computed, not merely that *a* key resolved.
 - Each rejection condition separately — stale, wrong repo, wrong subcommand, two-candidates. Assertion point is `resolve_context_key() is None`, plus the absence of a session file.
-- Payload-shape coverage: top-level `command` and both `tool_input` casings, asserting the response envelope differs (`{"permission": "allow"}` vs nothing).
-- `_host_platform_name` against an argv under `.cursor/hooks/` and under `.factory/hooks/` — the value ends up in the runtime filename, so it is user-visible.
-- Legacy `cursor-shell/` still read.
+- Payload-shape coverage: `tool_input.command` and `toolInput.command`.
+- `_host_platform_name` against an argv under `.claude/hooks/` and under `.starFactory/hooks/` — the value ends up in the runtime filename, so it is user-visible.
 
 ##### 7. Wrong vs Correct
 
@@ -974,7 +922,7 @@ if ticket.get("platform") != platform_name:
     continue          # gate on who wrote it
 ```
 
-This is what made the bridge Cursor-only. A ticket's provenance says nothing about whether it describes *this* command.
+A ticket's provenance says nothing about whether it describes *this* command.
 
 ###### Correct
 
@@ -991,27 +939,23 @@ Accept a ticket on its merits — fresh, right repo, right subcommand — and le
 
 ##### 1. Scope / Trigger
 
-Env wiring: `active_task.py`'s three env tables are the only place Arbor
-claims a vendor sets a particular variable. On 2026-08-05 an audit of all 21
-platforms deleted **12 of the 21 declared names** — none had ever existed on any
-platform. They had been pattern-guessed from a `<PLATFORM>_SESSION_ID` shape no
-vendor agreed to, and the uniformity of the table was their only "evidence".
-
-The rule that came out of it currently lives as a code comment
-(`active_task.py:59-64`). It is written here so it survives the next person who
-adds a platform from the spec rather than from the code.
+Env wiring: `active_task.py`'s env table (`_ENV_SESSION_KEYS`) is the only place
+Arbor claims a vendor sets a particular variable. An earlier audit found that
+most names pattern-guessed from a `<PLATFORM>_SESSION_ID` shape had never
+existed on any platform, and the uniformity of the table was their only
+"evidence". The rule that came out of it lives as a code comment above the
+table and is written here so it survives the next person who adds a platform
+from the spec rather than from the code.
 
 ##### 2. Signatures
 
 ```python
-_ENV_SESSION_KEYS:      tuple[tuple[str, tuple[str, ...]], ...]   # :66
-_ENV_CONVERSATION_KEYS: tuple[tuple[str, tuple[str, ...]], ...]   # :111
-_ENV_TRANSCRIPT_KEYS:   tuple[tuple[str, tuple[str, ...]], ...]   # :120
+_ENV_SESSION_KEYS: tuple[tuple[str, tuple[str, ...]], ...]
 ```
 
 Each entry is `(platform_name, (env_var, ...))`. Lookup is platform-scoped —
-`_iter_env_keys` filters by the detected platform, which is why ZCode may list
-`CLAUDE_CODE_SESSION_ID` without colliding with the claude entry.
+`_iter_env_keys` filters by the detected platform. Today the only entry is
+`("claude", ("CLAUDE_CODE_SESSION_ID",))`.
 
 ##### 3. Contracts
 
@@ -1026,9 +970,8 @@ grades:
 | unchecked | Never researched | Say so explicitly |
 
 - **Do not add a name by analogy with a neighbour.** Table uniformity is not evidence.
-- **A platform with no verified name belongs in no table.** It resolves through `ARBOR_CONTEXT_ID` or its hook/plugin bridge, and that is a working configuration — Grok, Kimi, OpenCode and Pi all live there.
+- **A platform with no verified name belongs in no table.** It resolves through `ARBOR_CONTEXT_ID` or its hook bridge, and that is a working configuration — StarFactory lives there.
 - **Do not delete an UNVERIFIED name to tidy up.** Absence of evidence is not evidence of absence, and removing a live name breaks that platform silently. Either run the probe or leave it.
-- `_ENV_TRANSCRIPT_KEYS` is the *unchecked* table. The 2026-08-05 audit covered the session table only, so do not infer its entries are real **or** fake from that work.
 
 ##### 4. Validation & Error Matrix
 
@@ -1036,42 +979,37 @@ grades:
 | --- | --- |
 | Name is set and platform matches | Context key `{platform}_{sanitized-value}` |
 | Name is set but platform does not match | Ignored — `_iter_env_keys` never yields the entry |
-| Name is unset or whitespace | Falls through to the next name, then the next table, then the shell ticket |
-| Name was never real (the removed twelve) | Resolves nothing; the platform degrades with "Session identity not available" |
-
-`regression.test.ts` `PURGED_ENV_NAMES` locks the twelve deleted pairs: setting
-any of them must resolve **no** context key for its platform.
+| Name is unset or whitespace | Falls through to the next name, then the shell ticket |
+| Name was never real | Resolves nothing; the platform degrades with "Session identity not available" |
 
 ##### 5. Good / Base / Bad Cases
 
-- **Good** — Snow. `sessionIdentityEnv.ts` exports `SNOW_SESSION_ID` into hook, terminal and sub-agent children, and names Arbor in its source header. Verified by reading the vendor's source; the comment says so.
-- **Base** — Kiro. `KIRO_SESSION_ID` is absent from the official docs, but three independent third-party tools key agent detection on it. Kept, marked UNVERIFIED, with the settling probe written down (`env | grep KIRO` from a Kiro shell-tool call).
-- **Bad** — the removed `PI_SESSION_ID` / `PI_SESSIONID`. Pi builds its bash env as `{...process.env, PATH}` only; no `PI_*` session var exists anywhere. The entry looked like the others and worked never.
+- **Good** — Claude Code. `CLAUDE_CODE_SESSION_ID` was verified in a live Claude Code bash child and the comment records the version and date.
+- **Base** — StarFactory. No shell-scope session variable is verified, so it has no entry and resolves through the shell ticket.
+- **Bad** — a guessed `STAR_SESSION_ID` entry added because Claude has one. It looks like its neighbour and would work never.
 
 ##### 6. Tests Required
 
-- One assertion per purged name: it resolves no context key for its platform. Assertion point is the resolver output, not the table contents.
 - For each surviving name, a positive case producing the expected runtime filename.
-- Platform scoping: the ZCode entry must not fire in a claude-detected session and vice versa.
+- A name that was never real resolves no context key for its platform. Assertion point is the resolver output, not the table contents.
+- Platform scoping: the claude entry must not fire in a star-detected session.
 
 ##### 7. Wrong vs Correct
 
 ###### Wrong
 
 ```python
-("trae", ("TRAE_SESSION_ID",)),   # every other platform has one
+("star", ("STAR_SESSION_ID",)),   # every other platform has one
 ```
 
 ###### Correct
 
 ```python
-# UNVERIFIED (2026-08-05): absent from docs.trae.cn's hook reference; hooks get
-# TRAE_PROJECT_DIR, CLAUDE_PROJECT_DIR and TRAE_ENV_FILE. To settle: run
-# `env | grep TRAE` from a Trae shell-tool call.
+# StarFactory has no verified shell-scope session env var; it resolves
+# through the shell-ticket bridge (_lookup_shell_ticket_context_key).
 ```
 
-— or, as actually happened here, no entry at all. Trae resolves through its
-shell ticket.
+— no entry at all, with a comment saying why.
 
 #### `CLAUDE_ENV_FILE` append is deduped on the *last* matching export
 
@@ -1314,7 +1252,7 @@ immediately after the module docstring.
 **Why it matters**: The `{{PYTHON_CMD}}` placeholder resolves to `python` on
 Windows and `python3` on macOS/Linux. `arbor init` probes that same
 platform-selected command and soft-warns if it resolves to Python < 3.9, while
-hooks are invoked by the host AI CLI (Claude Code, Cursor, enterprise-forked CC
+hooks are invoked by the host AI CLI (Claude Code, StarFactory, enterprise-forked CC
 distributions, etc.) in a subprocess whose **PATH may differ from the user's
 shell PATH**. Concrete failure mode observed in the field:
 
@@ -1325,7 +1263,7 @@ shell PATH**. Concrete failure mode observed in the field:
 
 `from __future__ import annotations` makes all annotations lazy strings (PEP 563), so PEP 604 syntax in annotations works on Python 3.7+. Runtime union usage (e.g. `isinstance(x, int | str)`) is **not** rescued by this import — avoid it in distributed templates.
 
-**Real-world incident**: `shared-hooks/session-start.py` and `shared-hooks/inject-delegation-context.py` lacked this import while `statusline.py` and the copilot/codex copies had it. The inconsistency went undetected until a user on an enterprise-forked Claude Code distribution hit the PEP 604 crash on SessionStart. Fix commit: `7e58432` (2026-04).
+**Real-world incident**: `shared-hooks/session-start.py` and `shared-hooks/inject-delegation-context.py` lacked this import while `statusline.py` had it. The inconsistency went undetected until a user on an enterprise-forked Claude Code distribution hit the PEP 604 crash on SessionStart. Fix commit: `7e58432` (2026-04).
 
 #### DO
 
@@ -2349,18 +2287,11 @@ break silently.
 
 Two near-misses worth remembering:
 
-- `codex.dispatch_mode` originally had its own ad-hoc YAML reader. A
-  `# default` comment on the user's config silently broke dispatch routing.
-- `task.py create` must read `codex.dispatch_mode` through
-  `get_codex_dispatch_mode()` before deciding whether `.codex/` should seed
-  `implement.jsonl` / `check.jsonl`. A missing key defaults to `auto`;
-  an invalid explicit value falls back to `inline` (with a stderr warning),
-  not `auto`.
 - `session_auto_commit` (0.5.11) almost shipped with a one-line
   `config.get(...).strip()` reader before being routed through
   `get_session_auto_commit`.
 
-Both were fixed by deleting the custom reader and routing through
+The fix was deleting the custom reader and routing through
 `_load_config` + a typed accessor.
 
 ### Pattern: typed accessor on top of `_load_config`

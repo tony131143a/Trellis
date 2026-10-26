@@ -30,7 +30,8 @@ import { init } from "../../src/commands/init.js";
 import { VERSION } from "../../src/constants/version.js";
 import { DIR_NAMES, FILE_NAMES, PATHS } from "../../src/constants/paths.js";
 import { collectPlatformTemplates } from "../../src/configurators/index.js";
-import { computeHash } from "../../src/utils/template-hash.js";
+import { computeHash, loadHashes } from "../../src/utils/template-hash.js";
+import { claudeMdContent } from "../../src/templates/markdown/index.js";
 import { execSync } from "node:child_process";
 
 // eslint-disable-next-line @typescript-eslint/no-empty-function
@@ -782,5 +783,50 @@ describe("init() integration", () => {
       fs.readFileSync(path.join(tmpDir, ".claude", "settings.json"), "utf-8"),
     ) as Record<string, unknown>;
     expect(settings).not.toHaveProperty("statusLine");
+  });
+
+  it("#30 claude-code writes the CLAUDE.md managed block and tracks it", async () => {
+    await init({ yes: true, claude: true });
+
+    const claudeMd = path.join(tmpDir, FILE_NAMES.CLAUDE);
+    expect(fs.readFileSync(claudeMd, "utf-8")).toBe(claudeMdContent);
+    expect(loadHashes(tmpDir)[FILE_NAMES.CLAUDE]).toBe(
+      computeHash(claudeMdContent),
+    );
+  });
+
+  it("#30a star-only init does not write CLAUDE.md", async () => {
+    await init({ yes: true, star: true });
+
+    expect(fs.existsSync(path.join(tmpDir, FILE_NAMES.CLAUDE))).toBe(false);
+  });
+
+  it("#30b existing CLAUDE.md keeps its text and gets the block appended once", async () => {
+    const claudeMd = path.join(tmpDir, FILE_NAMES.CLAUDE);
+    const userText = "# Team rules\n\nAlways run the tests.\n";
+    fs.writeFileSync(claudeMd, userText);
+
+    await init({ yes: true, claude: true });
+
+    const expected = `${userText}\n${claudeMdContent}`;
+    expect(fs.readFileSync(claudeMd, "utf-8")).toBe(expected);
+    expect(loadHashes(tmpDir)[FILE_NAMES.CLAUDE]).toBe(computeHash(expected));
+
+    // A re-init replaces a stale block in place instead of appending again.
+    fs.writeFileSync(claudeMd, expected.replace("(main agent)", "(stale)"));
+    await init({ yes: true, claude: true, force: true });
+    expect(fs.readFileSync(claudeMd, "utf-8")).toBe(expected);
+  });
+
+  it("#30c reinit add-platform claude writes CLAUDE.md", async () => {
+    await init({ yes: true, star: true, user: "alice" });
+    expect(fs.existsSync(path.join(tmpDir, FILE_NAMES.CLAUDE))).toBe(false);
+
+    await init({ yes: true, claude: true });
+
+    expect(fs.readFileSync(path.join(tmpDir, FILE_NAMES.CLAUDE), "utf-8")).toBe(
+      claudeMdContent,
+    );
+    expect(loadHashes(tmpDir)).toHaveProperty(FILE_NAMES.CLAUDE);
   });
 });

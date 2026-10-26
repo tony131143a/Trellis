@@ -243,6 +243,18 @@ describe.skipIf(!hasPython())("inject-delegation-context.py", () => {
     }
   });
 
+  it("refuses an Active task that is inside the repo but not under .arbor/tasks", () => {
+    fs.writeFileSync(path.join(tmp, "prd.md"), "ROOT SECRET\n");
+    for (const ref of [tmp, path.join(tmp, ".arbor"), path.join(tmp, ".arbor", "tasks")]) {
+      const r = runHook({
+        task: `Active task: ${ref}\nRole: implement\n\nGo.`,
+      });
+      expect(r.status).toBe(0);
+      expect(r.stdout, ref).toBe("");
+      expect(r.stderr).toContain("no context injected");
+    }
+  });
+
   it("uses the session active task when the header omits Active task", () => {
     fs.mkdirSync(path.join(tmp, ".arbor", ".runtime", "sessions"), {
       recursive: true,

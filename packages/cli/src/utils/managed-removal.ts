@@ -5,7 +5,7 @@
  * keeps planning pure with respect to mutations: it reads manifest-listed files,
  * runs the pure scrubbers below, and returns the exact post-removal content.
  *
- * Structured config files (settings.json / AGENTS.md) are passed through a
+ * Structured config files (settings.json / AGENTS.md / CLAUDE.md) go through a
  * scrubber that strips just the arbor fields, leaving user-added neighbors
  * intact. Each scrubber returns `{ content, fullyEmpty }`:
  * - `content` is the post-scrub text to write back if the file should remain.
@@ -359,16 +359,18 @@ export function buildStructuredFileSpecs(): Map<string, StructuredFileSpec> {
         scrub: (content, deletedPaths) => scrubHooksJson(content, deletedPaths),
       }),
     ),
-    {
-      posixPath: FILE_NAMES.AGENTS,
-      reason: "Strip Arbor managed block; preserve user instructions",
-      scrub: (content) =>
-        scrubManagedMarkdownBlock(
-          content,
-          ARBOR_BLOCK_START,
-          ARBOR_BLOCK_END,
-        ),
-    },
+    ...([FILE_NAMES.AGENTS, FILE_NAMES.CLAUDE] as const).map(
+      (posixPath): StructuredFileSpec => ({
+        posixPath,
+        reason: "Strip Arbor managed block; preserve user instructions",
+        scrub: (content) =>
+          scrubManagedMarkdownBlock(
+            content,
+            ARBOR_BLOCK_START,
+            ARBOR_BLOCK_END,
+          ),
+      }),
+    ),
   ];
 
   return new Map(specs.map((spec) => [spec.posixPath, spec]));

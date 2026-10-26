@@ -55,8 +55,8 @@ write_text_atomic(path: Path, text: str, newline: str | None = None) -> bool
 ```markdown
 ---
 sources:
-  - packages/cli/src/commands/ablate.ts
-  - packages/cli/src/commands/channel/**/*.ts
+  - packages/cli/src/commands/uninstall.ts
+  - packages/cli/src/utils/**/*.ts
 last_verified: 2026-10-21
 ---
 ```

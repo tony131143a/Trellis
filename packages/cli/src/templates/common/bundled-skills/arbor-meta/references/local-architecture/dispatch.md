@@ -51,22 +51,24 @@ Two shared PreToolUse hooks are installed under `.claude/hooks/` or `.starFactor
 When codeg MCP tools are unavailable:
 
 ```bash
-python3 ./.arbor/scripts/dispatch.py run --role <role> [--target star|pi] [--task <dir>] [--workspace <wt>] [--wait] [--detach] [--prompt TEXT | --prompt-file F | stdin]
+python3 ./.arbor/scripts/dispatch.py run --role <role> [--finish] [--target star|pi] [--task <dir>] [--workspace <wt>]
+    [--prompt TEXT | --prompt-file F | stdin] [--detach] [--wait] [--worktree[=NAME]]
+    [--standalone] [--data-dir DIR] [--url URL] [--dry-run] [--print-prompt]
 ```
 
-It shells out to `codeg-cli run -A <assistant> -w <dir> ...`. Other subcommands:
+It writes the prompt to `.arbor/.runtime/dispatch/<stamp>.md` and pipes it to `codeg-cli run -A <assistant> -w <workspace or repo root> --permissions <dispatch.permissions> --timeout <dispatch.timeout> --title "arbor <role> <task>" -o <stamp>.result.md -p -`. With `--detach` the run id goes to stdout and `<stamp>.run`; `--detach --wait` then waits for it. `--standalone` starts a throwaway `codeg-server` whose data directory has no assistants, so pair it with `--data-dir <codeg data dir>` (only while the desktop app is closed). The `codeg-cli` binary is `dispatch.codeg_cli`, else `$CODEG_CLI`, else `codeg-cli` on PATH, else the macOS app bundle. A brief that itself starts with header lines supplies the values the flags leave unset. Exit codes are codeg-cli's (3 timeout, 4 codeg unreachable, 6 still running).
 
 | Subcommand | Purpose |
 | --- | --- |
-| `wait` | Wait for a detached run. |
-| `resolve --role <role>` | Print effective target, assistant name, and `assistant_id`. |
-| `target get\|set\|clear` | Manage `.arbor/.runtime/dispatch-target`. |
-| `codeg-setup [--install]` | Prepare the codeg assistants (below). |
-| `print-context` | Print the assembled context without dispatching. |
+| `wait RUN... [-o OUT] [--timeout DUR] [--url URL]` | Wait for detached runs (`codeg-cli result RUN --wait`); exit 6 keeps waiting until the timeout, results go to the run's `<stamp>.result.md`. |
+| `resolve --role <role> [--target T] [--json]` | Print effective target, assistant name, and `assistant_id` (from `codeg-assistants.json`). |
+| `target get\|set <T>\|clear` | Manage `.arbor/.runtime/dispatch-target`. |
+| `codeg-setup [--target T] [--install] [--db PATH] [--codeg-cli PATH]` | Prepare the codeg assistants (below). |
+| `print-context --role <role> [--task DIR] [--finish] [--target T] [--workspace WT]` | Print exactly the task text the hook would build for the same header and brief. |
 
 ## codeg-setup
 
-`dispatch.py codeg-setup` renders each target x role instruction file to `.arbor/.runtime/codeg-assistants/<target>-<role>.md` and prints the codeg UI steps. `--install` (macOS only) upserts rows into the codeg database with column validation and a backup. Both modes then try `codeg-cli assistants` and write the name-to-id map to `.arbor/.runtime/codeg-assistants.json`. Re-run it after editing any `.arbor/agents/*.md`.
+`dispatch.py codeg-setup` renders each target x role instruction file (`.arbor/agents/<role>.md` plus a one-line target note) to `.arbor/.runtime/codeg-assistants/<target>-<role>.md` and prints the codeg UI steps (name, description, agent type, options, instructions file). `--install` (macOS, or any platform with `--db`) upserts rows into the codeg database: it refuses and falls back to the printed steps (exit 2) unless the `assistant` table has exactly the 15 expected columns, backs the database up to `.arbor/.runtime/codeg-db-backups/`, and matches rows by a stable uid so re-running updates them in place. Both modes then run `codeg-cli assistants --json` and write `{"by_name": {name: id}, "by_id": {id: {"role", "target"}}}` to `.arbor/.runtime/codeg-assistants.json`; when codeg is unreachable that step is skipped (after `--install` the ids come from the database instead). Re-run it after editing any `.arbor/agents/*.md`.
 
 ## Config: `dispatch:` In `.arbor/config.yaml`
 

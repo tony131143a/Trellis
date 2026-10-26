@@ -18,10 +18,10 @@
  *     `.arbor/` wholesale via `fs.rmSync(..., { recursive: true })`, so
  *     manifest accuracy there doesn't affect uninstall data-loss. `update`
  *     also relies on these entries to detect user-modified workflow files.
- *   - Root-level `AGENTS.md` is kept only when it still looks Arbor-managed
- *     (contains the managed block markers) or is missing on disk. This
- *     self-heals old poisoned manifests for user-owned AGENTS.md files that
- *     predated init and were skipped.
+ *   - Root-level `AGENTS.md` and `CLAUDE.md` are kept only when they still
+ *     look Arbor-managed (contain the managed block markers) or are missing
+ *     on disk. This self-heals old poisoned manifests for user-owned files
+ *     that predated init and were skipped.
  *   - Paths referenced by `from`/`to` of any migration manifest entry
  *     (rename, rename-dir, delete, safe-file-delete) are preserved. Pruning
  *     them would prevent legitimate pending migrations from finding their
@@ -77,15 +77,21 @@ function buildKnownKeys(configuredPlatforms: readonly AITool[]): Set<string> {
   return known;
 }
 
+/** Root files whose only Arbor content is the managed block. */
+const MANAGED_BLOCK_ROOT_FILES: readonly string[] = [
+  FILE_NAMES.AGENTS,
+  FILE_NAMES.CLAUDE,
+];
+
 /**
- * Root-level AGENTS.md needs special handling because it has no platform
- * registry owner. New fixed inits record it only when written, but old
- * manifests may contain a user-owned AGENTS.md that init skipped. The
+ * Root-level AGENTS.md / CLAUDE.md need special handling because they have
+ * no platform registry owner. New fixed inits record them only when written,
+ * but old manifests may contain a user-owned file that init skipped. The
  * managed block markers are the least destructive ownership signal: no
  * markers means preserve the user's file by pruning the stale manifest key.
  */
-function shouldKeepAgentsMd(cwd: string): boolean {
-  const fullPath = path.join(cwd, FILE_NAMES.AGENTS);
+function shouldKeepManagedBlockFile(cwd: string, fileName: string): boolean {
+  const fullPath = path.join(cwd, fileName);
   if (!fs.existsSync(fullPath)) {
     return true;
   }
@@ -140,8 +146,8 @@ export function pruneOrphanManifestKeys(
       kept[key] = value;
       continue;
     }
-    if (key === FILE_NAMES.AGENTS) {
-      if (shouldKeepAgentsMd(cwd)) {
+    if (MANAGED_BLOCK_ROOT_FILES.includes(key)) {
+      if (shouldKeepManagedBlockFile(cwd, key)) {
         kept[key] = value;
       } else {
         pruned.push(key);

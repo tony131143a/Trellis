@@ -36,6 +36,7 @@ import { VERSION } from "../../src/constants/version.js";
 import { DIR_NAMES, FILE_NAMES, PATHS } from "../../src/constants/paths.js";
 import { computeHash } from "../../src/utils/template-hash.js";
 import { workflowMdTemplate } from "../../src/templates/arbor/index.js";
+import { claudeMdContent } from "../../src/templates/markdown/index.js";
 import { replacePythonCommandLiterals } from "../../src/configurators/shared.js";
 
 // A managed template file that update always handles (Python script)
@@ -343,6 +344,54 @@ describe("update() integration", () => {
     );
     // Tail equals the canonical template (force-applied managed block).
     expect(result.endsWith(templateContent.trimEnd() + "\n")).toBe(true);
+  });
+
+  it("#4e CLAUDE.md: update refreshes only the managed block", async () => {
+    await setupProject();
+
+    const targetFull = projectFile(FILE_NAMES.CLAUDE);
+    const staleBlock = claudeMdContent.replace(
+      "# Arbor Instructions (main agent)",
+      "# Old Arbor Instructions",
+    );
+    expect(staleBlock).not.toBe(claudeMdContent);
+    fs.writeFileSync(
+      targetFull,
+      `# My rules\n\nKeep me.\n\n${staleBlock}\n## After\n\nKeep me too.\n`,
+    );
+
+    await update({ force: true });
+
+    expect(fs.readFileSync(targetFull, "utf-8")).toBe(
+      `# My rules\n\nKeep me.\n\n${claudeMdContent}\n## After\n\nKeep me too.\n`,
+    );
+  });
+
+  it("#4f CLAUDE.md without markers gets the block appended below the user text", async () => {
+    await setupProject();
+
+    const targetFull = projectFile(FILE_NAMES.CLAUDE);
+    const userText = "# CLAUDE.md\n\nBehavioral guidelines.\n";
+    fs.writeFileSync(targetFull, userText);
+
+    await update({ force: true });
+
+    expect(fs.readFileSync(targetFull, "utf-8")).toBe(
+      `${userText}\n${claudeMdContent}`,
+    );
+    const hashes = readHashesV2(hashFilePath());
+    expect(hashes[FILE_NAMES.CLAUDE]).toBe(
+      computeHash(`${userText}\n${claudeMdContent}`),
+    );
+  });
+
+  it("#4g CLAUDE.md is not managed when Claude Code is not configured", async () => {
+    await init({ yes: true, star: true, force: true });
+    expect(fs.existsSync(projectFile(FILE_NAMES.CLAUDE))).toBe(false);
+
+    await update({ force: true });
+
+    expect(fs.existsSync(projectFile(FILE_NAMES.CLAUDE))).toBe(false);
   });
 
   it("#5 force overwrites user-modified files", async () => {

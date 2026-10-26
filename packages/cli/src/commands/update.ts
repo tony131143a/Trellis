@@ -42,7 +42,10 @@ import {
   gitignoreTemplate,
   workflowMdTemplate,
 } from "../templates/arbor/index.js";
-import { agentsMdContent } from "../templates/markdown/index.js";
+import {
+  agentsMdContent,
+  claudeMdContent,
+} from "../templates/markdown/index.js";
 
 import {
   ALL_MANAGED_DIRS,
@@ -54,6 +57,7 @@ import { ensureGitattributes } from "../configurators/workflow.js";
 import { pruneOrphanManifestKeys } from "../utils/manifest-prune.js";
 import {
   cleanupEmptyDirs,
+  mergeManagedBlockContent,
   ARBOR_BLOCK_END,
   ARBOR_BLOCK_START,
 } from "../utils/managed-paths.js";
@@ -103,85 +107,6 @@ const PROTECTED_PATHS = [
   `${DIR_NAMES.WORKFLOW}/.current-task`,
 ];
 
-function getManagedBlock(
-  content: string,
-  startMarker: string,
-  endMarker: string,
-): string | null {
-  const start = content.indexOf(startMarker);
-  if (start === -1) {
-    return null;
-  }
-
-  const end = content.indexOf(endMarker, start);
-  if (end === -1) {
-    return null;
-  }
-
-  return content.slice(start, end + endMarker.length);
-}
-
-function replaceManagedBlock(
-  existingContent: string,
-  templateContent: string,
-  startMarker: string,
-  endMarker: string,
-): string | null {
-  const existingStart = existingContent.indexOf(startMarker);
-  if (existingStart === -1) {
-    return null;
-  }
-
-  const existingEnd = existingContent.indexOf(endMarker, existingStart);
-  if (existingEnd === -1) {
-    return null;
-  }
-
-  const templateBlock = getManagedBlock(
-    templateContent,
-    startMarker,
-    endMarker,
-  );
-  if (!templateBlock) {
-    return null;
-  }
-
-  return (
-    existingContent.slice(0, existingStart) +
-    templateBlock +
-    existingContent.slice(existingEnd + endMarker.length)
-  );
-}
-
-function mergeManagedBlockContent(
-  existingContent: string,
-  templateContent: string,
-  startMarker: string,
-  endMarker: string,
-): string {
-  const replaced = replaceManagedBlock(
-    existingContent,
-    templateContent,
-    startMarker,
-    endMarker,
-  );
-  if (replaced !== null) {
-    return replaced;
-  }
-
-  const templateBlock = getManagedBlock(
-    templateContent,
-    startMarker,
-    endMarker,
-  );
-  if (!templateBlock) {
-    return templateContent;
-  }
-
-  const trimmed = existingContent.replace(/\s+$/, "");
-  return `${trimmed}\n\n${templateBlock}\n`;
-}
-
 function buildManagedBlockTemplate(
   cwd: string,
   relativePath: string,
@@ -208,6 +133,16 @@ function buildAgentsMdTemplate(cwd: string): string {
     cwd,
     FILE_NAMES.AGENTS,
     agentsMdContent,
+    ARBOR_BLOCK_START,
+    ARBOR_BLOCK_END,
+  );
+}
+
+function buildClaudeMdTemplate(cwd: string): string {
+  return buildManagedBlockTemplate(
+    cwd,
+    FILE_NAMES.CLAUDE,
+    claudeMdContent,
     ARBOR_BLOCK_START,
     ARBOR_BLOCK_END,
   );
@@ -647,6 +582,11 @@ async function collectTemplateFiles(
   // workspace/index.md stays excluded — it's runtime-appended by add_session.py
   // (journal index) and has no script-parsed structure.
   files.set(FILE_NAMES.AGENTS, buildAgentsMdTemplate(cwd));
+  // CLAUDE.md carries only the main-agent block; it is managed once Claude
+  // Code is configured, and text outside the block is always preserved.
+  if (platforms.has("claude-code")) {
+    files.set(FILE_NAMES.CLAUDE, buildClaudeMdTemplate(cwd));
+  }
 
   // Platform-specific templates (only for configured platforms)
   for (const platformId of platforms) {
@@ -973,7 +913,7 @@ function backupFile(
 const BACKUP_DIRS = ALL_MANAGED_DIRS;
 
 /** Root-level managed files to include in update backups. */
-const BACKUP_FILES = [FILE_NAMES.AGENTS] as const;
+const BACKUP_FILES = [FILE_NAMES.AGENTS, FILE_NAMES.CLAUDE] as const;
 
 /**
  * Patterns to exclude from backup (user data that shouldn't be backed up)

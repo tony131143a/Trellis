@@ -26,6 +26,7 @@ This directory contains guidelines for backend development. Fill in each file wi
 | [Configurator Shared Helpers](./configurator-shared.md) | `configurators/shared.ts` public surface: placeholder substitution, write helpers, pull-based prelude, cross-configurator invariants | Done |
 | [`arbor update` Command](./commands-update.md) | Update pipeline: flags, plan composition, migration trigger semantics, apply phase, idempotency, boundaries with `migrations.md` | Done |
 | [`arbor platforms` Command](./commands-platforms.md) | Machine-readable report of configured AI platforms: `--json` shape, registry sourcing, failure behavior | Done |
+| [`dispatch.py` / `arbor dispatch`](./commands-dispatch.md) | Terminal dispatch to codeg assistants: subcommands and flags, `codeg-cli` argv, runtime files, `codeg-setup` install safety, exit codes | Done |
 | [`arbor uninstall` Command](./commands-uninstall.md) | Uninstall orchestration: plan composition, structured-file dispatch, execute phases, `.arbor/` removal | Done |
 | [`spec.py` Freshness Lint](./spec-lint.md) | Spec doc frontmatter (`sources`, `last_verified`), lint rules, `verify` / `init-meta` rewrites, archive-time `spec_changes` traceability | Done |
 ---
@@ -46,6 +47,7 @@ Before writing backend code, read the relevant guidelines based on your task:
 - Editing `configurators/shared.ts` (placeholder substitution, write helpers, prelude injection) → [configurator-shared.md](./configurator-shared.md)
 - Editing `commands/update.ts` (flags, plan, apply phases, idempotency) → [commands-update.md](./commands-update.md) — manifest mechanics still in [migrations.md](./migrations.md)
 - Editing the `platforms` subcommand in `cli/index.ts` → [commands-platforms.md](./commands-platforms.md)
+- Editing `scripts/dispatch.py` or the `dispatch` passthrough in `cli/index.ts` → [commands-dispatch.md](./commands-dispatch.md) (prompt contract in [dispatch.md](./dispatch.md))
 - Editing `scripts/spec.py`, `scripts/common/spec_*.py`, the `spec_changes` fields in `task_store.py`, or the frontmatter format of spec docs → [spec-lint.md](./spec-lint.md)
 
 Also read [unit-test/conventions.md](../unit-test/conventions.md) — specifically the "When to Write Tests" section.

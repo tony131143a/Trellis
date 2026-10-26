@@ -1,5 +1,10 @@
 ---
-sources: []
+sources:
+  - packages/cli/src/configurators/index.ts
+  - packages/cli/src/configurators/workflow.ts
+  - packages/cli/src/templates/extract.ts
+  - packages/cli/src/utils/project-detector.ts
+  - packages/cli/scripts/copy-templates.js
 last_verified: 2026-08-06
 ---
 # Directory Structure
@@ -10,7 +15,7 @@ last_verified: 2026-08-06
 
 ## Overview
 
-This project is a **TypeScript monorepo** using ES modules. It publishes a CLI package (`@tony131143a/arbor`) and a reusable core package (`@tony131143a/arbor-core`). The source code also follows a **dogfooding architecture** - Arbor uses its own configuration files (`.cursor/`, `.claude/`, `.arbor/`) as templates for new projects.
+This project is a **TypeScript monorepo** using ES modules. It publishes one package, the CLI (`@tony131143a/arbor`, under `packages/cli/`). Shipped assets are **generic templates** under `packages/cli/src/templates/`; the repository also installs Arbor on itself, so its own `.arbor/`, `.claude/` and root `CLAUDE.md` / `AGENTS.md` are installed copies, not the source of what ships.
 
 ---
 
@@ -18,115 +23,66 @@ This project is a **TypeScript monorepo** using ES modules. It publishes a CLI p
 
 ```
 packages/
-├── core/                # @tony131143a/arbor-core: reusable APIs
-│   ├── src/
-│   │   ├── channel/     # channel/thread storage, reducers, event protocol helpers
-│   │   ├── task/        # reusable task record helpers
-│   │   ├── testing/     # test helpers intended for package consumers
-│   │   └── index.ts     # package public API
-│   └── package.json     # explicit public exports
 └── cli/                 # @tony131143a/arbor: user-facing CLI
     ├── src/
     │   ├── cli/         # CLI entry point and argument parsing
     │   │   └── index.ts # Main CLI entry (Commander.js setup)
-    │   ├── commands/    # Command implementations (one file or folder per command)
+    │   ├── commands/    # Command implementations
     │   │   ├── init.ts
     │   │   ├── update.ts
-    │   │   ├── uninstall.ts
-    │   │   ├── mem.ts
-    │   │   └── channel/ # Channel command renderers and CLI orchestration
-    │   ├── configurators/
+    │   │   └── uninstall.ts
+    │   ├── configurators/   # claude.ts, star.ts, shared.ts, workflow.ts, index.ts
     │   ├── constants/
+    │   ├── migrations/  # index.ts + manifests/ (0.1.0.json)
     │   ├── templates/
     │   ├── types/
     │   ├── utils/
     │   └── index.ts     # CLI package public API
-    ├── scripts/         # release, manifest, template copy, and verification scripts
+    ├── scripts/         # copy-templates.js (build-time template copy)
     └── package.json
 ```
 
-### Dogfooding Directories (Project Root)
+### Installed Copies in the Repo Root
 
-These directories are copied to `dist/` during build and used as templates:
+This repository runs Arbor on itself:
 
 ```
-.cursor/                 # Cursor configuration (dogfooded)
-├── commands/            # Slash commands for Cursor
-│   ├── start.md
-│   ├── finish-work.md
-│   └── ...
-
-.claude/                 # Claude Code configuration (dogfooded)
+.claude/                 # Claude Code configuration (installed copy)
 ├── commands/            # Slash commands
-├── agents/              # Multi-agent pipeline agents
 ├── hooks/               # Context injection hooks
+├── skills/
 └── settings.json        # Hook configuration
 
-.arbor/                # Arbor workflow (partially dogfooded)
-├── scripts/             # Python scripts (dogfooded)
-│   ├── common/          # Shared utilities (paths.py, developer.py, cli_adapter.py, etc.)
-│   ├── hooks/           # Lifecycle hook scripts (project-specific, NOT dogfooded)
-│   └── *.py             # Main scripts (task.py, get_context.py, etc.)
+.arbor/                  # Arbor workflow (installed copy + this repo's own specs)
+├── agents/              # Instruction sources for the codeg assistants
+├── scripts/             # Python scripts (copy of templates/arbor/scripts)
+│   ├── common/          # Shared utilities (paths.py, developer.py, dispatch_context.py, etc.)
+│   ├── hooks/           # Lifecycle hook scripts (project-specific)
+│   └── *.py             # Main scripts (task.py, get_context.py, spec.py, etc.)
 ├── workspace/           # Developer progress tracking
-│   └── index.md         # Index template (dogfooded)
-├── spec/                # Project guidelines (NOT dogfooded)
-│   ├── cli/             # CLI package specs (backend/, unit-test/)
-│   ├── docs-site/       # Docs package specs (docs/)
-│   └── guides/          # Thinking guides
-├── workflow.md          # Workflow documentation (dogfooded)
-└── .gitignore           # Git ignore rules (dogfooded)
+├── spec/                # This repo's own guidelines (cli/, guides/, tech/)
+├── tasks/
+├── config.yaml
+└── workflow.md          # Workflow documentation
 ```
 
----
+### What ships
 
-## Dogfooding Architecture
+`pnpm build` runs `tsc` and then `scripts/copy-templates.js`, which copies only `src/templates/` (minus `.ts`, `__pycache__`, `.DS_Store`) to `dist/templates/` and `src/migrations/manifests/` to `dist/migrations/manifests/`. It deliberately does **not** copy the repo-root `.arbor/` or `.claude/`, because those carry this project's own customizations.
 
-### What is Dogfooded
-
-Files that are copied directly from Arbor project to user projects:
-
-| Source | Destination | Description |
-|--------|-------------|-------------|
-| `.cursor/` | `.cursor/` | Entire directory copied |
-| `.claude/` | `.claude/` | Entire directory copied |
-| `.arbor/scripts/` | `.arbor/scripts/` | All scripts copied |
-| `.arbor/workflow.md` | `.arbor/workflow.md` | Direct copy |
-| `.arbor/.gitignore` | `.arbor/.gitignore` | Direct copy |
-| `.arbor/workspace/index.md` | `.arbor/workspace/index.md` | Direct copy |
-
-### What is NOT Dogfooded
-
-Files that use generic templates (in `src/templates/`):
-
-| Template Source | Destination | Reason |
-|----------------|-------------|--------|
-| `src/templates/markdown/spec/**/*.md.txt` | `.arbor/spec/**/*.md` | User fills with project-specific content |
-| `src/templates/markdown/agents.md` | `AGENTS.md` | Project root file |
-
-### Build Process
-
-```bash
-# scripts/copy-templates.js copies dogfooding sources to dist/
-pnpm build
-
-# Result:
+```
 dist/
-├── .cursor/           # From project root .cursor/
-├── .claude/           # From project root .claude/
-├── .arbor/          # From project root .arbor/ (filtered)
-│   ├── scripts/       # All scripts (no multi_agent/)
-│   ├── workspace/
-│   │   └── index.md   # Only index.md, no developer subdirs
-│   ├── workflow.md
-│   └── .gitignore
-└── templates/         # From src/templates/ (no .ts files)
-    ├── common/        # Shared command + skill templates
-    ├── shared-hooks/  # Platform-independent hook scripts
-    ├── claude/        # Claude-specific templates
-    ├── {platform}/    # Other platform templates
-    └── markdown/
-        └── spec/      # Generic spec templates
+├── templates/
+│   ├── arbor/         # .arbor/ scaffolding: scripts/, agents/, workflow.md, config.yaml, gitignore.txt
+│   ├── claude/        # Claude Code settings.json and the opt-in statusline hook
+│   ├── star/          # StarFactory settings.json
+│   ├── common/        # Shared command, skill and bundled-skill templates
+│   ├── shared-hooks/  # Platform-independent hook scripts
+│   └── markdown/      # AGENTS.md / CLAUDE.md blocks and generic spec templates (spec/**/*.md.txt)
+└── migrations/manifests/
 ```
+
+The repo-root `.arbor/scripts/` is a copy of `templates/arbor/scripts/`, enforced byte-identical by a regression test (see `script-conventions.md` → "Two script trees, one content"). Edit the template first, then mirror it.
 
 ---
 
@@ -136,7 +92,6 @@ dist/
 
 | Layer | Directory | Responsibility |
 |-------|-----------|----------------|
-| Core | `packages/core/src/` | Reusable APIs, reducers, storage helpers, typed contracts |
 | CLI | `packages/cli/src/cli/` | Parse arguments, display help, call commands |
 | Commands | `packages/cli/src/commands/` | Implement CLI commands, orchestrate actions |
 | Configurators | `packages/cli/src/configurators/` | Copy/generate configuration for tools |
@@ -145,8 +100,6 @@ dist/
 | Utils | `packages/cli/src/utils/` | CLI-specific utility functions |
 | Constants | `packages/cli/src/constants/` | CLI constants (paths, names) |
 
-Shared logic belongs in `packages/core/src/` when it is useful outside terminal command rendering. Package boundary rules live in `arbor-core-sdk.md`.
-
 ### Configurator Pattern
 
 A configurator exports **one** function: `collect<Platform>Templates()`,
@@ -154,43 +107,44 @@ returning `Map<relPath, content>` — the single description of what that
 platform installs. `configure` is derived from it in the registry.
 
 ```typescript
-// configurators/cursor.ts
-export function collectCursorTemplates(): Map<string, string> {
-  const files = collectBothTemplates(
-    AI_TOOLS.cursor.templateContext,
-    (n) => `.cursor/commands/arbor-${n}.md`,
-    ".cursor/skills",
-  );
-  for (const agent of getAllAgents()) {
-    files.set(`.cursor/agents/${agent.name}.md`, agent.content);
+// configurators/star.ts
+export function collectStarTemplates(): Map<string, string> {
+  const ctx = AI_TOOLS.star.templateContext;
+  const files = new Map<string, string>();
+  const settings = getSettingsTemplate();
+  files.set(`.starFactory/${settings.targetPath}`, resolvePlaceholders(settings.content));
+  for (const cmd of resolveCommands(ctx)) {
+    files.set(`.starFactory/commands/arbor/${cmd.name}.md`, cmd.content);
   }
-  for (const [k, v] of collectSharedHooks(".cursor/hooks", "cursor")) {
+  for (const [p, c] of collectSkillTemplates(".starFactory/skills", resolveSkills(ctx), resolveBundledSkills(ctx))) {
+    files.set(p, c);
+  }
+  for (const [k, v] of collectSharedHooks(".starFactory/hooks", "star")) {
     files.set(k, v);
   }
-  files.set(".cursor/hooks.json", resolvePlaceholders(getHooksConfig()));
   return files;
 }
 
 // configurators/index.ts
-cursor: fromTemplates(collectCursorTemplates),
+star: fromTemplates(collectStarTemplates),
 ```
 
-Full contract — map key/value rules, the three platforms that also need a
+Full contract — map key/value rules, the one platform (Claude Code) that also needs a
 `configure`, and the parity oracle — in `configurator-shared.md` →
 "Template maps".
 
 ### Template Extraction
 
-`extract.ts` provides utilities for reading dogfooded files:
+`extract.ts` provides utilities for reading the bundled template files:
 
 ```typescript
-// Get path to .arbor/ (works in dev and production)
-getArborSourcePath(): string
+// Get path to templates/arbor/ (works in dev and production)
+getArborTemplatePath(): string
 
-// Read file from .arbor/
+// Read file from templates/arbor/
 readArborFile(relativePath: string): string
 
-// Copy directory from .arbor/ with executable scripts
+// Copy directory from templates/arbor/ with executable scripts
 copyArborDir(srcRelativePath: string, destPath: string, options?: { executable?: boolean }): void
 ```
 
@@ -203,7 +157,7 @@ copyArborDir(srcRelativePath: string, destPath: string, options?: { executable?:
 | Convention | Example | Usage |
 |------------|---------|-------|
 | `kebab-case` | `file-writer.ts` | All TypeScript files |
-| `kebab-case` | `multi-agent/` | All directories |
+| `kebab-case` | `shared-hooks/` | All directories |
 | `*.ts` | `init.ts` | TypeScript source files |
 | `*.md.txt` | `index.md.txt` | Template files for markdown |
 
@@ -345,9 +299,8 @@ Last-resort detector for **polyrepo** layouts (multiple independent git repos in
 
 1. **Detect**: Call `detectMonorepo(cwd)` to find packages
 2. **Confirm**: In interactive mode, show detected packages and prompt "Enable monorepo mode?"
-3. **Per-package template**: For each package, ask whether to use blank spec or download a remote template (skipped with `-y`)
-4. **Create workflow structure**: Call `createWorkflowStructure()` with `packages` array, which creates per-package spec directories (`spec/<name>/backend/`, `spec/<name>/frontend/`, etc.)
-5. **Write config**: Call `writeMonorepoConfig()` to patch `config.yaml`
+3. **Create workflow structure**: Call `createWorkflowStructure()` with `packages` array, which creates per-package spec directories (`spec/<name>/backend/`, `spec/<name>/frontend/`, etc.)
+4. **Write config**: Call `writeMonorepoConfig()` to patch `config.yaml`
 
 ### `writeMonorepoConfig()` Behavior
 
@@ -400,27 +353,25 @@ For each detected package, `createWorkflowStructure()` creates spec directories 
 - `frontend` → `.arbor/spec/<name>/frontend/*.md`
 - `fullstack` / `unknown` → both backend and frontend directories
 
-Packages that received a remote template download (tracked via `remoteSpecPackages` set) skip blank spec template creation.
-
 ---
 
 ## DO / DON'T
 
 ### DO
 
-- Dogfood from project's own config files when possible
+- Keep generic templates under `src/templates/` as the single source of what ships
 - Describe a platform's file set exactly once, in its `collect<Platform>Templates()`
 - Keep generic templates in `src/templates/markdown/`
 - Use `.md.txt` or `.yaml.txt` for template files
-- Update dogfooding sources (`.cursor/`, `.claude/`, `.arbor/scripts/`) when making changes
+- Mirror template changes into this repo's installed copies (`.claude/`, `.arbor/scripts/`)
 - Always use `python3` explicitly when documenting script invocation (Windows compatibility)
 
 ### DON'T
 
 - Don't hardcode file lists - copy entire directories instead
-- Don't duplicate content between templates and dogfooding sources
+- Don't let the installed copies in the repo root drift from the templates
 - Don't put project-specific content in generic templates
-- Don't use dogfooding for spec/ (users fill these in)
+- Don't ship this repo's own `.arbor/spec/` as a template (users fill theirs in)
 
 ---
 
@@ -455,30 +406,3 @@ wholesale, and is a no-op if a `journal-*.md merge=union` rule already exists
 `add_session.py` prints a one-time-per-process warning (stderr, non-blocking)
 when it detects it is running inside a git worktree (not the main working
 tree) with `session_auto_commit` enabled, pointing back at this section.
-
----
-
-## Design Decisions
-
-### Extensible Template Type Mapping
-
-**Context**: Currently only `spec` templates, but future needs `skill`, `command`, `full` types.
-
-**Decision**: Use type field + mapping table for extensibility:
-
-```typescript
-const INSTALL_PATHS: Record<string, string> = {
-  spec: ".arbor/spec",
-  skill: ".claude/skills",
-  command: ".claude/commands",
-  full: ".",  // Entire project root
-};
-
-// Usage: auto-detect install path from template type
-const destDir = INSTALL_PATHS[template.type] || INSTALL_PATHS.spec;
-```
-
-**Extensibility**: To add new template type:
-1. Add entry to `INSTALL_PATHS`
-2. Add templates to `index.json` with new type
-3. No code changes needed for download logic

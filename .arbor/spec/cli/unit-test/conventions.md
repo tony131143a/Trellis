@@ -32,7 +32,7 @@ last_verified: 2026-08-06
 
 `test/setup.ts` is registered via `setupFiles` in `vitest.config.ts` and
 unconditionally `delete`s a list of env vars before any test loads. The list is
-currently 10 entries in three groups, and each group exists for a *different*
+currently 4 entries in three groups, and each group exists for a *different*
 reason — which is what makes the "when to extend" rule easy to get wrong.
 
 **Group 1 — vars production resolvers honor as a user override.**
@@ -41,16 +41,12 @@ reason — which is what makes the "when to extend" rule easy to get wrong.
 delete process.env.ARBOR_CONTEXT_ID;
 ```
 
-`ArborContext.getContextKey` treats it as the highest-priority override —
-production behavior, by design. When the suite runs inside a Claude Code or
-OpenCode session it leaks in from the parent shell and hijacks the resolver,
-ignoring the test's mocked `platformInput`. Symptom: a test expecting
-`opencode_oc-a` receives `claude_<host-session-id>`, failing deterministically
-only on dev machines.
-
-`OPENCODE_RUN_ID` used to sit in this group. The JS branch that read it was
-removed on 2026-08-06 (no OpenCode version sets the name), so it is no longer a
-resolver override and the scrub went with it.
+`common.active_task.resolve_context_key` treats it as the highest-priority
+override — production behavior, by design. When the suite runs inside a Claude
+Code or StarFactory session it leaks in from the parent shell and hijacks the
+resolver, ignoring the test's mocked `platformInput`. Symptom: a test expecting
+`star_<session-id>` receives `claude_<host-session-id>`, failing
+deterministically only on dev machines.
 
 **Group 2 — vars a hook *writes to*.**
 
@@ -68,16 +64,10 @@ which is why no test failure ever surfaced it.
 
 ```ts
 delete process.env.CLAUDE_PROJECT_DIR;
-delete process.env.QODER_PROJECT_DIR;
-delete process.env.CODEBUDDY_PROJECT_DIR;
-delete process.env.FACTORY_PROJECT_DIR;
-delete process.env.CURSOR_PROJECT_DIR;
-delete process.env.GEMINI_PROJECT_DIR;
-delete process.env.KIRO_PROJECT_DIR;
-delete process.env.COPILOT_PROJECT_DIR;
+delete process.env.STARFACTORY_PROJECT_DIR;
 ```
 
-`session-start.py` prefers `*_PROJECT_DIR` over the JSON payload's `cwd` and
+`session-start.py` prefers `CLAUDE_PROJECT_DIR` / `STARFACTORY_PROJECT_DIR` over the JSON payload's `cwd` and
 over `process.cwd()`. Left set, a hook under test reads the **real** repo's
 `.arbor/` instead of the test tmpdir — so the assertions run against the
 maintainer's own tasks.
@@ -104,7 +94,7 @@ should set the env explicitly inside the test (`process.env.X = "..."` in a
 | Change Type | Test Type | Example |
 |-------------|-----------|---------|
 | New pure/utility function | Unit test | Added `compareVersions()` → test boundary values |
-| New platform | Unit (auto-covered by `registry-invariants.test.ts`) | Added opencode → invariants verify consistency |
+| New platform | Unit (auto-covered by `registry-invariants.test.ts`) | Added a platform → invariants verify consistency |
 | Bug fix | Regression test | Fixed Windows encoding → add to `regression.test.ts` |
 | Changed init/update behavior | Integration test | Changed downgrade logic → add/update scenario in `update.integration.test.ts` |
 

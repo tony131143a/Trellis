@@ -233,6 +233,13 @@ interface JsonReport {
   >;
 }
 
+/** spec.py stamps `date.today()` (local date); match it instead of UTC. */
+function localToday(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 describe.skipIf(!hasPython())("spec.py lint", () => {
   let tmp: string;
 
@@ -561,7 +568,7 @@ describe.skipIf(!hasPython())("spec.py verify", () => {
 
   it("defaults to today, is idempotent, and refuses paths outside .arbor/spec", () => {
     const rel = ".arbor/spec/backend/good.md";
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localToday();
     const first = runSpec(tmp, "verify", rel);
     expect(first.status).toBe(0);
     expect(read(tmp, rel)).toContain(`last_verified: ${today}`);
@@ -704,7 +711,7 @@ describe.skipIf(!hasPython())("spec.py init-meta", () => {
 
   it("falls back to today for last_verified when the doc has no git history", () => {
     fs.rmSync(path.join(tmp, ".git"), { recursive: true, force: true });
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localToday();
     runSpec(tmp, "init-meta", ".arbor/spec/backend/nometa.md");
     expect(read(tmp, ".arbor/spec/backend/nometa.md")).toContain(
       `last_verified: ${today}`,

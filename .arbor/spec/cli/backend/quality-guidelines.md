@@ -1,5 +1,9 @@
 ---
-sources: []
+sources:
+  - packages/cli/src/commands/init.ts
+  - packages/cli/src/types/ai-tools.ts
+  - .arbor/scripts/common/task_store.py
+  - .arbor/scripts/common/workflow_phase.py
 last_verified: 2026-08-06
 ---
 # Quality Guidelines
@@ -178,8 +182,8 @@ Define interfaces for structured data:
 ```typescript
 // Good: Interface for options
 interface InitOptions {
-  cursor?: boolean;
   claude?: boolean;
+  star?: boolean;
   yes?: boolean;
   user?: string;
   force?: boolean;
@@ -197,7 +201,7 @@ Use type aliases for unions and computed types:
 
 ```typescript
 // Good: Type alias for union
-export type AITool = "claude-code" | "cursor" | "opencode";
+export type AITool = "claude-code" | "star";
 export type WriteMode = "ask" | "force" | "skip" | "append";
 export type ProjectType = "frontend" | "backend" | "fullstack" | "unknown";
 
@@ -287,8 +291,8 @@ Classify each hit:
 
 | Kind | Example | Action |
 |------|---------|--------|
-| **Schema / creator** | `task_store.cmd_create`, `@tony131143a/arbor-core/task:emptyTaskRecord` (re-exported by `utils/task-json.ts:emptyTaskJson` for legacy CLI call sites) | Drop field from output |
-| **Writer / updater** | `inject-delegation-context.py:update_current_phase`, OpenCode plugin equivalent | **Drop the write call OR delete the function entirely** |
+| **Schema / creator** | `task_store.cmd_create`, `utils/task-json.ts:emptyTaskRecord` (TypeScript factory used by `init.ts` and `update.ts`) | Drop field from output |
+| **Writer / updater** | any `task_store.py` command that rewrites `task.json` (`cmd_set_branch`, `cmd_set_meta`, subtask commands, `cmd_archive`) and any hook that rewrites it | **Drop the write call OR delete the function entirely** |
 | **Reader / getter** | `tasks.py:load_task` (defaults via `data.get("field", default)` on `TaskInfo`) | Keep with tolerance default (`data.get("field", null)`) — handles legacy files |
 | **Docs / comments** | spec, README, PRDs | Update references |
 | **Tests** | Assertions on field presence | Flip to "must NOT contain field" |
@@ -302,7 +306,7 @@ Classify each hit:
 
 ### Tests Required
 - **Writer regression**: call creator → assert field NOT in output. Example: `test task.py create does NOT write legacy current_phase / next_action`.
-- **Writer-after-event regression**: simulate the downstream event that historically re-wrote the field (e.g. spawn sub-agent → hook fires) → re-read file → assert field still absent.
+- **Writer-after-event regression**: simulate the downstream event that historically re-wrote the field (e.g. delegate to a codeg assistant → hook fires) → re-read file → assert field still absent.
 - **Reader compatibility**: mock a legacy file containing the field → assert reader does not raise.
 
 ### Wrong vs Correct
@@ -312,18 +316,18 @@ Classify each hit:
 task_data = {"status": "planning", ...}  # current_phase removed
 ```
 ```python
-# inject-delegation-context.py — still writes it on every spawn
+# a hook (hypothetical here) — still writes it on every delegation
 def update_current_phase(task_dir, subagent_type):
     task = read_json(task_dir / "task.json")
     task["current_phase"] = next_phase(...)  # ← re-populates deprecated field
     write_json(task_dir / "task.json", task)
 ```
-Net: after the first `implement` spawn, `task.json` contains `current_phase` again. Deprecation undone silently.
+Net: after the first `implement` delegation, `task.json` contains `current_phase` again. Deprecation undone silently.
 
 #### Correct — delete every writer, or route through a single entry point
 Option A: delete the writer function.
 ```python
-# inject-delegation-context.py
+# the hook
 # (update_current_phase + its call removed; the hook no longer writes phase)
 ```
 Option B: keep the writer but have it stop emitting the field.
@@ -334,6 +338,10 @@ def update_task_state(task_dir, subagent_type):
     # current_phase not written
     write_json(task_dir / "task.json", task)
 ```
+
+### Current state
+
+No script or hook writes `current_phase` or `next_action` today. `task_store.cmd_create` does not emit them, and the shared hooks only read `task.json`. Phase information is never stored on the task: `.arbor/scripts/common/workflow_phase.py` only extracts the Phase Index and individual `#### X.X` step sections from `.arbor/workflow.md` on demand (`get_phase_index`, `get_step`, `filter_platform`), and `get_context.py --mode phase` prints them. That module is read-only with respect to `task.json`. If a phase pointer is ever needed again, keep it out of `task.json` or route it through one `task_store.py` entry point.
 
 ### Why
 A field is "gone" only after every code path that could produce it is removed. Silently leaving ghost writers makes the deprecation non-executable and forces future readers to keep supporting the field forever.
@@ -355,15 +363,12 @@ The task `04-21-task-schema-unify` ran a retroactive audit on the 0.5.0-beta.0 d
 2. **Shipped-but-unused code counts**: any file enumerated in a template registry (`packages/cli/src/templates/arbor/index.ts`, `templates/markdown/index.ts`) is a writer of user expectations even if no command invokes it. Orphan = still writes.
 3. **Type declarations count as writers of the reader-side contract**: a TypedDict / TS interface that still declares the deprecated field misleads consumers the same way a runtime writer does. Prune declarations in the same PR as runtime writers.
 
-**Consolidation outcome**: the canonical TypeScript task shape now lives in
-`@tony131143a/arbor-core/task` as `ArborTaskRecord` +
-`emptyTaskRecord(overrides)`. `packages/cli/src/utils/task-json.ts` only
-re-exports those under the legacy `TaskJson` / `emptyTaskJson` names for CLI
-call sites. Both `init.ts` and `update.ts` route through that shared factory.
-The audit set for future schema changes is now: canonical Python `cmd_create`
-(runtime) + core `ArborTaskRecord` / `emptyTaskRecord` (TS schema + factory) +
-CLI `utils/task-json.ts` re-export users (bootstrap + migration) + `TaskData`
-TypedDict (Python declaration).
+**Consolidation outcome**: the canonical TypeScript task shape lives in
+`packages/cli/src/utils/task-json.ts` as `ArborTaskRecord` +
+`emptyTaskRecord(overrides)`. Both `init.ts` and `update.ts` route through that
+factory. The audit set for future schema changes is: canonical Python
+`cmd_create` (runtime) + `utils/task-json.ts` (TS schema + factory) + its users
+(bootstrap + migration) + the `TaskData` TypedDict (Python declaration).
 
 ---
 
@@ -407,13 +412,13 @@ When a CLI has both explicit flags (`--tool`) and convenience flags (`-y`), expl
 ```typescript
 // Bad: -y overrides explicit flags
 if (options.yes) {
-  tools = ["cursor", "claude"]; // Ignores --codex, --opencode!
-} else if (options.cursor || options.codex) {
+  tools = ["claude", "star"]; // Ignores --claude, --star!
+} else if (options.claude || options.star) {
   // Build from flags...
 }
 
 // Good: Check explicit flags first
-const hasExplicitTools = options.cursor || options.codex || options.opencode;
+const hasExplicitTools = options.claude || options.star;
 if (hasExplicitTools) {
   // Build from explicit flags (works with or without -y)
 } else if (options.yes) {
@@ -504,16 +509,14 @@ When handling multiple similar options, use arrays with metadata instead of repe
 
 ```typescript
 // Bad: Repetitive if-else
-if (options.cursor) tools.push("cursor");
 if (options.claude) tools.push("claude");
-if (options.codex) tools.push("codex");
+if (options.star) tools.push("star");
 // ... repeated logic, easy to miss one
 
 // Good: Data-driven approach
 const TOOLS = [
-  { key: "cursor", name: "Cursor", defaultChecked: true },
   { key: "claude", name: "Claude Code", defaultChecked: true },
-  { key: "codex", name: "Codex", defaultChecked: false },
+  { key: "star", name: "StarFactory", defaultChecked: false },
 ] as const;
 
 // Single source of truth for:
@@ -526,166 +529,6 @@ const TOOLS = [
 - Adding a new tool = adding one line to TOOLS array
 - Display name, flag key, and default are co-located
 - Less code duplication, fewer bugs
-
-### Auto-Detect Modes Must Probe in ALL Code Paths
-
-When a CLI auto-detects mode (e.g., marketplace vs direct download) by probing a resource, the probe must run in **every** code path that uses the result — including `-y` (non-interactive) mode:
-
-```typescript
-// Bad: Probe only runs in interactive mode
-let templates: Item[] = [];
-if (!options.yes) {
-  templates = await fetchIndex(url); // Only interactive probes
-}
-// -y mode: templates stays [], falls through to direct mode
-// Bug: marketplace registries silently downloaded as raw directory
-
-// Good: Probe in all paths that need the result
-if (options.template) {
-  selectedTemplate = options.template; // Explicit: no probe needed
-} else if (!options.yes) {
-  // Interactive: probe + show picker
-  const result = await probeIndex(url);
-  // ...
-} else if (registry) {
-  // -y mode with registry: still need to probe
-  const result = await probeIndex(url);
-  if (result.templates.length > 0) {
-    // Marketplace requires selection — can't auto-select in -y mode
-    console.error("Use --template to specify which template");
-    return;
-  }
-}
-```
-
-**Why**: The `-y` flag means "skip interactive prompts", not "skip network operations". If a mode decision depends on a remote resource, the probe must happen regardless of interactivity.
-
-### Don't Drop Fields When Reconstructing Composite Identifiers
-
-When a structured object is parsed into parts and later reassembled, include **all** parsed fields:
-
-```typescript
-// Bad: ref is parsed but dropped when rebuilding
-const registry = parseSource("gh:org/repo/path#develop");
-// registry = { provider: "gh", repo: "org/repo", ref: "develop", ... }
-const repoSource = `${registry.provider}:${registry.repo}`;
-// Result: "gh:org/repo" — ref "develop" is lost, defaults to "main"
-
-// Good: Include all relevant fields
-const repoSource = `${registry.provider}:${registry.repo}#${registry.ref}`;
-// Result: "gh:org/repo#develop"
-```
-
-**Prevention**: When building a string from a parsed object, review the object's fields and verify each one is either included or explicitly irrelevant.
-
-### Don't: "Warn and Continue" for Mode-Detection Logic
-
-When code decides which mode to run based on a probe result, a warning + continue is functionally equivalent to no fix at all:
-
-```typescript
-// Bad: Warning prints but code still falls through to wrong mode
-if (!probeResult.isNotFound) {
-  console.log(chalk.yellow("Warning: network issue, attempting direct download"));
-}
-// Falls through → downloads marketplace root as spec directory
-
-// Good: Abort or loop back — never silently switch modes
-if (!probeResult.isNotFound) {
-  console.log(chalk.red("Could not reach registry. Check connection and retry."));
-  return; // or: continue (loop back to picker)
-}
-```
-
-**Why**: "Warn and continue" is appropriate for **degraded functionality** (missing optional data). It is **not** appropriate for **mode decisions** — the wrong mode causes data corruption, not just degraded UX.
-
-### Convention: Reset Shared State on Branch Switch
-
-When user input or control flow changes context (e.g., switching from official marketplace to a custom source), reset any shared state that was populated by the previous context:
-
-```typescript
-// Bad: fetchedTemplates still has official marketplace results
-registry = parseRegistrySource(customSource);
-// fetchedTemplates.length > 0 → direct-download guard never fires!
-
-// Good: Reset before entering new context
-registry = parseRegistrySource(customSource);
-fetchedTemplates = []; // Clear stale data from previous source
-```
-
-**Why**: Shared mutable state across branches is a silent bug factory. The later guard (`registry && fetchedTemplates.length === 0`) depends on `fetchedTemplates` reflecting the *current* source, not a previous one.
-
-### Scenario: Registry Probe and Download Must Share Backend
-
-#### 1. Scope / Trigger
-
-When a CLI registry flow probes one backend to decide marketplace vs direct-download mode, and then downloads content later, the chosen backend is part of the control-flow contract. This applies to `arbor init --registry`, especially private/self-hosted Git registries.
-
-#### 2. Signatures
-
-```typescript
-type RegistryBackend = "http" | "git";
-
-interface RegistryProbeResult {
-  templates: SpecTemplate[];
-  isNotFound: boolean;
-  backend: RegistryBackend;
-  error?: RegistryBackendError;
-}
-```
-
-#### 3. Contracts
-
-- `backend` records which implementation produced the probe result.
-- `isNotFound: true` means the registry path exists but has no `index.json`; it may enter direct-download mode.
-- `error` means the probe failed and must not enter direct-download mode.
-- Download functions that receive a registry must either use the probe's `backend` or re-probe before downloading.
-
-#### 4. Validation & Error Matrix
-
-| Condition | Result |
-|---|---|
-| `index.json` exists and parses | `templates.length > 0`, `isNotFound: false`, `backend` set |
-| No `index.json` at a valid registry path | `templates: []`, `isNotFound: true`, `backend` set |
-| Auth failure / invalid login-page JSON / network failure | `isNotFound: false`, `error` set, abort or loop back |
-| Template path outside repo root | `path-not-found` error |
-| Git ref missing | `ref-not-found` error |
-
-#### 5. Good/Base/Bad Cases
-
-- Good: private GitLab probe uses local Git credentials and download copies from the same Git checkout strategy.
-- Base: public registry probe uses HTTP and download uses the existing HTTP/giget path.
-- Bad: probe succeeds through Git, but download rebuilds a raw/giget URL and fails authentication.
-
-#### 6. Tests Required
-
-- Probe test for public registry remains `backend: "http"`.
-- Probe test for self-hosted/SSH registry returns `backend: "git"`.
-- Download test passes a prefetched template plus `registryBackend: "git"` and verifies filesystem output.
-- Failure tests assert auth/ref/path/invalid-json errors do not set `isNotFound: true`.
-
-#### 7. Wrong vs Correct
-
-```typescript
-// Wrong: backend choice is lost after probe
-const probe = await probeRegistryIndex(indexUrl, registry);
-const template = probe.templates.find((t) => t.id === selected);
-await downloadTemplateById(cwd, selected, strategy, template, registry);
-
-// Correct: download uses the same backend that proved access during probe
-const probe = await probeRegistryIndex(indexUrl, registry);
-const template = probe.templates.find((t) => t.id === selected);
-await downloadTemplateById(
-  cwd,
-  selected,
-  strategy,
-  template,
-  registry,
-  undefined,
-  probe.backend,
-);
-```
-
-**Why**: Authentication and reachability are backend-specific. A successful Git probe only proves Git access; it does not prove raw HTTP or giget access.
 
 ---
 
@@ -838,7 +681,7 @@ it("empty tasks/ → bootstrap", async () => {
 });
 ```
 
-Net: ship lands with the user's exact command (`arbor init -u alice --codex --yes`) still broken.
+Net: ship lands with the user's exact command (`arbor init -u alice --star --yes`) still broken.
 
 #### Correct — make all entry paths converge, test each path
 
@@ -875,7 +718,7 @@ Multi-entry dispatch is a structural force-multiplier for bugs: every entry path
 
 ### Case Study (2026-04-30): issue #204 `--yes` + bootstrap recovery
 
-The first commit (`346003d`) added a `tasksEmpty` fallback only in `init()`'s main dispatch. It made the `--yes` log line correct, made `--force --yes` recover bootstrap, and added a passing test (`#2b` with `force: true`). It did NOT fix the user's literal reported command — `arbor init -u <name> --codex --yes` — because that command goes through `handleReinit` (defined at `init.ts:740`, called at `init.ts:1081`), which short-circuits before reaching the patched dispatch. Caught by `arbor-check` sub-agent doing a live CLI repro on the dist build. Fixed in `589f753` by adding `!tasksEmptyEarly` to the reinit guard, plus splitting the test into `#2b` (no force, reported case) and `#2c` (with force, parity check).
+The first commit (`346003d`) added a `tasksEmpty` fallback only in `init()`'s main dispatch. It made the `--yes` log line correct, made `--force --yes` recover bootstrap, and added a passing test (`#2b` with `force: true`). It did NOT fix the user's literal reported command — `arbor init -u <name> --claude --yes` — because that command goes through `handleReinit` (defined at `init.ts:740`, called at `init.ts:1081`), which short-circuits before reaching the patched dispatch. Caught by `arbor-check` sub-agent doing a live CLI repro on the dist build. Fixed in `589f753` by adding `!tasksEmptyEarly` to the reinit guard, plus splitting the test into `#2b` (no force, reported case) and `#2c` (with force, parity check).
 
 ---
 
@@ -883,7 +726,7 @@ The first commit (`346003d`) added a `tasksEmpty` fallback only in `init()`'s ma
 
 ### Cautionary tale — 0.6.0-beta.3 → 0.6.0-beta.4 emergency revert
 
-0.6.0-beta.3 added `better-sqlite3` (a native C++ binding) to read OpenCode 1.2+ session storage, which switched from JSONL to SQLite. On Windows + China network, the failure cascade was:
+An upstream Trellis 0.6.0-beta.3 added `better-sqlite3` (a native C++ binding) to read an AI tool's session storage, which had switched from JSONL to SQLite. On Windows + China network, the failure cascade was:
 
 1. `prebuild-install` tries to download a prebuilt binary from the GitHub releases CDN.
 2. CDN times out (China network reliability for `github.com/.../releases/download/...` is poor).
@@ -891,7 +734,7 @@ The first commit (`346003d`) added a `tasksEmpty` fallback only in `init()`'s ma
 4. Source build needs Visual Studio 2017+ Build Tools, which most Windows users don't have installed.
 5. Install fails — **`arbor` itself can no longer be installed at all**.
 
-Time to detect: ~4 hours after publish. Fix: emergency revert in 0.6.0-beta.4 (removed `better-sqlite3`, marked the OpenCode 1.2+ SQLite reader as degraded with a soft-degrade fallback). The OpenCode SQLite section in `commands-mem.md` is now a stub describing the degraded state.
+Time to detect: ~4 hours after publish. Fix: emergency revert in 0.6.0-beta.4 (removed `better-sqlite3` and degraded the SQLite reader to a soft fallback). Arbor has no session-storage reader; the policy below is what keeps it that way.
 
 The lesson: **a native dep that fails to install fails the entire CLI**, not just one feature. For a productivity tool, that tradeoff is unacceptable unless the perf benefit is dramatic and unreplaceable.
 
@@ -912,7 +755,7 @@ try {
   nativeReader = (await import("better-sqlite3")).default as NativeReader;
 } catch {
   process.stderr.write(
-    "[arbor] OpenCode 1.2+ SQLite session reader unavailable " +
+    "[arbor] SQLite session reader unavailable " +
     "(better-sqlite3 not installed). Falling back to JSONL-only mode.\n"
   );
 }
@@ -924,101 +767,7 @@ if (nativeReader) {
 }
 ```
 
-Cross-reference: future native-dep additions should mirror the soft-degrade pattern used by `commands/mem.ts:opencodeListSessions` (on the `feat/v0.6.0-beta` branch). When the native reader is unavailable, the function returns degraded but non-empty output rather than throwing.
-
-#### 3. Test on Windows + restricted network before shipping
-
-Even when a prebuild exists for the target platform, the GitHub releases CDN is unreliable from China and other constrained networks. The node-gyp source-build fallback then requires C compiler tooling that users typically don't have (MSVC on Windows, Xcode CLT on macOS, build-essential on Linux).
-
-Required pre-ship matrix for any native dep:
-
-| Environment | What to verify |
-|---|---|
-| Windows (clean VM, no VS Build Tools) + China-route network | `pnpm install` succeeds; CLI starts without the feature |
-| macOS (clean, no Xcode CLT) | Install succeeds; falls back gracefully |
-| Linux (Alpine / minimal Docker) | Install succeeds; musl vs glibc prebuild matches |
-
-#### 4. Decision framework
-
-A native dep is justified only when **both** are true:
-
-- The perf benefit is **dramatic** (orders of magnitude, not 2-3x) AND unreplaceable in pure JS / WASM.
-- Shell-out to a system tool (`sqlite3`, `ffmpeg`, etc.) is not viable — usually because the system tool isn't standard across target platforms or per-call dispatch overhead is prohibitive.
-
-If only one is true, pick a non-native alternative.
-
-#### 5. Alternative ladder (in preference order)
-
-| Option | Install risk | Perf | Notes |
-|---|---|---|---|
-| Pure JS | none | baseline | Always the first choice. Most CLI workloads are I/O-bound, not CPU-bound. |
-| WASM bundle | none (one-time bundle size cost ~1-2 MB) | ~1.5-3x slower than native, usually fine | E.g. `sql.js` for SQLite reads. Bundled at build time, no install-time fetch. |
-| Shell out to system CLI | low (Windows-PATH / "is it installed" risk) | per-call dispatch overhead | Zero install deps, but introduces "is sqlite3 / ffmpeg on PATH?" branching. Acceptable when the tool is broadly assumed present. |
-| `node:sqlite` etc. (Node built-ins) | none | native | Once these graduate from experimental in Node LTS, they become the preferred path. As of Node 22 LTS, `node:sqlite` is still experimental — track upstream. |
-| Native dep + `optionalDependencies` + soft-degrade | medium (still fails to install on a non-trivial fraction of Windows users) | native | Last resort. Only when steps 1-4 are ruled out and the soft-degrade path is genuinely usable. |
-
-#### 6. Audit checklist when adding any native dep
-
-Before merging a PR that adds a native dep:
-
-- [ ] Is it under `optionalDependencies` (not `dependencies`)?
-- [ ] Is every load site wrapped in try/catch with a stderr hint?
-- [ ] Does the soft-degrade path produce useful output, or does it just throw with a different message?
-- [ ] Has install been tested on a clean Windows VM without VS Build Tools, behind a China-route proxy?
-- [ ] Is the perf benefit measured (not assumed) and dramatic?
-- [ ] Has the WASM alternative been benchmarked and rejected with numbers?
-- [ ] Does the spec / PR description state which alternative ladder rungs were considered and why each was rejected?
-
-If any answer is "no", the dep doesn't ship.
-
----
-
-## Native dependency policy
-
-### Cautionary tale — 0.6.0-beta.3 → 0.6.0-beta.4 emergency revert
-
-0.6.0-beta.3 added `better-sqlite3` (a native C++ binding) to read OpenCode 1.2+ session storage, which switched from JSONL to SQLite. On Windows + China network, the failure cascade was:
-
-1. `prebuild-install` tries to download a prebuilt binary from the GitHub releases CDN.
-2. CDN times out (China network reliability for `github.com/.../releases/download/...` is poor).
-3. `node-gyp` source-build fallback kicks in.
-4. Source build needs Visual Studio 2017+ Build Tools, which most Windows users don't have installed.
-5. Install fails — **`arbor` itself can no longer be installed at all**.
-
-Time to detect: ~4 hours after publish. Fix: emergency revert in 0.6.0-beta.4 (removed `better-sqlite3`, marked the OpenCode 1.2+ SQLite reader as degraded with a soft-degrade fallback). The OpenCode SQLite section in `commands-mem.md` is now a stub describing the degraded state.
-
-The lesson: **a native dep that fails to install fails the entire CLI**, not just one feature. For a productivity tool, that tradeoff is unacceptable unless the perf benefit is dramatic and unreplaceable.
-
-### Rules
-
-#### 1. Avoid native deps in the arbor CLI by default
-
-Arbor is a productivity / scaffolding tool. Install reliability across all OS / network conditions matters more than per-call perf. The default answer to "should we add this native dep?" is **no**.
-
-#### 2. If absolutely needed, use `optionalDependencies` + soft-degrade
-
-Place the dep under `optionalDependencies` (not `dependencies`) so install never hard-fails on it. Wrap every load site in a try/catch with a clear "feature unavailable" stderr hint:
-
-```typescript
-let nativeReader: NativeReader | null = null;
-try {
-  // Dynamic import keeps install-time failure away from the load barrel
-  nativeReader = (await import("better-sqlite3")).default as NativeReader;
-} catch {
-  process.stderr.write(
-    "[arbor] OpenCode 1.2+ SQLite session reader unavailable " +
-    "(better-sqlite3 not installed). Falling back to JSONL-only mode.\n"
-  );
-}
-
-if (nativeReader) {
-  // Use native path
-} else {
-  // Soft-degrade: degraded but functional output
-}
-```
-
-Cross-reference: future native-dep additions should mirror the soft-degrade pattern used by `commands/mem.ts:opencodeListSessions` (on the `feat/v0.6.0-beta` branch). When the native reader is unavailable, the function returns degraded but non-empty output rather than throwing.
+When the native reader is unavailable, the function should return degraded but non-empty output rather than throwing.
 
 #### 3. Test on Windows + restricted network before shipping
 

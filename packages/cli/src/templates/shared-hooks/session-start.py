@@ -524,8 +524,20 @@ DISPATCH_ROUTING = (
 )
 
 
+def _read_assistant_ids(arbor_dir: Path) -> dict | None:
+    """`by_name` of `.arbor/.runtime/codeg-assistants.json` (codeg-setup), or None."""
+    try:
+        data = json.loads(
+            (arbor_dir / ".runtime" / "codeg-assistants.json").read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError):
+        return None
+    by_name = data.get("by_name") if isinstance(data, dict) else None
+    return by_name if isinstance(by_name, dict) else None
+
+
 def _build_dispatch_section(arbor_dir: Path) -> str | None:
-    """Effective codeg dispatch target, per-role assistant names, routing rule.
+    """Effective codeg dispatch target, per-role assistants with ids, routing rule.
 
     Best-effort: an older scripts tree without the dispatch config accessors
     simply omits the section.
@@ -543,16 +555,24 @@ def _build_dispatch_section(arbor_dir: Path) -> str | None:
     except Exception:
         return None  # Optional section; keep session-start non-fatal.
 
-    roles = ", ".join(
-        f"{role}=`{assistants[role]}`" for role in ("implement", "check", "research")
-    )
-    return (
-        f"Target: {target} (source: {source})\n"
-        f"Assistants: {roles}\n"
+    ids = _read_assistant_ids(arbor_dir) or {}
+    lines = [f"Target: {target} (source: {source})", "Assistants:"]
+    for role in ("implement", "check", "research"):
+        name = assistants[role]
+        assistant_id = ids.get(name)
+        if isinstance(assistant_id, int) and not isinstance(assistant_id, bool):
+            lines.append(f"- {role}: {name} (id {assistant_id})")
+        else:
+            lines.append(
+                f"- {role}: {name} (id unknown — run "
+                "python3 ./.arbor/scripts/dispatch.py codeg-setup)"
+            )
+    lines.append(
         "Start every delegated task with `Active task: <task dir>` and "
-        "`Role: implement|check|check [finish]|research` lines.\n"
-        f"{DISPATCH_ROUTING}"
+        "`Role: implement|check|check [finish]|research` lines."
     )
+    lines.append(DISPATCH_ROUTING)
+    return "\n".join(lines)
 
 
 def _check_legacy_spec(arbor_dir: Path, is_mono: bool, packages: dict) -> str | None:
