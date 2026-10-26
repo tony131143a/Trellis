@@ -1,0 +1,7 @@
+{"file": ".trellis/tasks/10-23-orchestrated-workflow/research/install-mechanism.md", "reason": "Code map: resolver, init/workflow write, hash contract, update analyzeChanges, statusLine opt-in, config.yaml helpers, related tests"}
+{"file": ".trellis/spec/cli/backend/commands-workflow.md", "reason": "Workflow switcher contract (bundled vs marketplace, hash rules)"}
+{"file": ".trellis/spec/cli/backend/commands-update.md", "reason": "Update hash/preserve semantics for workflow.md, config.yaml, settings.json"}
+{"file": ".trellis/spec/cli/backend/platform-integration.md", "reason": "Claude Code hook registration rules"}
+{"file": ".trellis/spec/cli/backend/configurator-shared.md", "reason": "Configurator patterns for installing assets"}
+{"file": ".trellis/spec/cli/backend/uninstall-scrubbers.md", "reason": "Hook-entry removal pattern"}
+{"file": ".trellis/spec/cli/unit-test/integration-patterns.md", "reason": "init/workflow/update integration test patterns"}
