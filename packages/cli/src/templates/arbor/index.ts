@@ -88,9 +88,16 @@ export const gitattributesTemplate = readTemplate("gitattributes.txt");
 // `packages/cli/src/commands/channel/agent-loader.ts` from `.arbor/agents/`).
 // These are platform-agnostic Arbor runtime files dispatched at `arbor init`
 // and refreshed by `arbor update`.
+export const AGENT_ROLES = [
+  "explore",
+  "architect",
+  "implement",
+  "review",
+  "verify",
+  "fix",
+  "simplify",
+] as const;
 export const implementAgentTemplate = readTemplate("agents/implement.md");
-export const checkAgentTemplate = readTemplate("agents/check.md");
-export const researchAgentTemplate = readTemplate("agents/research.md");
 
 /**
  * Get all script templates as a map of relative path to content
@@ -149,8 +156,8 @@ export function getAllScripts(): Map<string, string> {
  */
 export function getAllAgents(): Map<string, string> {
   const agents = new Map<string, string>();
-  agents.set("implement.md", implementAgentTemplate);
-  agents.set("check.md", checkAgentTemplate);
-  agents.set("research.md", researchAgentTemplate);
+  for (const role of AGENT_ROLES) {
+    agents.set(`${role}.md`, readTemplate(`agents/${role}.md`));
+  }
   return agents;
 }
