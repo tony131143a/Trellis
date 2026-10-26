@@ -1,0 +1,19 @@
+.gitignore
+  s_562d1a10b232a4::t_f09e56bf511ac9 197-199
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "4806255f1c11d21b29db8fa44744a8d944747777",
+  "prompts": {},
+  "sessions": {
+    "s_562d1a10b232a4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0d74e691-e7a9-4ab7-89ae-bbe22e18f661",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
