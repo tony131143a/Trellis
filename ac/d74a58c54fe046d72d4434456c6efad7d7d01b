@@ -1,0 +1,33 @@
+.trellis/tasks/archive/2026-10/10-23-channel-terminal-per-turn/brief-implement.md
+  s_4fb774c4268ce8::t_c3f424f23c38fd 1-13
+.trellis/tasks/archive/2026-10/10-23-channel-terminal-per-turn/check.jsonl
+  s_4fb774c4268ce8::t_782ca43af9a3d7 1-2
+.trellis/tasks/archive/2026-10/10-23-channel-terminal-per-turn/implement.jsonl
+  s_4fb774c4268ce8::t_af1677d942ba60 1-3
+.trellis/tasks/archive/2026-10/10-23-channel-terminal-per-turn/prd.md
+  s_63057db90ff3ac::t_f55f1042141fef 1-31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "acd74a58c54fe046d72d4434456c6efad7d7d01b",
+  "prompts": {},
+  "sessions": {
+    "s_4fb774c4268ce8": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a1679c-c8dc-7107-bcfa-55fa354d87a8",
+        "model": "DeepSeek-V4.1-Flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_63057db90ff3ac": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e379015f-b02b-4d94-a4c9-d66c3d996018",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
