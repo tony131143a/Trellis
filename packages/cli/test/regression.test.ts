@@ -4636,7 +4636,7 @@ describe("regression: current-task path normalization", () => {
       JSON.stringify({ cwd: tmpDir, session_id: "session-a" }),
     );
     expect(rawOutput).toContain("Status: IN_PROGRESS");
-    expect(rawOutput).toContain("Implementation/check context order");
+    expect(rawOutput).toContain("Dispatch context order is jsonl entries");
     expect(rawOutput).toContain("prd.md");
     expect(rawOutput).toContain("design.md if present");
     expect(rawOutput).toContain("implement.md if present");

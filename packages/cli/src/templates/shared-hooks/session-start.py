@@ -458,7 +458,7 @@ def _get_task_status(arbor_dir: Path, input_data: dict) -> str:
         else:
             next_bits.append("Planning artifacts are present; ask for review before `task.py start`")
         if not jsonl_ready:
-            next_bits.append("curate `implement.jsonl` and `check.jsonl` before sub-agent mode start")
+            next_bits.append("curate `implement.jsonl` and `check.jsonl` before start")
         return (
             f"Status: PLANNING\nTask: {task_title}\n"
             f"Present: {present_line}\n"
@@ -469,7 +469,9 @@ def _get_task_status(arbor_dir: Path, input_data: dict) -> str:
         f"Status: {str(task_status).upper()}\nTask: {task_title}\n"
         f"Present: {present_line}\n"
         "Next-Action: Follow the matching per-turn workflow-state. "
-        "Implementation/check context order is jsonl entries -> `prd.md` -> `design.md if present` -> `implement.md if present`."
+        "Dispatch context order is jsonl entries (`implement.jsonl` for architect/implement, "
+        "`check.jsonl` for review/verify/fix/simplify) -> `prd.md` -> `design.md if present` -> "
+        "`implement.md if present`."
     )
 
 
@@ -557,7 +559,7 @@ def _build_dispatch_section(arbor_dir: Path) -> str | None:
 
     ids = _read_assistant_ids(arbor_dir) or {}
     lines = [f"Target: {target} (source: {source})", "Assistants:"]
-    for role in ("implement", "check", "research"):
+    for role in ("explore", "architect", "implement", "review", "verify", "fix", "simplify"):
         name = assistants[role]
         assistant_id = ids.get(name)
         if isinstance(assistant_id, int) and not isinstance(assistant_id, bool):
@@ -569,7 +571,8 @@ def _build_dispatch_section(arbor_dir: Path) -> str | None:
             )
     lines.append(
         "Start every delegated task with `Active task: <task dir>` and "
-        "`Role: implement|check|check [finish]|research` lines."
+        "`Role: <role>` lines; review also takes `Mode: self-check|candidates|sweep`, "
+        "and review/verify/fix/simplify take `Diff: <file from dispatch.py diff>`."
     )
     lines.append(DISPATCH_ROUTING)
     return "\n".join(lines)
@@ -903,7 +906,7 @@ Arbor compact SessionStart context. Use it to orient the session; load details o
 
     output.write("<guidelines>\n")
     output.write(
-        "Task context order for implementation/check: jsonl entries -> `prd.md` -> "
+        "Dispatch context order: jsonl entries -> `prd.md` -> "
         "`design.md if present` -> `implement.md if present`. Missing optional artifacts "
         "are skipped for lightweight tasks.\n\n"
     )

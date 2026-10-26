@@ -4,13 +4,14 @@
 Built-in Agent Guard Hook (Claude Code / StarFactory)
 
 PreToolUse hook on the host's built-in sub-agent tool (matcher
-`^(Agent|Task)$`). Arbor roles (implement / check / research) run as codeg
+`^(Agent|Task)$`). Arbor roles (explore / architect / implement / review /
+verify / fix / simplify) run as codeg
 assistants; spawning them through the built-in Agent/Task tool would run
 them without the codeg target, its model, or the injected task context.
 
 Denies the call when `dispatch.guard_builtin_agent` is enabled (default) and
 the call is recognisably an Arbor role dispatch:
-- the prompt's first lines carry `Active task:` or `Role: implement|check|research`
+- the prompt's first lines carry `Active task:` or `Role: <arbor role>`
 - `subagent_type` starts with `arbor-`
 
 Every other Agent/Task call passes through untouched (no output).
@@ -39,14 +40,16 @@ if callable(_stdin_reconfigure):
 DIR_WORKFLOW = ".arbor"
 GUARDED_TOOLS = ("Agent", "Task")
 ROLE_RE = re.compile(
-    r"^\s*(?:Active task:|Role:\s*(?:implement|check|research)\b)",
+    r"^\s*(?:Active task:|Role:\s*"
+    r"(?:explore|architect|implement|review|verify|fix|simplify)\b)",
     re.IGNORECASE | re.MULTILINE,
 )
 # Only the head of the prompt is the header; a role word deep in the body is
 # ordinary prose.
 HEADER_SCAN_CHARS = 400
 DENY_REASON = (
-    "Arbor roles (implement/check/research) run as codeg assistants. "
+    "Arbor roles (explore/architect/implement/review/verify/fix/simplify) "
+    "run as codeg assistants. "
     "Use the `delegate_to_agent` tool with the role's assistant (see the "
     "<dispatch> session context), or "
     "`python3 ./.arbor/scripts/dispatch.py run --role <role>`. "
