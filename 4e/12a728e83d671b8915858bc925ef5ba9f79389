@@ -1,0 +1,45 @@
+.trellis/tasks/archive/2026-10/10-23-channel-turn-attribution/brief-implement.md
+  s_ea6ab5a300b7af::t_e814acf2161220 1-16
+.trellis/tasks/archive/2026-10/10-23-channel-turn-attribution/check.jsonl
+  s_0519108ba1d962::t_e010a69f33fb6e 1-2
+.trellis/tasks/archive/2026-10/10-23-channel-turn-attribution/fix-2-core.md
+  s_0519108ba1d962::t_1233cc383bb092 1-5
+.trellis/tasks/archive/2026-10/10-23-channel-turn-attribution/implement.jsonl
+  s_0519108ba1d962::t_97c90a86a67990 1-3
+.trellis/tasks/archive/2026-10/10-23-channel-turn-attribution/prd.md
+  s_0519108ba1d962::t_7894778dad69a2 1-35
+.trellis/tasks/archive/2026-10/10-23-channel-turn-attribution/research/stream-turns.md
+  s_4e4d7bdde7abb2::t_8634775df708fb 1-205
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "4e12a728e83d671b8915858bc925ef5ba9f79389",
+  "prompts": {},
+  "sessions": {
+    "s_0519108ba1d962": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3c211409-f8ab-4058-9ab8-4c7f9e8f76f0",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_4e4d7bdde7abb2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2ba04e78-c961-47d0-b22a-405135faa199",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_ea6ab5a300b7af": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "658ca8bd-dd48-4e4b-afb8-e49832a7ab67",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
