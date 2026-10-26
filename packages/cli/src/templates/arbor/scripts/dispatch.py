@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Terminal dispatch of the implement / check / research roles to codeg assistants.
+Terminal dispatch of the Arbor roles (explore, architect, implement, review,
+verify, fix, simplify) to codeg assistants, plus the working-tree snapshots
+the review loop diffs against.
 
 The codeg path (``delegate_to_agent`` + the PreToolUse hook) needs the codeg
 MCP tools; this script is the same dispatch for a plain terminal, through
@@ -9,7 +11,8 @@ MCP tools; this script is the same dispatch for a plain terminal, through
 ``common.dispatch_context.build_dispatch_prompt``.
 
 Usage:
-    python3 dispatch.py run --role R [--target T] [--task DIR] [--workspace WT] [--finish]
+    python3 dispatch.py run --role R [--target T] [--task DIR] [--workspace WT]
+                            [--mode M] [--diff FILE]
                             [--prompt TEXT | --prompt-file F | stdin]
                             [--detach] [--wait] [--worktree[=NAME]]
                             [--standalone] [--data-dir DIR] [--url URL]
@@ -17,14 +20,18 @@ Usage:
     python3 dispatch.py wait RUN... [-o OUT] [--timeout DUR] [--url URL]
     python3 dispatch.py resolve --role R [--target T] [--json]
     python3 dispatch.py target get | set <T> | clear
-    python3 dispatch.py print-context --role R [--task DIR] [--finish] [--workspace WT]
-                                      [--target T] [--prompt TEXT | --prompt-file F | stdin]
+    python3 dispatch.py print-context --role R [--task DIR] [--workspace WT] [--mode M]
+                                      [--diff FILE] [--target T]
+                                      [--prompt TEXT | --prompt-file F | stdin]
+    python3 dispatch.py snapshot [-C DIR]
+    python3 dispatch.py diff A [B] [--name N] [-C DIR]
     python3 dispatch.py codeg-setup [--target T] [--install] [--db PATH] [--codeg-cli PATH]
 
 Runtime files (all under .arbor/.runtime/, gitignored):
     dispatch/<stamp>.md          assembled prompt of one run
     dispatch/<stamp>.result.md   final reply (codeg-cli -o)
     dispatch/<stamp>.run         run id of a --detach run
+    dispatch/diffs/<name>.diff   diffs written by ``diff``
     dispatch-target              target override (``target set``)
     codeg-assistants/<target>-<role>.md   rendered assistant instructions
     codeg-assistants.json        assistant name -> id registry
@@ -46,6 +53,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 from datetime import datetime, timezone
@@ -58,7 +66,7 @@ from common.config import (
 )
 from common.dispatch_context import (
     CODEG_ASSISTANTS_FILE,
-    FINISH_TAG,
+    REVIEW_MODES,
     ROLES,
     ROLES_REQUIRE_TASK,
     DispatchHeader,
@@ -74,6 +82,7 @@ from common.paths import DIR_WORKFLOW, get_repo_root, resolve_task_ref
 
 RUNTIME_DIR = ".runtime"
 DISPATCH_RUNS_DIR = f"{RUNTIME_DIR}/dispatch"
+DIFFS_DIR = f"{DISPATCH_RUNS_DIR}/diffs"
 RENDERED_ASSISTANTS_DIR = f"{RUNTIME_DIR}/codeg-assistants"
 DB_BACKUPS_DIR = f"{RUNTIME_DIR}/codeg-db-backups"
 
@@ -101,27 +110,49 @@ MAX_DESCRIPTION_CHARS = 200
 MAX_INSTRUCTIONS_CHARS = 20000
 
 ROLE_AVATARS = {
+    "explore": ("\U0001f50d", "sky"),
+    "architect": ("\U0001f4d0", "amber"),
     "implement": ("\U0001f6e0\ufe0f", "blue"),
-    "check": ("\U0001f9d0", "violet"),
-    "research": ("\U0001f50d", "sky"),
+    "review": ("\U0001f9d0", "violet"),
+    "verify": ("\u2696\ufe0f", "slate"),
+    "fix": ("\U0001fa79", "red"),
+    "simplify": ("\u2728", "green"),
 }
 ROLE_DESCRIPTIONS = {
+    "explore": (
+        "Arbor explore role ({target}): read-only tracing of code, specs and "
+        "external sources; findings and essential files go to the task's "
+        "research/ directory."
+    ),
+    "architect": (
+        "Arbor architect role ({target}): one decisive blueprint from an "
+        "assigned perspective, with a parallel split, written to "
+        "research/design-<perspective>.md."
+    ),
     "implement": (
         "Arbor implement role ({target}): implements one Arbor task from the "
-        "injected specs and prd/design/implement.md. Task text starts with "
-        "Active task: + Role: implement."
+        "injected specs and prd/design/implement.md; never commits."
     ),
-    "check": (
-        "Arbor check role ({target}): reviews and fixes one Arbor task's diff "
-        "against its specs, then runs lint/typecheck/tests. Role: check, or "
-        "Role: check [finish] for the final pass."
+    "review": (
+        "Arbor review role ({target}): read-only correctness review of a diff; "
+        "Mode: self-check | candidates | sweep; reports JSON findings."
     ),
-    "research": (
-        "Arbor research role ({target}): read-only search of code, specs and "
-        "the web; findings go to the task's research/ directory. Task text "
-        "starts with Role: research."
+    "verify": (
+        "Arbor verify role ({target}): judges review candidates "
+        "CONFIRMED / PLAUSIBLE / REFUTED against the code; read-only."
+    ),
+    "fix": (
+        "Arbor fix role ({target}): applies verified review findings to the "
+        "working tree, skips false positives with evidence; never commits."
+    ),
+    "simplify": (
+        "Arbor simplify role ({target}): reuse / simplification / efficiency / "
+        "altitude cleanup of a diff without behavior change; never commits."
     ),
 }
+# Roles before the seven-role split; codeg-setup --install soft-deletes
+# their assistants.
+RETIRED_ROLES = ("check", "research")
 AGENT_LABELS = {"pi": "Pi", "claude_code": "Claude Code", "codex": "Codex"}
 OPTION_LABELS = {"model": "Model", "thought_level": "Thinking"}
 
@@ -264,9 +295,10 @@ def _assemble(
     role = args.role
     if inner.role and inner.role != role:
         _err(f"brief header says Role: {inner.role}; using --role {role}")
-    finish = bool(args.finish) or (inner.finish and role == "check")
-    if finish and role != "check":
-        raise DispatchError("--finish only applies to --role check", 2)
+    mode = args.mode or inner.mode
+    diff = args.diff or inner.diff
+    if diff:
+        diff = str(Path(diff).expanduser().resolve())
 
     task_ref = args.task or inner.task_dir
     task_dir: Path | None = None
@@ -282,7 +314,11 @@ def _assemble(
     lines = []
     if task_dir is not None:
         lines.append(f"Active task: {task_dir}")
-    lines.append(f"Role: {role} {FINISH_TAG}" if finish else f"Role: {role}")
+    lines.append(f"Role: {role}")
+    if mode:
+        lines.append(f"Mode: {mode}")
+    if diff:
+        lines.append(f"Diff: {diff}")
     if target:
         lines.append(f"Target: {target}")
     if workspace:
@@ -723,9 +759,14 @@ def _install_rows(root: Path, db_path: Path, rows: list[dict]) -> dict[str, int]
             }
 
         # Keep the user's existing assistants (e.g. a hand-built pipeline) in
-        # front: arbor rows that already exist keep their slot, new ones are
-        # appended after the highest sort_order currently in the table.
-        our_uids = {row["uid"] for row in rows}
+        # front; arbor rows follow in role order after the highest sort_order
+        # of everything else.
+        retired = {
+            str(uuid.uuid5(uuid.NAMESPACE_URL, f"arbor/{target}/{role}"))
+            for target in {row["target"] for row in rows}
+            for role in RETIRED_ROLES
+        }
+        our_uids = {row["uid"] for row in rows} | retired
         existing_orders = {
             uid: order
             for uid, order in conn.execute(
@@ -743,12 +784,7 @@ def _install_rows(root: Path, db_path: Path, rows: list[dict]) -> dict[str, int]
         now = datetime.now(timezone.utc).isoformat(timespec="microseconds")
         conn.execute("BEGIN IMMEDIATE")
         try:
-            for row in rows:
-                if row["uid"] in existing_orders:
-                    order = existing_orders[row["uid"]]
-                else:
-                    order = next_order
-                    next_order += 1
+            for order, row in enumerate(rows, start=next_order):
                 clash = conn.execute(
                     "SELECT uid FROM assistant WHERE deleted_at IS NULL"
                     " AND name = ? COLLATE NOCASE AND uid <> ?",
@@ -796,6 +832,16 @@ def _install_rows(root: Path, db_path: Path, rows: list[dict]) -> dict[str, int]
                         (row["uid"],) + values + (now, now),
                     )
                     _err(f"created assistant {row['name']} (id {cursor.lastrowid})")
+            for uid, name, assistant_id in conn.execute(
+                "SELECT uid, name, id FROM assistant WHERE deleted_at IS NULL"
+            ).fetchall():
+                if uid in retired:
+                    conn.execute(
+                        "UPDATE assistant SET deleted_at=?, enabled=0,"
+                        " revision=revision+1, updated_at=? WHERE id=?",
+                        (now, now, assistant_id),
+                    )
+                    _err(f"retired assistant {name} (id {assistant_id})")
             conn.execute("COMMIT")
         except BaseException:
             conn.execute("ROLLBACK")
@@ -917,6 +963,85 @@ def cmd_codeg_setup(args: argparse.Namespace) -> int:
 
 
 # =============================================================================
+# snapshot / diff
+# =============================================================================
+
+
+def _git(cwd: Path, *argv: str, env: dict | None = None) -> str:
+    proc = subprocess.run(
+        ["git", "-C", str(cwd), *argv],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        encoding="utf-8",
+        errors="replace",
+        env=env,
+    )
+    if proc.returncode != 0:
+        detail = (proc.stderr or "").strip().splitlines()
+        raise DispatchError(
+            f"git {argv[0]} failed" + (f": {detail[-1]}" if detail else "")
+        )
+    return proc.stdout
+
+
+def _snapshot_tree(work: Path) -> str:
+    """Tree id of the working tree, untracked files included.
+
+    Built in a throwaway index, so neither the real index nor the working
+    tree changes; ``.gitignore`` is honoured.
+    """
+    with tempfile.TemporaryDirectory(prefix="arbor-snapshot-") as tmp:
+        env = {**os.environ, "GIT_INDEX_FILE": str(Path(tmp) / "index")}
+        has_head = subprocess.run(
+            ["git", "-C", str(work), "rev-parse", "--verify", "-q", "HEAD"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        ).returncode == 0
+        if has_head:
+            _git(work, "read-tree", "HEAD", env=env)
+        _git(work, "add", "-A", env=env)
+        return _git(work, "write-tree", env=env).strip()
+
+
+def _work_dir(args: argparse.Namespace) -> Path:
+    work = Path(args.C).expanduser().resolve() if args.C else Path.cwd()
+    return Path(_git(work, "rev-parse", "--show-toplevel").strip())
+
+
+def cmd_snapshot(args: argparse.Namespace) -> int:
+    _write_stdout(_snapshot_tree(_work_dir(args)) + "\n")
+    return 0
+
+
+def cmd_diff(args: argparse.Namespace) -> int:
+    root = get_repo_root()
+    work = _work_dir(args)
+    end = args.b or _snapshot_tree(work)
+    pathspec = ["--", ".", f":(exclude){DIR_WORKFLOW}"]
+    text = _git(work, "diff", "--no-ext-diff", "--no-color", args.a, end, *pathspec)
+    numstat = _git(work, "diff", "--numstat", args.a, end, *pathspec)
+
+    name = args.name or f"{datetime.now():%Y%m%d-%H%M%S}"
+    if not re.fullmatch(r"[A-Za-z0-9._-]+", name):
+        raise DispatchError(f"--name must match [A-Za-z0-9._-]+: {name!r}", 2)
+    out = _arbor_dir(root) / DIFFS_DIR / f"{name}.diff"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    if not write_text_atomic(out, text):
+        raise DispatchError(f"cannot write {_rel(root, out)}")
+
+    files = added = deleted = 0
+    for line in numstat.splitlines():
+        parts = line.split("\t")
+        if len(parts) >= 3:
+            files += 1
+            added += int(parts[0]) if parts[0].isdigit() else 0
+            deleted += int(parts[1]) if parts[1].isdigit() else 0
+    _err(f"{files} files, +{added} -{deleted} ({added + deleted} changed lines)")
+    _write_stdout(f"{out}\n")
+    return 0
+
+
+# =============================================================================
 # CLI
 # =============================================================================
 
@@ -931,7 +1056,10 @@ def _add_header_options(parser: argparse.ArgumentParser, *, role_help: str) -> N
     parser.add_argument("--role", required=True, choices=ROLES, help=role_help)
     parser.add_argument("--task", help="task directory (default: the session's active task)")
     parser.add_argument("--workspace", help="worktree the role works in (adds Workspace:)")
-    parser.add_argument("--finish", action="store_true", help="final check pass (check only)")
+    parser.add_argument(
+        "--mode", choices=REVIEW_MODES, help="review mode (adds Mode:; review only)"
+    )
+    parser.add_argument("--diff", help="diff file the role reviews (adds Diff:)")
     parser.add_argument("--target", help="star | pi | any configured target")
     _add_prompt_options(parser)
 
@@ -981,6 +1109,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_header_options(context, role_help="role of the dispatch")
     context.set_defaults(func=cmd_print_context)
+
+    snapshot = sub.add_parser(
+        "snapshot", help="print a tree id of the working tree (untracked files included)"
+    )
+    snapshot.add_argument("-C", metavar="DIR", help="work tree to snapshot (default: cwd)")
+    snapshot.set_defaults(func=cmd_snapshot)
+
+    diff = sub.add_parser("diff", help="write the diff between two snapshots to a file")
+    diff.add_argument("a", metavar="A", help="snapshot tree id, commit or branch")
+    diff.add_argument("b", metavar="B", nargs="?", help="end point (default: the working tree now)")
+    diff.add_argument("--name", help="file name under .arbor/.runtime/dispatch/diffs/")
+    diff.add_argument("-C", metavar="DIR", help="work tree to diff (default: cwd)")
+    diff.set_defaults(func=cmd_diff)
 
     setup = sub.add_parser("codeg-setup", help="render or install the codeg assistants")
     setup.add_argument("--target", help="only this target (default: every configured target)")
