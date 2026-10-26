@@ -1,0 +1,5 @@
+Round 2 for C-3 (scope extended by the conductor to packages/core/src/channel/internal/store/worker-state.ts and its tests in packages/core — nothing else new).
+
+Your residual note is confirmed: `reduceWorkerRegistry` (`worker-state.ts:215-245`) sets `activity:"idle"`, clears `activeTurnId`, and sets `idleSince` on a non-synthesized `done` / `error`, so a self-initiated terminal marks a mid-turn worker idle and spawn-time idle cleanup (`packages/cli/src/commands/channel/guard.ts:523-540`) can kill it during a long user turn.
+
+Fix: a `done` / `error` carrying `selfInitiated: true` leaves activity, activeTurnId, activeTurnStartedAt and idleSince unchanged (an error message may still be recorded if that matters to an existing consumer — check). Add reducer tests (self done mid-turn → still mid-turn, no idleSince; channel done → idle as before) and one guard-level test showing a mid-turn worker with a self done is not idle-cleaned. Find and run the core package's test command and the CLI channel tests you ran before; typecheck/lint for both packages. Before ending your turn, wait for every background command you started. Report ≤10 lines.
