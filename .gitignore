@@ -194,3 +194,6 @@ tmp1/
 .playwright-mcp
 .gitnexus
 .codegraph/
+
+# IDE
+.idea/
