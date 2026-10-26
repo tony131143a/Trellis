@@ -659,8 +659,10 @@ def _dumps(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
-def _label_snapshot(agent_type: str, options: dict[str, str]) -> dict:
-    agent = AGENT_LABELS.get(agent_type, agent_type.split(":", 1)[-1])
+def _label_snapshot(
+    agent_type: str, options: dict[str, str], agent_label: str | None = None
+) -> dict:
+    agent = agent_label or AGENT_LABELS.get(agent_type, agent_type.split(":", 1)[-1])
     labels = []
     for key, value in options.items():
         if key == "model":
@@ -707,10 +709,46 @@ def _install_rows(root: Path, db_path: Path, rows: list[dict]) -> dict[str, int]
         out.close()
         _err(f"backup: {_rel(root, backup)}")
 
+        # Custom ACP agents (agent_type `custom:<id>`) show their registered
+        # name in codeg's UI; read it so the label matches what the UI shows.
+        custom_labels: dict[str, str] = {}
+        if conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='custom_agent'"
+        ).fetchone():
+            custom_labels = {
+                f"custom:{registry_id}": str(name)
+                for registry_id, name in conn.execute(
+                    "SELECT registry_id, name FROM custom_agent"
+                )
+            }
+
+        # Keep the user's existing assistants (e.g. a hand-built pipeline) in
+        # front: arbor rows that already exist keep their slot, new ones are
+        # appended after the highest sort_order currently in the table.
+        our_uids = {row["uid"] for row in rows}
+        existing_orders = {
+            uid: order
+            for uid, order in conn.execute(
+                "SELECT uid, sort_order FROM assistant WHERE deleted_at IS NULL"
+            )
+        }
+        next_order = (
+            max(
+                (order for uid, order in existing_orders.items() if uid not in our_uids),
+                default=0,
+            )
+            + 1
+        )
+
         now = datetime.now(timezone.utc).isoformat(timespec="microseconds")
         conn.execute("BEGIN IMMEDIATE")
         try:
-            for order, row in enumerate(rows, start=1):
+            for row in rows:
+                if row["uid"] in existing_orders:
+                    order = existing_orders[row["uid"]]
+                else:
+                    order = next_order
+                    next_order += 1
                 clash = conn.execute(
                     "SELECT uid FROM assistant WHERE deleted_at IS NULL"
                     " AND name = ? COLLATE NOCASE AND uid <> ?",
@@ -727,7 +765,13 @@ def _install_rows(root: Path, db_path: Path, rows: list[dict]) -> dict[str, int]
                     _dumps(row["avatar"]),
                     row["agent_type"],
                     _dumps({"config_values": row["options"]} if row["options"] else {}),
-                    _dumps(_label_snapshot(row["agent_type"], row["options"])),
+                    _dumps(
+                        _label_snapshot(
+                            row["agent_type"],
+                            row["options"],
+                            custom_labels.get(row["agent_type"]),
+                        )
+                    ),
                     row["instructions"],
                     order,
                 )

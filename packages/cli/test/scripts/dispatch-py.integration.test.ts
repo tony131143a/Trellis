@@ -758,6 +758,61 @@ describe.skipIf(!hasPython())("dispatch.py", () => {
       expect(backups).toHaveLength(2);
     });
 
+    it("--install appends after existing assistants and labels custom agents by their codeg name", () => {
+      const db = path.join(tmp, "codeg.db");
+      makeDb(db, ASSISTANT_COLUMNS_SQL);
+      makeDb(
+        db,
+        "INSERT INTO assistant (uid, name, avatar, agent_type, agent_options, label_snapshot," +
+          " sort_order, created_at, updated_at) VALUES ('pipeline-uid', 'implementer', '{}', 'pi'," +
+          " '{}', '{}', 7, 'now', 'now')",
+      );
+      makeDb(
+        db,
+        "CREATE TABLE custom_agent (id INTEGER PRIMARY KEY, registry_id TEXT NOT NULL, name TEXT NOT NULL)",
+      );
+      makeDb(
+        db,
+        "INSERT INTO custom_agent (registry_id, name) VALUES ('star', 'StarFactory')",
+      );
+
+      const r = dispatch(["codeg-setup", "--install", "--db", db]);
+      expect(r.status, r.stderr).toBe(0);
+      const rows = dbRows(db) as (ReturnType<typeof dbRows>[number] & {
+        sort_order: number;
+      })[];
+      const pipeline = rows.find((row) => row.name === "implementer");
+      expect(pipeline?.sort_order).toBe(7);
+      const arbor = rows.filter((row) => row.name.startsWith("arbor-"));
+      expect(arbor).toHaveLength(6);
+      expect(arbor.map((row) => row.sort_order)).toEqual([8, 9, 10, 11, 12, 13]);
+
+      const star = arbor.filter((row) => row.agent_type === "custom:star");
+      expect(star.map((row) => row.name)).toEqual([
+        "arbor-implement-star",
+        "arbor-check-star",
+        "arbor-research-star",
+      ]);
+      for (const row of star) {
+        expect(JSON.parse(row.agent_options)).toEqual({});
+        expect(JSON.parse(row.label_snapshot)).toEqual({
+          agent: "StarFactory",
+          mode: null,
+          options: [],
+        });
+      }
+
+      // Re-running keeps every slot stable.
+      const again = dispatch(["codeg-setup", "--install", "--db", db]);
+      expect(again.status, again.stderr).toBe(0);
+      expect(
+        (dbRows(db) as { name: string; sort_order: number }[]).map((row) => [
+          row.name,
+          row.sort_order,
+        ]),
+      ).toEqual(rows.map((row) => [row.name, row.sort_order]));
+    });
+
     it("--install refuses a different assistant schema and falls back to print mode", () => {
       const db = path.join(tmp, "codeg.db");
       makeDb(

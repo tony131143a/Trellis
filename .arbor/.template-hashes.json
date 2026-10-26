@@ -80,7 +80,7 @@
     ".claude/hooks/inject-delegation-context.py": "a01f013ce2d8441d9d331557840c4fbd0b1463ab8f8c62e9a331d1e36defd760",
     ".claude/commands/arbor/dispatch-target.md": "e7bd5864290cd7a26b6d1a88536140aadf489e4dc65f0e328de169837d3c371a",
     ".claude/skills/arbor-meta/references/local-architecture/dispatch.md": "f403a57b912fff40610ed28d2802f6e3b22b197f06a60d26264b817d96bd3660",
-    ".arbor/scripts/dispatch.py": "f4c15620c0faa283652292dc459e393276c5ad3a80163bcd34bb62ab7c5e8721",
+    ".arbor/scripts/dispatch.py": "c87616d6e8ed4ac18f418d5f233edc84ffbcbbc0c5265bb7096ef19256a0410c",
     "CLAUDE.md": "8ac55c391f1643094bede07fc0fdca7f00b892c298088947659d33c7a696fcab"
   }
 }
