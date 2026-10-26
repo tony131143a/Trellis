@@ -74,10 +74,6 @@ These build the `Map<relPath, content>` that a `collect<Platform>Templates()` re
 
 ### Pull-based prelude
 
-`configurators/shared.ts:SubAgentType` — `"implement" | "check"`. `research` is intentionally excluded — research doesn't depend on an active task; it traverses the spec tree.
-
-`configurators/shared.ts:buildPullBasedPrelude` — returns a "Required: Load Arbor Context First" block that tells a sub-agent to (1) read `Active task: <path>` from the dispatch prompt; (2) fall back to `task.py current --source`; (3) ask the user. It is exported but no configurator calls it today: the codeg dispatch path inlines task context through `inject-delegation-context.py` instead. Do not apply it to a platform that already gets the hook injection, because the context would be delivered twice.
-
 ---
 
 ## Template maps — a platform's file set, described once
@@ -348,11 +344,6 @@ Wrong: adding a new skill template under `templates/common/skills/foo.md` withou
 
 Correct: edit `SKILL_DESCRIPTIONS` in `configurators/shared.ts` to add the new entry, then add a regression test asserting `wrapWithSkillFrontmatter("arbor-foo", "...")` does not throw. The throw at init time is the safety net that prevents shipping a skill the AI matcher can never trigger.
 
-### Calling the pull-based prelude on a hook-injected platform
-
-Wrong: Claude Code or StarFactory prepending `buildPullBasedPrelude("implement")` to a role's instructions.
-
-Correct: both platforms deliver task context through `inject-delegation-context.py` (PreToolUse on codeg `delegate_to_agent`). Adding the prelude duplicates the context payload — once via the hook prompt mutation and once via the sub-agent's startup self-load. `research` never gets a prelude at all.
 
 ### Reading `process.platform` directly inside a configurator helper
 
