@@ -62,7 +62,7 @@ python3 ./.arbor/scripts/dispatch.py codeg-setup            # print manual codeg
 python3 ./.arbor/scripts/dispatch.py codeg-setup --install  # macOS: write assistants into codeg's database
 ```
 
-Switch the default model target in a session with `/arbor:dispatch-target star|pi|clear`.
+Switch the default model target in a session with `/arbor:dispatch-target star|pi|clear`, or dispatch a single run on a chosen target with `/arbor:dispatch <role> [star|pi] [brief]` (for example `/arbor:dispatch research pi`).
 
 First task, following `.arbor/workflow.md`:
 
