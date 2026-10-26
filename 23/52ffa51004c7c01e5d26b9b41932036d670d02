@@ -1,0 +1,19 @@
+.arbor/.template-hashes.json
+  s_654a6fb986adcb::t_3e24fb3d08c9c7 5-6,11-18,20,22,24-28,30,32-33,36-37,42,44-46,55,74,76-89
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "2352ffa51004c7c01e5d26b9b41932036d670d02",
+  "prompts": {},
+  "sessions": {
+    "s_654a6fb986adcb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e00b05dc-6d88-4e08-8d07-901f6e6943d7",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
