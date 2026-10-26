@@ -124,3 +124,48 @@ Made StarFactory a trellis channel worker provider so Claude Code can plan while
 - 让 Conductor 会话 397c3541 后台重跑 advance（可先 /compact 重新注入新版 conductor.md）
 - 可选：清理玩具 channel 目录（orch-v2、orch-v2-review）
 - 可选：按分析把编排流程沉淀进 Trellis（阶段 1：spec + channel 运行时问题复核修复）
+
+
+## Session 4: 沉淀 Conductor/Worker 编排流程到 Trellis（channel 修复 + orchestrated 工作流）
+<!-- trellis-session: v=2 fp=5be7e4596caffc42 -->
+
+**Date**: 2026-10-25
+**Task**: 沉淀 Conductor/Worker 编排流程到 Trellis（channel 修复 + orchestrated 工作流）
+**Package**: cli
+**Branch**: `feat/orchestrated-workflow`
+
+### Summary
+
+把 spark-harness 的 orch v2 编排沉淀进 Trellis：阶段 1 修复 channel 运行时三处缺陷（后续轮次崩溃无终止事件、空闲清理用调用方 TTL、Claude 系自发轮次提前结束用户轮次），阶段 2 新增可选 bundled 工作流 orchestrated（通用化引擎、三张评审/精简卡、Claude Code guard/inject hook、install/remove/update 接线、契约 spec）。全部实现与评审由 star channel worker 完成，Claude 只做规划、裁决与验证。4 个 commit 在 feat/orchestrated-workflow，未合入 main、未 push。
+
+### Main Changes
+
+- C-1 per-turn terminalEmitted + 冷退出合成 error/turn_finished；C-2 空闲清理按 worker 自身 .config 的 idleTimeoutMs；C-3 --replay-user-messages 区分轮次来源，自发轮次终止带 selfInitiated 且不写 turn_finished、不唤醒 wait/run
+- 引擎通用化：门禁只来自 plan.json、英文提交模板、CLI 按 TRELLIS_CLI/TRELLIS_BIN/trellis/tl 解析、预算 = min(设置, channel 预算)、.trellis 入库/不入库两种模式、运行时状态在 .trellis/.runtime/orchestrator/、Python 3.9 兼容
+- orchestrated 工作流：选中信号为 orch.py 的模板 hash；用户改过的文件保留并列出；活跃编排时拒绝切走（--force 越过）；update 保持 settings.json 字节一致；默认预算 6 → 16
+- spec：orchestration-contract.md（新）、workflow-state-contract.md 登记 orchestrating writer、commands-workflow/update、bundled trellis-channel/trellis-meta 参考
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d23e35da` | fix(channel): attribute terminals to the turn that produced them |
+| `47d02022` | feat(orchestrator): ship a generic Conductor/Worker orchestration engine |
+| `ebdaa365` | feat(workflow): add the opt-in `orchestrated` bundled workflow |
+| `28abf08e` | docs(spec): document the orchestration contract and the orchestrated workflow |
+
+### Testing
+
+- [OK] [OK] typecheck / lint 干净；core 405 通过；cli 2064/2067（session_auto_commit 在 main 同样超时；issue-399.1 单跑通过）；引擎 unittest 481 通过
+- [OK] [OK] AC8 冒烟：.trellis 入库玩具仓库 + 真实 star worker，2 子任务全流水线到 finish，记录在 research/smoke-tracked-mode.md
+- [OK] [WARN] lint:py 有 4 个早已存在的 spec_lint.py 错误（F-3，用户决定不在本任务修）
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 决定 feat/orchestrated-workflow 是否合入 main / push
+- 跟进 F-1（interrupt 后迟到终止事件的归属）与 F-3（spec_lint.py basedpyright 错误）
+- 可选：删除 /tmp/orch-smoke 玩具仓库
