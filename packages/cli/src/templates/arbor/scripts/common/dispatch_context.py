@@ -3,8 +3,8 @@
 """
 Arbor dispatch context assembler.
 
-Single source of truth for the prompt a dispatched implement / check /
-research role receives. Both the PreToolUse hook on codeg
+Single source of truth for the prompt a dispatched Arbor role (explore,
+architect, implement, review, verify, fix, simplify) receives. Both the PreToolUse hook on codeg
 ``delegate_to_agent`` (``inject-delegation-context.py``) and the terminal
 fallback build the final task text through ``build_dispatch_prompt`` so the
 two paths cannot drift.
@@ -12,14 +12,22 @@ two paths cannot drift.
 Header protocol (written by the main agent at the top of the task text):
 
     Active task: /abs/repo/.arbor/tasks/10-24-foo
-    Role: implement            # implement | check | check [finish] | research
+    Role: review               # one of ROLES
+    Mode: candidates           # review only: self-check | candidates | sweep
+    Diff: /abs/repo/.arbor/.runtime/dispatch/diffs/s0.diff   # optional
     Target: star               # optional; recorded only
     Workspace: /abs/repo-wt/foo-a   # optional; parallel variant
 
 Context sources per role:
+- explore: spec directory overview; with a task, prd.md + research file list
+- architect: implement.jsonl entries -> task artifacts -> research/*.md
 - implement: implement.jsonl entries -> prd.md -> design.md -> implement.md
-- check / check [finish]: check.jsonl entries -> the same task artifacts
-- research: spec directory overview (task directory optional)
+- review / verify / fix / simplify: check.jsonl entries -> the same task
+  artifacts -> the ``Diff:`` file
+
+The role's method, limits and report format live in its codeg assistant
+instructions (``.arbor/agents/<role>.md``); the dispatch prompt only carries
+context, the review mode and the brief.
 
 Byte limits come from ``config.get_context_injection_limits()``.
 """
@@ -39,17 +47,41 @@ from .config import get_context_injection_limits, get_dispatch_config
 from .paths import DIR_SPEC, DIR_WORKFLOW, get_tasks_dir, resolve_task_ref
 
 
-ROLES = ("implement", "check", "research")
-ROLES_REQUIRE_TASK = ("implement", "check")
-HEADER_KEYS = ("active task", "role", "target", "workspace")
+ROLES = ("explore", "architect", "implement", "review", "verify", "fix", "simplify")
+ROLES_REQUIRE_TASK = tuple(role for role in ROLES if role != "explore")
+# Which task manifest feeds each task-bound role.
+ROLE_MANIFEST = {
+    "architect": "implement",
+    "implement": "implement",
+    "review": "check",
+    "verify": "check",
+    "fix": "check",
+    "simplify": "check",
+}
+REVIEW_MODES = ("self-check", "candidates", "sweep")
+DEFAULT_REVIEW_MODE = "self-check"
+REVIEW_MODE_NOTES = {
+    "self-check": (
+        "dedup, then re-check every candidate against the code and keep only "
+        "the ones you can defend; your list goes straight to the fix role."
+    ),
+    "candidates": (
+        "pass every candidate with a nameable failure scenario through; do not "
+        "filter on doubt. An independent verify role filters afterwards."
+    ),
+    "sweep": (
+        "the brief carries an already-verified list; report only defects that "
+        "are not on it (up to 8), or an empty list."
+    ),
+}
+HEADER_KEYS = ("active task", "role", "mode", "diff", "target", "workspace")
 MARKER = "<!-- arbor-hook-injected -->"
-FINISH_TAG = "[finish]"
 
 # Written by codeg setup; maps codeg assistant ids to Arbor roles.
 CODEG_ASSISTANTS_FILE = ".runtime/codeg-assistants.json"
 
 _HEADER_RE = re.compile(
-    r"^\s*(active task|role|target|workspace)\s*:\s*(.*?)\s*$",
+    r"^\s*(active task|role|mode|diff|target|workspace)\s*:\s*(.*?)\s*$",
     re.IGNORECASE,
 )
 
@@ -65,7 +97,8 @@ class DispatchHeader:
 
     task_dir: str | None
     role: str | None
-    finish: bool
+    mode: str | None
+    diff: str | None
     target: str | None
     workspace: str | None
     body: str
@@ -97,8 +130,7 @@ def parse_dispatch_header(text: str) -> DispatchHeader:
 
     Scans leading non-empty lines matching ``Key: value`` (keys in
     HEADER_KEYS, case-insensitive) and stops at the first other line.
-    ``Role: check [finish]`` yields role=check, finish=True; ``[finish]``
-    anywhere in the body also sets finish (consumed only for role=check).
+    Role and mode are lower-cased; the first word of ``Role:`` is the role.
     """
     values: dict[str, str] = {}
     lines = text.splitlines()
@@ -116,20 +148,14 @@ def parse_dispatch_header(text: str) -> DispatchHeader:
 
     body = "\n".join(lines[index:]).strip() if values else text.strip()
 
-    role: str | None = None
-    finish = FINISH_TAG in body.lower()
-    raw_role = values.get("role", "").lower()
-    if FINISH_TAG in raw_role:
-        finish = True
-        raw_role = raw_role.replace(FINISH_TAG, " ")
-    tokens = raw_role.split()
-    if tokens:
-        role = tokens[0]
+    tokens = values.get("role", "").lower().split()
+    mode = values.get("mode", "").strip().lower()
 
     return DispatchHeader(
         task_dir=values.get("active task") or None,
-        role=role,
-        finish=finish,
+        role=tokens[0] if tokens else None,
+        mode=mode or None,
+        diff=values.get("diff") or None,
         target=values.get("target") or None,
         workspace=values.get("workspace") or None,
         body=body,
@@ -648,39 +674,21 @@ def get_implement_context(repo_root: str, task_dir: str) -> str:
     )
 
 
-def get_check_context(repo_root: str, task_dir: str) -> str:
+def get_explore_context(
+    repo_root: str,
+    task_dir: str | None,
+    limits: dict[str, int] | None = None,
+    budget: _Budget | None = None,
+) -> str:
     """
-    Context for the check role: check.jsonl + task artifacts.
+    Context for the explore role: the spec directory overview, plus, with a
+    task, its prd.md and the names of research files already written.
     """
-    limits = _get_limits(repo_root)
-    return _task_context(
-        str(repo_root), task_dir, "check", limits, _Budget(limits["max_total_bytes"])
-    )
-
-
-def get_finish_context(repo_root: str, task_dir: str) -> str:
-    """
-    Context for the finish pass: reuses check.jsonl + prd.md
-    (Finish is a final check, same context source.)
-    """
-    return get_check_context(repo_root, task_dir)
-
-
-def get_research_context(repo_root: str, task_dir: str | None) -> str:
-    """
-    Context for the research role — project structure overview for spec directories.
-
-    `task_dir` kept for signature parity with get_implement_context / get_check_context
-    so the dispatcher can call them uniformly.
-    """
-    _ = task_dir
     context_parts = []
 
-    # 1. Project structure overview (dynamically discover spec directories)
     spec_path = f"{DIR_WORKFLOW}/{DIR_SPEC}"
     spec_root = Path(repo_root) / DIR_WORKFLOW / DIR_SPEC
 
-    # Build spec tree dynamically
     tree_lines = [f"{spec_path}/"]
     if spec_root.is_dir():
         pkg_dirs = sorted(d for d in spec_root.iterdir() if d.is_dir())
@@ -693,7 +701,7 @@ def get_research_context(repo_root: str, task_dir: str | None) -> str:
 
     spec_tree = "\n".join(tree_lines)
 
-    project_structure = f"""## Project Spec Directory Structure
+    context_parts.append(f"""## Project Spec Directory Structure
 
 ```
 {spec_tree}
@@ -704,12 +712,56 @@ To get structured package info, run: `python3 ./{DIR_WORKFLOW}/scripts/get_conte
 ## Search Tips
 
 - Spec files: `{spec_path}/**/*.md`
-- Code search: Use Glob and Grep tools
-- Tech solutions: Use mcp__exa__web_search_exa or mcp__exa__get_code_context_exa"""
+- Code: `rg --files | rg <pattern>`, `rg -n <regex>`
+- External sources: fetch the real repository or docs into `/tmp/research-<topic>/`""")
 
-    context_parts.append(project_structure)
+    if task_dir:
+        if limits is None:
+            limits = _get_limits(repo_root)
+        if budget is None:
+            budget = _Budget(limits["max_total_bytes"])
+        block = _materialize_artifact(
+            repo_root,
+            f"{task_dir}/prd.md",
+            f"{task_dir}/prd.md (Requirements)",
+            "Requirements document",
+            limits,
+            budget,
+        )
+        if block:
+            context_parts.append(block)
+        research_dir = Path(repo_root) / task_dir / "research"
+        names = (
+            sorted(f.name for f in research_dir.iterdir() if f.suffix == ".md")
+            if research_dir.is_dir()
+            else []
+        )
+        listing = "\n".join(f"- {task_dir}/research/{n}" for n in names) or "- none yet"
+        context_parts.append(f"## Existing research files\n\n{listing}")
 
     return "\n\n".join(context_parts)
+
+
+def _diff_block(
+    repo_root: str, diff_path: str, limits: dict[str, int], budget: _Budget
+) -> str:
+    """Inline the file named by the ``Diff:`` header (per-artifact cap)."""
+    data = _read_file_bytes(repo_root, diff_path)
+    if data is None:
+        return (
+            f"[Arbor: diff not inlined — {diff_path} is missing or outside the "
+            "repository; read it yourself or compute the scope as your "
+            "instructions describe]"
+        )
+    size = len(data)
+    cap = limits["max_artifact_bytes"]
+    truncated_bytes = truncate_utf8(data, cap)
+    content = truncated_bytes.decode("utf-8", errors="replace")
+    if len(truncated_bytes) < size:
+        content += _truncate_notice(diff_path, cap)
+    return _budgeted_block(
+        budget, f"Diff: {diff_path}", diff_path, f"```diff\n{content}\n```", "Review scope", size
+    )
 
 
 # =============================================================================
@@ -717,177 +769,31 @@ To get structured package info, run: `python3 ./{DIR_WORKFLOW}/scripts/get_conte
 # =============================================================================
 
 
-def build_implement_prompt(original_prompt: str, context: str) -> str:
-    """Build complete prompt for the implement role"""
-    return f"""{MARKER}
-# Implement Agent Task
+def build_role_prompt(
+    role: str, original_prompt: str, context: str, mode: str | None = None
+) -> str:
+    """Build the dispatch prompt for one role.
 
-You are the Implement Agent in an Arbor dispatch.
+    Deliberately thin: the role's method, limits and report format are its
+    codeg assistant instructions, so they are not repeated here.
+    """
+    mode_section = (
+        f"\n\n## Mode\n\n`{mode}`: {REVIEW_MODE_NOTES[mode]}" if mode else ""
+    )
+    return f"""{MARKER}
+# Arbor `{role}` dispatch
+
+You are the dispatched `{role}` role. Your assistant instructions define your method, limits and report format; this message carries the prepared context and the brief.
 
 ## Your Context
 
-All the information you need has been prepared for you:
-
-{context}
+{context}{mode_section}
 
 ---
 
 ## Your Task
 
-{original_prompt}
-
----
-
-## Workflow
-
-1. **Understand specs** - All dev specs are injected above, understand them
-2. **Understand task artifacts** - Read requirements, technical design if present, and execution plan if present
-3. **Implement feature** - Implement following specs and task artifacts
-4. **Self-check** - Ensure code quality against check specs
-
-## Important Constraints
-
-- Do NOT execute git commit, only code modifications
-- Follow all dev specs injected above
-- Report list of modified/created files when done"""
-
-
-def build_check_prompt(original_prompt: str, context: str) -> str:
-    """Build complete prompt for the check role"""
-    return f"""{MARKER}
-# Check Agent Task
-
-You are the Check Agent in an Arbor dispatch (code and cross-layer checker).
-
-## Your Context
-
-All check specs and dev specs you need:
-
-{context}
-
----
-
-## Your Task
-
-{original_prompt}
-
----
-
-## Workflow
-
-1. **Get changes** - Run `git diff --name-only` and `git diff` to get code changes
-2. **Check against specs** - Check item by item against specs above
-3. **Self-fix** - Fix issues directly, don't just report
-4. **Run verification** - Run project's lint and typecheck commands
-
-## Important Constraints
-
-- Fix issues yourself, don't just report
-- Must execute complete checklist in check specs
-- Pay special attention to impact radius analysis (L1-L5)"""
-
-
-def build_finish_prompt(original_prompt: str, context: str) -> str:
-    """Build complete prompt for the finish pass (final check before PR)"""
-    return f"""{MARKER}
-# Finish Agent Task
-
-You are performing the final check before creating a PR.
-
-## Your Context
-
-Finish checklist and requirements:
-
-{context}
-
----
-
-## Your Task
-
-{original_prompt}
-
----
-
-## Workflow
-
-1. **Review changes** - Run `git diff --name-only` to see all changed files
-2. **Verify task artifacts** - Check requirements in prd.md and, when present, design.md / implement.md
-3. **Spec sync** - Analyze whether changes introduce new patterns, contracts, or conventions
-   - If new pattern/convention found: read target spec file → update it → update index.md if needed
-   - If infra/cross-layer change: follow the 7-section mandatory template from update-spec.md
-   - If pure code fix with no new patterns: skip this step
-4. **Run final checks** - Execute lint and typecheck
-5. **Confirm ready** - Ensure code is ready for PR
-
-## Important Constraints
-
-- You MAY update spec files when gaps are detected (use update-spec.md as guide)
-- MUST read the target spec file BEFORE editing (avoid duplicating existing content)
-- Do NOT update specs for trivial changes (typos, formatting, obvious fixes)
-- If critical CODE issues found, report them clearly (fix specs, not code)
-- Verify all acceptance criteria in prd.md are met
-- Verify design.md and implement.md constraints when those files are present"""
-
-
-def build_research_prompt(original_prompt: str, context: str) -> str:
-    """Build complete prompt for the research role"""
-    return f"""{MARKER}
-# Research Agent Task
-
-You are the Research Agent in an Arbor dispatch (search researcher).
-
-## Core Principle
-
-**You do one thing: find and explain information.**
-
-You are a documenter, not a reviewer.
-
-## Project Info
-
-{context}
-
----
-
-## Your Task
-
-{original_prompt}
-
----
-
-## Workflow
-
-1. **Understand query** - Determine search type (internal/external) and scope
-2. **Plan search** - List search steps for complex queries
-3. **Execute search** - Execute multiple independent searches in parallel
-4. **Organize results** - Output structured report
-
-## Search Tools
-
-| Tool | Purpose |
-|------|---------|
-| Glob | Search by filename pattern |
-| Grep | Search by content |
-| Read | Read file content |
-| mcp__exa__web_search_exa | External web search |
-| mcp__exa__get_code_context_exa | External code/doc search |
-
-## Strict Boundaries
-
-**Only allowed**: Describe what exists, where it is, how it works
-
-**Forbidden** (unless explicitly asked):
-- Suggest improvements
-- Criticize implementation
-- Recommend refactoring
-- Modify any files
-
-## Report Format
-
-Provide structured search results including:
-- List of files found (with paths)
-- Code pattern analysis (if applicable)
-- Related spec documents
-- External references (if any)"""
+{original_prompt}"""
 
 
 # =============================================================================
@@ -907,11 +813,15 @@ def _repo_relative(repo_root: Path, task_dir: Path) -> str:
         return str(task_dir)
 
 
-def _header_block(req: DispatchRequest, finish: bool) -> str:
+def _header_block(req: DispatchRequest, mode: str | None) -> str:
     lines = []
     if req.task_dir is not None:
         lines.append(f"Active task: {req.task_dir}")
-    lines.append(f"Role: {req.role} {FINISH_TAG}" if finish else f"Role: {req.role}")
+    lines.append(f"Role: {req.role}")
+    if mode:
+        lines.append(f"Mode: {mode}")
+    if req.header.diff:
+        lines.append(f"Diff: {req.header.diff}")
     if req.header.target:
         lines.append(f"Target: {req.header.target}")
     if req.header.workspace:
@@ -923,37 +833,49 @@ def build_dispatch_prompt(req: DispatchRequest) -> DispatchPrompt:
     """Assemble the final task text for one dispatched role.
 
     text = normalised header block (``Active task:`` always the absolute task
-    directory; Target / Workspace kept as given) + blank line + role template
-    (starts with MARKER, carries the injected context and ``## Your Task`` =
-    header body).
+    directory; ``Mode:`` resolved for review; Diff / Target / Workspace kept
+    as given) + blank line + role template (starts with MARKER, carries the
+    injected context and ``## Your Task`` = header body).
     """
     if req.role not in ROLES:
         raise ValueError(f"unknown dispatch role: {req.role!r}")
     if req.role in ROLES_REQUIRE_TASK and req.task_dir is None:
         raise ValueError(f"role {req.role!r} requires a task directory")
+    mode = req.header.mode
+    if req.role == "review":
+        mode = mode or DEFAULT_REVIEW_MODE
+        if mode not in REVIEW_MODES:
+            raise ValueError(
+                f"unknown review mode: {mode!r} (expected {' | '.join(REVIEW_MODES)})"
+            )
+    elif mode:
+        raise ValueError(f"Mode: only applies to role 'review', not {req.role!r}")
+    if req.header.diff and req.role not in ("review", "verify", "fix", "simplify"):
+        raise ValueError(f"Diff: does not apply to role {req.role!r}")
 
     repo_root = Path(req.repo_root)
     root_str = str(repo_root)
     task_rel = _repo_relative(repo_root, req.task_dir) if req.task_dir else None
-    finish = req.role == "check" and req.header.finish
 
     limits = _get_limits(repo_root)
     budget = _Budget(limits["max_total_bytes"])
     budget.warnings = []
 
-    if req.role == "research":
-        context = get_research_context(root_str, task_rel)
-        body = build_research_prompt(req.header.body, context)
+    if req.role == "explore":
+        context = get_explore_context(root_str, task_rel, limits, budget)
     else:
         assert task_rel is not None  # guarded above
-        manifest = "implement" if req.role == "implement" else "check"
-        context = _task_context(root_str, task_rel, manifest, limits, budget)
-        if req.role == "implement":
-            body = build_implement_prompt(req.header.body, context)
-        elif finish:
-            body = build_finish_prompt(req.header.body, context)
-        else:
-            body = build_check_prompt(req.header.body, context)
+        context = _task_context(root_str, task_rel, ROLE_MANIFEST[req.role], limits, budget)
+        extra: list[str] = []
+        if req.role == "architect":
+            extra = _materialize_directory(
+                root_str, f"{task_rel}/research", "Task research", limits, budget
+            )
+        if req.header.diff:
+            extra.append(_diff_block(root_str, req.header.diff, limits, budget))
+        if extra:
+            context = "\n\n".join([context, *extra])
+    body = build_role_prompt(req.role, req.header.body, context, mode)
 
     warnings = list(budget.warnings)
     if budget.degraded:
@@ -963,7 +885,7 @@ def build_dispatch_prompt(req: DispatchRequest) -> DispatchPrompt:
         )
 
     return DispatchPrompt(
-        text=f"{_header_block(req, finish)}\n\n{body}",
+        text=f"{_header_block(req, mode)}\n\n{body}",
         context_bytes=len(context.encode("utf-8")),
         degraded=tuple(budget.degraded),
         warnings=tuple(warnings),
