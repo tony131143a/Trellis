@@ -1014,6 +1014,9 @@ def cmd_snapshot(args: argparse.Namespace) -> int:
 
 
 def cmd_diff(args: argparse.Namespace) -> int:
+    name = args.name or f"{datetime.now():%Y%m%d-%H%M%S}"
+    if not re.fullmatch(r"[A-Za-z0-9._-]+", name):
+        raise DispatchError(f"--name must match [A-Za-z0-9._-]+: {name!r}", 2)
     root = get_repo_root()
     work = _work_dir(args)
     end = args.b or _snapshot_tree(work)
@@ -1021,9 +1024,6 @@ def cmd_diff(args: argparse.Namespace) -> int:
     text = _git(work, "diff", "--no-ext-diff", "--no-color", args.a, end, *pathspec)
     numstat = _git(work, "diff", "--numstat", args.a, end, *pathspec)
 
-    name = args.name or f"{datetime.now():%Y%m%d-%H%M%S}"
-    if not re.fullmatch(r"[A-Za-z0-9._-]+", name):
-        raise DispatchError(f"--name must match [A-Za-z0-9._-]+: {name!r}", 2)
     out = _arbor_dir(root) / DIFFS_DIR / f"{name}.diff"
     out.parent.mkdir(parents=True, exist_ok=True)
     if not write_text_atomic(out, text):
