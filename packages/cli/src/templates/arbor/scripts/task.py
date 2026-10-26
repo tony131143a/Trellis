@@ -210,7 +210,7 @@ def cmd_start(args: argparse.Namespace) -> int:
                 f"{'has' if len(empty_manifests) == 1 else 'have'} no curated entries",
                 Colors.RED,
             ))
-            print("Sub-agents (implement/check) would run with zero spec context.")
+            print("Dispatched roles would run with zero spec context.")
             print(f"  Curate:  python3 .arbor/scripts/task.py add-context {task_input} implement <path> \"<why>\"")
             print(f"  Verify:  python3 .arbor/scripts/task.py validate {task_input}")
             print("  Intentionally empty? Re-run start with --allow-empty-context")

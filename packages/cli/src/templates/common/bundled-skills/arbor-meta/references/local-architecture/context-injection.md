@@ -33,12 +33,12 @@ If the user wants to change "what the AI should do next in a given state," edit 
 
 ## dispatched-role context
 
-Dispatched implement, check, and research roles run in separate codeg sessions and need task context. Arbor has two loading modes:
+Dispatched roles (explore, architect, implement, review, verify, fix, simplify) run in separate codeg sessions and need task context. Arbor has two loading modes:
 
-1. **hook push**: the PreToolUse hook on `delegate_to_agent` inlines jsonl-referenced files plus `prd.md`, `design.md` if present, and `implement.md` if present into the `task` text when it starts with the `Active task:` / `Role:` header. The same text is built by `dispatch.py` for the terminal fallback. See `dispatch.md`.
+1. **hook push**: the PreToolUse hook on `delegate_to_agent` inlines jsonl-referenced files (`implement.jsonl` for architect and implement, `check.jsonl` for review, verify, fix, and simplify) plus `prd.md`, `design.md` if present, `implement.md` if present, and the `Diff:` file if given into the `task` text when it starts with the `Active task:` / `Role:` header. The same text is built by `dispatch.py` for the terminal fallback. See `dispatch.md`.
 2. **role pull**: the instructions in `.arbor/agents/<role>.md` tell the role to read the active task, jsonl context, and task artifacts itself when no `<!-- arbor-hook-injected -->` marker is present.
 
-In both modes, JSONL files in the task directory are the manifest for spec/research context. Task artifacts are read separately in this order: `prd.md` -> `design.md if present` -> `implement.md if present`.
+In both modes, JSONL files in the task directory are the manifest for spec/research context. Task artifacts are read separately in this order: `prd.md` -> `design.md if present` -> `implement.md if present` -> the `Diff:` file when the header has one.
 
 ## JSONL Reading Rules
 

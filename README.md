@@ -1,6 +1,6 @@
 # Arbor
 
-Spec-driven AI engineering workflow where the implement, check and research roles run as [codeg](https://github.com/spacering-net/codeg) assistants on other models.
+Spec-driven AI engineering workflow where seven roles (explore, architect, implement, review, verify, fix, simplify) run as [codeg](https://github.com/spacering-net/codeg) assistants on other models.
 
 Arbor keeps specs, tasks and journals in your repo (`.arbor/`). The main agent (Claude Code or StarFactory) plans, curates context, dispatches work to codeg assistants backed by `star` (a Claude Code fork) or `pi` + DeepSeek, verifies the result, and commits.
 
@@ -8,7 +8,7 @@ Arbor keeps specs, tasks and journals in your repo (`.arbor/`). The main agent (
 
 ## Why
 
-- Trellis gives the workflow: Plan, Execute, Finish, with specs auto-injected, task PRDs, and journals that survive across sessions.
+- Trellis gives the workflow: Plan, Execute, Polish, Finish, with specs auto-injected, task PRDs, and journals that survive across sessions.
 - codeg gives multi-model dispatch: the model that plans is not the model that writes or reviews the code.
 - Arbor joins the two. The built-in `Agent`/`Task` tool is blocked for the arbor roles, and every dispatch carries a header that makes a hook inline the right task context.
 
@@ -29,7 +29,7 @@ Arbor keeps specs, tasks and journals in your repo (`.arbor/`). The main agent (
         +-- codeg MCP present --> delegate_to_agent / get_delegation_status
         +-- plain terminal -----> dispatch.py run  -> codeg-cli run
         v
- codeg assistants   arbor-<role>-<target>   (role: implement | check | research)
+ codeg assistants   arbor-<role>-<target>   (role: explore | architect | implement | review | verify | fix | simplify)
         |                       |
         v                       v
    target: star            target: pi
@@ -107,7 +107,7 @@ python3 ./.arbor/scripts/dispatch.py codeg-setup            # print manual steps
 python3 ./.arbor/scripts/dispatch.py codeg-setup --install  # macOS: write the assistants into codeg's database (backed up first)
 ```
 
-- Six assistants, named `arbor-<role>-<target>`: roles `implement`, `check`, `research`; targets `star`, `pi`. `--install` is needed once per machine; afterwards the plain command only refreshes the ids.
+- Fourteen assistants, named `arbor-<role>-<target>`: roles `explore`, `architect`, `implement`, `review`, `verify`, `fix`, `simplify`; targets `star`, `pi`. `--install` is needed once per machine; afterwards the plain command only refreshes the ids. It also soft-deletes the retired `arbor-check-*` and `arbor-research-*` assistants.
 - Ids are written to `.arbor/.runtime/codeg-assistants.json`, which is gitignored, so run `codeg-setup` once in every repo and checkout.
 - `--target star` limits it to one target.
 
@@ -136,12 +136,12 @@ python3 ./.arbor/scripts/dispatch.py resolve --role implement --json
 `/arbor:workflow-pi` does the same with pi + DeepSeek. Either command:
 
 1. sets the dispatch target for this checkout (sticky until the other command runs);
-2. confirms the assistant ids for the three roles;
+2. confirms the assistant ids for the seven roles;
 3. starts or continues the workflow.
 
 You can also just describe the change; dispatch then uses `dispatch.default_target` (`star`).
 
-### The three phases
+### The phases
 
 The main agent drives these; see `.arbor/workflow.md` for every step.
 
@@ -149,19 +149,26 @@ The main agent drives these; see `.arbor/workflow.md` for every step.
 
 1. The agent classifies the request and asks whether to create a task. Approval to create a task is not approval to implement.
 2. It creates `.arbor/tasks/MM-DD-<slug>/`, clarifies requirements with `arbor-brainstorm`, and writes `prd.md`. Complex tasks also get `design.md` and `implement.md`.
-3. It may dispatch `research`; findings go to `research/`.
-4. It curates `implement.jsonl` and `check.jsonl` with the spec and research files the assistants need.
+3. Explore & design (1.2): it dispatches 2-3 `explore` roles in parallel (findings go to `research/`), reads the essential files they return, and puts the open questions to you as one list. For complex tasks it then dispatches 3 `architect` roles (minimal-change, clean-architecture, pragmatic), presents the trade-offs with a recommendation, and writes `design.md` and `implement.md` after you pick.
+4. It curates `implement.jsonl` (feeds `architect` and `implement`) and `check.jsonl` (feeds `review`, `verify`, `fix`, `simplify`) with the spec and research files the assistants need.
 5. Complex tasks are put to you for review. After your approval it runs `task.py start` (status `in_progress`).
 
 **Phase 2: Execute**
 
-1. Dispatch `implement`. The hook inlines the jsonl-listed files, `prd.md`, `design.md` and `implement.md`.
-2. Dispatch `check`. The last pass is full scope, `Role: check [finish]`.
-3. On failure the agent tightens the brief and re-dispatches, optionally with another `Target:`. It never does the role's work itself.
+1. Take a snapshot (`dispatch.py snapshot`), then dispatch `implement`. The hook inlines the jsonl-listed files, `prd.md`, `design.md` and `implement.md`.
+2. Review loop on the diff against the snapshot: `review`, then `verify` to filter candidates, then `fix`, then a re-review of the fix delta only. At most 2 rounds, then the agent stops and reports to you. A task without `design.md` is lightweight (one `review` in `Mode: self-check`); with `design.md` it is complex (three parallel `review` runs in `Mode: candidates` once the diff passes 300 changed lines).
+3. On a failed dispatch the agent tightens the brief and re-dispatches, optionally with another `Target:`. It never does the role's work itself.
+
+**Phase 2F: Polish**
+
+1. Complex tasks: `simplify` the whole diff and review its delta for unchanged behavior.
+2. Final review: five `review` runs in `Mode: candidates`, dedup, `verify`, one `review` in `Mode: sweep`, `verify` again.
+3. Only if findings survive, you decide: fix now, fix later, or leave. Chosen findings go to `fix`.
+4. Every task, lightweight included: the agent runs each affected package's Quality Check commands itself.
 
 **Phase 3: Finish**
 
-1. `arbor-update-spec` writes what was learned back into the spec (required).
+1. `arbor-update-spec` writes what was learned back into the spec (required). Only the main agent edits `.arbor/spec/`; no assistant does.
 2. The agent commits in batches; no amend, no push.
 3. You run `/arbor:finish-work`: dirty-path check, archive, journal.
 
@@ -175,8 +182,8 @@ In a new session, `/arbor:continue` finds the active task, works out the current
 
 | Command | Purpose |
 | --- | --- |
-| `/arbor:workflow-star [request]` | All three roles on star, then start or continue the task |
-| `/arbor:workflow-pi [request]` | All three roles on pi + DeepSeek, then start or continue the task |
+| `/arbor:workflow-star [request]` | All seven roles on star, then start or continue the task |
+| `/arbor:workflow-pi [request]` | All seven roles on pi + DeepSeek, then start or continue the task |
 | `/arbor:continue` | Resume the current task at the right phase |
 | `/arbor:finish-work` | Wrap up: dirty-path check, archive, journal |
 
@@ -188,7 +195,7 @@ The main agent loads these skills per phase; you can also ask for one by name.
 | --- | --- |
 | `arbor-brainstorm` | Clarify requirements, write the PRD |
 | `arbor-before-dev` | Read the relevant specs before coding |
-| `arbor-check` | Quality check |
+| `arbor-check` | Quality check (main-session skill; separate from the dispatched `review` role) |
 | `arbor-break-loop` | Root-cause review after repeated failed fixes |
 | `arbor-update-spec` | Write lessons back into the spec |
 | `arbor-spec-bootstrap` | Write a project spec from scratch |
@@ -202,14 +209,25 @@ The `task` text of every dispatch starts with:
 
 ```
 Active task: <absolute path of the task dir in the main checkout>
-Role: implement | check | check [finish] | research
+Role: explore | architect | implement | review | verify | fix | simplify
+Mode: self-check | candidates | sweep   (optional, review only; default self-check)
+Diff: <absolute path of a .diff file>   (optional, review / verify / fix / simplify)
 Target: star | pi              (optional, this call only)
 Workspace: <absolute worktree> (optional, parallel variant)
 
 <blank line, then a self-contained brief>
 ```
 
-The hook inlines the task context only when it sees this header; without it the assistant has to find the context itself.
+The hook inlines the role's manifest (`implement.jsonl` for `architect` and `implement`, `check.jsonl` for `review`, `verify`, `fix`, `simplify`), `prd.md`, `design.md`, `implement.md` and the `Diff:` file only when it sees this header; without it the assistant has to find the context itself. `explore` is the only role that may run without `Active task:`.
+
+Sub-agents never commit, so the review loop slices the uncommitted tree with snapshots:
+
+```bash
+python3 ./.arbor/scripts/dispatch.py snapshot                    # prints a tree id
+python3 ./.arbor/scripts/dispatch.py diff <A> [<B>] --name r1    # writes .arbor/.runtime/dispatch/diffs/r1.diff, prints its path
+```
+
+`B` defaults to the working tree now; add `-C <worktree>` inside a worktree.
 
 ### Target selection
 
@@ -227,8 +245,8 @@ Usually the main agent runs these; you can too.
 ```bash
 echo "implement the rate limiter from the PRD" | python3 ./.arbor/scripts/dispatch.py run --role implement --wait
 
-python3 ./.arbor/scripts/dispatch.py run --role check --finish -p "full-scope check"   # final check
-python3 ./.arbor/scripts/dispatch.py run --role research --target pi -p "..."          # pi for this call only
+python3 ./.arbor/scripts/dispatch.py run --role review --mode candidates --diff <file> -p "..."   # review a diff
+python3 ./.arbor/scripts/dispatch.py run --role explore --target pi -p "..."           # pi for this call only
 python3 ./.arbor/scripts/dispatch.py run --role implement --detach -p "..."            # background, prints a run id
 python3 ./.arbor/scripts/dispatch.py wait <run-id>...                                  # collect detached runs
 
@@ -253,10 +271,10 @@ After `task.py start` the main agent follows Phase 2P in `.arbor/workflow.md`:
 
 1. One git worktree per child, on branch `wip/<parent>/<child>`.
 2. Up to `dispatch.max_parallel` (default 3) implement roles at once.
-3. A check in each worktree; the main agent commits each green child.
+3. The review loop in each worktree (diffs via `dispatch.py diff <task-branch> -C <worktree>`); the main agent commits each green child.
 4. Serial `--no-ff` merges into the task branch.
-5. One `check [finish]` on the merged tree.
-6. Worktree cleanup.
+5. Worktree cleanup.
+6. Phase 2F (polish) on the merged tree for the parent task.
 7. `/arbor:finish-work` archives the parent and its children.
 
 ## Task commands
@@ -293,8 +311,8 @@ dispatch:
   permissions: allow          # passed to codeg-cli
   timeout: 90m
   targets:
-    star: { agent_type: "custom:star", implement: arbor-implement-star, check: arbor-check-star, research: arbor-research-star }
-    pi:   { agent_type: pi, model: deepseek/DeepSeek-V4.1-Flash, thought_level: max, implement: arbor-implement-pi, ... }
+    star: { agent_type: "custom:star", explore: arbor-explore-star, architect: arbor-architect-star, implement: arbor-implement-star, review: arbor-review-star, verify: arbor-verify-star, fix: arbor-fix-star, simplify: arbor-simplify-star }
+    pi:   { agent_type: pi, model: deepseek/DeepSeek-V4.1-Flash, thought_level: max, explore: arbor-explore-pi, ... }
 ```
 
 Re-run `codeg-setup` after changing assistant names or models.
@@ -313,7 +331,7 @@ arbor uninstall             # remove .arbor/ and managed files; only the managed
 
 ## Rules and known limitations
 
-- Assistants only do their role: no commits, no push, no further dispatch, no `task.py start/current/finish`. Only the main agent commits.
+- Assistants only do their role: no commits, no push, no further dispatch, no `task.py start/current/finish`, no writes under `.arbor/` (`explore` and `architect` write only `<task>/research/*.md`). Only the main agent commits and updates the spec.
 - Not yet verified in live codeg sessions: the `delegate_to_agent` hook firing inside codeg, star through `star acp`, and the parallel flow. On first real use, try a small task and check that the dispatched prompt contains `<!-- arbor-hook-injected -->`.
 - Assistant ids are per repo and checkout: run `codeg-setup` in each one.
 

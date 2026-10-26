@@ -41,7 +41,7 @@ If the formal Phase 1 flow also needs to change, synchronize the Phase 1 section
 
 ## Example: Do Not Dispatch A Role
 
-If the user wants the main agent to do check work itself, change the Phase 2 routing for that role in `.arbor/workflow.md` rather than deleting `.arbor/agents/check.md`. Remember the guard hook still denies the built-in Agent/Task tool for Arbor roles.
+If the user wants the main agent to do a role's work itself (for example review), change the routing for that role in `.arbor/workflow.md` (Dispatch, Phase 2, Phase 2F) rather than deleting `.arbor/agents/review.md`. Remember the guard hook still denies the built-in Agent/Task tool for Arbor roles.
 
 ## `/arbor:continue` Route Table
 
@@ -51,11 +51,14 @@ If the user wants the main agent to do check work itself, change the Phase 2 rou
 | --- | --- | --- |
 | `planning` | `prd.md` missing | Phase 1.1 (load `arbor-brainstorm`) |
 | `planning` | lightweight task with `prd.md` complete | ask for start review, then run `task.py start` |
+| `planning` | `prd.md` done, technical facts or design choices still open | Phase 1.2 (explore & design: `explore`, clarify, `architect`) |
 | `planning` | complex task missing `design.md` or `implement.md` | complete missing planning artifacts |
 | `planning` | complex task has `prd.md`, `design.md`, and `implement.md` | ask for start review, then run `task.py start` |
-| `in_progress` | no implementation in conversation history | Phase 2.1 (`arbor-implement`) |
-| `in_progress` | implementation done, no `arbor-check` run | Phase 2.2 (`arbor-check`) |
-| `in_progress` | check passed | Phase 3.3 (spec update) → 3.4 (commit) |
+| `in_progress` | implementation not started | Phase 2.1 (snapshot S0, dispatch `implement`) |
+| `in_progress` | implementation done, review loop not clean | Phase 2.2 (review → verify → fix, at most 2 rounds) |
+| `in_progress` | review loop clean, complex task, polish not done | Phase 2F (2F.1–2F.4) |
+| `in_progress` | review loop / polish done, quality checks not run | 2F.5 (run the Quality Check commands yourself) |
+| `in_progress` | quality checks passed | Phase 3.3 (spec update) → 3.4 (commit) |
 | `completed` | task is still in active tree | Phase 3.5 (run `/arbor:finish-work` to archive) |
 
 When you add a custom status (e.g. `in-review`), add a `[workflow-state:in-review]` block in `.arbor/workflow.md` for the per-turn breadcrumb AND extend this route table — usually by editing the `/arbor:continue` command file (`.claude/commands/arbor/continue.md` or `.starFactory/commands/arbor/continue.md`) to add a row that decides where to resume from. Without the route entry, `/arbor:continue` will fall through to a default branch and the user will not land on the step you intended.

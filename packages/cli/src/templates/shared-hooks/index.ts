@@ -45,7 +45,7 @@ export type SharedHookPlatform = "claude" | "star";
  *   (or equivalent) event.
  * - `inject-delegation-context.py` — PreToolUse on codeg
  *   `delegate_to_agent`: inlines Arbor task context into the delegated
- *   `task` text for the implement / check / research roles.
+ *   `task` text for the seven Arbor roles.
  * - `guard-builtin-agent.py` — PreToolUse on the built-in `Agent|Task` tool:
  *   denies Arbor role dispatches that bypass codeg.
  * - `inject-shell-session-context.py` — platforms with a hook that fires

@@ -1,14 +1,18 @@
 # Agents (Assistant Instruction Sources)
 
-Arbor has three roles: `research`, `implement`, and `check`. In Arbor they are not platform-native sub-agents and there are no `.claude/agents/` or `.starFactory/agents/` files. The main agent dispatches each role to a codeg assistant running on `star` (Claude Code fork) or `pi` (pi + DeepSeek). See `../local-architecture/dispatch.md` for the mechanism.
+Arbor has seven roles: `explore`, `architect`, `implement`, `review`, `verify`, `fix`, and `simplify`. In Arbor they are not platform-native sub-agents and there are no `.claude/agents/` or `.starFactory/agents/` files. The main agent dispatches each role to a codeg assistant running on `star` (Claude Code fork) or `pi` (pi + DeepSeek). See `../local-architecture/dispatch.md` for the mechanism.
 
 ## Instruction Sources
 
 | File | Role |
 | --- | --- |
-| `.arbor/agents/research.md` | Investigate a question and write findings into the current task's `research/`. |
+| `.arbor/agents/explore.md` | Trace code or fetch external docs for one aspect; write `research/<topic>.md` and return 5-10 essential files. |
+| `.arbor/agents/architect.md` | Produce one design blueprint from an assigned perspective into `research/design-<perspective>.md`. |
 | `.arbor/agents/implement.md` | Implement against `prd.md`, optional `design.md` / `implement.md`, `implement.jsonl`, and referenced spec/research. |
-| `.arbor/agents/check.md` | Review changes, fix discovered issues, run required checks. |
+| `.arbor/agents/review.md` | Review a `Diff:` for correctness bugs (`Mode: self-check`, `candidates`, or `sweep`); report `PASS`/`FAIL` with JSON findings; never edits code. |
+| `.arbor/agents/verify.md` | Judge each candidate finding as CONFIRMED, PLAUSIBLE, or REFUTED against the diff. |
+| `.arbor/agents/fix.md` | Apply the findings the main agent chose, report fixed or skipped per finding. |
+| `.arbor/agents/simplify.md` | Behavior-preserving cleanup of a diff (reuse, duplication, needless complexity). |
 
 These are plain markdown with no frontmatter. They are the source text for the codeg assistants: `python3 ./.arbor/scripts/dispatch.py codeg-setup` renders each target x role pair to `.arbor/.runtime/codeg-assistants/<target>-<role>.md`, which is pasted into the codeg UI or installed with `--install`.
 
@@ -16,8 +20,8 @@ These are plain markdown with no frontmatter. They are the source text for the c
 
 - Identity and recursion guard: the role never dispatches, never spawns sub-agents.
 - Session identity: no `ARBOR_CONTEXT_ID`; never run `task.py start/current/finish`.
-- Context loading: use the inlined `<!-- arbor-hook-injected -->` payload, else read the JSONL manifest, `prd.md`, `design.md`, `implement.md`.
-- Hard limits: no commits, merges, or stash; stay inside the working directory; never write under `.arbor/`.
+- Context loading: use the inlined `<!-- arbor-hook-injected -->` payload, else read the JSONL manifest (`implement.jsonl` for architect/implement, `check.jsonl` for review/verify/fix/simplify), `prd.md`, `design.md`, `implement.md`, and the `Diff:` file.
+- Hard limits: no commits, merges, or stash; stay inside the working directory; never write under `.arbor/` (`explore` and `architect` may write only `<task>/research/*.md`; no role updates `.arbor/spec/`).
 - A fixed final report format.
 
 ## Context Loading
@@ -29,8 +33,9 @@ Context normally arrives by hook push: the PreToolUse hook inlines it into the d
 | User need | Edit location |
 | --- | --- |
 | Implement role must follow extra restrictions | `.arbor/agents/implement.md`, then re-run `dispatch.py codeg-setup`. |
-| Check role must run project-specific commands | `.arbor/agents/check.md` (and `.arbor/spec/` for durable rules). |
-| Research role must output a fixed format | `.arbor/agents/research.md`. |
+| Review must apply extra project-specific angles | `.arbor/agents/review.md` (and `.arbor/spec/` for durable rules). |
+| Fix or verify must follow stricter rules | `.arbor/agents/fix.md` / `.arbor/agents/verify.md`. |
+| Explore or architect must output a fixed format | `.arbor/agents/explore.md` / `.arbor/agents/architect.md`. |
 | Role cannot read task context | `inject-delegation-context.py` hook or the context-loading section of the role file. |
 
 Editing a file under `.arbor/agents/` does not change an already-installed codeg assistant; the rendered text must be re-pasted or re-installed.

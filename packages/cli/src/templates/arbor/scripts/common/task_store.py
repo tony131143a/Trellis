@@ -539,7 +539,7 @@ def cmd_create(args: argparse.Namespace) -> int:
         )
 
     # Create empty implement.jsonl / check.jsonl. Every Arbor project
-    # dispatches implement / check through codeg, and the dispatch context
+    # dispatches its roles through codeg, and the dispatch context
     # assembler reads these manifests. They stay empty until the agent curates
     # real entries during planning — a placeholder row would read as
     # unresolved scaffolding to `task.py validate` and to PR preflight, so the
@@ -647,7 +647,8 @@ def cmd_create(args: argparse.Namespace) -> int:
     print("  - Complex task: add design.md and implement.md before task.py start", file=sys.stderr)
     print(
         "  - Curate implement.jsonl / check.jsonl (created empty) as spec/research "
-        "manifests before task.py start, then dispatch implement / check via codeg:",
+        "manifests before task.py start (implement.jsonl feeds architect / implement, "
+        "check.jsonl feeds review / verify / fix / simplify):",
         file=sys.stderr,
     )
     print(

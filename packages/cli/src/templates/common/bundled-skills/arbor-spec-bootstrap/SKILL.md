@@ -28,7 +28,7 @@ Use this skill to create or refresh `.arbor/spec/` guidelines from the real code
 
 - Treat templates as starting points, not contracts. Delete, rename, split, or add spec files when the repository calls for it.
 - Prefer source-backed rules over generic advice. Every important recommendation should point at a real file or repeated local pattern.
-- Keep execution single-owner by default. Where helpers are used, implement/check/research run as codeg assistants dispatched by the main agent (see the `arbor-meta` skill, `dispatch.md`); they are optional.
+- Keep execution single-owner by default. Where helpers are used, dispatched roles run as codeg assistants (`explore` for read-only investigation, `review` / `verify` for verification) dispatched by the main agent; they never write `.arbor/spec/`, the main agent does (see the `arbor-meta` skill, `dispatch.md`); they are optional.
 - Do not leave placeholder text, empty headings, or copied boilerplate in `.arbor/spec/`.
 
 ## Done Criteria

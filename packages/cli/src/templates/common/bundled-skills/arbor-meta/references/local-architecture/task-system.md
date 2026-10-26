@@ -24,9 +24,9 @@ The Arbor task system is stored entirely under `.arbor/tasks/` in the user proje
 | `prd.md` | Requirements, constraints, and acceptance criteria. Lightweight tasks may be PRD-only. |
 | `design.md` | Technical design for complex tasks: boundaries, contracts, data flow, compatibility, tradeoffs. |
 | `implement.md` | Execution plan for complex tasks: ordered checklist, validation commands, review gates, rollback points. |
-| `implement.jsonl` | List of spec/research files the implement agent must read first. |
-| `check.jsonl` | List of spec/research files the check agent must read first. |
-| `research/` | Research artifacts. Complex findings should not live only in chat. |
+| `implement.jsonl` | List of spec/research files the `architect` and `implement` roles must read first. |
+| `check.jsonl` | List of spec/research files the `review`, `verify`, `fix`, and `simplify` roles must read first. |
+| `research/` | Research artifacts (`explore` findings, `architect` blueprints `design-<perspective>.md`, or the main agent's notes). Complex findings should not live only in chat. |
 
 ## `task.json`
 
@@ -54,7 +54,7 @@ Use a parent task when a request has multiple independently verifiable deliverab
 - The map of child tasks and their responsibility boundaries.
 - Cross-child acceptance criteria and final integration review.
 
-Use child tasks for deliverables that can move through planning, implementation, check, and archive independently. If one child depends on another, write that dependency in the child `prd.md` / `implement.md`; do not rely on tree position to imply ordering.
+Use child tasks for deliverables that can move through planning, implementation, review, and archive independently. If one child depends on another, write that dependency in the child `prd.md` / `implement.md`; do not rely on tree position to imply ordering.
 
 Create new children with:
 

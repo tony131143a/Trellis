@@ -20,8 +20,8 @@ Context loading determines when AI reads workflow, task, spec, research, workspa
 | `.arbor/tasks/<task>/prd.md` | Current task requirements. |
 | `.arbor/tasks/<task>/design.md` | Complex task technical design. |
 | `.arbor/tasks/<task>/implement.md` | Complex task execution plan. |
-| `.arbor/tasks/<task>/implement.jsonl` | Spec/research to read before implementation. |
-| `.arbor/tasks/<task>/check.jsonl` | Spec/research to read during checking. |
+| `.arbor/tasks/<task>/implement.jsonl` | Spec/research for the `architect` and `implement` roles. |
+| `.arbor/tasks/<task>/check.jsonl` | Spec/research for the `review`, `verify`, `fix`, and `simplify` roles. |
 | `.arbor/spec/` | Project specs. |
 | `.arbor/workspace/` | Session records. |
 | git status | Current working tree changes. |

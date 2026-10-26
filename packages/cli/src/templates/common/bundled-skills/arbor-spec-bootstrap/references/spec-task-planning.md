@@ -50,12 +50,12 @@ Summarize the concrete findings from repository analysis.
 
 ## Optional Helper Agents
 
-Helpers can inspect independent packages or run verification. In Arbor they run as codeg assistants (research, check) dispatched by the main agent, not as platform sub-agents. They are optional. The main agent still owns integration and final quality.
+Helpers can inspect independent packages or run verification. In Arbor they run as codeg assistants (explore for read-only investigation, review/verify for verification) dispatched by the main agent, not as platform sub-agents. They never write `.arbor/spec/`; the main agent does. They are optional. The main agent still owns integration and final quality.
 
 Helper tasks must have clear ownership:
 
 - Read-only research tasks may inspect any source needed for the assigned scope.
-- Write tasks should own disjoint spec directories.
+- Write tasks (done by the main agent; dispatched roles do not write `.arbor/spec/`) should own disjoint spec directories.
 - Verification tasks should check placeholder removal, broken links, and consistency.
 
 Do not encode assistant ids or dispatch commands in the spec task. Put only the required work and acceptance criteria in the task.
