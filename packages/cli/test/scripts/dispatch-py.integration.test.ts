@@ -1,6 +1,6 @@
 /**
  * Integration tests for `.arbor/scripts/dispatch.py`, the terminal dispatch
- * of the implement / check / research roles to codeg assistants.
+ * of the Arbor roles to codeg assistants, and its snapshot / diff helpers.
  *
  * Scripts, assistant instruction sources and the shipped `config.yaml` are
  * stamped into a fresh temp project and run under the real `python3`.
@@ -268,28 +268,39 @@ describe.skipIf(!hasPython())("dispatch.py", () => {
       expect(r.stdout).toContain("SPEC GUIDE CONTENT");
     });
 
-    it("byte-equals the hook for check --finish", () => {
+    it("byte-equals the hook for review with --mode and --diff", () => {
+      const diff = path.join(tmp, ".arbor", ".runtime", "dispatch", "diffs", "r1.diff");
+      fs.mkdirSync(path.dirname(diff), { recursive: true });
+      fs.writeFileSync(diff, "+DIFF LINE\n");
       const hook = hookTask(
-        `Active task: ${taskDir}\nRole: check [finish]\n\nFinal pass.`,
+        `Active task: ${taskDir}\nRole: review\nMode: candidates\nDiff: ${diff}\n\nAngles: A.`,
       );
       const r = dispatch(
-        ["print-context", "--role", "check", "--finish", "--task", TASK],
-        "Final pass.",
+        ["print-context", "--role", "review", "--mode", "candidates", "--diff", diff, "--task", TASK],
+        "Angles: A.",
       );
       expect(r.status, r.stderr).toBe(0);
       expect(r.stdout).toBe(hook);
-      expect(r.stdout).toContain("Role: check [finish]\n");
-      expect(r.stdout).toContain("# Finish Agent Task");
+      expect(r.stdout).toContain("+DIFF LINE");
     });
 
-    it("byte-equals the hook for research with and without a task", () => {
+    it("rejects --mode for a role other than review", () => {
+      const r = dispatch(
+        ["print-context", "--role", "fix", "--mode", "sweep", "--task", TASK],
+        "x",
+      );
+      expect(r.status).toBe(2);
+      expect(r.stderr).toContain("Mode: only applies to role 'review'");
+    });
+
+    it("byte-equals the hook for explore with and without a task", () => {
       const withTask = hookTask(
-        `Active task: ${taskDir}\nRole: research\nTarget: pi\n\nFind X`,
+        `Active task: ${taskDir}\nRole: explore\nTarget: pi\n\nFind X`,
       );
       const r1 = dispatch([
         "print-context",
         "--role",
-        "research",
+        "explore",
         "--task",
         taskDir,
         "--target",
@@ -300,14 +311,14 @@ describe.skipIf(!hasPython())("dispatch.py", () => {
       expect(r1.status, r1.stderr).toBe(0);
       expect(r1.stdout).toBe(withTask);
 
-      const noTask = hookTask("Role: research\n\nSummarize spec layout");
+      const noTask = hookTask("Role: explore\n\nSummarize spec layout");
       const r2 = dispatch(
-        ["print-context", "--role", "research"],
+        ["print-context", "--role", "explore"],
         "Summarize spec layout",
       );
       expect(r2.status, r2.stderr).toBe(0);
       expect(r2.stdout).toBe(noTask);
-      expect(r2.stdout.startsWith(`Role: research\n\n${MARKER}`)).toBe(true);
+      expect(r2.stdout.startsWith(`Role: explore\n\n${MARKER}`)).toBe(true);
     });
 
     it("refuses implement without a task and an unknown task dir", () => {
@@ -391,7 +402,7 @@ describe.skipIf(!hasPython())("dispatch.py", () => {
         [
           "run",
           "--role",
-          "check",
+          "review",
           "--task",
           TASK,
           "--target",
@@ -408,14 +419,14 @@ describe.skipIf(!hasPython())("dispatch.py", () => {
       const files = fs.readdirSync(runsDir).sort();
       expect(files).toHaveLength(2);
       const stamp = files[0]?.replace(/\.md$/, "") ?? "";
-      expect(stamp).toMatch(/^\d{8}-\d{6}-check$/);
+      expect(stamp).toMatch(/^\d{8}-\d{6}-review$/);
       expect(files).toEqual([`${stamp}.md`, `${stamp}.result.md`]);
 
       const call = fakeCall(1);
       expect(call.argv).toEqual([
         "run",
         "-A",
-        "arbor-check-pi",
+        "arbor-review-pi",
         "-w",
         tmp,
         "--permissions",
@@ -423,7 +434,7 @@ describe.skipIf(!hasPython())("dispatch.py", () => {
         "--timeout",
         "90m",
         "--title",
-        `arbor check ${TASK}`,
+        `arbor review ${TASK}`,
         "-o",
         path.join(runsDir, `${stamp}.result.md`),
         "-p",
@@ -436,7 +447,7 @@ describe.skipIf(!hasPython())("dispatch.py", () => {
       expect(call.stdin).toBe(prompt);
       expect(
         prompt.startsWith(
-          `Active task: ${taskDir}\nRole: check\nTarget: pi\nWorkspace: ${tmp}\n\n${MARKER}\n# Check Agent Task`,
+          `Active task: ${taskDir}\nRole: review\nMode: self-check\nTarget: pi\nWorkspace: ${tmp}\n\n${MARKER}\n# Arbor \`review\` dispatch`,
         ),
       ).toBe(true);
       expect(prompt).toContain("## Your Task\n\nReview the diff.");
@@ -465,7 +476,7 @@ describe.skipIf(!hasPython())("dispatch.py", () => {
         [
           "run",
           "--role",
-          "research",
+          "explore",
           "--detach",
           "--wait",
           "--url",
@@ -497,7 +508,7 @@ describe.skipIf(!hasPython())("dispatch.py", () => {
       expect(run.argv).not.toContain("-o");
       expect(run.argv.slice(-2)).toEqual(["-p", "-"]);
       expect(
-        run.stdin?.startsWith(`Role: research\nTarget: star\n\n${MARKER}`),
+        run.stdin?.startsWith(`Role: explore\nTarget: star\n\n${MARKER}`),
       ).toBe(true);
 
       // First result call said "still running" (6); the second collected it.
@@ -520,7 +531,7 @@ describe.skipIf(!hasPython())("dispatch.py", () => {
     });
 
     it("wait RUN maps a recorded run id to its <stamp>.result.md", () => {
-      const started = dispatch(["run", "--role", "research", "--detach"], "Go");
+      const started = dispatch(["run", "--role", "explore", "--detach"], "Go");
       expect(started.status, started.stderr).toBe(0);
       const stamp = (
         fs.readdirSync(runsDir).find((f) => f.endsWith(".run")) ?? ""
@@ -537,12 +548,62 @@ describe.skipIf(!hasPython())("dispatch.py", () => {
 
     it("rejects --standalone with --detach", () => {
       const r = dispatch(
-        ["run", "--role", "research", "--standalone", "--detach"],
+        ["run", "--role", "explore", "--standalone", "--detach"],
         "Go",
       );
       expect(r.status).toBe(2);
       expect(r.stderr).toContain("--standalone cannot be combined");
       expect(fakeCallCount()).toBe(0);
+    });
+  });
+
+  describe("snapshot and diff", () => {
+    function git(...args: string[]): string {
+      return execFileSync("git", ["-C", tmp, ...args], { encoding: "utf-8" });
+    }
+
+    it("diffs the working tree against a snapshot, untracked files included, .arbor excluded", () => {
+      git("init", "-q");
+      fs.writeFileSync(path.join(tmp, "a.txt"), "a\n");
+      git("add", "a.txt");
+      git("-c", "user.email=t@t", "-c", "user.name=t", "-c", "core.hooksPath=/dev/null", "commit", "-qm", "init");
+
+      const snap = dispatch(["snapshot"]);
+      expect(snap.status, snap.stderr).toBe(0);
+      const s0 = snap.stdout.trim();
+      expect(s0).toMatch(/^[0-9a-f]{40}$/);
+
+      fs.appendFileSync(path.join(tmp, "a.txt"), "b\n");
+      fs.writeFileSync(path.join(tmp, "new.txt"), "new\n");
+      const indexBefore = git("diff", "--cached", "--name-only");
+
+      const r = dispatch(["diff", s0, "--name", "r1"]);
+      expect(r.status, r.stderr).toBe(0);
+      const out = r.stdout.trim();
+      expect(out).toBe(path.join(tmp, ".arbor", ".runtime", "dispatch", "diffs", "r1.diff"));
+      const text = fs.readFileSync(out, "utf-8");
+      expect(text).toContain("+b");
+      expect(text).toContain("new.txt");
+      expect(text).not.toContain(".arbor/");
+      expect(r.stderr).toContain("2 files, +2 -0 (2 changed lines)");
+      // The real index is untouched.
+      expect(git("diff", "--cached", "--name-only")).toBe(indexBefore);
+      expect(git("status", "--porcelain")).toContain("?? new.txt");
+
+      // A snapshot-to-snapshot diff covers only what changed in between.
+      const s1 = dispatch(["snapshot"]).stdout.trim();
+      fs.appendFileSync(path.join(tmp, "a.txt"), "c\n");
+      const delta = dispatch(["diff", s1, "--name", "r2"]);
+      const deltaText = fs.readFileSync(delta.stdout.trim(), "utf-8");
+      expect(deltaText).toContain("+c");
+      expect(deltaText).not.toContain("new.txt");
+    });
+
+    it("rejects an unsafe --name", () => {
+      execFileSync("git", ["-C", tmp, "init", "-q"]);
+      const r = dispatch(["diff", "HEAD", "--name", "../x"]);
+      expect(r.status).toBe(2);
+      expect(r.stderr).toContain("--name must match");
     });
   });
 
@@ -563,14 +624,14 @@ describe.skipIf(!hasPython())("dispatch.py", () => {
       fs.writeFileSync(
         path.join(tmp, ".arbor", ".runtime", "codeg-assistants.json"),
         JSON.stringify({
-          by_name: { "arbor-check-pi": 13 },
-          by_id: { "13": { role: "check", target: "pi" } },
+          by_name: { "arbor-review-pi": 13 },
+          by_id: { "13": { role: "review", target: "pi" } },
         }),
       );
       const after = dispatch([
         "resolve",
         "--role",
-        "check",
+        "review",
         "--target",
         "pi",
         "--json",
@@ -578,13 +639,13 @@ describe.skipIf(!hasPython())("dispatch.py", () => {
       expect(JSON.parse(after.stdout)).toMatchObject({
         target: "pi",
         target_source: "flag",
-        assistant: "arbor-check-pi",
+        assistant: "arbor-review-pi",
         assistant_id: 13,
       });
 
-      const text = dispatch(["resolve", "--role", "research"]);
+      const text = dispatch(["resolve", "--role", "explore"]);
       expect(text.stdout).toBe(
-        "role: research\ntarget: star (source: config)\nassistant: arbor-research-star\n" +
+        "role: explore\ntarget: star (source: config)\nassistant: arbor-explore-star\n" +
           "assistant_id: unknown (run python3 ./.arbor/scripts/dispatch.py codeg-setup)\n",
       );
     });
@@ -629,12 +690,13 @@ describe.skipIf(!hasPython())("dispatch.py", () => {
     const registryPath = () =>
       path.join(tmp, ".arbor", ".runtime", "codeg-assistants.json");
 
-    it("print mode renders three instruction files and the manual steps", () => {
+    it("print mode renders seven instruction files and the manual steps", () => {
       fs.writeFileSync(
         path.join(fakeDir, "assistants.json"),
         JSON.stringify([
           { id: 12, name: "arbor-implement-pi", agent: "pi", description: "" },
-          { id: 13, name: "arbor-check-pi", agent: "pi", description: "" },
+          { id: 13, name: "arbor-review-pi", agent: "pi", description: "" },
+          { id: 14, name: "arbor-check-pi", agent: "pi", description: "" },
           { id: 40, name: "someone-else", agent: "codex", description: "" },
         ]),
       );
@@ -642,17 +704,17 @@ describe.skipIf(!hasPython())("dispatch.py", () => {
       expect(r.status, r.stderr).toBe(0);
 
       const dir = path.dirname(rendered("pi", "implement"));
-      expect(fs.readdirSync(dir).sort()).toEqual([
-        "pi-check.md",
-        "pi-implement.md",
-        "pi-research.md",
-      ]);
+      expect(fs.readdirSync(dir).sort()).toEqual(
+        ["architect", "explore", "fix", "implement", "review", "simplify", "verify"].map(
+          (role) => `pi-${role}.md`,
+        ),
+      );
       const source = fs
-        .readFileSync(path.join(TEMPLATE_AGENTS, "check.md"), "utf-8")
+        .readFileSync(path.join(TEMPLATE_AGENTS, "review.md"), "utf-8")
         .trim();
-      const instructions = fs.readFileSync(rendered("pi", "check"), "utf-8");
+      const instructions = fs.readFileSync(rendered("pi", "review"), "utf-8");
       expect(instructions.startsWith(source)).toBe(true);
-      expect(instructions).toContain("`arbor-check-pi`");
+      expect(instructions).toContain("`arbor-review-pi`");
 
       expect(r.stdout).toContain("arbor-implement-pi");
       expect(r.stdout).toContain("Agent:        pi");
@@ -660,7 +722,7 @@ describe.skipIf(!hasPython())("dispatch.py", () => {
         "Options:      model=deepseek/DeepSeek-V4.1-Flash, thought_level=max",
       );
       expect(r.stdout).toContain(
-        "Instructions: paste .arbor/.runtime/codeg-assistants/pi-research.md",
+        "Instructions: paste .arbor/.runtime/codeg-assistants/pi-simplify.md",
       );
 
       expect(fakeCall(1).argv).toEqual(["assistants", "--json"]);
@@ -668,13 +730,14 @@ describe.skipIf(!hasPython())("dispatch.py", () => {
         by_name: Record<string, number>;
         by_id: Record<string, unknown>;
       };
+      // The retired arbor-check-pi is not an arbor role any more.
       expect(registry.by_name).toEqual({
-        "arbor-check-pi": 13,
         "arbor-implement-pi": 12,
+        "arbor-review-pi": 13,
       });
       expect(registry.by_id).toEqual({
         "12": { role: "implement", target: "pi" },
-        "13": { role: "check", target: "pi" },
+        "13": { role: "review", target: "pi" },
       });
     });
 
@@ -682,13 +745,13 @@ describe.skipIf(!hasPython())("dispatch.py", () => {
       const r = dispatch(["codeg-setup"]);
       expect(r.status, r.stderr).toBe(0);
       expect(
-        fs.readdirSync(path.dirname(rendered("pi", "check"))),
-      ).toHaveLength(6);
+        fs.readdirSync(path.dirname(rendered("pi", "review"))),
+      ).toHaveLength(14);
       expect(r.stderr).toContain("codeg is not reachable");
       expect(fs.existsSync(registryPath())).toBe(false);
     });
 
-    it("--install upserts three rows idempotently into a 15-column table", () => {
+    it("--install upserts seven rows idempotently into a 15-column table", () => {
       const db = path.join(tmp, "codeg.db");
       makeDb(db, ASSISTANT_COLUMNS_SQL);
 
@@ -702,11 +765,11 @@ describe.skipIf(!hasPython())("dispatch.py", () => {
       ]);
       expect(first.status, first.stderr).toBe(0);
       const rows = dbRows(db);
-      expect(rows.map((r) => r.name)).toEqual([
-        "arbor-implement-pi",
-        "arbor-check-pi",
-        "arbor-research-pi",
-      ]);
+      expect(rows.map((r) => r.name)).toEqual(
+        ["explore", "architect", "implement", "review", "verify", "fix", "simplify"].map(
+          (role) => `arbor-${role}-pi`,
+        ),
+      );
       expect(rows.every((r) => r.revision === 1 && r.agent_type === "pi")).toBe(
         true,
       );
@@ -723,19 +786,17 @@ describe.skipIf(!hasPython())("dispatch.py", () => {
         "model",
         "thought_level",
       ]);
-      expect(rows[1]?.instructions).toBe(
-        fs.readFileSync(rendered("pi", "check"), "utf-8").trimEnd(),
+      expect(rows[3]?.instructions).toBe(
+        fs.readFileSync(rendered("pi", "review"), "utf-8").trimEnd(),
       );
 
       // codeg-cli unreachable: the registry comes from the database ids.
       const registry = JSON.parse(fs.readFileSync(registryPath(), "utf-8")) as {
         by_name: Record<string, number>;
       };
-      expect(registry.by_name).toEqual({
-        "arbor-check-pi": rows[1]?.id,
-        "arbor-implement-pi": rows[0]?.id,
-        "arbor-research-pi": rows[2]?.id,
-      });
+      expect(registry.by_name).toEqual(
+        Object.fromEntries(rows.map((row) => [row.name, row.id])),
+      );
 
       const second = dispatch([
         "codeg-setup",
@@ -784,15 +845,17 @@ describe.skipIf(!hasPython())("dispatch.py", () => {
       const pipeline = rows.find((row) => row.name === "implementer");
       expect(pipeline?.sort_order).toBe(7);
       const arbor = rows.filter((row) => row.name.startsWith("arbor-"));
-      expect(arbor).toHaveLength(6);
-      expect(arbor.map((row) => row.sort_order)).toEqual([8, 9, 10, 11, 12, 13]);
+      expect(arbor).toHaveLength(14);
+      expect(arbor.map((row) => row.sort_order)).toEqual(
+        Array.from({ length: 14 }, (_, i) => 8 + i),
+      );
 
       const star = arbor.filter((row) => row.agent_type === "custom:star");
-      expect(star.map((row) => row.name)).toEqual([
-        "arbor-implement-star",
-        "arbor-check-star",
-        "arbor-research-star",
-      ]);
+      expect(star.map((row) => row.name)).toEqual(
+        ["explore", "architect", "implement", "review", "verify", "fix", "simplify"].map(
+          (role) => `arbor-${role}-star`,
+        ),
+      );
       for (const row of star) {
         expect(JSON.parse(row.agent_options)).toEqual({});
         expect(JSON.parse(row.label_snapshot)).toEqual({
@@ -811,6 +874,30 @@ describe.skipIf(!hasPython())("dispatch.py", () => {
           row.sort_order,
         ]),
       ).toEqual(rows.map((row) => [row.name, row.sort_order]));
+    });
+
+    it("--install soft-deletes the retired check / research assistants", () => {
+      const db = path.join(tmp, "codeg.db");
+      makeDb(db, ASSISTANT_COLUMNS_SQL);
+      const retiredUid = python(
+        "import uuid\nprint(uuid.uuid5(uuid.NAMESPACE_URL, 'arbor/pi/check'))",
+      ).trim();
+      makeDb(
+        db,
+        "INSERT INTO assistant (uid, name, avatar, agent_type, agent_options, label_snapshot," +
+          ` sort_order, created_at, updated_at) VALUES ('${retiredUid}', 'arbor-check-pi', '{}', 'pi',` +
+          " '{}', '{}', 3, 'now', 'now')",
+      );
+
+      const r = dispatch(["codeg-setup", "--target", "pi", "--install", "--db", db]);
+      expect(r.status, r.stderr).toBe(0);
+      expect(r.stderr).toContain("retired assistant arbor-check-pi");
+      const retired = python(
+        "import sqlite3, sys\nc = sqlite3.connect(sys.argv[1])\n" +
+          "print(c.execute(\"SELECT enabled, deleted_at IS NOT NULL FROM assistant WHERE name='arbor-check-pi'\").fetchone())",
+        db,
+      ).trim();
+      expect(retired).toBe("(0, 1)");
     });
 
     it("--install refuses a different assistant schema and falls back to print mode", () => {

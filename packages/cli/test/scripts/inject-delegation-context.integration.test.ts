@@ -149,10 +149,10 @@ describe.skipIf(!hasPython())("inject-delegation-context.py", () => {
     const task = out.updatedInput.task;
     expect(
       task.startsWith(
-        `Active task: ${taskDir}\nRole: implement\nTarget: pi\n\n${MARKER}\n# Implement Agent Task`,
+        `Active task: ${taskDir}\nRole: implement\nTarget: pi\n\n${MARKER}\n# Arbor \`implement\` dispatch`,
       ),
     ).toBe(true);
-    expect(task).toContain("Arbor dispatch");
+    expect(task).toContain("Your assistant instructions define your method");
     expect(task).not.toContain("Multi-Agent Pipeline");
     expect(task).toContain("PRD FOO CONTENT");
     expect(task).toContain("SPEC GUIDE CONTENT");
@@ -194,7 +194,7 @@ describe.skipIf(!hasPython())("inject-delegation-context.py", () => {
       path.join(tmp, ".arbor", ".runtime", "codeg-assistants.json"),
       JSON.stringify({
         by_id: {
-          "12": { role: "check", name: "arbor-check-pi" },
+          "12": { role: "review", name: "arbor-review-pi" },
           "13": { role: "implement", name: "arbor-implement-pi" },
         },
       }),
@@ -206,7 +206,7 @@ describe.skipIf(!hasPython())("inject-delegation-context.py", () => {
       }),
     );
     expect(out.updatedInput.task).toContain(
-      `Active task: ${taskDir}\nRole: check\n\n${MARKER}\n# Check Agent Task`,
+      `Active task: ${taskDir}\nRole: review\nMode: self-check\n\n${MARKER}\n# Arbor \`review\` dispatch`,
     );
 
     // An id the registry does not know stays uninjected.
@@ -283,35 +283,81 @@ describe.skipIf(!hasPython())("inject-delegation-context.py", () => {
     expect(again.stdout).toBe("");
   });
 
-  it("routes `Role: check [finish]` to the finish prompt", () => {
+  it("defaults review to Mode: self-check and injects check.jsonl", () => {
     const out = parse(
-      runHook({
-        task: `Active task: ${TASK_REL}\nRole: check [finish]\n\nFinal pass.`,
-      }),
+      runHook({ task: `Active task: ${TASK_REL}\nRole: review\n\nFind bugs.` }),
     );
-    expect(out.updatedInput.task).toContain(
-      `Role: check [finish]\n\n${MARKER}\n# Finish Agent Task`,
-    );
-    expect(out.updatedInput.task).toContain("PRD FOO CONTENT");
-  });
-
-  it("treats [finish] in the body as the finish pass for check", () => {
-    const out = parse(
-      runHook({
-        task: `Active task: ${TASK_REL}\nRole: check\n\n[finish] Final pass.`,
-      }),
-    );
-    expect(out.updatedInput.task).toContain("# Finish Agent Task");
-  });
-
-  it("injects research without a task directory", () => {
-    const out = parse(runHook({ task: "Role: research\n\nFind the parser." }));
     const task = out.updatedInput.task;
-    expect(task.startsWith(`Role: research\n\n${MARKER}\n# Research Agent Task`)).toBe(
+    expect(task).toContain(
+      `Role: review\nMode: self-check\n\n${MARKER}\n# Arbor \`review\` dispatch`,
+    );
+    expect(task).toContain("## Mode\n\n`self-check`");
+    expect(task).toContain("SPEC GUIDE CONTENT");
+    expect(task).toContain("PRD FOO CONTENT");
+  });
+
+  it("passes Mode: candidates through and inlines the Diff: file", () => {
+    const diffDir = path.join(tmp, ".arbor", ".runtime", "dispatch", "diffs");
+    fs.mkdirSync(diffDir, { recursive: true });
+    const diff = path.join(diffDir, "r1.diff");
+    fs.writeFileSync(diff, "diff --git a/x b/x\n+DIFF LINE CONTENT\n");
+    const out = parse(
+      runHook({
+        task: `Active task: ${TASK_REL}\nRole: review\nMode: candidates\nDiff: ${diff}\n\nAngles: A, D.`,
+      }),
+    );
+    const task = out.updatedInput.task;
+    expect(task).toContain(`Mode: candidates\nDiff: ${diff}\n\n${MARKER}`);
+    expect(task).toContain(`=== Diff: ${diff} ===\n\`\`\`diff\n`);
+    expect(task).toContain("+DIFF LINE CONTENT");
+    expect(task).toContain("## Mode\n\n`candidates`");
+  });
+
+  it("refuses a Mode: on a role other than review", () => {
+    const r = runHook({
+      task: `Active task: ${TASK_REL}\nRole: fix\nMode: sweep\n\nFix it.`,
+    });
+    expect(r.status).toBe(0);
+    expect(r.stdout).toBe("");
+    expect(r.stderr).toContain("Mode: only applies to role 'review'");
+  });
+
+  it("gives architect the task research files", () => {
+    fs.mkdirSync(path.join(taskDir, "research"), { recursive: true });
+    fs.writeFileSync(path.join(taskDir, "research", "topic.md"), "RESEARCH NOTE\n");
+    const out = parse(
+      runHook({ task: `Active task: ${TASK_REL}\nRole: architect\n\nPerspective: pragmatic.` }),
+    );
+    expect(out.updatedInput.task).toContain("RESEARCH NOTE");
+    expect(out.updatedInput.task).toContain("SPEC GUIDE CONTENT");
+  });
+
+  it("ignores the retired check / research roles", () => {
+    for (const role of ["check", "check [finish]", "research"]) {
+      const r = runHook({ task: `Active task: ${TASK_REL}\nRole: ${role}\n\nGo.` });
+      expect(r.status).toBe(0);
+      expect(r.stdout, role).toBe("");
+    }
+  });
+
+  it("injects explore without a task directory", () => {
+    const out = parse(runHook({ task: "Role: explore\n\nFind the parser." }));
+    const task = out.updatedInput.task;
+    expect(task.startsWith(`Role: explore\n\n${MARKER}\n# Arbor \`explore\` dispatch`)).toBe(
       true,
     );
     expect(task).toContain(".arbor/spec/");
     expect(task).toContain("Find the parser.");
+  });
+
+  it("gives explore the prd and research file list when a task is named", () => {
+    fs.mkdirSync(path.join(taskDir, "research"), { recursive: true });
+    fs.writeFileSync(path.join(taskDir, "research", "topic.md"), "x\n");
+    const out = parse(
+      runHook({ task: `Active task: ${TASK_REL}\nRole: explore\n\nTrace it.` }),
+    );
+    expect(out.updatedInput.task).toContain("PRD FOO CONTENT");
+    expect(out.updatedInput.task).toContain(`${TASK_REL}/research/topic.md`);
   });
 
   it("preserves Workspace and Target header lines verbatim", () => {

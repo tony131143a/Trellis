@@ -20,6 +20,20 @@ const TEMPLATE_SCRIPTS = path.join(TEMPLATES, "arbor", "scripts");
 const CONFIG_TEMPLATE = path.join(TEMPLATES, "arbor", "config.yaml");
 const SHARED_HOOKS = path.join(TEMPLATES, "shared-hooks");
 
+const ROLES = [
+  "explore",
+  "architect",
+  "implement",
+  "review",
+  "verify",
+  "fix",
+  "simplify",
+] as const;
+
+function roleNames(target: string): Record<string, string> {
+  return Object.fromEntries(ROLES.map((role) => [role, `arbor-${role}-${target}`]));
+}
+
 const SHIPPED_DISPATCH = {
   default_target: "star",
   max_parallel: 3,
@@ -32,20 +46,12 @@ const SHIPPED_DISPATCH = {
     star: {
       agent_type: "custom:star",
       options: {},
-      assistants: {
-        implement: "arbor-implement-star",
-        check: "arbor-check-star",
-        research: "arbor-research-star",
-      },
+      assistants: roleNames("star"),
     },
     pi: {
       agent_type: "pi",
       options: { model: "deepseek/DeepSeek-V4.1-Flash", thought_level: "max" },
-      assistants: {
-        implement: "arbor-implement-pi",
-        check: "arbor-check-pi",
-        research: "arbor-research-pi",
-      },
+      assistants: roleNames("pi"),
     },
   },
 };
@@ -159,9 +165,7 @@ ${code}
       };
       expect(parsed.targets.star).toEqual({
         agent_type: "custom:star",
-        implement: "arbor-implement-star",
-        check: "arbor-check-star",
-        research: "arbor-research-star",
+        ...roleNames("star"),
       });
       expect(parsed.targets.pi.thought_level).toBe("max");
     });
@@ -189,14 +193,26 @@ ${code}
       expect(cfg.targets.codex).toEqual({
         agent_type: "codex",
         options: { model: "gpt" },
-        assistants: {
-          implement: "my-implementer",
-          check: "arbor-check-codex",
-          research: "arbor-research-codex",
-        },
+        assistants: { ...roleNames("codex"), implement: "my-implementer" },
       });
       // Shipped targets stay available next to the custom one.
       expect(cfg.targets.star).toEqual(SHIPPED_DISPATCH.targets.star);
+    });
+
+    it("ignores retired check / research role keys instead of passing them as options", () => {
+      writeConfig(
+        [
+          "dispatch:",
+          "  targets:",
+          "    pi:",
+          "      agent_type: pi",
+          "      check: arbor-check-pi",
+          "      research: arbor-research-pi",
+        ].join("\n"),
+      );
+      const cfg = dispatchConfig() as typeof SHIPPED_DISPATCH;
+      expect(cfg.targets.pi.options).toEqual(SHIPPED_DISPATCH.targets.pi.options);
+      expect(cfg.targets.pi.assistants).toEqual(roleNames("pi"));
     });
 
     it("coerces types and falls back with a warning on invalid values", () => {
@@ -295,9 +311,7 @@ ${code}
       expect(section).toContain(
         [
           "Assistants:",
-          `- implement: arbor-implement-star ${unknown}`,
-          `- check: arbor-check-star ${unknown}`,
-          `- research: arbor-research-star ${unknown}`,
+          ...ROLES.map((role) => `- ${role}: arbor-${role}-star ${unknown}`),
         ].join("\n"),
       );
       expect(section).toContain(
@@ -320,19 +334,19 @@ ${code}
       fs.writeFileSync(
         path.join(tmp, ".arbor", ".runtime", "codeg-assistants.json"),
         JSON.stringify({
-          by_name: { "arbor-implement-pi": 12, "arbor-check-pi": 13 },
+          by_name: { "arbor-implement-pi": 12, "arbor-review-pi": 13 },
           by_id: {
             "12": { role: "implement", target: "pi" },
-            "13": { role: "check", target: "pi" },
+            "13": { role: "review", target: "pi" },
           },
         }),
       );
       const section = sessionStart({ ARBOR_DISPATCH_TARGET: "pi" });
       expect(section).toContain("- implement: arbor-implement-pi (id 12)");
-      expect(section).toContain("- check: arbor-check-pi (id 13)");
+      expect(section).toContain("- review: arbor-review-pi (id 13)");
       // A role missing from the registry still points at codeg-setup.
       expect(section).toContain(
-        "- research: arbor-research-pi (id unknown — run python3 ./.arbor/scripts/dispatch.py codeg-setup)",
+        "- verify: arbor-verify-pi (id unknown — run python3 ./.arbor/scripts/dispatch.py codeg-setup)",
       );
     });
   });

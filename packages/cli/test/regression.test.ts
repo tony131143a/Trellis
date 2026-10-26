@@ -6059,7 +6059,7 @@ print(len(entries))
       throw new Error("guidelines block not found in payload");
     const guidelinesBlock = guidelinesMatch[1];
 
-    expect(guidelinesBlock).toContain("Task context order");
+    expect(guidelinesBlock).toContain("Dispatch context order");
     expect(guidelinesBlock).not.toContain("GUIDES_INLINE_MARKER");
     expect(guidelinesBlock).toContain(".arbor/spec/cli/backend/index.md");
     expect(guidelinesBlock).not.toContain(
@@ -7181,18 +7181,11 @@ describe("regression: sub-agent context injection fallback (0.5.3)", () => {
   it("dispatch_context.py emits the marker for every role prompt", () => {
     const src = getAllScripts().get("common/dispatch_context.py") ?? "";
     expect(src).toContain(`MARKER = "${HOOK_INJECTED_MARKER}"`);
-    // Every role template (implement / check / finish / research) opens with
-    // the marker, so the delegation hook stays idempotent on retries.
-    for (const builder of [
-      "build_implement_prompt",
-      "build_check_prompt",
-      "build_finish_prompt",
-      "build_research_prompt",
-    ]) {
-      const body = src.split(`def ${builder}(`)[1] ?? "";
-      expect(body, `${builder} must exist`).not.toBe("");
-      expect(body.slice(0, 200), builder).toContain('return f"""{MARKER}');
-    }
+    // The one role template opens with the marker, so the delegation hook
+    // stays idempotent on retries.
+    const body = src.split("def build_role_prompt(")[1] ?? "";
+    expect(body, "build_role_prompt must exist").not.toBe("");
+    expect(body.slice(0, 600)).toContain('return f"""{MARKER}');
   });
 
   const __dirnameFb = path.dirname(fileURLToPath(import.meta.url));
@@ -7206,8 +7199,10 @@ describe("regression: sub-agent context injection fallback (0.5.3)", () => {
     const wf = fs.readFileSync(workflowPath, "utf-8");
     expect(wf).toContain("**Header protocol.**");
     expect(wf).toContain("Active task: <absolute path of the task directory in the MAIN checkout>");
-    expect(wf).toContain("Role: implement | check | check [finish] | research");
-    expect(wf).toContain("`arbor-research-star`");
+    expect(wf).toContain(
+      "Role: explore | architect | implement | review | verify | fix | simplify",
+    );
+    expect(wf).toContain("`arbor-review-star`");
     expect(wf).toContain("never through the built-in `Agent`/`Task` tool");
   });
 });

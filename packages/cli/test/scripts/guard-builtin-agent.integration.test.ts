@@ -103,8 +103,16 @@ describe.skipIf(!hasPython())("guard-builtin-agent.py", () => {
     );
   });
 
-  it("denies a `Role: implement|check|research` header on Agent and Task", () => {
-    for (const role of ["implement", "check", "research", "check [finish]"]) {
+  it("denies a `Role: <arbor role>` header on Agent and Task", () => {
+    for (const role of [
+      "explore",
+      "architect",
+      "implement",
+      "review",
+      "verify",
+      "fix",
+      "simplify",
+    ]) {
       expectDeny(runGuard({ prompt: `Role: ${role}\n\nDo it.` }));
     }
     expectDeny(
@@ -123,6 +131,9 @@ describe.skipIf(!hasPython())("guard-builtin-agent.py", () => {
       // A role word deep in the body is prose, not a header.
       { prompt: `${"context ".repeat(80)}\nRole: implement` },
       { prompt: "Role: reviewer\n\nLook around." },
+      // Retired role names are no longer Arbor headers.
+      { prompt: "Role: check\n\nLook around." },
+      { prompt: "Role: research\n\nLook around." },
     ]) {
       const r = runGuard(toolInput);
       expect(r.status).toBe(0);

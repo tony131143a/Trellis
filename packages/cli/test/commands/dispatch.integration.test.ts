@@ -69,16 +69,16 @@ describe.skipIf(!hasPython())("arbor dispatch passthrough", () => {
       "dispatch",
       "resolve",
       "--role",
-      "check",
+      "review",
       "--target",
       "pi",
       "--json",
     ]);
     expect(resolved.status, resolved.stderr).toBe(0);
     expect(JSON.parse(resolved.stdout)).toMatchObject({
-      role: "check",
+      role: "review",
       target: "pi",
-      assistant: "arbor-check-pi",
+      assistant: "arbor-review-pi",
     });
 
     const bad = runCli(tmpDir, ["dispatch", "target", "set", "bogus"]);

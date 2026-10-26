@@ -18,7 +18,7 @@ import {
   getAllScripts,
   getAllAgents,
   implementAgentTemplate,
-  checkAgentTemplate,
+  AGENT_ROLES,
   configYamlTemplate,
 } from "../../src/templates/arbor/index.js";
 
@@ -130,10 +130,15 @@ describe("arbor template constants", () => {
     expect(workflowMdTemplate).toContain("### Dispatch");
     expect(workflowMdTemplate).toContain("delegate_to_agent");
     expect(workflowMdTemplate).toContain("dispatch.py run --role");
-    for (const n of [0, 1, 2, 3, 4, 5, 6]) {
+    for (const n of [0, 1, 2, 3, 4, 5]) {
       expect(workflowMdTemplate).toContain(`#### 2P.${n} `);
     }
+    for (const n of [1, 2, 3, 4, 5]) {
+      expect(workflowMdTemplate).toContain(`#### 2F.${n} `);
+    }
     expect(workflowMdTemplate).toContain("execution parallel");
+    expect(workflowMdTemplate).toContain("dispatch.py snapshot");
+    expect(workflowMdTemplate).not.toContain("check [finish]");
   });
 
   it("[required · once] steps appear in their phase breadcrumbs", () => {
@@ -144,6 +149,11 @@ describe("arbor template constants", () => {
       const block = workflowStateBreadcrumb(key);
       expect(block).toContain("3.3");
       expect(block).toContain("3.4");
+      expect(block).toContain("2F");
+    }
+    const serial = workflowStateBreadcrumb("in_progress");
+    for (const step of ["2F.1", "2F.2", "2F.5"]) {
+      expect(serial).toContain(step);
     }
   });
 
@@ -250,20 +260,29 @@ describe("getAllScripts", () => {
 // =============================================================================
 
 describe("getAllAgents", () => {
-  it("ships implement and check agents", () => {
-    const agents = getAllAgents();
-    expect(agents.has("implement.md")).toBe(true);
-    expect(agents.has("check.md")).toBe(true);
+  it("ships exactly the seven role agents", () => {
+    expect([...getAllAgents().keys()].sort()).toEqual(
+      [...AGENT_ROLES].map((role) => `${role}.md`).sort(),
+    );
+    expect(AGENT_ROLES).toEqual([
+      "explore",
+      "architect",
+      "implement",
+      "review",
+      "verify",
+      "fix",
+      "simplify",
+    ]);
   });
 
   it("values match exported constants", () => {
-    const agents = getAllAgents();
-    expect(agents.get("implement.md")).toBe(implementAgentTemplate);
-    expect(agents.get("check.md")).toBe(checkAgentTemplate);
+    expect(getAllAgents().get("implement.md")).toBe(implementAgentTemplate);
   });
 
-  it("ships research too", () => {
-    expect(getAllAgents().has("research.md")).toBe(true);
+  it("no retired role agents", () => {
+    for (const retired of ["check.md", "research.md"]) {
+      expect(getAllAgents().has(retired)).toBe(false);
+    }
   });
 
   it("assistant instructions have no frontmatter or provider/model fields", () => {
