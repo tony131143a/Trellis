@@ -14,7 +14,7 @@ Platform marker syntax in workflow.md:
 
 Provides:
     get_phase_index   - Extract the Phase Index section (no --step)
-    get_step          - Extract a single step (#### X.X or #### XP.X) section
+    get_step          - Extract a single step (#### X.X, #### XP.X or #### XF.X) section
     filter_platform   - Strip platform blocks that don't include the given name
 """
 
@@ -31,9 +31,9 @@ def _workflow_md_path():
 # Match a line that *is* a platform marker: "[A, B, C]" or "[/A, B, C]"
 _MARKER_RE = re.compile(r"^\[(/?)([A-Za-z][^\[\]]*)\]\s*$")
 
-# Step heading: "#### 1.0 Title", or "#### 2P.0 Title" for the parallel
-# variant of a phase.
-_STEP_HEADING_RE = re.compile(r"^####\s+(\d+P?\.\d+)\b.*$")
+# Step heading: "#### 1.0 Title", "#### 2P.0 Title" for the parallel variant
+# of a phase, or "#### 2F.1 Title" for the polish phase.
+_STEP_HEADING_RE = re.compile(r"^####\s+(\d+[PF]?\.\d+)\b.*$")
 
 # Phase Index starts here; Phase 1/2/3 step bodies follow; ends at Breadcrumbs.
 _PHASE_INDEX_HEADING = "## Phase Index"
