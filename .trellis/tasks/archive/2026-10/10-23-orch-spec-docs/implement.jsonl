@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/cli/backend/workflow-state-contract.md", "reason": "Writer table, reachability matrices, mandatory triggers to update for orchestrating"}
+{"file": ".trellis/spec/cli/backend/commands-workflow.md", "reason": "Workflow switcher contract to extend with bundled orchestrated"}
+{"file": ".trellis/spec/cli/backend/commands-update.md", "reason": "Update preserve steps and template selection"}
+{"file": ".trellis/spec/cli/backend/index.md", "reason": "Routing for the new orchestration contract spec"}
+{"file": ".trellis/tasks/10-23-orch-engine-port/e1-decisions.md", "reason": "Generalized engine contract decisions (CLI resolution, guard whitelist, tracked mode, card names)"}
