@@ -1,154 +1,52 @@
 # Contributing to Arbor
 
-Thanks for your interest in contributing to Arbor! This document provides guidelines for contributing to the project.
+Arbor is a personal fork. Contributions are welcome through issues and pull requests on this repository.
 
-## Ways to Contribute
+## Issues
 
-### Reporting Bugs
+Check existing issues first. For a bug include:
 
-Before creating a bug report, please check [existing issues](https://github.com/tony131143a/Trellis/issues) to avoid duplicates.
+- `arbor --version`, `node --version`, operating system
+- Steps to reproduce, expected and actual behavior
+- Relevant logs
 
-When reporting a bug, include:
-- Arbor version (`arbor --version`)
-- Node.js version (`node --version`)
-- Operating system
-- Steps to reproduce
-- Expected vs actual behavior
-- Relevant logs or screenshots
+For a feature, describe the use case and discuss it in an issue before sending code.
 
-### Suggesting Features
+## Development setup
 
-Feature requests are welcome! Please open an issue with:
-- Clear description of the feature
-- Use case / problem it solves
-- Any implementation ideas (optional)
-
-### Improving Documentation
-
-Documentation improvements are always appreciated:
-- Fix typos or unclear explanations
-- Add examples
-- Improve README or guide docs
-
-### Contributing Code
-
-Code contributions are welcome for:
-- Bug fixes
-- New features (please discuss in an issue first)
-- Performance improvements
-- Test coverage
-
-## Development Setup
-
-### Prerequisites
-
-- Node.js 18.0.0+
-- pnpm
-- Python 3 (for hooks)
-- Bash (for scripts)
-
-### Getting Started
-
-1. **Fork the repository** on GitHub
-
-2. **Clone your fork**
-   ```bash
-   git clone https://github.com/YOUR_USERNAME/Arbor.git
-   cd Arbor
-   ```
-
-3. **Install dependencies**
-   ```bash
-   pnpm install
-   ```
-
-4. **Build the project**
-   ```bash
-   pnpm build
-   ```
-
-### Running Checks
+Requires Node.js >= 18, pnpm, Python >= 3.9.
 
 ```bash
-pnpm lint        # ESLint for TypeScript
-pnpm lint:py     # Type checking for Python (basedpyright)
-pnpm lint:all    # Run both
-pnpm typecheck   # TypeScript type checking
+pnpm install
+pnpm build
 ```
 
-> **Note:** Pre-commit hooks will automatically run `eslint --fix` and `prettier --write` on staged `.ts` files.
+## Test gates
 
-## Project Structure
+Run before opening a pull request:
 
-```
-Arbor/
-├── src/                    # TypeScript source code
-│   ├── cli/                # CLI entry point
-│   ├── commands/           # CLI commands (init, update)
-│   ├── configurators/      # Template application logic
-│   ├── templates/          # Templates copied to user projects ←
-│   └── utils/              # Utility functions
-├── .claude/                # Claude Code config (project's own) ←
-│   ├── agents/             # Agent definitions
-│   ├── commands/           # Slash commands
-│   └── hooks/              # Python hook scripts
-├── .arbor/               # Arbor workflow (project's own) ←
-│   ├── scripts/            # Bash scripts
-│   └── spec/               # Spec file templates
-└── docs/                   # Documentation
+```bash
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm --filter @tony131143a/arbor lint:py   # basedpyright, when Python changed
+python3 ./.arbor/scripts/spec.py lint      # when spec docs changed
 ```
 
-> **Important:** When modifying `.claude/`, `.arbor/`, or `.cursor/`, check if the same changes need to be applied to `src/templates/`. The project uses its own config files, but templates are what gets installed to user projects.
+Pre-commit hooks run `eslint --fix` and `prettier --write` on staged `.ts` files.
 
-## Commit Guidelines
+## Dogfood byte-identity rule
 
-We use [Conventional Commits](https://www.conventionalcommits.org/):
+`.arbor/scripts/` is this repo's own copy of the scripts that ship from `packages/cli/src/templates/arbor/scripts/`. Every `.py` file must be byte-identical in both trees, and the two trees must hold the same set of files. Change both in the same commit. A regression test fails on drift.
 
-```
-type(scope): description
-```
+More generally, when you change `.claude/` or `.arbor/`, check whether the matching file under `packages/cli/src/templates/` needs the same change, because the templates are what `arbor init` installs.
 
-**Types:**
-- `feat` - New feature
-- `fix` - Bug fix
-- `docs` - Documentation changes
-- `refactor` - Code refactoring
-- `test` - Adding or updating tests
-- `chore` - Maintenance tasks
+## Commits and pull requests
 
-**Examples:**
-```
-feat(cli): add --dry-run flag to init command
-fix(hooks): resolve context injection for nested tasks
-docs(readme): update quick start instructions
-```
+Use [Conventional Commits](https://www.conventionalcommits.org/): `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, with an optional scope such as `fix(hooks): ...`.
 
-## Pull Request Process
+Branch from `main`, keep the gates above green, and describe the change and any related issue in the pull request.
 
-1. **Create a branch** from `main`
-   ```bash
-   git checkout -b feat/your-feature-name
-   ```
+## License
 
-2. **Make your changes** and commit following the commit guidelines
-
-3. **Ensure quality checks pass**
-   ```bash
-   pnpm lint && pnpm typecheck
-   ```
-
-4. **Push to your fork**
-   ```bash
-   git push origin feat/your-feature-name
-   ```
-
-5. **Open a Pull Request** against `main` branch
-   - Provide a clear description of changes
-   - Reference any related issues
-   - Include screenshots for UI changes
-
-6. **Address review feedback** if requested
-
-## Thank You
-
-Every contribution helps make Arbor better. We appreciate your time and effort!
+Arbor is distributed under AGPL-3.0-or-later (see `LICENSE`, `NOTICE`, `COPYRIGHT`). By contributing you agree your contribution is licensed under the same terms.

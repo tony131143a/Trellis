@@ -1,268 +1,75 @@
 ---
-sources: []
-last_verified: 2026-10-21
+sources:
+  - packages/cli/src/types/ai-tools.ts
+  - packages/cli/src/configurators/index.ts
+  - packages/cli/src/configurators/shared.ts
+  - packages/cli/src/configurators/claude.ts
+  - packages/cli/src/configurators/star.ts
+  - packages/cli/src/templates/shared-hooks/index.ts
+  - packages/cli/src/templates/claude/settings.json
+  - packages/cli/src/templates/star/settings.json
+last_verified: 2026-10-23
 ---
 # Platform Integration Guide
 
-How to add support for a new AI CLI platform. The 22 currently registered are Claude Code, Cursor, OpenCode, Codex, Kilo, Kiro, Gemini CLI, Antigravity, Devin, Qoder, CodeBuddy, Copilot, Factory Droid, Pi, Reasonix, ZCode, Trae, OMP, Grok, Kimi, Snow, and StarFactory — `PLATFORM_IDS` in `configurators/index.ts` is the list that counts.
+How Arbor integrates with its two main-agent platforms, Claude Code (`.claude/`) and StarFactory (`.starFactory/`), and the contracts shared by their hooks, commands and skills. `PLATFORM_IDS` in `configurators/index.ts` is the list that counts. Sub-agent roles (implement / check / research) are not platform features: they run as codeg assistants, see `dispatch.md`.
 
 ---
 
 ## Architecture
 
-Platform support uses a **centralized registry pattern** (similar to Turborepo's package manager support):
+Platform support uses a **centralized registry pattern**:
 
-- **Data registry**: `src/types/ai-tools.ts` — `AI_TOOLS` record with all platform metadata
-- **Function registry**: `src/configurators/index.ts` — `PLATFORM_FUNCTIONS`, one line per platform. It holds no per-platform logic; the doc-comment at `index.ts:1-11` is the authoritative add-a-platform list
-- **Shared configurator utilities**: `src/configurators/shared.ts` — renderers (`resolvePlaceholders()`, `resolvePlaceholdersNeutral()`), resolvers (`resolveCommands()`, `resolveSkills()`, `resolveAllAsSkills()`, `resolveBundledSkills()`), map builders (`collectSkillTemplates()`, `collectBothTemplates()`, `collectSharedHooks()`), and the render/write pair (`renderTemplateMap()`, `writeTemplateMap()`). See `configurator-shared.md`
-- **Shared template utilities**: `src/templates/template-utils.ts` — `createTemplateReader()` factory that eliminates boilerplate across platform template modules
-- **Shared hooks**: `src/templates/shared-hooks/` — platform-independent Python hook scripts (session-start, inject-workflow-state, inject-delegation-context, guard-builtin-agent, inject-shell-session-context) written as-is to platform hook directories according to `SHARED_HOOKS_BY_PLATFORM`. Claude Code `statusLine` is not installed by default.
-- **Common templates**: `src/templates/common/` — single source of truth for commands (start, finish-work), single-file workflow skills (before-dev, brainstorm, check, break-loop, update-spec), and multi-file bundled skills (arbor-channel, arbor-meta, arbor-session-insight, arbor-spec-bootstrap) with `{{placeholder}}` resolution per platform
-- **Shared utilities**: `src/utils/compare-versions.ts` — `compareVersions()` with full prerelease support (used by cli, update, migrations)
+- **Data registry**: `src/types/ai-tools.ts` — `AI_TOOLS` record with all platform metadata (`claude-code`, `star`)
+- **Function registry**: `src/configurators/index.ts` — `PLATFORM_FUNCTIONS`, one entry per platform. It holds no per-platform logic
+- **Shared configurator utilities**: `src/configurators/shared.ts` — renderers (`resolvePlaceholders()`), resolvers (`resolveCommands()`, `resolveSkills()`, `resolveBundledSkills()`), map builders (`collectSkillTemplates()`, `collectSharedHooks()`), and the render/write pair (`renderTemplateMap()`, `writeTemplateMap()`). See `configurator-shared.md`
+- **Shared template utilities**: `src/templates/template-utils.ts` — `createTemplateReader()` factory
+- **Shared hooks**: `src/templates/shared-hooks/` — platform-independent Python hook scripts (session-start, inject-workflow-state, inject-delegation-context, guard-builtin-agent, inject-shell-session-context) written to the platform hook directory according to `SHARED_HOOKS_BY_PLATFORM`. Claude Code `statusLine` is not installed by default (`arbor init --with-statusline` opts in).
+- **Common templates**: `src/templates/common/` — single source of truth for commands (`start`, `continue`, `finish-work`, `dispatch-target`), single-file workflow skills (before-dev, brainstorm, check, break-loop, update-spec), and multi-file bundled skills (arbor-meta, arbor-spec-bootstrap), with `{{placeholder}}` resolution per platform
+- **Shared utilities**: `src/utils/compare-versions.ts` — `compareVersions()` with full prerelease support
 - **Derived helpers**: `ALL_MANAGED_DIRS`, `getConfiguredPlatforms()`, etc. — consumed by update, init, hash tracking
 
 All lists (backup dirs, template dirs, platform detection, cleanup whitelist) are **derived from the registry automatically**. No scattered hardcoded lists.
 
 ---
 
-## Checklist: Adding a New Platform
+## The two platforms
 
-When adding a new platform `{platform}`, update the following:
+| | Claude Code | StarFactory |
+| --- | --- | --- |
+| Registry id / CLI flag | `claude-code` / `--claude` | `star` / `--star` |
+| Config dir | `.claude/` | `.starFactory/` |
+| Template dir | `src/templates/claude/` (`settings.json`, `hooks/statusline.py`) | `src/templates/star/` (`settings.json`) |
+| Configurator | `configurators/claude.ts` (spells out `configure` and `collectTemplates` because of the opt-in statusline) | `configurators/star.ts` (plain `fromTemplates`) |
+| Shared hooks | session-start, inject-workflow-state, inject-delegation-context, guard-builtin-agent | the same four plus inject-shell-session-context |
+| Command format | `/arbor:xxx`, Markdown under `commands/arbor/` | same, under `.starFactory/commands/arbor/` |
 
-### Step 1: Type Definitions (data registry)
+StarFactory is a Claude Code-compatible fork. Its **project-level** config directory is `.starFactory/`; `.claude/` at project level is ignored, and it does not read the shared `.agents/skills/` root. StarFactory exports no session id into its shell children, which is why it alone gets the shell-ticket hook.
 
-| File                    | Change                                                                                                  |
-| ----------------------- | ------------------------------------------------------------------------------------------------------- |
-| `src/types/ai-tools.ts` | Add to `AITool` union type                                                                              |
-| `src/types/ai-tools.ts` | Add to `CliFlag` union type                                                                             |
-| `src/types/ai-tools.ts` | Add to `TemplateDir` union type                                                                         |
-| `src/types/ai-tools.ts` | Add entry to `AI_TOOLS` record (name, configDir, cliFlag, defaultChecked, hasPythonHooks, templateDirs) |
+`collectClaudeTemplates()` / `collectStarTemplates()` are the single description of each file set: `arbor init` writes the map and `arbor update` diffs it, so the two cannot disagree. The shape to copy for any new configurator is `configurators/star.ts`.
 
-**This single entry automatically propagates to**: `BACKUP_DIRS`, `TEMPLATE_DIRS`, `getConfiguredPlatforms()`, `cleanupEmptyDirs()`, `initializeHashes()`, init `TOOLS[]` prompt, Windows detection.
+**Required commands/skills**: both platforms receive everything from `src/templates/common/`:
 
-### Step 2: CLI Flag
+| Type    | Name          | Purpose                                                    |
+| ------- | ------------- | ---------------------------------------------------------- |
+| Command | `start`       | Session initialization (filtered out when the platform has a SessionStart hook, as both do) |
+| Command | `continue`    | Resume the current task at the right phase                 |
+| Command | `finish-work` | Pre-commit checklist and archive                           |
+| Command | `dispatch-target` | Switch the default dispatch target (`star`, `pi`, `clear`) |
+| Skill   | `before-dev`  | Read development guidelines (auto-discovers package specs) |
+| Skill   | `brainstorm`  | Requirements discovery                                     |
+| Skill   | `check`       | Check code quality (auto-discovers relevant specs)         |
+| Skill   | `break-loop`  | Post-debug analysis                                        |
+| Skill   | `update-spec` | Update code-spec docs                                      |
 
-| File                   | Change                                                |
-| ---------------------- | ----------------------------------------------------- |
-| `src/cli/index.ts`     | Add `--{platform}` option                             |
-| `src/commands/init.ts` | Add `{platform}?: boolean` to `InitOptions` interface |
+> **Rule**: a new command or single-file workflow skill goes into `src/templates/common/commands/` or `src/templates/common/skills/`; both platforms pick it up through `resolveCommands()` / `resolveSkills()`. Never edit a platform-specific copy.
 
-> Note: Commander.js options and TypeScript interfaces require static declarations — cannot be derived from registry. A compile-time assertion `_AssertCliFlagsInOptions` in `init.ts` will catch missing `InitOptions` fields — you'll get a build error if `CliFlag` has a value not present in `InitOptions`.
 
-### Step 3: Configurator (function registry)
+---
 
-| File                              | Change                                                                                         |
-| --------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `src/configurators/{platform}.ts` | Create new configurator exporting **`collect{Platform}Templates(): Map<string, string>`**       |
-| `src/configurators/index.ts`      | Add **`{platform}: fromTemplates(collect{Platform}Templates)`** to `PLATFORM_FUNCTIONS`         |
+## Bundled built-in skills
 
-Do **not** write a `configure{Platform}` — `fromTemplates` derives it, so the
-platform's file set is described exactly once and `arbor init` and `arbor
-update` cannot disagree about it. Copy `configurators/cursor.ts` (30 lines) or
-`configurators/antigravity.ts` (15 lines) as the shape.
-
-Only three platforms spell both fields, each for a named residual: claude-code
-(the `--with-statusline` flag), codex (an intentionally empty `.codex/skills/`),
-zcode (a stderr notice). A residual is work that survives *after* the shared
-writer and cannot be a path→content pair; it never adds a file. If your
-platform seems to need one, read `configurator-shared.md` → "Template maps"
-first — the parity oracle in `test/configurators/platforms.test.ts` will fail
-the build if it is really just an extra write.
-
-### Step 4: Templates
-
-> **Key concept**: Most platforms now derive their content from `src/templates/common/` (commands + skills) via `resolvePlaceholders()` in `configurators/shared.ts`. Platform-specific template directories only contain **agents**, **settings/hooks config**, and platform-specific overrides. The `createTemplateReader()` factory from `src/templates/template-utils.ts` eliminates boilerplate in platform `index.ts` files.
-
-**Standard with shared hooks** (Qoder, CodeBuddy, Droid, Cursor, Gemini, Trae):
-
-| Directory                                                | Contents                                                                |
-| -------------------------------------------------------- | ----------------------------------------------------------------------- |
-| `src/templates/{platform}/`                              | Root directory                                                          |
-| `src/templates/{platform}/index.ts`                      | Uses `createTemplateReader(import.meta.url)` — exports agents, settings |
-| `src/templates/{platform}/agents/`                       | Agent definitions (`.md` files — implement, check, research)            |
-| `src/templates/{platform}/settings.json` or `hooks.json` | Platform settings / hook config (may use `{{PYTHON_CMD}}` placeholder)  |
-
-> Note: These platforms add the platform-independent hook scripts to their template map with `collectSharedHooks(".{platform}/hooks", "{platform}")` from `shared.ts`. Commands and skills come from `src/templates/common/` via `resolveCommands()` / `resolveSkills()` / `resolveAllAsSkills()`, usually through `collectBothTemplates()`. The `createTemplateReader()` factory provides `listMdAgents()`, `getSettings()`, etc. without per-platform boilerplate.
->
-> Trae follows this shared-hook template pattern but writes `.trae/hooks.json`, `.trae/commands/arbor-*.md` with command frontmatter, `.trae/skills/`, `.trae/agents/`, and `.trae/hooks/`. Its main session uses `SessionStart` / `UserPromptSubmit` hooks; sub-agent context remains class-2 pull-based because Trae does not expose a Arbor-supported sub-agent prompt mutation surface.
-
-**Claude Code pattern** (full hooks + agents + settings):
-
-| Directory                            | Contents                                                     |
-| ------------------------------------ | ------------------------------------------------------------ |
-| `src/templates/claude/`              | Root directory                                               |
-| `src/templates/claude/index.ts`      | Export functions for agents, hooks, settings                 |
-| `src/templates/claude/agents/`       | Agent definitions (`.md` files — implement, check, research) |
-| `src/templates/claude/hooks/`        | Claude-specific hook scripts (`.py` files)                   |
-| `src/templates/claude/settings.json` | Claude settings (uses `{{PYTHON_CMD}}` placeholder)          |
-
-> Note: Claude Code is the reference platform. It has its own hooks directory (not shared-hooks) because Claude hooks have platform-specific integration points. Commands come from `src/templates/common/commands/`.
-
-**JS plugin pattern** (OpenCode):
-
-| Directory                                    | Contents                     |
-| -------------------------------------------- | ---------------------------- |
-| `src/templates/{platform}/`                  | Root directory               |
-| `src/templates/{platform}/commands/arbor/` | Slash commands (`.md` files) |
-| `src/templates/{platform}/plugin/`           | JS plugin files              |
-| `src/templates/{platform}/lib/`              | JS library files             |
-| `src/templates/{platform}/package.json`      | Plugin dependencies          |
-
-> Note: OpenCode uses JS plugins instead of Python hooks and has no `index.ts` template module — `collectOpenCodeTemplates()` (`opencode.ts:79-95`) walks the template directory instead, then adds commands and skills from `common/`. It is registered through `fromTemplates` like every other platform, so `arbor update` tracks OpenCode files normally. If a new platform uses JS plugins, follow this pattern — and note the walk's `EXCLUDE_PATTERNS` keeps `.js` (real plugin code) while dropping `.js.map` / `.d.ts` build artifacts.
-
-**TypeScript extension pattern** (Pi Agent):
-
-| Directory                                                  | Contents                                                                                  |
-| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `src/templates/{platform}/`                                | Root directory                                                                            |
-| `src/templates/{platform}/index.ts`                        | Uses `createTemplateReader(import.meta.url)` — exports agents, settings, extension source |
-| `src/templates/{platform}/agents/`                         | Agent definitions (`.md` files — implement, check, research)                              |
-| `src/templates/{platform}/extensions/arbor/index.ts.txt` | Project-local extension source written to `.pi/extensions/arbor/index.ts`               |
-| `src/templates/{platform}/settings.json`                   | Platform settings that enable extension, skills, and prompts                              |
-
-> Note: Pi Agent uses project-local TypeScript extensions instead of Arbor Python hooks. Keep generated hooks under `.pi/extensions/`, write prompt templates under `.pi/prompts/arbor-*.md`, and do not copy `shared-hooks/*.py` into `.pi/`. Agent Skills write to the shared `.agents/skills/` root (same path Codex and Gemini CLI use) via `resolveSkillsNeutral()`, not a private `.pi/skills/` root — Pi discovers `.agents/skills/` natively, and keeping a separate `.pi/skills/` copy caused Pi to see every skill twice when Codex or Gemini was also installed (#447). `configDir` stays `.pi`; `supportsAgentSkills: true` adds `.agents/skills` to Pi's managed paths, same as Codex/Gemini. A rename-dir migration (`0.6.8.json`) relocates any pre-#447 `.pi/skills/` install into `.agents/skills/` on `arbor update`. For the nested Pi launcher contract, see "Scenario: Pi Sub-Agent Launcher".
->
-> Pi is an explicit `arbor-start` exception: `session_start` is notify-only and cannot mutate model-visible context, so the configurator must keep `.pi/prompts/arbor-start.md` as a manual bootstrap fallback while the extension injects startup/full Arbor context through `before_agent_start.systemPrompt` and persists compact workflow/session context through a hidden custom message returned from `before_agent_start`.
->
-> Project-local package isolation rule: when Arbor enables Pi for a project, `.pi/settings.json` does not include `npm:pi-subagents` in `packages` — Arbor's own tool is named `arbor_subagent`, so no name collision with community `subagent` tool exists. Users may install community sub-agent packages (nicobailon/pi-subagents or tintinweb/pi-subagents) independently.
-
-**Skills pattern** (Codex, Kiro):
-
-| Directory                                | Contents                                                      |
-| ---------------------------------------- | ------------------------------------------------------------- |
-| `src/templates/{platform}/`              | Root directory                                                |
-| `src/templates/{platform}/index.ts`      | Uses `createTemplateReader(import.meta.url)` — exports agents |
-| `src/templates/{platform}/agents/`       | Agent definitions (platform-specific format)                  |
-| `src/templates/{platform}/settings.json` | Platform settings (optional)                                  |
-
-> Note: Kiro uses `resolveAllAsSkills()` from `shared.ts` to fold every template into a SKILL.md with YAML frontmatter; Codex does the same through `resolveAllAsSkillsNeutral()` because it writes into the shared `.agents/skills/` root. Either way the result goes through `collectSkillTemplates(skillRoot, skills, bundledSkills)` into the platform's template map.
->
-> **Qoder is a hybrid** — it has native Custom Commands (`.qoder/commands/{name}.md`) with required YAML frontmatter (`name` + `description`, flat layout per Qoder CLI docs), so session-boundary commands (`finish-work`, `continue`) go there via `resolveCommands()` + `wrapWithCommandFrontmatter()`, while the auto-triggered skills from `common/skills/` stay as `.qoder/skills/` via `resolveSkills()`. Use the `COMMAND_DESCRIPTIONS` registry in `shared.ts` (separate from `SKILL_DESCRIPTIONS`) for the short palette blurbs — command descriptions are one-line imperatives aimed at the user; skill descriptions are long prose aimed at the AI matcher.
->
-> **Codex has a two-layer directory model:**
->
-> | Layer                     | Install Path      | Template Source                           | Purpose                                                                           |
-> | ------------------------- | ----------------- | ----------------------------------------- | --------------------------------------------------------------------------------- |
-> | Shared skills             | `.agents/skills/` | Generated from `common/` templates        | Cross-platform skills (agentskills.io standard)                                   |
-> | Codex config/agents/hooks | `.codex/`         | `src/templates/codex/{agents,hooks.json}` | Config, custom agents, UserPromptSubmit hook config, and compatibility hook files |
->
-> **Key rules:**
->
-> - Shared skills in `.agents/skills/` must NOT contain platform-specific references (no `--platform codex`, no `codex exec`)
-> - Agent TOML format: `name` + `description` + `developer_instructions` + optional `sandbox_mode` (NOT `[sandbox_read_only]` + `prompt`)
-> - Codex hooks require `features.hooks = true` in user config (Codex 0.129+; older versions accept legacy `codex_hooks = true`); 0.129+ also gates per-hook activation behind a one-time `/hooks` TUI review
-> - Platform detection uses `.codex/` only — `.agents/skills/` alone does NOT trigger codex detection
-> - `configDir` is `".codex"`, with `supportsAgentSkills: true` to auto-include `.agents/skills` in managed paths
->
-> **Kimi Code is a hybrid skills platform** — workflow/bundled skills go to the shared `.agents/skills/` root via `resolveSkillsNeutral()` (byte-identical to Codex/Gemini/Pi; Kimi discovers that root natively), while the session-boundary commands (`start` / `continue` / `finish-work`, invoked as `/skill:arbor-<name>`) and the Arbor agent prompts are written as Kimi-private skills under `.kimi-code/skills/<name>/SKILL.md`. The same agent prompts are also installed as project-level custom sub-agent definitions at `.kimi-code/agents/arbor-{implement,check,research}.md` (Claude Code-compatible frontmatter), so the main session can dispatch `arbor-<name>` sub-agents directly; the skill copies stay as a guidance/fallback path. Kimi has no project-level hooks/settings file (hooks are user-level `~/.kimi-code/config.toml` only), so no hooks, settings, or extension files are written, and the agent prompts keep the pull-based prelude on implement/check (class-2).
-
-#### Rule: `.agents/skills/` writes use `resolvePlaceholdersNeutral()`
-
-`.agents/skills/` is a **shared destination**: multiple configurators (Codex, Gemini CLI 0.40+ via the workspace alias, future agentskills.io consumers) all write into the same path. Per-platform `{{CMD_REF:name}}` resolution (`$name` for Codex, `/arbor:name` for Gemini, etc.) makes the same `<skill>/SKILL.md` differ byte-for-byte depending on which configurator ran last → "last-writer-wins" content collisions and `.template-hashes.json` churn.
-
-**Rule**: Anything written under `.agents/skills/` MUST be rendered via `resolvePlaceholdersNeutral()` (in `configurators/shared.ts`), which substitutes `` `name` (Arbor command) `` for `{{CMD_REF:name}}` instead of a platform prefix. All other placeholders (`{{CLI_FLAG}}`, `{{EXECUTOR_AI}}`, `{{USER_ACTION_LABEL}}`, conditionals, `{{PYTHON_CMD}}`) still resolve from the platform context — those don't appear in the auto-triggered skill templates from `common/skills/`, so the rendered output stays identical across writers.
-
-Per-platform skill directories (`.claude/skills/`, `.cursor/skills/`, `.qoder/skills/`, etc.) keep using `resolvePlaceholders()` — `{{CMD_REF}}` resolves to the platform-correct slash form there, because no other configurator writes those paths.
-
-**Command-as-skill fallback files under `.agents/skills/`** (currently `arbor-start/SKILL.md`, `arbor-continue/SKILL.md`, and `arbor-finish-work/SKILL.md`, written via `resolveAllAsSkillsNeutral()` by Codex) may use per-platform `{{CLI_FLAG}}` / `{{PYTHON_CMD}}` because they are user-invoked fallback entrypoints. They still go through the neutral helper to keep `{{CMD_REF}}` neutralized for consistency with the surrounding shared skills. Platforms with their own private command and skill roots should not write `.agents/skills/`; for example, ZCode writes workflow/bundled skills under `.zcode/skills/` and keeps slash commands under `.zcode/commands/arbor/*.md`.
-
-**Wrong**:
-
-```typescript
-// Codex configurator
-files.set(".agents/skills/check/SKILL.md", resolvePlaceholders(tmpl, codexCtx));
-// Gemini configurator (later)
-files.set(
-  ".agents/skills/check/SKILL.md",
-  resolvePlaceholders(tmpl, geminiCtx),
-);
-// → byte-different SKILL.md from the same template; whoever runs last wins
-```
-
-**Correct**:
-
-```typescript
-files.set(
-  ".agents/skills/check/SKILL.md",
-  resolvePlaceholdersNeutral(tmpl, ctx),
-);
-// → byte-identical regardless of which configurator wrote it
-```
-
-**Kiro JSON agent pattern** (Kiro):
-
-| Directory                     | Contents                                                                             |
-| ----------------------------- | ------------------------------------------------------------------------------------ |
-| `src/templates/kiro/`         | Root directory                                                                       |
-| `src/templates/kiro/index.ts` | Uses `createTemplateReader(import.meta.url)` — exports agents via `listJsonAgents()` |
-| `src/templates/kiro/agents/`  | Agent definitions (`.json` files)                                                    |
-
-> Note: Kiro is unique in using JSON format for agent definitions (not Markdown). The `createTemplateReader()` factory provides `listJsonAgents()` specifically for this. Skills are generated from `common/` templates via `resolveAllAsSkills()`.
-
-**Workflows pattern** (Kilo):
-
-| Directory               | Contents                                           |
-| ----------------------- | -------------------------------------------------- |
-| (no template directory) | Kilo generates from `common/` templates at runtime |
-
-> Note: Kilo uses `resolveCommands()` + `resolveSkills()` to generate workflows and skills. No physical template files needed.
-
-**Workflows pattern** (Antigravity):
-
-| Directory               | Contents                                         |
-| ----------------------- | ------------------------------------------------ |
-| (no template directory) | Antigravity derives from Codex skills at runtime |
-
-> Note: Antigravity has no physical template files. `collectAntigravityTemplates()` (`antigravity.ts:9-15`) is a single `collectBothTemplates()` call against `src/templates/common/` — commands become `.agent/workflows/{name}.md`, skills become `.agent/skills/arbor-{name}/SKILL.md`. **There is no coupling to Codex**; `.codex/skills/` holds only user content and deleting Arbor's Codex skill templates (2026-08-05) changed nothing here. The config dir is `.agent/workflows` with `.agent/skills` as an extra managed path. Workflows are triggered with `/workflow-name` slash commands.
-
-**Copilot pattern** (prompts + hooks):
-
-| Directory                          | Contents                            |
-| ---------------------------------- | ----------------------------------- |
-| `src/templates/copilot/`           | Root directory                      |
-| `src/templates/copilot/index.ts`   | Export functions for prompts, hooks |
-| `src/templates/copilot/prompts/`   | Prompt files (`.prompt.md`)         |
-| `src/templates/copilot/hooks/`     | Hook scripts (`.py` files)          |
-| `src/templates/copilot/hooks.json` | Hooks configuration                 |
-
-> Note: Copilot uses `.prompt.md` format for commands (not plain `.md`). Hooks use `hooks.json` (not `settings.json`).
->
-> SessionStart status: Microsoft's [VS Code Agent hooks docs](https://code.visualstudio.com/docs/copilot/customization/hooks) (preview, documented since VS Code 1.110 in Feb 2026) define `SessionStart.hookSpecificOutput.additionalContext` as the field that injects context into the agent's conversation. Arbor's `copilot/hooks/session-start.py` emits this spec-compliant shape. Whether Copilot consumes `additionalContext` depends on the user's installed VS Code and Copilot versions, which is outside Arbor's control — do not re-introduce a hardcoded `systemMessage` claiming Copilot ignores hook output (see GitHub #248). Copilot remains a class-2 (pull-based) platform for sub-agent context delivery until end-to-end consumption is verified.
-
-**Droid pattern** (droids + settings):
-
-| Directory                           | Contents                                                                |
-| ----------------------------------- | ----------------------------------------------------------------------- |
-| `src/templates/droid/`              | Root directory                                                          |
-| `src/templates/droid/index.ts`      | Uses `createTemplateReader(import.meta.url)` — exports droids, settings |
-| `src/templates/droid/droids/`       | Droid definitions (`.md` files — implement, check, research)            |
-| `src/templates/droid/settings.json` | Droid settings                                                          |
-
-> Note: Droid uses "droids" terminology instead of "agents" but follows the same pattern — `collectDroidTemplates()` sets `.factory/droids/{name}.md` entries directly from `getAllDroids()`.
-
-**Devin pattern** (no template directory):
-
-| Directory               | Contents                                                           |
-| ----------------------- | ------------------------------------------------------------------ |
-| (no template directory) | Devin generates entirely from `common/` templates |
-
-> Note: `collectDevinTemplates()` (`devin.ts:10-16`) is one `collectBothTemplates()` call — `resolveCommands()` for `.devin/workflows/arbor-{name}.md`, `resolveSkills()` for `.devin/skills/`. Devin gets **no shared hooks at all**: it is not a key in `SHARED_HOOKS_BY_PLATFORM` and has no hook surface. No platform-specific template files needed.
-
-**Required commands/skills**: All platforms must include the following (adapted to each platform's format). Content comes from `src/templates/common/`:
-
-| Type    | Name          | Purpose                                                    | Required |
-| ------- | ------------- | ---------------------------------------------------------- | -------- |
-| Command | `start`       | Session initialization                                     | Yes      |
-| Command | `finish-work` | Pre-commit checklist                                       | Yes      |
-| Skill   | `before-dev`  | Read development guidelines (auto-discovers package specs) | Yes      |
-| Skill   | `brainstorm`  | Requirements discovery                                     | Yes      |
-| Skill   | `check`       | Check code quality (auto-discovers relevant specs)         | Yes      |
-| Skill   | `break-loop`  | Post-debug analysis                                        | Yes      |
-| Skill   | `update-spec` | Update code-spec docs                                      | Yes      |
-
-> **Rule**: When a new command/single-file workflow skill is added, it is added to `src/templates/common/commands/` or `src/templates/common/skills/` — ALL platforms pick it up automatically via `resolveCommands()` / `resolveSkills()` / `resolveAllAsSkills()`. Check `src/templates/common/` as the reference source.
-
-**Bundled built-in skills**: Multi-file skills with references/assets live under `src/templates/common/bundled-skills/<skill-name>/` and are installed through the same platform skill roots as workflow skills.
+Multi-file skills with references/assets live under `src/templates/common/bundled-skills/<skill-name>/` and are installed through the same platform skill roots as workflow skills.
 
 #### Scenario: Multi-file bundled skills
 
@@ -304,8 +111,8 @@ Use bundled skills when a built-in skill needs files beyond `SKILL.md`, such as 
 
 ##### 6. Tests Required
 
-- Init integration test proving at least Claude and Codex write `arbor-meta/SKILL.md` plus one reference file.
-- Configurator test proving configured files are byte-for-byte equal to `collectPlatformTemplates()` for every platform that writes skills.
+- Init integration test proving both Claude Code and StarFactory write `arbor-meta/SKILL.md` plus one reference file.
+- Configurator test proving configured files are byte-for-byte equal to `collectPlatformTemplates()` for both platforms.
 - Regression test proving `.arbor/.template-hashes.json` includes bundled skill reference files after init.
 - Release smoke test when a changelog or docs page claims the skill is
   bundled: build the CLI, verify the skill appears in `npm pack --dry-run
@@ -342,357 +149,51 @@ source, dist, generated-files, and update-tracking chain:
 built-binary `arbor init` -> `.arbor/.template-hashes.json` -> built-binary
 `arbor update --dry-run` with no pending changes.
 
-### Step 5: Template Extraction
+## Python scripts (independent runtime)
 
-| File                       | Change                                                                                                                                              |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/templates/extract.ts` | Only needed if platform has a physical template directory. Most new platforms generate from `common/` templates and don't need extraction functions |
+Python scripts run in user projects at runtime and cannot import from the TS registry. They carry no per-platform adapter: platform identity reaches them only through hook payloads and `ARBOR_CONTEXT_ID`.
 
-> Note: Platforms using `createTemplateReader(import.meta.url)` in their `index.ts` handle their own template reading. The `extract.ts` functions (`getArborSourcePath()`, `readArborFile()`, `copyArborDir()`) are primarily for the `.arbor/` workflow files, not platform templates.
+The shipped script tree (`packages/cli/src/templates/arbor/scripts/`) and Arbor's own dogfood copy (`.arbor/scripts/`) must stay byte-identical. This is build-enforced, see `script-conventions.md` → "Two script trees, one content".
 
-### Step 6: Python Scripts (independent runtime)
+`task.py create` always seeds empty `implement.jsonl` / `check.jsonl` (every Arbor project dispatches to codeg assistants), see `task_store.py`.
 
-> **Warning**: `cli_adapter.py` uses if/elif/else chains with NO exhaustive check. New platforms silently fall through to the `else` branch (Claude defaults). You MUST add explicit branches for **every method** listed below.
 
-| File                                                  | Change                                                                                                          |
-| ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `src/templates/arbor/scripts/common/cli_adapter.py` | Add to `Platform` literal type, `config_dir_name` property, `detect_platform()`, `get_cli_adapter()` validation |
+## Active Task Resolution
 
-**cli_adapter.py methods requiring explicit branches** (do NOT rely on `else` fallthrough):
-
-| Method                       | What to decide                    | Example                                          |
-| ---------------------------- | --------------------------------- | ------------------------------------------------ |
-| `config_dir_name`            | Config directory name             | `".gemini"`, `".agent"`                          |
-| `get_arbor_command_path()` | Command file path format          | `.toml` vs `.md`, subdirectory vs flat           |
-| `get_non_interactive_env()`  | Non-interactive env var           | `{}` if none, or platform-specific               |
-| `build_run_command()`        | CLI command for running agents    | `["gemini", prompt]` or raise ValueError         |
-| `build_resume_command()`     | CLI command for resuming sessions | `["gemini", "--resume", id]` or raise ValueError |
-| `cli_name`                   | CLI executable name               | `"gemini"`, `"agy"`                              |
-| `detect_platform()`          | Directory detection logic         | Check `.gemini/` exists                          |
-| `get_commands_path()`        | Command directory structure       | `commands/arbor/` or `workflows/`              |
-
-> Note: Python scripts run in user projects at runtime — they cannot import from the TS registry and maintain their own registry in `cli_adapter.py`.
-
-### Active Task Resolution
-
-Current-task state is session/window scoped. New hook, statusline, plugin,
-extension, and sub-agent consumers must call the shared resolver path:
+Current-task state is session/window scoped. New hook, statusline and script consumers must call the shared resolver path:
 
 | Runtime                         | Resolver surface                                                                                      |
 | ------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | Python hooks/statusline/scripts | `.arbor/scripts/common/active_task.py`                                                              |
 | Existing Python callers         | `common.paths.get_current_task()` / `get_current_task_abs()` / `get_current_task_source()`            |
-| OpenCode plugin                 | JS resolver in `lib/arbor-context.js`, mirroring `active_task.py`                                   |
-| Pi extension                    | Extension-local resolver using `ctx.sessionManager.getSessionId()` and Bash `tool_call` env injection |
 
-Do not add direct `.arbor/.current-task` reads in hooks, statusline scripts,
-sub-agent context injection, or platform plugins. Direct reads reintroduce
-multi-window task pollution.
+Do not add direct `.arbor/.current-task` reads in hooks, statusline scripts or context injection. Direct reads reintroduce multi-window task pollution.
 
-Context-key precedence, as implemented in `active_task.py:resolve_context_key`
-(`:468-509`):
+Context-key precedence, as implemented in `active_task.py:resolve_context_key`:
 
 1. `ARBOR_CONTEXT_ID` environment override for subprocesses.
 2. From the hook payload: `session_id`, `sessionId`, or `sessionID`.
 3. From the hook payload: `conversation_id` / `conversationId` / `conversationID`.
-4. From the hook payload: `transcript_path` / `transcriptPath` / `transcript`
-   when non-empty.
-5. A platform-native session environment variable — but only for the handful of
-   names that have actually been verified to exist, and only for the platform
-   the resolver detected (`_iter_env_keys` filters by platform name, so ZCode's
-   entry cannot fire in a Claude session). Session names are tried first, then
-   conversation names, then transcript names (`active_task.py:294-322`).
-6. A short-lived shell ticket, checked **last** and **not** gated on platform
-   name (`active_task.py:505-508`) — see "Shell-ticket bridge" below. Last on
-   purpose: a platform that genuinely exports identity into the shell outranks
-   a ticket written on its behalf.
+4. From the hook payload: `transcript_path` / `transcriptPath` / `transcript` when non-empty.
+5. A platform-native session environment variable, only for names that have actually been verified to exist and only for the detected platform (`_iter_env_keys` filters by platform name). Today that is `CLAUDE_CODE_SESSION_ID` for Claude Code; StarFactory has no verified name.
+6. A short-lived shell ticket, checked **last** and **not** gated on platform name. See "Shell-ticket bridge" below.
 
-The env tables live at `active_task.py:59-134`. Do not add a name to them by
-analogy with a neighbour: a 2026-08-05 audit of all 21 platforms found 12 of
-the 21 declared names had never existed anywhere. The provenance convention
-that came out of it is in `script-conventions.md` → "Session env var names
-carry their provenance", and it is binding on this file too — no platform's
-session env var may be named here without the same grade of evidence.
+The env table lives at the top of `active_task.py`. Do not add a name by analogy with a neighbour: a 2026-08-05 audit found most pattern-guessed names had never existed. The provenance convention is in `script-conventions.md` → "Session env var names carry their provenance", and it binds this file too.
 
-Cursor IDE may send `transcript_path: null`; this must not prevent session
-scoping when `session_id` or `conversation_id` is present.
+`task.py start <task>` has no hook stdin when run as a normal shell command. It can write session-local state only when a context key is available through `ARBOR_CONTEXT_ID` or a verified platform environment variable. Claude Code is special: SessionStart provides `CLAUDE_ENV_FILE`, so the shared hook persists `export ARBOR_CONTEXT_ID=<context-key>` there for later Bash tool calls in the same conversation. StarFactory has no such bridge and uses the shell ticket. Without any of these signals, `task.py start` must fail with a clear session identity hint and must not write `.arbor/.current-task`.
 
-OpenCode has **no** entry in any env table. Its plugin holds the session
-identity and injects it, so the plugin must prefix Bash tool commands in
-`tool.execute.before` with a shell-aware `ARBOR_CONTEXT_ID` assignment when
-the command does not already set one: POSIX shells use
-`export ARBOR_CONTEXT_ID=<context-key>;`, while Windows PowerShell uses
-`$env:ARBOR_CONTEXT_ID = '<context-key>';`. That prefix is the only channel
-by which an AI-run `task.py` sees an OpenCode session. Do not infer the
-shell dialect from `process.platform` alone: on Windows, Git Bash / MSYS2 still
-parse POSIX syntax. OpenCode must treat `MSYSTEM`, `MINGW_PREFIX`,
-`OSTYPE=msys|mingw|cygwin`, `SHELL=...bash`, or `OPENCODE_GIT_BASH_PATH` as
-POSIX-shell signals and keep PowerShell as the Windows default only when no
-POSIX-shell signal is present.
-Regression tests must cover both families: `win32` with no POSIX-shell signal
-emits the PowerShell prefix, while `win32` with each supported POSIX-shell
-signal emits the `export` prefix. Existing explicit-assignment dedupe tests
-must continue to cover POSIX, `env ... ARBOR_CONTEXT_ID=...`, and PowerShell
-forms.
+Dispatched sub-agents have no `ARBOR_CONTEXT_ID` by design and never call `task.py start/current/finish` (see `dispatch.md`).
 
-> **`OPENCODE_RUN_ID` is not an input on either side.** It was real on OpenCode
-> ~1.14.x — observed live in an `opencode run` bash child alongside
-> `OPENCODE_PID` / `OPENCODE_PROCESS_ROLE` — and upstream dropped it: the
-> 1.17.18 binary carries 82 other `OPENCODE_*` names but neither
-> `OPENCODE_RUN_ID` nor `PROCESS_ROLE`, and 1.18.13's source has zero hits.
-> Python purged it on 2026-08-05 (`PURGED_ENV_NAMES`); the JS resolver's branch
-> went on 2026-08-06. Both sides are now test-locked to ignore it
-> (`regression.test.ts` "task.py start ignores OPENCODE_RUN_ID" and "OpenCode
-> resolver ignores OPENCODE_RUN_ID and uses the plugin sessionID"). The one
-> place it ever fired was a stray host-shell export hijacking a resolver, which
-> is why `test/setup.ts` had to scrub it. Do not treat it as a precedent for
-> adding env names.
+### Shell-ticket bridge
 
-Pi Agent exposes its real session identity through the extension context, not
-through ordinary Bash environment. The generated `.pi/extensions/arbor/index.ts`
-extension must read `ctx.sessionManager.getSessionId()`, derive the same
-`pi_<session-id>` context key for context injection and sub-agent launches, and
-prefix Bash tool calls in `tool_call` with
-`export ARBOR_CONTEXT_ID=<context-key>;` when the command does not already set
-one.
-Copilot should use
-`session_id` / `sessionId` only if the actual payload provides it; otherwise it
-has no active task.
+The premise: StarFactory exports no session id into its shell tool's child process, but its hooks receive that id on stdin. So a hook registered on `PreToolUse` with matcher `Bash` writes a short-lived ticket, and `task.py` reads it back.
 
-`task.py start <task>` has no hook stdin when it is run as a normal shell
-command. It can write session-local state only when a context key is available
-through `ARBOR_CONTEXT_ID` or a platform-native environment variable exposed
-by the host. Hooks and plugins should pass `ARBOR_CONTEXT_ID` to subprocesses
-they launch. Claude Code is special: SessionStart provides `CLAUDE_ENV_FILE`,
-so the shared hook must persist `export ARBOR_CONTEXT_ID=<context-key>` there
-for later Bash tool calls in the same conversation. OpenCode is also special:
-there is no env-file bridge, so the JS plugin must prefix Bash tool commands
-with a shell-aware `ARBOR_CONTEXT_ID` assignment using plugin session identity
-before execution; on Windows, this must be shell-dialect-aware rather than a
-plain `process.platform === "win32"` check. **No researched platform has a
-reliable command-env bridge** — that is the general finding, not a Cursor
-quirk — so every hook-capable platform with a pre-shell event gets the shell
-ticket instead (see below). Without one of these session signals, `task.py
-start` must fail with a clear session identity hint and must not write
-`.arbor/.current-task`.
-Pi is extension-backed rather than Python-hook-backed: `tool_call` must mutate
-`event.input.command` before Bash execution, and the custom `arbor_subagent` tool must
-spawn child `pi` processes with `ARBOR_CONTEXT_ID` in `env`.
+`inject-shell-session-context.py` is that writer. It is declared for `star` only in `SHARED_HOOKS_BY_PLATFORM`. The ticket directory is `.arbor/.runtime/shell-tickets/`.
 
-#### Shell-ticket bridge (platform-neutral)
+The full contract (payload shape, the four acceptance conditions, and the install-directory rule that decides the ticket's context key) is in `script-conventions.md` → "Shell-ticket bridge". Getting the context key wrong makes `task.py start` write a session file no hook ever reads, which half-works behind the single-session fallback and breaks silently with two windows open.
 
-The premise: no researched platform exports a session id into its shell tool's
-child process, but every hook-capable one puts that id on hook stdin. So a hook
-registered on the host's pre-shell event writes a short-lived ticket, and
-`task.py` reads it back.
+Hook, statusline or script output that mentions an active task should include the source (`session` or `session:<key>`) so cross-window mistakes are visible while debugging.
 
-`inject-shell-session-context.py` is that writer. It ships to **cursor, gemini,
-qoder, codebuddy, droid, trae, zcode** (`shared-hooks/index.ts:106-145`) — not
-Cursor alone — and is registered on whichever pre-shell event the host offers:
-Cursor's `beforeShellExecution`, Claude-shaped `PreToolUse`, or Gemini's
-`BeforeTool`. Kiro is deliberately absent; the reason is in the declaration
-comment.
-
-The current ticket directory is `.arbor/.runtime/shell-tickets/`.
-`cursor-shell/` is the pre-0.6.13 name from when the bridge was Cursor-only —
-still read so a command in flight across an upgrade does not degrade, **never**
-written.
-
-The full contract — payload shape, the four acceptance conditions, and the
-install-directory rule that decides the ticket's context key — is in
-`script-conventions.md` → "Shell-ticket bridge". Read it before wiring the hook
-into a new platform's config: getting the context key wrong makes `task.py
-start` write a session file no hook ever reads, which half-works behind the
-single-session fallback and breaks silently with two windows open.
-
-Hook, statusline, or plugin output that mentions an active task should include
-the source (`session` or `session:<key>`) so cross-window mistakes are visible
-while debugging. Statuslines may shorten this to `[session]` to avoid noisy UI.
-
-**Also update `task_store.py` when adding a sub-agent-capable platform**:
-
-| File                                                 | Constant                        | When to update                                                                                                              |
-| ---------------------------------------------------- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `src/templates/arbor/scripts/common/task_store.py` | `_SUBAGENT_CONFIG_DIRS` (tuple) | Add `.{configDir}/` if the new platform can spawn sub-agents (Class-1 hook-inject, Class-2 pull-based, or extension-backed) |
-
-This tuple is consulted by `cmd_create` to decide whether to seed `implement.jsonl` / `check.jsonl` for the new task. Agent-less platforms (Kilo, Antigravity, Devin) MUST be excluded — they don't consume jsonl.
-
-Same root reason as `cli_adapter.py`: Python scripts run at user-project runtime and can't import from the TS `AI_TOOLS` registry, so they maintain their own parallel registry. When adding/removing sub-agent capability, update both in tandem.
-
-> **Codex-specific CLIAdapter notes:**
->
-> - `config_dir_name` returns `".codex"` (not `".agents"`)
-> - `get_agent_path` returns `.toml` for codex (not `.md`)
-> - `requires_agent_definition_file` is `False` — Codex auto-discovers agents from `.codex/agents/*.toml`, no `--agent` CLI flag
-> - `detect_platform` checks `.codex/` existence (not `.agents/skills/`)
-
-**Repo-global, not Codex-specific**: the shipped script tree
-(`packages/cli/src/templates/arbor/scripts/`) and Arbor's own dogfood copy
-(`.arbor/scripts/`) must stay byte-identical. This is now build-enforced —
-see `script-conventions.md` → "Two script trees, one content".
-
-### Scenario: Codex Native `SubagentStart` Context Delivery
-
-#### 1. Scope / Trigger
-
-Trigger: Codex has a native sub-agent start hook. Arbor must send only the
-dispatched role's task context to a child without letting a stale environment
-override the parent session or letting a missing parent borrow another window's
-task.
-
-#### 2. Signatures
-
-```python
-def resolve_active_task(
-    repo_root: Path,
-    platform_input: dict[str, Any] | None = None,
-    platform: str | None = None,
-    *,
-    allow_single_session_fallback: bool = True,
-    allow_environment_context: bool = True,
-) -> ActiveTask: ...
-```
-
-The native hook path calls this resolver with `platform="codex"`,
-`allow_single_session_fallback=False`, and
-`allow_environment_context=False`. Other callers retain both defaults.
-
-#### 3. Contracts
-
-- Generated `.codex/hooks.json` keeps `UserPromptSubmit` and adds a
-  `SubagentStart` matcher for exactly `arbor-implement`, `arbor-check`,
-  and `arbor-research`.
-- Codex hook input uses parent `session_id`, `agent_type`, and `cwd`. A valid
-  result is JSON with
-  `hookSpecificOutput.hookEventName="SubagentStart"` and
-  `hookSpecificOutput.additionalContext` beginning with
-  `<!-- arbor-hook-injected -->`.
-- Implement/check context order is role JSONL, `prd.md`, optional `design.md`,
-  then optional `implement.md`. Research receives the resolved `Active task:`
-  path and research-only context; it must not read implement/check manifests.
-- Codex may truncate model-visible `SubagentStart.additionalContext`, retain a
-  head/tail preview, and add `Full hook output saved to: <path>`. Custom role
-  profiles must treat this notice as stronger evidence than the marker: read
-  the saved full output first, use the role-specific `Active task:` pull
-  fallback if that read fails, and accept the marker as complete only when no
-  saved-output notice is present. Marker absence without a saved-output notice
-  also uses the pull fallback.
-- Native dispatch (`codex.dispatch_mode: auto`) does not set a model on the
-  spawned sub-agent by default — Codex's own precedence (spawn value ->
-  `[agents]` default -> parent) means the child **inherits the main
-  session's model** unless the generated `.codex/agents/arbor-*.toml`
-  pins one. Users tune this by editing `model` / `model_reasoning_effort`
-  directly on those three files (matches Codex's own docs); there is no
-  `.arbor/config.yaml` indirection. `configureCodex()` and
-  `collectTemplateFiles()` (via `preserveCodexAgentModelKeys()` in
-  `configurators/codex.ts`) both extract any existing top-level `model` /
-  `model_reasoning_effort` lines from the on-disk file and re-insert them
-  after `sandbox_mode` in the freshly rendered template before writing or
-  hashing, so `arbor init` / `arbor update` never clobber a user-pinned
-  model and never flag the pinned lines as a modified-file conflict. Static
-  templates ship these as commented hint lines only.
-
-#### 4. Validation & Error Matrix
-
-| Condition | Required result |
-| --- | --- |
-| recognised role + parent session maps to a live task | emit role-specific `additionalContext` |
-| unknown/missing/malformed parent session | exit successfully with no output |
-| one unrelated runtime session exists | no output; never use sole-session fallback |
-| inherited `ARBOR_CONTEXT_ID` conflicts with parent session | parent `session_id` wins on this native path |
-| complete output contains marker and no saved-output notice | child uses the injected role context directly |
-| output contains `Full hook output saved to: <path>` | child reads the referenced full output before role work |
-| referenced full-output file cannot be read | child uses its role-specific `Active task:` pull fallback |
-| no saved-output notice and marker is absent | child uses its role-specific `Active task:` pull fallback |
-| stale/missing task, malformed hook JSON, or unexpected error | fail open; Codex still starts the child |
-| non-Arbor `agent_type` | no Arbor output |
-
-#### 5. Good / Base / Bad Cases
-
-- Good: a parent session dispatches `arbor-implement`; the child receives
-  its curated implementation context and does not dispatch another role.
-- Good: Codex truncates a long payload but supplies a saved-output path; the
-  child reads that file before using any marker retained in the head preview.
-- Base: project Hook trust is pending; the child reads the dispatch prompt's
-  `Active task:` value and follows the marker-absent pull protocol.
-- Bad: a retained marker causes the child to ignore a saved-output notice, or
-  research loads `implement.jsonl` / `check.jsonl`.
-
-#### 6. Tests Required
-
-- Parse generated Hook config and assert both event registrations plus the
-  narrowed matcher.
-- Black-box the shared hook for valid, unknown, malformed, concurrent, and
-  non-Arbor subagents; assert the output envelope, marker, ordering, and
-  environment-override isolation.
-- Cover `auto` default, explicit `inline`, legacy `sub-agent`, and invalid
-  configuration across JSONL seeding, effective workflow platform, and the
-  Codex workflow-state banner.
-- Assert `configureCodex()` and `collectPlatformTemplates("codex")` remain
-  byte-equivalent and distribute the shared injector.
-- Assert all three generated role profiles place the saved-output notice check
-  before marker handling, fall back when the saved file is unreadable or the
-  marker is absent, and preserve implement/check/research role boundaries.
-
-#### 7. Wrong vs Correct
-
-**Wrong:** call the ordinary resolver with defaults from `SubagentStart`; its
-environment override and single-session compatibility fallback can select a
-different parent task.
-
-**Correct:** make the strict native call explicit while preserving the defaults
-for legacy shell, hook, and pull-based consumers.
-
-**Wrong:** treat `<!-- arbor-hook-injected -->` as proof that the entire
-model-visible payload survived host truncation.
-
-**Correct:** let `Full hook output saved to: <path>` take precedence, read that
-file first, and use the role-specific pull fallback only when recovery fails.
-
-### Step 7: Documentation
-
-| File           | Change                                         |
-| -------------- | ---------------------------------------------- |
-| `README.md`    | Add platform to supported tools list           |
-| `README_CN.md` | Add platform to supported tools list (Chinese) |
-
-### Step 8: Build Scripts
-
-| File                        | Change                                                      |
-| --------------------------- | ----------------------------------------------------------- |
-| `scripts/copy-templates.js` | No change needed (copies entire `src/templates/` directory) |
-
-### Step 9: Project Config (Optional)
-
-If Arbor project itself should support the new platform:
-
-| Directory                       | Contents                       |
-| ------------------------------- | ------------------------------ |
-| `.{platform}/`                  | Project's own config directory |
-| `.{platform}/commands/arbor/` | Slash commands                 |
-| `.{platform}/agents/`           | Agents                         |
-| `.{platform}/hooks/`            | Hooks                          |
-| `.{platform}/settings.json`     | Settings                       |
-
-### Step 10: Gitignore
-
-| File         | Change                                                    |
-| ------------ | --------------------------------------------------------- |
-| `.gitignore` | Add local config patterns (e.g., `{platform}.local.json`) |
-
-### Step 11: Tests (MANDATORY)
-
-> **Warning**: Dynamic iteration tests (e.g., `PLATFORM_IDS.forEach`) only verify registry metadata. They do NOT cover platform-specific runtime behavior. You MUST add explicit tests.
-
-| Test File                                | What to Add                                                                                                                                                                                                             |
-| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `test/templates/{platform}.test.ts`      | **NEW FILE**: Verify the platform's template-module readers (`getAllAgents()`, `getAllHooks()`, `getHooksConfig()`, `getSettings()` — whichever it exposes) return the expected set, content non-empty, format valid. Assert one bundled skill file by name if the platform ships them |
-| `test/configurators/platforms.test.ts`   | Detection test: `getConfiguredPlatforms` recognizes tracked Arbor templates but ignores native platform directories. Content test: `configurePlatform` writes the expected paths, no compiled artifacts. **The `configure` ⟷ `collectTemplates` parity assertions are registry-wide and cover a new platform automatically — do not copy them per platform** |
-| `test/commands/init.integration.test.ts` | Init test: `init({ {platform}: true })` creates correct directory. Negative assertions: add `.{configDir}` checks to existing platform tests                                                                            |
-| `test/templates/extract.test.ts`         | `get{Platform}TemplatePath()` returns existing dir. `get{Platform}SourcePath()` deprecated alias equals template path                                                                                                   |
-| `test/regression.test.ts`                | Platform registration: `AI_TOOLS.{platform}` exists with correct `configDir`. cli_adapter: `commonCliAdapter` contains `"{platform}"` and `".{configDir}"`. Update `withTracking` list if `collectTemplates` is defined |
-
-For extension-backed platforms like Pi Agent, add explicit regression coverage that no Python hook files are installed under the platform config directory and that the generated extension exposes the required sub-agent and hook-equivalent event surface.
 
 ---
 
@@ -702,21 +203,20 @@ For extension-backed platforms like Pi Agent, add explicit regression coverage t
 
 Infra wiring: a hook script only runs if two independent things agree — the
 distribution table that puts the file on disk, and the platform's own hook
-config that invokes it. Those cannot be derived from one another, because each
-vendor defines its own config format. A script on disk that nothing invokes is
+config (`settings.json`) that invokes it. Those cannot be derived from one another. A script on disk that nothing invokes is
 indistinguishable from success: the file is there, the test that checks the
 file is there passes, and the feature does nothing.
 
 ### 2. Signatures
 
 ```typescript
-// templates/shared-hooks/index.ts:95-149 — the distribution half
+// templates/shared-hooks/index.ts — the distribution half
 export const SHARED_HOOKS_BY_PLATFORM: Record<
   SharedHookPlatform,
   readonly SharedHookName[]
 >;
 
-// configurators/shared.ts:571 — reads that table into the platform's map
+// configurators/shared.ts — reads that table into the platform's map
 export function collectSharedHooks(
   hooksPath: string,
   platform: SharedHookPlatform,
@@ -724,17 +224,14 @@ export function collectSharedHooks(
 ```
 
 The invocation half has no shared signature — it is a literal inside each
-platform's own config template (`settings.json`, `hooks.json`, `config.json`,
-`.kiro.hook`, the agent JSON's `hooks` object …).
+platform's own `settings.json` template.
 
 ### 3. Contracts
 
-- `SharedHookPlatform` is a string-union type, so a platform not in the union
-  cannot be passed to `collectSharedHooks` at all. That is the guard for
-  extension-backed platforms.
+- `SharedHookPlatform` is the string union `"claude" | "star"`, so an unknown platform cannot be passed to `collectSharedHooks`.
 - Declaring `"inject-shell-session-context.py"` for a platform obliges its
   config template to invoke `hooks/inject-shell-session-context.py` on
-  whichever pre-shell event the host publishes.
+  the `PreToolUse` event with matcher `Bash`.
 - The reverse also binds: a config that invokes a shared hook the platform does
   not declare points at a path that will never exist on disk.
 - The hooks path passed to `collectSharedHooks` must be the same directory the
@@ -744,7 +241,7 @@ platform's own config template (`settings.json`, `hooks.json`, `config.json`,
 
 ### 4. Validation & Error Matrix
 
-Both directions are asserted in `test/templates/shared-hooks.test.ts:97-155`.
+Both directions are asserted in `test/templates/shared-hooks.test.ts`.
 "Registration" means a non-`.md` file in the platform's template map contains
 the substring `hooks/<hook-name>` — markdown is excluded because reference
 tables name the file without invoking it.
@@ -759,15 +256,15 @@ tables name the file without invoking it.
 
 ### 5. Good / Base / Bad Cases
 
-- **Good** — a platform gains a pre-shell event: add it to the table *and* add the invocation to its config template, in the same change. The test proves both halves landed.
-- **Base** — Kiro. Deliberately **not** wired: neither of its two hook surfaces (CLI agent JSON `hooks.{agentSpawn,userPromptSubmit}` and IDE `.kiro.hook` `when.type`) publishes a pre-tool trigger, and an unknown key in the agent JSON risks the whole agent failing to load. The probe that would settle it is recorded in the declaration comment — run Kiro, check its hook trigger list.
+- **Good** — a platform gains a hook: add it to the table *and* add the invocation to its `settings.json` template, in the same change. The test proves both halves landed.
+- **Base** — Claude Code deliberately does **not** declare `inject-shell-session-context.py`: it exports `CLAUDE_ENV_FILE` and a session env var, so the ticket bridge is unnecessary.
 - **Bad** — declaring the hook and "wiring it later". The file ships, `arbor update` starts managing it, users see it in their repo, and nothing calls it. This is precisely the state the test now makes unreachable.
 
 ### 6. Tests Required
 
 - Both direction assertions above, derived from `SHARED_HOOKS_BY_PLATFORM` — never from a hard-coded platform list.
 - A non-vacuity assertion on the filter itself. Without it, renaming the hook turns every other assertion into a no-op that still passes.
-- Per-platform registration tests for the hooks whose config shape is unusual (`shared-hooks.test.ts` has explicit ones for kiro and zcode).
+- Per-platform registration tests for hooks whose config shape is unusual (for example the `Bash`-matcher ticket hook on `star`).
 
 ### 7. Wrong vs Correct
 
@@ -775,306 +272,40 @@ tables name the file without invoking it.
 
 ```typescript
 // shared-hooks/index.ts
-foo: ["session-start.py", "inject-shell-session-context.py"],
+star: ["session-start.py", "inject-shell-session-context.py"],
 ```
 
-with `templates/foo/hooks.json` unchanged. `.foo/hooks/inject-shell-session-context.py` is written, hash-tracked, and never executed.
+with `templates/star/settings.json` unchanged. `.starFactory/hooks/inject-shell-session-context.py` is written, hash-tracked, and never executed.
 
 #### Correct
 
 ```typescript
 // shared-hooks/index.ts
-foo: ["session-start.py", "inject-shell-session-context.py"],
+star: ["session-start.py", "inject-shell-session-context.py"],
 ```
 
 ```jsonc
-// templates/foo/hooks.json — the other half
+// templates/star/settings.json — the other half
 {
-  "beforeShellExecution": [
-    { "command": "{{PYTHON_CMD}} .foo/hooks/inject-shell-session-context.py" }
-  ]
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "{{PYTHON_CMD}} .starFactory/hooks/inject-shell-session-context.py" }
+        ]
+      }
+    ]
+  }
 }
 ```
 
----
-
-## Scenario: Extension-Backed Platform Support
-
-### 1. Scope / Trigger
-
-Use this pattern when a platform provides project-local JS/TS extension events and custom tools rather than Arbor-compatible Python hooks. Pi Agent is the reference implementation.
-
-### 2. Signatures
-
-TypeScript registry:
-
-```typescript
-AI_TOOLS.pi = {
-  configDir: ".pi",
-  cliFlag: "pi",
-  hasPythonHooks: false,
-  templateContext: {
-    agentCapable: true,
-    hasHooks: true,
-  },
-};
-```
-
-Configurator output:
-
-```text
-.pi/settings.json
-.pi/prompts/arbor-<command>.md
-.agents/skills/<skill>/SKILL.md
-.pi/agents/arbor-<agent>.md
-.pi/extensions/arbor/index.ts
-```
-
-Runtime script registry:
-
-```python
-Platform = Literal[..., "pi", "zcode"]
-_SUBAGENT_CONFIG_DIRS = (..., ".pi", ".zcode")
-```
-
-### 3. Contracts
-
-Extension-backed platforms MUST NOT receive `.arbor/templates/shared-hooks/*.py` under their config directory. Their hook-equivalent behavior belongs in generated extension source.
-
-For Pi Agent:
-
-| Arbor concept                    | Pi surface                                                                                                                                                                                                                                                            |
-| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Session start                      | `session_start` extension event (notify-only; context-key is established but no prompt mutation)                                                                                                                                                                      |
-| Per-turn workflow-state breadcrumb | `before_agent_start.message` hidden custom message — persists cached `<workflow-state>` + `<session-overview>` from `getTurnCtx()` without showing it in the UI; skipped when identical to the last persisted runtime context (dedup)                                |
-| Startup context                    | `before_agent_start` builds compact SessionStart-equivalent context (`<session-context>`, adaptive `<first-reply-notice>`, `<session-overview>`, `<arbor-workflow>`, `<ready>`) once per context key, memoizes it, and contributes the identical bytes to `systemPrompt` on every turn |
-| Per-agent-invocation context       | `before_agent_start.systemPrompt` carries a per-context-key snapshot of task context (PRD + jsonl) taken on first use; later on-disk task changes are delivered through `before_agent_start.message` as `<arbor-task-context-update>` persisted messages           |
-| Per-Bash-tool session identity     | `tool_call` extension event; mutates `event.input.command` in place via `injectArborContextIntoBash()` to prefix `export ARBOR_CONTEXT_ID=<context-key>;`                                                                                                         |
-| Sub-agent dispatch                 | custom `arbor_subagent` tool with `promptSnippet`/`promptGuidelines = SUBAGENT_DISPATCH_PROTOCOL`; resolves the Pi CLI JS entrypoint when possible, runs `--mode text -p --no-session`, sends the delegated prompt through stdin, and forwards `ARBOR_CONTEXT_ID` |
-
-The compact model-visible context injection point is `before_agent_start.message`; it uses `TurnContextCache` so the same request path does not re-spawn the default `get_context.py` session-context call unnecessarily. Pi does not register a Arbor `input` handler for runtime context injection, so user text is not rewritten. The existing Pi `context` event may establish the context key, but it must not append Arbor runtime messages because request-local messages are not persisted and can break provider prefix cache. See "Class-3 injection points (Pi extension)" below the modes table for the runtime contract.
-
-Cache-stability invariant: everything the extension contributes to `systemPrompt` must be byte-identical across every turn of a session (provider prefix caches invalidate from byte 0 on any system prompt change). Startup context and task context are therefore memoized per context key; anything volatile (workflow breadcrumb, session overview, task-doc changes) is delivered exclusively through persisted `before_agent_start.message` custom messages, and only when its content differs from the last persisted copy.
-
-If `agentCapable` is true, `task.py create` must seed `implement.jsonl` / `check.jsonl`, and generated sub-agent definitions or extension code must consume those files.
-
-### 4. Validation & Error Matrix
-
-| Condition                                                                     | Behavior                                                                                |
-| ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `hasHooks: true` and `hasPythonHooks: false`                                  | Init does not run Windows Python hook detection for the platform                        |
-| Platform can spawn Arbor sub-agents                                         | Add config dir to `_SUBAGENT_CONFIG_DIRS`                                               |
-| Platform cannot consume JSONL context                                         | Keep it out of `_SUBAGENT_CONFIG_DIRS` even if it has commands/skills                   |
-| Generated extension source is tracked                                         | `collectTemplates()` must include the same path written by `configure{Platform}`        |
-| Extension path contains `spec/` in a skill name such as `arbor-update-spec` | Template hash exclusion must not drop it; only `.arbor/spec/` is user-owned spec data |
-| Platform uses extension hooks                                                 | Do not copy Python hook files into the platform config dir                              |
-
-### 5. Good / Base / Bad Cases
-
-Good:
-
-```text
-.pi/extensions/arbor/index.ts
-.pi/agents/arbor-implement.md
-.agents/skills/update-spec/SKILL.md
-```
-
-Base:
-
-```text
-.pi/prompts/arbor-continue.md
-.pi/settings.json
-```
-
-Bad:
-
-```text
-.pi/hooks/session-start.py
-.pi/hooks/inject-delegation-context.py
-```
-
-### 6. Tests Required
-
-Add or update tests that assert:
-
-- `AI_TOOLS.<platform>` has the expected `configDir`, `cliFlag`, `agentCapable`, `hasHooks`, and `hasPythonHooks`.
-- `configurePlatform("<platform>")` writes every generated file and writes no Python hook files for extension-backed platforms (canonical assertion: `expect(fs.existsSync(".pi/hooks")).toBe(false)` in `test/configurators/platforms.test.ts`).
-- `collectPlatformTemplates("<platform>")` matches init output paths.
-- `init({ <flag>: true })` creates platform assets and tracks hashes for all generated templates.
-- `get_context.py --mode phase --platform <platform>` routes to sub-agent-capable workflow blocks when `agentCapable` is true.
-- Runtime script copies (`src/templates/arbor/scripts/**` and live `.arbor/scripts/**`) both recognize the platform.
-- The generated extension registers handlers for the Pi runtime surfaces (`before_agent_start`, `context`, `tool_call`) plus the `subagent` custom tool with `promptSnippet`/`promptGuidelines` set to the dispatch protocol constant, and does not register `input` for Arbor runtime context injection.
-- The TS-port workflow-state regex (`WF_RE` in `templates/pi/extensions/arbor/index.ts.txt:1072`) matches the same status names and body content as the Python `_TAG_RE` on a shared fixture from `templates/arbor/workflow.md`.
-
-### 7. Wrong vs Correct
-
-#### Wrong
-
-```typescript
-for (const [k, v] of collectSharedHooks(".pi/hooks", "pi")) {
-  files.set(k, v);
-}
-```
-
-This installs Python hooks into a platform whose hook surface is a TypeScript extension API. (It would not even compile — `pi` is not a `SharedHookPlatform` — which is the intended guard.)
-
-#### Correct
-
-```typescript
-files.set(".pi/extensions/arbor/index.ts", getExtensionTemplate());
-```
-
-Extension-backed platforms keep hook-equivalent behavior in platform-native extension files and test those files as templates.
-
----
-
-## Scenario: Pi Sub-Agent Launcher
-
-### 1. Scope / Trigger
-
-Use this contract when `.pi/extensions/arbor/index.ts` launches a nested Pi process for the Arbor `subagent` tool.
-
-This is Windows-sensitive runtime integration. Node `spawn("pi", ...)` can fail with `ENOENT` when Pi is installed through an npm shim instead of a real `pi.exe`, and passing the full delegated prompt as an argv value can hit platform argument-length limits.
-
-### 2. Signatures
-
-Launcher resolver:
-
-```typescript
-interface PiInvocation {
-  command: string;
-  argsPrefix: string[];
-}
-
-function resolvePiInvocation(): PiInvocation;
-```
-
-Nested launch:
-
-```typescript
-spawn(
-  invocation.command,
-  [...invocation.argsPrefix, "--mode", "text", "-p", "--no-session"],
-  {
-    cwd: projectRoot,
-    env: { ...process.env, ARBOR_CONTEXT_ID: contextKey },
-    stdio: ["pipe", "pipe", "pipe"],
-    windowsHide: true,
-  },
-);
-```
-
-### 3. Contracts
-
-| Field / Env         | Contract                                                                                                                                                                                                             |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ARBOR_PI_CLI_JS` | Optional absolute or relative path to `@mariozechner/pi-coding-agent/dist/cli.js`; if set, it is authoritative                                                                                                       |
-| `command`           | `process.execPath` when a CLI JS entrypoint is resolved; otherwise `"pi"` fallback                                                                                                                                   |
-| `argsPrefix`        | `[cliJs]` for resolved JS entrypoint; `[]` for fallback                                                                                                                                                              |
-| Prompt transport    | Write delegated prompt to `child.stdin`, never as a positional argv prompt                                                                                                                                           |
-| Output mode         | Use `--mode text`; keep final-output formatter tolerant of structured or diagnostic output                                                                                                                           |
-| Context             | Forward `ARBOR_CONTEXT_ID` into the child env when available                                                                                                                                                       |
-| Agent config        | Parse `model`, `thinking`, and `fallbackModels` from `.pi/agents/*.md` frontmatter                                                                                                                                   |
-| Per-call overrides  | `arbor_subagent` tool input may override frontmatter with `model` and `thinking`                                                                                                                                   |
-| Agent validation    | `isArborAgent()` checks `existsSync(.pi/agents/arbor-{agent}.md)` before spawn; invalid → returns error text listing community alternatives                                                                      |
-| Model/thinking args | If model and thinking are present and model has no thinking suffix, pass `--model <model>:<thinking>`; if model already has a suffix, pass it unchanged; if thinking exists without model, pass `--thinking <level>` |
-| Output buffers      | Bound stdout and stderr collection separately; keep the tail plus truncation notice                                                                                                                                  |
-
-Candidate JS entrypoint lookup should cover:
-
-```text
-process.argv entries ending in pi-coding-agent/dist/cli.js
-npm_config_prefix / NPM_CONFIG_PREFIX
-APPDATA/npm
-PATH entries, their parent directories, and parent/lib variants
-```
-
-### 4. Validation & Error Matrix
-
-| Condition                                      | Behavior                                                                             |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `ARBOR_PI_CLI_JS` points to an existing file | Launch with `process.execPath` and `[cliJs, "--mode", "text", "-p", "--no-session"]` |
-| `ARBOR_PI_CLI_JS` points to a missing file   | Reject with an error naming `ARBOR_PI_CLI_JS` and the resolved missing path        |
-| A candidate CLI JS entrypoint exists           | Launch with `process.execPath` and the candidate path                                |
-| No candidate CLI JS entrypoint exists          | Fall back to `spawn("pi", ["--mode", "text", "-p", "--no-session"])`                 |
-| `AbortSignal` is already aborted               | Reject before spawning                                                               |
-| `AbortSignal` fires after spawn                | Kill the child and reject with `pi subagent cancelled`                               |
-| Child exits non-zero                           | Reject with stderr, else stdout, else an exit-code message                           |
-| stdout/stderr exceed limits                    | Keep the most recent bytes and prefix output with a truncation notice                |
-
-### 5. Good / Base / Bad Cases
-
-Good:
-
-```typescript
-const invocation = resolvePiInvocation();
-const child = spawn(
-  invocation.command,
-  [...invocation.argsPrefix, "--mode", "text", "-p", "--no-session"],
-  { stdio: ["pipe", "pipe", "pipe"] },
-);
-child.stdin?.end(prompt);
-```
-
-Base:
-
-```typescript
-return { command: "pi", argsPrefix: [] };
-```
-
-Bad:
-
-```typescript
-spawn("pi", ["--mode", "json", "-p", "--no-session", prompt]);
-```
-
-### 6. Tests Required
-
-Add or update template/configurator tests that assert:
-
-- the generated extension contains `resolvePiInvocation`, `ARBOR_PI_CLI_JS`, `process.execPath`, `APPDATA`, npm prefix lookup, and PATH splitting by `delimiter`;
-- the generated extension writes the prompt through `child.stdin?.end(prompt)`;
-- the generated extension contains bounded stdout/stderr collectors;
-- the old argv launcher and `toPiPromptArgument` are absent;
-- `.pi/extensions/arbor/index.ts` stays byte-for-byte aligned with `src/templates/pi/extensions/arbor/index.ts.txt`;
-- the dogfood extension compiles as TypeScript independently of the package build.
-
-### 7. Wrong vs Correct
-
-#### Wrong
-
-```typescript
-spawn("pi", [
-  "--mode",
-  "json",
-  "-p",
-  "--no-session",
-  toPiPromptArgument(prompt),
-]);
-```
-
-This depends on direct executable lookup for `pi` and uses argv for an unbounded generated prompt.
-
-#### Correct
-
-```typescript
-const invocation = resolvePiInvocation();
-const child = spawn(
-  invocation.command,
-  [...invocation.argsPrefix, "--mode", "text", "-p", "--no-session"],
-  { stdio: ["pipe", "pipe", "pipe"], windowsHide: true },
-);
-
-child.stdin?.end(prompt);
-```
-
-Resolve npm-shim installs through the real JS entrypoint when possible, keep `pi` as the compatibility fallback, and transport generated prompts through stdin.
 
 ---
 
 ## What You DON'T Need to Update
 
-These are now **automatically derived** from the registry:
+These are **automatically derived** from the registry:
 
 | Previously hardcoded                          | Now derived from                                                       |
 | --------------------------------------------- | ---------------------------------------------------------------------- |
@@ -1087,281 +318,8 @@ These are now **automatically derived** from the registry:
 | Configurator dispatch in init.ts              | `configurePlatform()` from `configurators/index.ts`                    |
 | Windows Python detection in init.ts           | `getPlatformsWithPythonHooks()` from `configurators/index.ts`          |
 
----
+Static declarations that are **not** derivable: the `--claude` / `--star` options in `src/cli/index.ts` and the matching `InitOptions` fields in `src/commands/init.ts` (a compile-time assertion `_AssertCliFlagsInOptions` catches a missing field).
 
-## Command Format by Platform
-
-| Platform    | Command Format                                                         | File Format                                                   | Example (finish-work)  |
-| ----------- | ---------------------------------------------------------------------- | ------------------------------------------------------------- | ---------------------- |
-| Claude Code | `/arbor:xxx`                                                         | Markdown (`.md`)                                              | `/arbor:finish-work` |
-| Cursor      | `/arbor-xxx`                                                         | Markdown (`.md`)                                              | `/arbor-finish-work` |
-| OpenCode    | `/arbor:xxx`                                                         | Markdown (`.md`)                                              | `/arbor:finish-work` |
-| Gemini CLI  | `/arbor:xxx`                                                         | TOML (`.toml`)                                                | `/arbor:finish-work` |
-| Kilo        | `/<workflow-name>`                                                     | Markdown (`.md`)                                              | `/finish-work`         |
-| Codex       | `$<skill-name>` / `/skills`                                            | Markdown (`SKILL.md`)                                         | `$finish-work`         |
-| Kiro        | `$<skill-name>` / `/skills`                                            | Markdown (`SKILL.md`)                                         | `$finish-work`         |
-| Qoder       | `/arbor-<name>` (commands) + `$<skill-name>` / `/skills` (workflows) | Markdown (`.md` with frontmatter + `SKILL.md`)                | `/arbor-finish-work` |
-| Antigravity | `/<workflow-name>`                                                     | Markdown (`.md`)                                              | `/finish-work`         |
-| CodeBuddy   | `/arbor:xxx`                                                         | Markdown (`.md`)                                              | `/arbor:finish-work` |
-| Copilot     | `/arbor:xxx`                                                         | Markdown (`.prompt.md`)                                       | `/arbor:finish-work` |
-| Droid       | `/arbor:xxx`                                                         | Markdown (`.md`)                                              | `/arbor:finish-work` |
-| Devin       | `/arbor-xxx`                                                         | Markdown (`.md`) + `SKILL.md`                                 | `/arbor-finish-work` |
-| Pi Agent    | `/arbor-xxx` prompt templates + `/skill:<name>` skills               | Markdown (`.md`) + `SKILL.md` + TypeScript extension          | `/arbor-finish-work` |
-| Trae IDE    | `/arbor-xxx` commands + skills                                       | Markdown (`.md` with frontmatter) + `SKILL.md` + `hooks.json` | `/arbor-finish-work` |
-| Oh My Pi    | `/arbor-xxx`                                                         | Markdown (`.md` with YAML frontmatter) + TypeScript extension | `/arbor-finish-work` |
-| Kimi Code   | `/skill:arbor-<name>` skills                                         | Markdown (`SKILL.md`)                                         | `/skill:arbor-finish-work` |
-| Reasonix    | `/skill arbor-<name>`                                                | Markdown (`SKILL.md`)                                         | `/skill arbor-finish-work` |
-| ZCode       | `/arbor:xxx`                                                         | Markdown (`.md`) + `SKILL.md` + `config.json`                 | `/arbor:finish-work` |
-| Grok Build  | `/arbor-xxx`                                                         | Markdown (`.md`) + `SKILL.md`                                 | `/arbor-finish-work` |
-| Snow CLI    | `/arbor-xxx`                                                         | JSON prompt commands (`.json`) + `SKILL.md`                   | `/arbor-finish-work` |
-
-When creating platform templates, ensure references match the platform's interaction format and file format. The authoritative prefix is `AI_TOOLS[id].templateContext.cmdRefPrefix` — this table restates it for orientation, so check the registry when they disagree.
-
-## Command Set by Platform Capability
-
-Commands emitted by `resolveCommands(ctx)` / `resolveAllAsSkills(ctx)` / `resolveAllAsSkillsNeutral(ctx)` in `src/configurators/shared.ts`:
-
-| Command       | `agentCapable && hasHooks` (13)                                                                                                                                                                                                                | `agentCapable && !hasHooks` (5)                                                                       | `!agentCapable` (3)                                  |
-| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| `start`       | ✔ filtered by the shared resolver — SessionStart-style hook injects opening context, user-facing `/start` would be redundant. Pi is the approved exception and re-adds `.pi/prompts/arbor-start.md` because `session_start` is notify-only. | ✅ emitted (skill and/or slash command per platform) — no hook fires, users need an invocable `start` | ✅ emitted — manual equivalent of session-start hook |
-| `continue`    | ✅ emitted                                                                                                                                                                                                                                     | ✅ emitted                                                                                            | ✅ emitted                                           |
-| `finish-work` | ✅ emitted                                                                                                                                                                                                                                     | ✅ emitted                                                                                            | ✅ emitted                                           |
-
-**Rule**: filter is by `ctx.agentCapable && ctx.hasHooks` — **both flags required** (changed in 0.6.4; the prior single-flag rule silently dropped `start` from Codex / ZCode / OpenCode / Reasonix). `agentCapable` alone is not a proxy for "has a session-start mechanism" because some agent-capable platforms ship without a SessionStart-equivalent hook and rely on user-invocable `start` instead.
-
-- `agentCapable && hasHooks` (13): `claude-code, cursor, kiro, gemini, qoder, codebuddy, copilot, droid, pi, zcode, trae, omp, snow`
-- `agentCapable && !hasHooks` (5): `opencode, codex, reasonix, grok, kimi` — Codex has a UserPromptSubmit hook but no SessionStart; OpenCode has a `plugins/session-start.js` plugin but registry-`hasHooks` is reserved for the SessionStart-style hook protocol; Reasonix and Grok have neither; Kimi has hooks only in the user-level `~/.kimi-code/config.toml` (no project-level hook file Arbor may write).
-- `!agentCapable` (3): `kilo, antigravity, devin`
-
-These three groups are computed from `AI_TOOLS[id].templateContext`; if you change a flag, recount rather than editing one line.
-
-> ZCode joined `agentCapable && hasHooks` in the zcode-hook-support task: it ships a workspace hook config at `.zcode/config.json` covering SessionStart + UserPromptSubmit (reusing the shared `session-start.py` / `inject-workflow-state.py`). Live probing confirmed ZCode PreToolUse with matcher `Agent|Task` can mutate the sub-agent prompt through `hookSpecificOutput.updatedInput`, so ZCode is **class-1** for sub-agent context and ships `inject-delegation-context.py`.
-
-> **Gotcha**: do not treat `hasHooks=false` as "platform has no automation at all". For OpenCode it means "no SessionStart hook protocol" — its plugin still injects context. The flag is a hook-protocol marker, not a capability summary. When filtering by capability, query the actual capability you need, never assume a default pairing from one boolean.
-
-## Subagent Context Injection: Hook-based vs Pull-based vs Extension-backed
-
-Arbor sub-agents (implement / check / research) need task context (`prd.md` + spec files listed in `implement.jsonl` / `check.jsonl`) at startup. There are **three** delivery classes depending on the platform's hook capabilities. The class-1 / class-2 / class-3 labels below are also used by the `[workflow-state:in_progress]` breadcrumb body and by the Pi `SUBAGENT_DISPATCH_PROTOCOL` constant — keep terminology stable across all three writers.
-
-| Class                          | Mechanism                                                                                                                                                                                                      | Platforms                                                     |
-| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| **Class-1** — Hook-inject      | Native hook or plugin fires at sub-agent start and injects context before the child runs, either by rewriting the spawn prompt or adding developer context                                                        | Claude Code, Cursor, OpenCode, Kiro, CodeBuddy, Codex, Factory Droid, ZCode, Snow CLI |
-| **Class-2** — Pull-based       | Platform lacks a Arbor-supported native sub-agent context injection hook; Arbor injects a "Required: Load Arbor Context First" prelude into each definition so the sub-agent reads context at startup     | Gemini CLI, Qoder, Copilot, Reasonix, Trae IDE, Grok Build, Kimi Code  |
-| **Class-3** — Extension-backed | Platform exposes hook-equivalent events and custom tools through a project-local TypeScript extension; Arbor owns the sub-agent tool and the context injection path                                          | Pi Agent, Oh My Pi                                           |
-
-### Class-1 — Hook-inject (9 platforms)
-
-Platform's native sub-agent-start hook delivers context before the child runs. Most platforms rewrite the spawn prompt; Codex emits developer context through `SubagentStart`. Arbor's `inject-delegation-context.py` (or the platform's own plugin/hook) reads `prd.md` + the JSONL-referenced spec files for that delivery.
-
-| Platform      | Hook event                            | Mechanism                               |
-| ------------- | ------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Claude Code   | `PreToolUse` + matcher `Task`/`Agent` | `updatedInput.prompt`                   |
-| CodeBuddy     | `PreToolUse` + matcher `Task`         | `modifiedInput.prompt` (same as Claude) |
-| Codex         | `SubagentStart` + exact Arbor-role matcher | `hookSpecificOutput.additionalContext`; child-side pull fallback |
-| Cursor        | `preToolUse` + matcher `Task          | Subagent`                               | `updated_input.prompt` (Cursor staff marked Task prompt mutation fixed on 2026-04-07; current Cursor may emit native sub-agent calls as tool name `Subagent`, and native Task args may encode custom agents as `subagent_type.custom.name`) |
-| Factory Droid | `PreToolUse` + matcher `Task`         | `updatedInput.prompt`                   |
-| Kiro          | per-agent `agentSpawn` hook           | direct stdout context                   |
-| OpenCode      | JS plugin `tool.execute.before`       | `args.prompt` mutation                  |
-| Snow CLI      | `beforeSubAgentStart`                 | own `write-arbor-context.py subagent` (Snow bundles all three inject hooks; it is not in `SHARED_HOOKS_BY_PLATFORM`) |
-| ZCode         | `PreToolUse` + matcher `Agent|Task`   | `hookSpecificOutput.updatedInput.prompt` |
-
-#### OpenCode injection contract (issue #264)
-
-OpenCode is a hybrid class-1 platform: its main session uses `tool.execute.before` for sub-agent prompt mutation, but it also runs separate `chat.message` plugins (`session-start.js`, `inject-workflow-state.js`) that fire for **every** chat turn — including sub-agent child sessions. Without explicit filtering, those plugins inject 30-40KB of main-session SessionStart context into sub-agent turns and drown the parent's intended prompt injection.
-
-**Required contract** for any OpenCode `chat.message` plugin that mutates `output.parts`:
-
-```js
-import { isArborSubagent } from "../lib/arbor-context.js"
-
-"chat.message": async (input, output) => {
-  if (isArborSubagent(input)) {
-    // input.agent matched /^arbor-(implement|check|research)$/
-    // Sub-agent context is injected by inject-delegation-context.js on the
-    // parent's tool.execute.before — do not double-inject here.
-    return
-  }
-  // ... main-session injection ...
-}
-```
-
-`isArborSubagent()` lives in `lib/arbor-context.js`; the regex matches `arbor-implement` / `arbor-check` / `arbor-research` exactly.
-
-**Sub-agent task resolution order** in `inject-delegation-context.js` `tool.execute.before` (only later steps run when earlier ones miss):
-
-1. Exact session runtime context lookup for `input.sessionID` (writes a `session:<key>` source)
-2. `Active task: <path>` line parsed from `args.prompt` first non-empty line (source `prompt-hint`) — explicit per-dispatch override, beats single-session inference so multi-window users can disambiguate
-3. Single-session fallback in `ArborContext._resolveSingleSessionFallback()` — only when exactly 1 file exists in `.arbor/.runtime/sessions/`; refuses to guess when 0 or ≥2 files exist (source `session-fallback:<context_key>`). Mirrors Python `_resolve_single_session_fallback` (`active_task.py:497-519`).
-
-`buildPrompt()` for implement / check / finish / research **must** prepend `<!-- arbor-hook-injected -->` so generated agent definitions in `.opencode/agents/*.md` can detect a successful injection (Arbor-internal contract; OpenCode itself ignores the marker).
-
-`getActiveTask()` in `lib/arbor-context.js` itself includes the single-session fallback so any caller (`workflow-state` breadcrumb, `session-start` task status) sees the same resolved task as the prompt injector. The fallback only activates when the explicit context-key lookup misses, so multi-window setups remain isolated.
-
-### Class-2 — Pull-based (7 platforms)
-
-Platform's hook either does not expose a sub-agent-start event or cannot inject Arbor context. Sub-agents must read context themselves at startup. Arbor injects a "Required: Load Arbor Context First" prelude into each sub-agent definition file.
-
-| Platform | Why native context injection is unavailable |
-|---|---|
-| Gemini CLI | `BeforeTool` fires but [#18128](https://github.com/google-gemini/gemini-cli/issues/18128) hides chain-of-thought; reliability margin too thin |
-| Qoder | No `Task` tool concept; `SubagentStart` input has no `prompt` field; Context Isolation |
-| Copilot | `preToolUse` doesn't enforce on subagents ([#2392](https://github.com/github/copilot-cli/issues/2392), [#2540](https://github.com/github/copilot-cli/issues/2540)) |
-| Reasonix | Sub-agent skills run with `runAs: subagent`; no prompt-mutation hook exists, so workflow dispatch must carry the active task and the sub-agent skill reads task artifacts itself. |
-| Trae IDE | `SessionStart` / `UserPromptSubmit` hooks cover main-session context, but no Arbor-supported sub-agent prompt mutation surface exists; generated `.trae/agents/*.md` files receive the pull-based prelude. |
-| Grok Build | Hook stdout `additionalContext` is not consumed (verified on 0.2.x), so no Arbor hook is installed; dispatch goes through `spawn_subagent` and generated `.grok/agents/*.md` files receive the pull-based prelude. |
-| Kimi Code | Hooks exist only in the user-level `~/.kimi-code/config.toml` (no project-level hook/settings file Arbor may write), so the Arbor agent prompts keep the pull-based prelude. They ship both as `.kimi-code/skills/arbor-*/SKILL.md` (guidance/fallback) and as custom sub-agent definitions under `.kimi-code/agents/arbor-*.md` sourced from the same templates. |
-
-#### Active task discovery on class-2 platforms (issue #225)
-
-Sub-agents on class-2 platforms run as **separate sessions** with their own session ids, and no session identity reaches them: the parent's key is not exported into the child, and on most platforms no session env var exists to export in the first place (see `### Active Task Resolution`). So the session-scoped resolver returns `None` for the sub-agent's own session key. To bridge that gap the prelude (`buildPullBasedPrelude` in `src/configurators/shared.ts`) tells sub-agents to discover the active task in this order:
-
-1. **`Active task: <path>` line in dispatch prompt** — primary path. The main agent is required by `workflow.md`'s `[workflow-state:in_progress]` breadcrumb to prefix every sub-agent dispatch (including `arbor-research`, since 0.5.8) with `Active task: <path from task.py current>`. The breadcrumb fires on every `UserPromptSubmit` while `task.json.status == in_progress`, so the rule is reinjected per turn.
-2. **`task.py current --source`** — secondary. Resolves via the session-scoped runtime store. Returns `Source: session:<key>` on a precise match, or `Source: session-fallback:<key>` when the runtime contains exactly one session file (single-window inference; see `_resolve_single_session_fallback` in `active_task.py`). Returns nothing when ≥2 session files exist — refuses to guess across windows so 04-21's multi-session isolation contract holds.
-3. **Ask the user** — terminal fallback when both above yield nothing.
-
-When changing the prelude, the dispatch protocol, or the `session-fallback` semantics, all three layers must stay aligned. `regression.test.ts > [issue-225]` and `regression.test.ts > [session-fallback]` are the contract tests; `templates/arbor.test.ts > [issue-225]` asserts the workflow.md breadcrumb still carries the protocol. Manual e2e runbook lives in the historical task `.arbor/tasks/<archive>/05-04-fix-codex-subagent-missing-active-task/manual-verify.md`.
-
-### Class-3 — Extension-backed (2 platforms)
-
-Platform can expose hook-equivalent events and custom tools through a project-local extension. Arbor owns the sub-agent tool and the context injection path. Unlike class-1 (which only handles sub-agent context) and class-2 (which only handles sub-agent prelude), class-3 owns hidden persistent custom-message context injection and per-Bash-tool-call session-identity prefixing through the platform extension API.
-
-| Platform | Extension surface                                                  | Context delivery                                                                                                                                                                                                                                                                                                                                                                                  |
-| -------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Pi Agent | `.pi/extensions/arbor/index.ts` events + `arbor_subagent` tool | extension builds full prompt/context from `.pi/agents/*.md`, `prd.md`, `design.md` if present, `implement.md` if present, and JSONL-referenced files via `buildContext()`; preserves startup/full task context through `before_agent_start.systemPrompt` and persists compact workflow/session context through a hidden `before_agent_start.message` custom message; agent definitions also receive the pull-based prelude as a fallback |
-| Oh My Pi | `.omp/extensions/arbor/index.ts` events                          | extension resolves a session-scoped context key from the OMP runtime, injects session/task context through extension events, and keeps JSONL-referenced files jailed inside the project root                                                                                                                                                                                                       |
-
-See **"Class-3 injection points (Pi extension)"** and **"Cross-platform consistency invariant"** below for the runtime contract details.
-
-### Class-3 injection points (Pi extension)
-
-`templates/pi/extensions/arbor/index.ts.txt` registers handlers for three platform events plus one custom tool. Each injection point has a distinct lifecycle and a distinct failure mode if dropped.
-
-| Injection point         | Handler                                              | When it fires                              | What it injects                                                                                                                                                                                                 |
-| ----------------------- | ---------------------------------------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `input`                 | not registered for Arbor runtime context             | n/a                                        | Arbor must not rewrite submitted user text; context identity is resolved in `before_agent_start` and `tool_call` where it is needed                                                                          |
-| `before_agent_start`    | `pi.on?.("before_agent_start", …)`                   | every agent invocation (main + sub-agents) | preserves `systemPrompt` with startup/full task context only, and additionally returns `message: { customType: "arbor-runtime-context", display: false, content }` containing compact `<workflow-state>` + `<session-overview>`; Pi wraps the message as a persisted `role: "custom"` session message |
-| `context`               | `pi.on?.("context", …)`                              | before each LLM call                       | preserves existing context-key establishment only; must not append request-local Arbor runtime messages because they are not persisted and can move between turns                                           |
-| `tool_call` (Bash)      | `pi.on?.("tool_call", …)`                            | every Bash tool call                       | mutates `event.input.command` in place via `injectArborContextIntoBash()` to prefix `export ARBOR_CONTEXT_ID=<context-key>;` so child Python scripts (e.g. `task.py current`) inherit session identity      |
-| `arbor_subagent` tool | `pi.registerTool?.({ name: "arbor_subagent", … })` | extension load time (once)                 | `promptSnippet` and `promptGuidelines` carry `SUBAGENT_DISPATCH_PROTOCOL` so the model sees the dispatch contract before it ever calls the tool                                                                 |
-
-`TurnContextCache` (in `index.ts.txt`) memoizes the per-turn context-key → `{workflowState, sessionOverview}` pair so `before_agent_start` does not double-spawn the default `get_context.py` session-context call. The cache key is the resolved context key; entries are short-lived (one turn/request window).
-
-The startup context is tracked separately by resolved context key and contributes to `before_agent_start.systemPrompt` only once. It shells out to `get_context.py` for both the default session overview and `--mode phase --platform pi`, then wraps those canonical outputs in `<session-overview>` and `<arbor-workflow>`. Do not move this payload to `session_start`; Pi's event can notify the UI but has no model-visible context return path.
-
-### Cross-platform consistency invariant
-
-The body of the `<workflow-state>` breadcrumb MUST be byte-identical across class-1 (Python hook), class-2 (no breadcrumb — relies on session-start prelude), and class-3 (TS-port) writers. Agents reading workflow-state across platforms in the same conversation (e.g. user switching from Claude to Pi mid-task) must see the same content.
-
-Concrete rules:
-
-- **Regex parity**: `templates/pi/extensions/arbor/index.ts.txt:WF_RE` (`:1072`) MUST mirror `templates/shared-hooks/inject-workflow-state.py:_TAG_RE` (`:181`) byte-for-byte. Both use the closing-tag backreference `\1` (or its TS equivalent in `[\/workflow-state:\1\]`) so a tag block parses identically in Python and TypeScript.
-- **Breadcrumb body source**: `workflowBreadcrumb(root, key)` (`index.ts.txt:1074`) and `workflowOverview(root, key)` (`:1127`) in the Pi extension read `.arbor/workflow.md` directly — same source as the Python hook. There is no separate TS-side template for breadcrumb bodies. If the regex drifts, the TS port silently falls back to hardcoded defaults and Pi loses parity.
-- **Status writer parity**: `task.json.status` is the sole input to "which `[workflow-state:STATUS]` block fires". Both the Python hook (`get_active_task` + status read) and the TS port (the status read inside `workflowBreadcrumb()`) MUST agree on the status string. Custom statuses pass through both unchanged.
-- **`<session-overview>` parity**: Pi shells out to `python3 .arbor/scripts/get_context.py` rather than re-implementing context generation in TS, so output stays canonical. Don't replace this with an inline TS implementation — that's a parity drift waiting to happen.
-
-#### Anti-pattern: bypassing the shared TS port
-
-```typescript
-// WRONG — re-implements parsing with a different regex
-const blocks = workflow.match(
-  /\[workflow-state:(\w+)\][\s\S]+?\[\/workflow-state/g,
-);
-```
-
-```typescript
-// WRONG — inline-formats <session-overview> differently than get_context.py
-const overview = `<session-overview>\n${gitStatus}\n${activeTasks}\n</session-overview>`;
-```
-
-```typescript
-// WRONG — rewrites the user's visible prompt and persists generated context as user-authored text
-function onInput(event, ctx) {
-  const overview = spawnSync("python3", [".arbor/scripts/get_context.py"]);
-  return { action: "transform", text: `${event.text}\n\n${overview}` };
-}
-```
-
-#### Correct
-
-```typescript
-// Match Python regex byte-for-byte (TS uses [\s\S]*? for cross-line; Python uses re.DOTALL)
-const WF_RE =
-  /\[workflow-state:([A-Za-z0-9_-]+)\]\s*\n([\s\S]*?)\n\s*\[\/workflow-state:\1\]/g;
-
-// Compact runtime context is persisted through before_agent_start as a hidden custom message.
-const onBeforeAgentStart = (event, ctx) => {
-  const turn = turnContextCache.get(projectRoot, contextKey);
-  const runtimeContext = [turn.wf, turn.ov].filter(Boolean).join("\n\n");
-  return {
-    message: runtimeContext
-      ? {
-          customType: "arbor-runtime-context",
-          content: runtimeContext,
-          display: false,
-        }
-      : undefined,
-    systemPrompt: [cur, startup, taskContext].filter(Boolean).join("\n\n"),
-  };
-};
-```
-
-### Subagent dispatch protocol — single source of truth
-
-The dispatch protocol text (the `Active task: <path>` first-line rule plus the class-1 / class-2 / class-3 platform notes) appears in **two writers** and they MUST stay in sync:
-
-| Writer                | Location                                                                  | Consumed by                                                                                                                        |
-| --------------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Workflow breadcrumb   | `templates/arbor/workflow.md` `[workflow-state:in_progress]` block      | Python `inject-workflow-state.py` and the Pi TS port — surfaced per-turn while a task is in progress                               |
-| Pi extension constant | `templates/pi/extensions/arbor/index.ts.txt:SUBAGENT_DISPATCH_PROTOCOL` | Pi `arbor_subagent` tool's `promptSnippet` / `promptGuidelines` — surfaced at extension load and on each tool description render |
-
-When you change one, change both. The two channels exist because:
-
-1. The breadcrumb is per-turn but only active when `task.json.status == in_progress`.
-2. The tool `promptSnippet` is always visible in the tool catalog, including before any task is started or in fresh windows where the breadcrumb hasn't fired yet.
-
-A drift between the two is silent: the model will still see _some_ dispatch guidance, just inconsistent guidance, and the resulting class-1/class-2/class-3 fallback chain breaks in subtle ways (e.g. sub-agent skips the `Active task:` line because the breadcrumb mentions it but the tool snippet doesn't, or vice versa).
-
-#### Tests required
-
-- Regression test asserting the `Active task:` rule appears in `templates/arbor/workflow.md` (`templates/arbor.test.ts > [issue-225]`).
-- Regression test asserting `workflow.md` Phase 2.1 routes generated pull-based sub-agent definitions through the pull-based block, not the `The platform hook/plugin auto-handles` block (`templates/arbor.test.ts > [issue-zcode-repeat]`). The test derives generated pull-based platforms from `collectPlatformTemplates()` by looking for `Required: Load Arbor Context First`; adding a new pull-based platform without adding its workflow marker mapping must fail. Pi is excluded from this derivation because its generated agents keep the same prelude as a fallback while the primary context path is class-3 extension-backed and is covered by Pi-specific tests.
-- Configurator test asserting the Pi extension's `SUBAGENT_DISPATCH_PROTOCOL` constant contains the same `Active task:` rule and the same class-1/class-2/class-3 platform list.
-- Cross-source parity test: when the breadcrumb text in `workflow.md` changes, the Pi extension's `SUBAGENT_DISPATCH_PROTOCOL` constant must change in the same commit. Either co-locate the parity assertion in a single regression test, or rely on diff review — but document the rule here.
-
-### Implementation
-
-Pull-based prelude is injected by `injectPullBasedPreludeMarkdown()` / `injectPullBasedPreludeToml()` in `src/configurators/shared.ts`. Each pull-based platform's configurator:
-
-1. Calls `collectSharedHooks(dir, platform)` where `SHARED_HOOKS_BY_PLATFORM[platform]` excludes `inject-delegation-context.py` — no prompt-mutation hook installed
-2. Calls `detectSubAgentType(name)` → `injectPullBasedPrelude*()` on every sub-agent definition before adding it to the map
-
-Hook-inject platforms use the same `collectSharedHooks(dir, platform)` call with a capability-table entry that includes `inject-delegation-context.py` and `guard-builtin-agent.py`, and their hook-config template references that hook as before. ZCode follows this path through `.zcode/config.json` `PreToolUse` entries matching `Agent|Task`; its generated `.zcode/agents/*.md` files carry only the hook-failure fallback protocol, not the pull-based prelude.
-
-### Recursion guard in implement/check agent definitions
-
-Every generated `arbor-implement` and `arbor-check` agent definition must
-carry an explicit recursion guard near the top of its instructions. The guard
-must state that the reader is already the dispatched sub-agent, that any
-SessionStart / workflow-state / workflow.md text saying to dispatch
-`arbor-implement` or `arbor-check` applies only to the main session, and
-that the agent must do its own work directly instead of spawning another
-implement/check agent.
-
-This rule applies to Markdown, TOML, JSON, and extension-backed agent
-definitions. It is deliberately duplicated with the workflow-state breadcrumb:
-some hosts can surface per-turn breadcrumbs inside sub-agent turns, while other
-hosts rely only on the agent definition text. The two channels must both be
-safe.
-
-For Cursor, `.cursor/hooks.json` must match both `Task` and `Subagent` on `preToolUse`. Current Cursor 3.2.11 emits native sub-agent spawns as `tool_name: "Subagent"` even though the docs still describe the generic Task tool under `Task`. `inject-delegation-context.py` must parse both legacy/string and native protobuf-shaped Task inputs. Custom agents can arrive as `subagent_type: "arbor-implement"`, `subagent_type: { "custom": { "name": "arbor-implement" } }`, or `subagent_type: { "type": { "case": "custom", "value": { "name": "arbor-implement" } } }`. All three forms must resolve to the Arbor agent name before deciding whether to inject context.
-
-Extension-backed platforms must not call `collectSharedHooks()` for their config directory — they are not keys in `SHARED_HOOKS_BY_PLATFORM`, so the call would not typecheck. They generate platform-native extension files and tests must assert that no Python hook files are installed under the platform config root.
-
-### Audit reference
-
-Historical reliability audit (per-platform evidence, GitHub issues, Cursor
-staff confirmations, Claude Code canary test) lives in the archived task:
-`.arbor/tasks/archive/2026-04/04-17-subagent-hook-reliability-audit/research/platform-hook-audit.md`
 
 ---
 
@@ -1380,10 +338,10 @@ Lightweight tasks may be PRD-only. Complex tasks must have `prd.md`, `design.md`
 
 ### Lifecycle
 
-1. **Create** — `task.py create` writes `task.json` with `status = planning`, creates the default `prd.md`, and creates empty `implement.jsonl` / `check.jsonl` when a sub-agent-capable platform is detected. Curation instructions are printed to the console, never written into the files.
+1. **Create** — `task.py create` writes `task.json` with `status = planning`, creates the default `prd.md`, and creates empty `implement.jsonl` / `check.jsonl`. Curation instructions are printed to the console, never written into the files.
 2. **Plan** — AI updates `prd.md`. If the task is complex, AI also writes `design.md` and `implement.md`; if sub-agent/spec context is needed, AI curates jsonl entries.
 3. **Review / start** — the user reviews the planning artifacts. `task.py start` is valid when the task's artifact gate is satisfied.
-4. **Consume** — hook, prelude, Pi extension, and OpenCode plugin read context in the same order: jsonl entries, `prd.md`, `design.md` if present, `implement.md` if present.
+4. **Consume** — the dispatch hook and `dispatch.py` (one shared assembler, `common/dispatch_context.py`) read context in the same order: jsonl entries, `prd.md`, `design.md` if present, `implement.md` if present.
 
 ### Signatures
 
@@ -1405,8 +363,8 @@ Optional `type: "directory"` is supported for directory entries. Consumers ignor
 | Lightweight planning gate | workflow-state / SessionStart / continue        | PRD-only is valid when the task is clearly small.                                  |
 | Complex planning gate     | workflow-state / SessionStart / continue        | Requires `prd.md`, `design.md`, and `implement.md` before `task.py start`.         |
 | Non-entry detection       | Every jsonl consumer                            | Row without a `file` key is treated as non-entry and skipped.                      |
-| Empty-file tolerance      | hook / prelude / plugin readers                 | Missing or empty jsonl is tolerated; task artifacts still load.                    |
-| Context order             | hook / prelude / Pi extension / OpenCode plugin | jsonl entries → `prd.md` → `design.md` if present → `implement.md` if present.     |
+| Empty-file tolerance      | dispatch hook / `dispatch.py`                   | Missing or empty jsonl is tolerated; task artifacts still load.                    |
+| Context order             | dispatch hook / `dispatch.py`                   | jsonl entries → `prd.md` → `design.md` if present → `implement.md` if present.     |
 | Archived self-references  | `task_context.py` validation                    | Preserve JSONL bytes. For an archived task, remap only exact `.arbor/tasks/<same-task-name>/...` references into that archive copy. Other paths retain repo-root resolution. |
 
 ### Validation & Error Matrix
@@ -1421,7 +379,7 @@ Optional `type: "directory"` is supported for directory entries. Consumers ignor
 | Archived self-reference traverses or follows a symlink outside the archive | Reject it as missing; never fall back to the historical active-task path                    | Exit 1                  |
 | Lightweight task has only `prd.md`                     | Valid planning state; SessionStart / continue can ask for start review                                | No error                |
 | Complex task is missing `design.md` or `implement.md`  | Stay in planning; ask user to complete missing planning artifacts                                     | Hook / command guidance |
-| Sub-agent platform detected, but jsonl is missing      | Context readers fall back to task artifacts and warn where applicable                                 | No create failure       |
+| jsonl is missing                                       | Context readers fall back to task artifacts and warn where applicable                                 | No create failure       |
 
 ### Good / Base / Bad Cases
 
@@ -1468,36 +426,27 @@ leave every unrelated path on normal repository-root resolution.
 
 ### Tests Required
 
-- **Create behavior**: `task.py create` creates default `prd.md` and empty jsonl only on sub-agent-capable platforms, and prints the curation instructions to the console.
+- **Create behavior**: `task.py create` creates default `prd.md` and empty jsonl, and prints the curation instructions to the console.
 - **Consumer tolerance**: `inject-delegation-context.py` skips rows without a `file` key and still injects task artifacts.
 - **Validate placeholder**: `task.py validate` passes for empty jsonl and fails with a remediation message for a legacy `{"_example": …}` row, in both active and archived tasks.
 - **Validate archive binding**: cover archived self files and directories, unrelated paths, a missing archive copy with a recreated active task, traversal, symlink escape, and unchanged active-task behavior.
 - **List-context empty**: `task.py list-context` prints "(no curated entries yet)" for an uncurated jsonl.
 - **Artifact gates**: workflow-state, SessionStart, and continue distinguish PRD-only lightweight tasks from complex tasks that still need `design.md` / `implement.md`.
-
 ## Context Injection Limits Contract (`context_injection`)
 
 ### 1. Scope / Trigger
 
-Sub-agent context injection (hook Python + Pi extension TS + OpenCode plugin)
-caps how much task context is inlined into a sub-agent's first prompt. Added for
-#441 (task `07-22-subagent-context-limits`). Any change to injection formatting,
-caps, binary detection, or config keys MUST be applied to **all three**
-implementations:
-
-- `packages/cli/src/templates/shared-hooks/inject-delegation-context.py`
-- `packages/cli/src/templates/pi/extensions/arbor/index.ts.txt`
-- `packages/cli/src/templates/opencode/lib/arbor-context.js`
+The dispatch context assembler caps how much task context is inlined into a
+dispatched assistant's prompt. It lives in `common/dispatch_context.py` and is
+shared by the PreToolUse hook (`shared-hooks/inject-delegation-context.py`) and
+`dispatch.py`, so a change to injection formatting, caps, binary detection or
+config keys lands once and applies to both paths.
 
 ### 2. Signatures
 
 - Python: `common.config.get_context_injection_limits() -> dict[str, int]`,
   `truncate_utf8(data: bytes, cap: int) -> bytes`,
   `_is_binary_content(data: bytes) -> bool`
-- TS: `readContextInjectionLimits(repoRoot: string)`, `truncateUtf8(buf: Buffer, cap: number)`
-  (exported for tests via `loadExtensionInternals()` in `pi.test.ts`)
-- OpenCode JS: `readContextInjectionLimits(repoRoot)`, `truncateUtf8(buf, cap)`,
-  `materializeFile(basePath, filePath, reason, limits, budget)`
 
 ### 3. Contracts
 
@@ -1511,7 +460,7 @@ context_injection:
 ```
 
 - `0` disables that limit; negative / non-int → default + stderr warning.
-- Notice strings (byte-frozen, identical in all three implementations):
+- Notice strings (byte-frozen):
   - truncation: `\n[Arbor: truncated at {cap} bytes — read {path} for the full content]`
   - degradation: `[Arbor: not inlined (total context limit reached) — {path} ({size} bytes): {reason}]`
   - binary reference: `[Arbor: not inlined (binary file) — {path} ({size} bytes): {reason}]`
@@ -1549,31 +498,20 @@ context_injection:
 - Python: `packages/cli/test/scripts/context-injection-limits.integration.test.ts`
   (probe-spawned; fixture matrix: at-cap / 1-over / UTF-8 straddle 2-byte & 3-byte /
   3-file total overflow / `0` disable / config override / golden under-cap / validate warnings).
-- TS: `packages/cli/test/templates/pi.test.ts` `describe("pi extension: context injection limits (issue #441)")`
-  — same matrix, asserts the exact frozen notice strings.
-- OpenCode: `packages/cli/test/templates/opencode.test.ts`
-  `describe("opencode context injection limits (issue #441)")` — same binary
-  and limit behavior through the real prompt-injection plugin seam.
 - Template: `arbor.test.ts` asserts config.yaml's `context_injection` section exists and is fully commented.
 
 ### 7. Wrong vs Correct
 
 #### Wrong
 
-Change a notice string, binary predicate, or cap semantics in one implementation
-only; infer binary content from the extension; or account only file bodies (not
+Change a notice string, binary predicate, or cap semantics without updating the tests; infer binary content from the extension; or account only file bodies (not
 headers/notices) toward the total budget.
 
 #### Correct
 
 Treat the notice strings, byte-based binary predicate, key names, ordering, and
-accounting rules above as a frozen cross-implementation contract; change all
-three loaders plus their regression suites in the same commit.
-
-> **Warning**: Pi's jsonl block format converged to the Python format
-> (`=== path ===` headers) in this change — an approved deviation from Pi's old
-> `## file` + `---` format. Directory-type jsonl entries remain Python-only; the
-> Pi extension skips them (pre-existing platform difference).
+accounting rules above as a frozen contract; change them together with the
+regression suite in the same commit.
 
 ## Parent / Child Task Tree Contract
 
@@ -1614,16 +552,17 @@ python3 ./.arbor/scripts/task.py remove-subtask <parent-dir> <child-dir>
 
 ---
 
+
 ## Workflow Step Detail Loading
 
-`.arbor/workflow.md` contains per-phase step detail under `#### X.X` headings, with per-platform variants demarcated by `[Platform Name, ...]` … `[/Platform Name, ...]` blocks.
+`.arbor/workflow.md` contains per-phase step detail under `#### X.X` headings. A step may carry per-platform variants demarcated by `[Platform Name, ...]` … `[/Platform Name, ...]` marker blocks; today `workflow.md` ships none, but the filter is retained.
 
 Load step detail on demand (both commands and hooks use this):
 
 ```bash
 python3 ./.arbor/scripts/get_context.py --mode phase                                   # Phase Index (no --step)
 python3 ./.arbor/scripts/get_context.py --mode phase --step 1.1                        # Step 1.1 (all platforms)
-python3 ./.arbor/scripts/get_context.py --mode phase --step 1.2 --platform cursor      # Step 1.2, cursor-filtered
+python3 ./.arbor/scripts/get_context.py --mode phase --step 1.2 --platform claude      # Step 1.2, filtered for one platform
 ```
 
 Platform markers are filtered by matching `[...]` block membership against the given platform name (case-insensitive; accepts `claude-code` and `Claude Code`). Lines outside any marker block are always kept.
@@ -1632,11 +571,7 @@ Platform markers are filtered by matching `[...]` block membership against the g
 
 ## Windows Encoding Fix
 
-All hook scripts that output to stdout must include the Windows encoding fix.
-This includes platform-specific `session-start.py` copies that opt out of
-`shared-hooks/session-start.py` (`codex/hooks/session-start.py` and
-`copilot/hooks/session-start.py`), because they still print JSON payloads with
-`ensure_ascii=False`.
+All hook scripts that output to stdout must include the Windows encoding fix, including any hook that prints JSON payloads with `ensure_ascii=False`.
 
 When a hook can resolve the Arbor project directory before printing, prefer
 the shared helper from `.arbor/scripts/common/__init__.py`:
@@ -1674,14 +609,11 @@ if sys.platform == "win32":
 
 ### Tests Required
 
-- Regression coverage must assert every platform-specific Python
-  `session-start.py` template contains:
-  - `from common import configure_encoding`
+- Regression coverage must assert every shipped Python hook template contains:
+  - `from common import configure_encoding` (or the local `sys.platform == "win32"` fallback)
   - `configure_encoding()` before printing JSON
   - `ensure_ascii=False` at the JSON output boundary
-- When a platform copies rather than consumes `shared-hooks/session-start.py`,
-  treat Windows stdout encoding as part of the copied contract, not as an
-  optional implementation detail.
+
 
 ---
 
@@ -1692,29 +624,18 @@ if sys.platform == "win32":
 #### 1. Scope / Trigger
 
 Arbor uses a one-shot visible acknowledgment as proof that otherwise-hidden
-SessionStart context loaded. This contract applies to every live implementation
-that already provides that proof: the shared Python hook used by Claude Code,
-Cursor, Gemini, Qoder, CodeBuddy, Droid, Kiro, Trae, and ZCode; the Codex hook;
-OpenCode's startup plugin; and Pi's SessionStart-equivalent
-`before_agent_start` context.
+SessionStart context loaded. This contract applies to the shared Python hook `shared-hooks/session-start.py`, used by Claude Code and StarFactory.
 
 The acknowledgment is an instruction inside the existing context string, not a
-new payload field or host UI feature. Copilot remains notice-free until its
-model-visible consumption is verified end to end.
+new payload field or host UI feature.
 
 #### 2. Signatures
 
 | Implementation | Injection signature | Adaptive notice? |
 | --- | --- | ---: |
-| `shared-hooks/session-start.py` | Existing shared hook output (`hookSpecificOutput.additionalContext` plus host-specific aliases, or Kiro's plain stdout context) | Yes |
-| `codex/hooks/session-start.py` | Existing Codex SessionStart payload when hooks are enabled and approved | Yes |
-| `opencode/lib/session-utils.js` + `plugins/session-start.js` | Compact context prepended to the first user message and marked for persistence | Yes |
-| `pi/extensions/arbor/index.ts.txt` | Memoized SessionStart-equivalent context added to `before_agent_start.systemPrompt` | Yes |
-| `copilot/hooks/session-start.py` | Microsoft's documented `SessionStart.hookSpecificOutput.additionalContext` payload | No |
+| `shared-hooks/session-start.py` | `hookSpecificOutput.additionalContext` | Yes |
 
-The **update-hint rider** (see below) is narrower still — it exists only in
-`shared-hooks/session-start.py`. Codex's own `session-start.py`, the OpenCode
-plugin, and the Pi extension each build their own payload and do not carry it.
+The **update-hint rider** (see below) lives in the same hook and nowhere else.
 
 #### 3. Contracts
 
@@ -1737,8 +658,6 @@ plugin, and the Pi extension each build their own payload and do not carry it.
   README frequency, commit history, or other repository content.
 - Keep hook payload keys, compact context content, event timing, and
   per-session deduplication unchanged.
-- OpenCode persists startup context once per session. Pi memoizes identical
-  startup `systemPrompt` bytes per context key.
 - **The Arbor update reminder rides this block, and only this block.** When
   `get_update_hint()` returns a hint, exactly one line is inserted between the
   notice head and tail: `Also relay this Arbor maintenance notice on its own
@@ -1755,10 +674,7 @@ plugin, and the Pi extension each build their own payload and do not carry it.
 | Request has no clear natural language and project instructions explicitly establish a communication language | Acknowledgment uses the explicit project language |
 | Neither request nor project instructions provide a language | Acknowledgment is exactly `Arbor SessionStart ✓` |
 | Later assistant reply in the same session | No repeated acknowledgment |
-| Repeated OpenCode message in one session | Startup context is not prepended again |
-| Repeated Pi turn with the same context key | Memoized startup `systemPrompt` bytes remain stable |
-| Shared or Codex hook output | Existing payload keys and `SessionStart` event name remain unchanged |
-| Copilot SessionStart | Context remains notice-free |
+| Shared hook output | Existing payload keys and `SessionStart` event name remain unchanged |
 
 #### 5. Good / Base / Bad Cases
 
@@ -1774,15 +690,9 @@ plugin, and the Pi extension each build their own payload and do not carry it.
 
 #### 6. Tests Required
 
-- Execute shared and Codex hook templates; assert exact payload shape, normal
+- Execute the shared hook template; assert exact payload shape, normal
   compact context blocks, the adaptive priority, neutral fallback, one-shot
   rule, and absence of fixed Chinese wording.
-- Build OpenCode context and exercise its plugin entry point; assert adaptive
-  notice content, first-message prefix and persistence, and no second injection
-  in the same session.
-- Exercise Pi `before_agent_start`; assert normal startup/workflow context,
-  adaptive notice content, and byte-stable memoized `systemPrompt` behavior.
-- Keep Copilot regression assertions notice-free.
 - Validate the injected instruction contract deterministically. Do not attempt
   to test an LLM's actual language classification in template tests.
 
@@ -1808,23 +718,23 @@ without altering the language of the remainder of the response. Emit once.
 Cross-layer contract change: a Python module's private helper became public and
 gained a second caller in a different layer (the shared hook), and that caller
 changes user-visible output. The reminder previously existed only on the
-`get_context.py` text-mode path, so hook-driven platforms — Claude Code
-included — never saw it. This repo ran ten versions behind before anyone
+`get_context.py` text-mode path, so hook-driven platforms, Claude Code
+included, never saw it. This repo ran ten versions behind before anyone
 noticed.
 
 #### 2. Signatures
 
 ```python
-# .arbor/scripts/common/session_context.py:460
+# .arbor/scripts/common/session_context.py
 def get_update_hint(repo_root: Path, context_key: str | None = None) -> str | None
 
-# .arbor/scripts/common/session_context.py:421 (private)
+# .arbor/scripts/common/session_context.py (private)
 def _update_marker_path(repo_root: Path, context_key: str | None = None) -> Path
 
-# shared-hooks/session-start.py:322 (private)
+# shared-hooks/session-start.py (private)
 def _resolve_update_hint(arbor_dir: Path, context_key: str | None) -> str | None
 
-# shared-hooks/session-start.py:85 (private)
+# shared-hooks/session-start.py (private)
 def _build_first_reply_notice(update_hint: str | None) -> str
 ```
 
@@ -1834,8 +744,8 @@ def _build_first_reply_notice(update_hint: str | None) -> str
 - `context_key` is **passed in, not re-resolved**. The hook already read the session id from hook stdin; that is more reliable than `session_context`'s environment-only fallback chain. Shell entry points pass nothing and keep the old behavior.
 - The once-per-session marker is `.arbor/.runtime/update-check-{safe_key}.marker`, where `safe_key` is the sanitized context key truncated to 160 chars. With no context key it falls back to `TERM_SESSION_ID`, then `ppid-{n}`. **That fallback is why the key must be threaded through**: `TERM_SESSION_ID` identifies a terminal *window*, so the marker would mute the reminder for every later session opened in the same window.
 - The marker is written before the version comparison, not after, so a probe that finds no update still costs one `arbor --version` per session rather than one per turn.
-- The whole path is best-effort. A missing scripts dir, an import error, or any exception while probing versions leaves the payload untouched (`session-start.py:341` catches bare `Exception` on purpose).
-- Scope is the shared hook only. Codex's own `session-start.py`, the OpenCode plugin, and the Pi extension build their own payloads and do not carry the rider.
+- The whole path is best-effort. A missing scripts dir, an import error, or any exception while probing versions leaves the payload untouched (`session-start.py` catches bare `Exception` on purpose).
+- Scope is the shared hook only.
 
 #### 4. Validation & Error Matrix
 
@@ -1881,29 +791,24 @@ notice = _build_first_reply_notice(_resolve_update_hint(arbor_dir, context_key))
 
 One line inside the block that is already contracted to become spoken output; identical bytes to the plain constant when there is nothing to say.
 
-### Per-Platform Output Schema
+### Output Schema
 
-`shared-hooks/session-start.py` is consumed by hosts with **different sessionStart output schemas**. It must emit both shapes so every host reads the context it expects:
+`shared-hooks/session-start.py` emits the Claude Code SessionStart shape, which StarFactory (a Claude Code fork) also reads:
 
 ```python
 {
-    # Claude / Gemini / Qoder / CodeBuddy / Droid / Copilot — nested camelCase
     "hookSpecificOutput": {
         "hookEventName": "SessionStart",
         "additionalContext": context_text,
     },
-    # Cursor — top-level snake_case per cursor.com/docs/agent/hooks
-    "additional_context": context_text,
 }
 ```
 
-Each host ignores keys it does not recognize, so dual emission is safe. **Do not refactor to single-format output** — dropping the Cursor key breaks Cursor's auto-context injection for all models (not just GPT). The same multi-format convention exists in `inject-delegation-context.py` (Cursor's `permission` + `updated_input` alongside Claude's `hookSpecificOutput`). ZCode is the exception: its PreToolUse hook should emit the live-tested nested `hookSpecificOutput.updatedInput` shape only, because ZCode's hook diagnostics describe strict stdout schemas.
+The same nested `hookSpecificOutput` convention applies to `inject-delegation-context.py` (`updatedInput`).
 
 ### Constraint
 
 Claude Code truncates `hookSpecificOutput.additionalContext` at **~20 KB**. When exceeded, only a ~2 KB preview is shown and the full payload is written to a fallback file (`tool-results/hook-*-additionalContext.txt`). AI agents do **not** proactively read the fallback file, so any content past the preview is effectively invisible.
-
-Codex has even tighter limits — users report 40-80 KB payloads consuming most of the context window on large projects.
 
 ### Size Budget (measured on Arbor dev repo)
 
@@ -1911,7 +816,7 @@ Codex has even tighter limits — users report 40-80 KB payloads consuming most 
 | -------------------- | ---------: | ------------------------------------------------------------------------------------------------------------------------------------- |
 | `<session-context>`  |     0.1 KB | Fixed                                                                                                                                 |
 | `<current-state>`    |     0.3 KB | Compact developer/git/task state                                                                                                      |
-| `<arbor-workflow>` |     4.4 KB | Compact Phase Index after stripping workflow-state blocks, comments, and platform markers; detailed phase bodies are loaded on demand |
+| `<arbor-workflow>` |     4.4 KB | Compact Phase Index after stripping workflow-state blocks, comments and platform markers; detailed phase bodies are loaded on demand |
 | `<guidelines>`       |     0.5 KB | Context order + spec index paths only                                                                                                 |
 | `<ready>`            |     0.1 KB | Fixed                                                                                                                                 |
 | **Total**            | **6.0 KB** | **Under 20 KB ✓**                                                                                                                     |
@@ -1922,8 +827,8 @@ Historical note: pre-workflow-rewrite (v0.4.0-beta.10) the payload included a 16
 
 Before: every `.arbor/spec/*/index.md` was inlined in `<guidelines>` (10 KB+
 on this repo). Main agents rarely need every index at SessionStart, and
-sub-agents receive their specific spec / research context through
-`implement.jsonl` / `check.jsonl` or pull-based prelude loading.
+dispatched assistants receive their specific spec / research context through
+`implement.jsonl` / `check.jsonl`.
 
 Now: `<guidelines>` contains only the artifact read order and available spec
 index paths, including `.arbor/spec/guides/index.md`. Agents read the relevant
@@ -1938,8 +843,7 @@ tasks may be PRD-only, while complex tasks need `prd.md`, `design.md`, and
 
 For `in_progress` tasks, `SessionStart` points the AI to the per-turn
 `<workflow-state>` block and restates the implementation/check context order.
-Dispatch-vs-inline behavior belongs to workflow-state, skills, and agent
-definitions, not to a large SessionStart instruction block.
+Dispatch behavior belongs to workflow-state, skills and `.arbor/agents/*.md`, not to a large SessionStart instruction block.
 
 ### Design Decision: Inject Orientation, Not References
 
@@ -1958,7 +862,7 @@ instead of the actual workflow guidance.
 
 Detailed workflow steps, task artifacts, and spec content are loaded on demand
 through `/arbor:continue`, `get_context.py --mode phase --step <X.Y>`, skills,
-sub-agent context injection, or pull-based preludes.
+or dispatch context injection.
 
 **Rule**: When adding content to SessionStart, prefer paths and one-action
 orientation over inline reference text. Keep the measured total comfortably
@@ -1982,29 +886,26 @@ A user prompt containing the skip keyword (default `no-arbor`) mutes the per-tur
 breadcrumb for that turn only — the hook exits 0 with empty stdout before any task
 resolution or file reads. Contract:
 
-- Match rule (frozen, identical in Python hook and OpenCode plugin):
-  case-insensitive `(?<![\w-])<keyword>(?![\w-])` — `no-arborfoo`/`foo-no-arbor`
-  do not match; `path/no-arbor.md` does (accepted false-positive).
+- Match rule (frozen): case-insensitive `(?<![\w-])<keyword>(?![\w-])` —
+  `no-arborfoo`/`foo-no-arbor` do not match; `path/no-arbor.md` does (accepted
+  false-positive).
 - Config: `.arbor/config.yaml` → `prompt_injection.skip_keyword`
   (ships commented; default in code via `common.config.get_prompt_injection_config()`;
   quoted `""` explicitly disables the hatch).
 - Scope: per-turn breadcrumb ONLY. `session-start.py`, `inject-delegation-context.py`,
   and `inject-shell-session-context.py` must never gain keyword handling.
-- Coverage gap: the Pi extension cannot implement this — it has no `input` handler
-  (must not rewrite user text) and its `systemPrompt` must stay byte-identical per
-  turn for provider prefix caching.
-- Dogfood copies to keep patched region-identically: `.claude/hooks/` and
-  `.codex/hooks/` `inject-workflow-state.py`.
+- Dogfood copy to keep patched region-identically: `.claude/hooks/inject-workflow-state.py`
+  (and the shipped `shared-hooks/` original).
 
 ### Single Source of Truth: `workflow.md` Tag Blocks
 
-Breadcrumb text lives in `workflow.md` as `[workflow-state:STATUS]...[/workflow-state:STATUS]` blocks (same tag style as existing `[Platform, ...]` blocks). Users who fork the Arbor workflow edit **only the markdown**; the hook script stays untouched.
+Breadcrumb text lives in `workflow.md` as `[workflow-state:STATUS]...[/workflow-state:STATUS]` blocks (same tag style as `[Platform, ...]` marker blocks). Users who fork the Arbor workflow edit **only the markdown**; the hook script stays untouched.
 
 ```markdown
 [workflow-state:in_progress]
-Flow: arbor-implement → arbor-check → arbor-update-spec → finish
+Flow: dispatch implement → dispatch check → arbor-update-spec → finish
 Next required action: inspect conversation history + git status, then execute the next uncompleted step in that sequence.
-For agent-capable platforms, do NOT edit code in the main session; dispatch `arbor-implement` for implementation and dispatch `arbor-check` before reporting completion.
+Do NOT edit code in the main session; dispatch the implement role to a codeg assistant and dispatch the check role before reporting completion.
 [/workflow-state:in_progress]
 ```
 
@@ -2043,40 +944,16 @@ else:
 
 The same rule applies to every other hook that's positioned as "repeated reminder": if the hook isn't emitting, the reminder loop is broken. The only legitimate silent-exit case is when **the hook doesn't own this codebase at all** (e.g. `.arbor/` not found → definitely not a Arbor project → OK to no-op).
 
-### Platform Support Matrix
+### Platform Support
 
-| Platform        | Event                                                                                                 | Config File                                                                                                        | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| --------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Claude Code     | `UserPromptSubmit`                                                                                    | `.claude/settings.json`                                                                                            | Shared `inject-workflow-state.py`, distributed via `SHARED_HOOKS_BY_PLATFORM.claude`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| Cursor          | ⚠️ Not supported                                                                                      | n/a                                                                                                                | Cursor's `beforeSubmitPrompt` schema accepts only `{continue, user_message}` — no context-injection field exists. Per-turn reminders rely on `sessionStart` only (one-shot at session begin). `inject-workflow-state.py` is not distributed to Cursor; see `SHARED_HOOKS_BY_PLATFORM.cursor` in `shared-hooks/index.ts`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| Qoder           | `UserPromptSubmit`                                                                                    | `.qoder/settings.json`                                                                                             | Auto                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| CodeBuddy       | `UserPromptSubmit`                                                                                    | `.codebuddy/settings.json`                                                                                         | Auto                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| Droid (Factory) | `UserPromptSubmit`                                                                                    | `.factory/settings.json`                                                                                           | Auto                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| Gemini CLI      | `UserPromptSubmit`                                                                                    | `.gemini/settings.json`                                                                                            | Auto                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| Copilot CLI     | `userPromptSubmitted` (camelCase)                                                                     | `.github/copilot/hooks.json`                                                                                       | `bash` + `powershell` dual field                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| Codex           | `UserPromptSubmit`                                                                                    | `.codex/hooks.json`                                                                                                | **Requires `features.hooks = true` in user's `~/.codex/config.toml` (Codex 0.129+; legacy: `codex_hooks = true`).** Codex 0.129+ also requires running `/hooks` once to approve the installed hook before it activates — until approved, hooks never fire (the arbor-bootstrap fallback in inject-workflow-state.py covers the gap by directing the AI to read `arbor-start` skill manually)                                                                                                                                                                                                                                                                                                                                                                                        |
-| OpenCode        | `chat.message` (Bun plugin)                                                                           | `plugins/inject-workflow-state.js`                                                                                 | Equivalent JS implementation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| Kiro            | CLI: `userPromptSubmit` (main `arbor` agent JSON) · IDE: `promptSubmit` (`.kiro/hooks/*.kiro.hook`) | CLI: `.kiro/agents/arbor.json` `hooks` · IDE: `.kiro/hooks/arbor-workflow-state.kiro.hook` (`then.runCommand`) | Plain stdout (NOT the `hookSpecificOutput` JSON envelope) — Kiro adds a hook's raw stdout to conversation context. `inject-workflow-state.py` has a `platform == "kiro"` branch (detected via `KIRO_PROJECT_DIR` env or `.kiro` script path) that prints the bare breadcrumb. **Activation:** CLI users must make `arbor` the active agent (`kiro-cli settings chat.defaultAgent arbor` or `/agent swap arbor`) — Kiro defaults to built-in `kiro_default`. **Real-machine note:** the plain-stdout→context contract (and whether IDE `runCommand` stdout is injected vs only `askAgent`) is per official docs, pending Kiro hardware verification; fallback is `askAgent` + static steering. Sub-agent context injection unchanged via `agentSpawn → inject-delegation-context.py` |
-| Trae IDE        | `UserPromptSubmit`                                                                                    | `.trae/hooks.json`                                                                                                 | Auto; shared Python hook written under `.trae/hooks/inject-workflow-state.py`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| ZCode           | `UserPromptSubmit`                                                                                    | `.zcode/config.json`                                                                                               | Shared Python hook under `.zcode/hooks/`. Hook config is read at session start with no hot-reload, so `configureZcode` prints a one-shot "open a new session" notice                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| Snow CLI        | `onUserMessage`                                                                                       | `.snow/hooks/onUserMessage.json`                                                                                   | Platform-specific `write-arbor-context.py user` (not the shared hook) — Snow is absent from `SHARED_HOOKS_BY_PLATFORM` and bundles its own three inject hooks                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| Oh My Pi (OMP)  | extension turn hook                                                                                   | `.omp/extensions/arbor/`                                                                                         | TS extension resolves the breadcrumb per turn with its own cache; no Python hook                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| Pi              | `before_agent_start` + `context`                                                                      | `.pi/extensions/arbor/index.ts`                                                                                  | TS port; `WF_RE` (`index.ts.txt:1072`) must match the Python `_TAG_RE`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-
-**Deliberately absent** — these are not gaps to close:
-
-| Platform             | Why                                                                                                        |
-| -------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Cursor               | No context-injection field on `beforeSubmitPrompt` (row above)                                             |
-| Grok Build, Kimi Code | `hasHooks: false`. Grok 0.2.x was verified not to consume hook stdout `additionalContext`; both are class-2 pull-based |
-| Kilo, Antigravity, Devin | No hook surface and no sub-agents; they get commands + skills only                                     |
-| Reasonix             | Skill-only, no hook surface                                                                                |
+| Platform | Event | Config file | Notes |
+| --- | --- | --- | --- |
+| Claude Code | `UserPromptSubmit` | `.claude/settings.json` | Shared `inject-workflow-state.py`, distributed via `SHARED_HOOKS_BY_PLATFORM.claude` |
+| StarFactory | `UserPromptSubmit` | `.starFactory/settings.json` | Same shared hook, via `SHARED_HOOKS_BY_PLATFORM.star` |
 
 ### CWD Robustness
 
 The hook uses `find_arbor_root()` to walk up from CWD until it finds `.arbor/`, so it works when the terminal is in a subdirectory (monorepo package, etc.) or when sub-agent spawn inherits a drifted CWD.
-
-ZCode hook commands must also make the script path itself CWD-robust. Use the ZCode project-root placeholder in `.zcode/config.json`, for example `{{PYTHON_CMD}} "${ZCODE_PROJECT_DIR}/.zcode/hooks/inject-workflow-state.py"`, rather than `{{PYTHON_CMD}} .zcode/hooks/inject-workflow-state.py`. The Python hook's `find_arbor_root()` only runs after Python opens the script; a cwd-relative command can fail before the hook starts if ZCode launches from a nested directory such as `.github/docs/...`.
 
 ### Why No State Machine / No Extra `task.json` Fields
 
@@ -2155,62 +1032,33 @@ if (!hadDeveloperFileBefore) {
 
 **Test coverage requirement**: integration tests must cover BOTH paths. The quick way to detect regressions is to run `init` without `force: true` and assert joiner-task creation — tests that all pass `{ force: true }` will miss Path 2 bugs entirely.
 
+
 ---
 
 ## Common Mistakes
 
 ### Forgot to add entry to PLATFORM_FUNCTIONS
 
-**Symptom**: `arbor init` configures the platform, but `arbor update` doesn't track its template files — and `getConfiguredPlatforms` never detects the platform, so it is invisible to update entirely.
+**Symptom**: `arbor init` configures the platform, but `arbor update` doesn't track its template files, and `getConfiguredPlatforms` never detects the platform.
 
 **Cause**: `collectTemplates` is optional on `PlatformFunctions`, so a registry entry that omits it compiles and fails silently.
 
-**Fix**: Register with `{platform}: fromTemplates(collect{Platform}Templates)` in `src/configurators/index.ts`. That form cannot omit `collectTemplates` — it *is* `collectTemplates`.
-
-### Missing platform in cli_adapter.py
-
-**Symptom**: Python scripts fail with "Unsupported platform" error.
-
-**Fix**: Add platform to `Platform` literal type, `config_dir_name` property, and `get_cli_adapter()` validation in `cli_adapter.py`.
-
-### Wrong command format in templates
-
-**Symptom**: Slash commands don't work or show wrong format.
-
-**Fix**: Check platform's command format and update all command references in templates.
-
-### Codex template copied from project `.agents/skills` instead of `src/templates`
-
-**Symptom**: Generated templates accidentally include repo-specific customizations and drift from template source-of-truth.
-
-**Fix**: Always use `src/templates/{platform}/...` as source templates for `init/update`. Do not copy from project runtime directories.
-
-### EXCLUDE_PATTERNS missing `.js` in configurator
-
-**Symptom**: In production builds (`dist/`), `arbor init` copies compiled `index.js` (and `.js.map`, `.d.ts`) into the user's config directory (e.g., `.gemini/index.js`).
-
-**Cause**: The configurator walks its template directory and its `EXCLUDE_PATTERNS` doesn't filter out `.js` files. In development (`src/`), only `.ts` files exist so the issue is invisible. In production, `tsc` compiles `index.ts` → `index.js` into `dist/templates/{platform}/` and the walk picks it up.
-
-**Fix**: Ensure `EXCLUDE_PATTERNS` includes `.js`, `.js.map`, `.d.ts`, `.d.ts.map`. Only two configurators walk a directory today and both hold their own list: `claude.ts:22-28` and `opencode.ts:20-29`. Note they differ on purpose — OpenCode ships real `.js` plugin code, so it excludes `.js.map` and `.d.ts` but **not** `.js`.
-
-**Prevention**: Prefer not walking a directory at all. A configurator that enumerates its files explicitly (`cursor.ts`, `droid.ts`, `snow.ts`) cannot pick up a build artifact, which is why it is the default shape. Walk only when the template tree is genuinely open-ended, and then copy the exclusion list from whichever of the two existing walkers matches your case.
+**Fix**: Register with `{platform}: fromTemplates(collect{Platform}Templates)` in `src/configurators/index.ts`. That form cannot omit `collectTemplates`, it *is* `collectTemplates`.
 
 ### Missing CLI flag or InitOptions field
 
 **Symptom**: `arbor init --{platform}` doesn't work.
 
 **Fix**: Add `--{platform}` option in `src/cli/index.ts` and `{platform}?: boolean` in `InitOptions` in `src/commands/init.ts`. These are static declarations that cannot be derived from the registry.
-
 ### Template placeholder not resolved in collectTemplates
 
 **Symptom**: `arbor update` auto-updates platform files on every run, even when nothing changed. The update summary shows hooks/settings as "changed".
 
 **Cause**: `collect{Platform}Templates()` puts a raw template into the map without calling `resolvePlaceholders()`, so `{{PYTHON_CMD}}` survives into the written file and into the update comparison.
 
-**Fix**: Call `resolvePlaceholders()` at the point the entry is added to the map, e.g. `files.set(".cursor/hooks.json", resolvePlaceholders(getHooksConfig()))`. Because the map is now the single description, the placeholder resolves identically on both paths by construction — there is no second site to keep in sync.
+**Fix**: Call `resolvePlaceholders()` at the point the entry is added to the map, e.g. `files.set(".starFactory/settings.json", resolvePlaceholders(settings.content))`. Because the map is now the single description, the placeholder resolves identically on both paths by construction — there is no second site to keep in sync.
 
 Note this is *only* about `{{…}}` placeholders. The separate `python3` → `python` literal rewrite is applied centrally by `renderTemplateMap` on both paths, so that half of this bug class is structurally closed.
-
 ### Init-time settings.json key injection serialized differently from update's preservation
 
 **Symptom**: On a freshly initialized project that used an opt-in feature (e.g., `--with-statusline`), the very first `arbor update` reports `.claude/settings.json` as "Template updated (will auto-update)", rewrites it, and leaves a spurious backup — with zero actual changes.
@@ -2220,7 +1068,6 @@ Note this is *only* about `{{…}}` placeholders. The separate `python3` → `py
 **Fix**: The init-time injection must mirror the update-time preservation routine byte-for-byte (same parse → assign → stringify, same indent). Pinned by a regression test asserting `settings.json` byte-identity across `update --force` on a fresh opted-in project.
 
 **Rule**: A feature that both (a) injects a key into a generated JSON file at init and (b) preserves that key during update must produce identical serialization on both paths — key order is part of the contract. Assert byte-identity (not deep-equality) in tests; deep-equal comparisons cannot catch key-order drift.
-
 ### Template listed in update but not created by init
 
 **Symptom**: `arbor update` always detects a "new file" to add, even on a freshly initialized project with the same version.
@@ -2228,14 +1075,13 @@ Note this is *only* about `{{…}}` placeholders. The separate `python3` → `py
 **Cause**: `collectTemplateFiles()` in `update.ts` lists a file that `createSpecTemplates()` / `createWorkflowStructure()` in init never creates. The two template lists are out of sync.
 
 **Fix**: Ensure every file listed in `collectTemplateFiles()` is actually created during `init`. If a file is project-specific (not a user template), do not include it in the update template list.
-
 ### Project-type-conditional content not gated in init or update
 
 **Symptom**: Pure backend project gets empty frontend spec templates after `arbor init`. After user deletes the unwanted `spec/frontend/` dir, `arbor update` recreates it.
 
 **Cause (init)**: `createSpecTemplates()` in `workflow.ts` received `projectType` but ignored it (parameter named `_projectType`). All project types got both backend and frontend spec dirs.
 
-**Cause (update)**: `collectTemplateFiles()` in `update.ts` unconditionally included all 13 backend + frontend spec files in the template map, without checking whether `spec/backend/` or `spec/frontend/` actually existed on disk.
+**Cause (update)**: `collectTemplateFiles()` in `update.ts` unconditionally included all backend + frontend spec files in the template map, without checking whether `spec/backend/` or `spec/frontend/` actually existed on disk.
 
 **Fix (init)**: Use `projectType` to conditionally create spec dirs:
 
@@ -2246,69 +1092,41 @@ Note this is *only* about `{{…}}` placeholders. The separate `python3` → `py
 **Fix (update)**: Wrap backend/frontend spec file blocks in `fs.existsSync()` checks (same pattern as `getConfiguredPlatforms()` for platform dirs).
 
 **Rule**: When init creates content conditionally based on project type, update must check for directory existence before including files in its template map. The two paths must agree.
+### Updated command/skill content in a platform template instead of common/
 
-### PRD assumed platform capabilities without research
+**Symptom**: After updating a command in one platform's template, the other platform still uses old content.
 
-**Symptom**: Implementation builds the wrong abstraction (e.g., commands instead of skills, or vice versa). Requires major rework after discovery.
+**Cause**: Command and skill content lives in `src/templates/common/` as the single source of truth. Editing platform-specific copies creates drift.
 
-**Cause**: PRD was written based on assumptions about how a platform works (e.g., "Trae uses commands like Kilo") without verifying against official documentation or GitHub repos.
-
-**Fix**: Before writing the PRD for a new platform, research the platform's actual extension mechanism:
-
-- Check official docs for supported formats (skills, commands, rules, workflows)
-- Check the platform's GitHub repo for directory structure conventions
-- Verify how users invoke extensions (slash command, AI-automatic matching, manual mention)
-
-**Prevention**: Add a "Research" step before PRD finalization. The PRD should cite sources for platform capability claims.
-
-### Updated command/skill content in platform template instead of common/
-
-**Symptom**: After updating a command in one platform's template, other platforms still use old content.
-
-**Cause**: Since v0.5.0, command and skill content lives in `src/templates/common/` as the single source of truth. Editing platform-specific copies creates drift.
-
-**Fix**: Always edit templates in `src/templates/common/commands/` or `src/templates/common/skills/`. All platforms derive their content from there via `resolveCommands()` / `resolveSkills()` / `resolveAllAsSkills()`.
-
-### Stale platform references in copied templates
-
-**Symptom**: A Qoder skill references "Claude Code" syntax or a Kiro-specific invocation pattern.
-
-**Cause**: When creating agent templates for a new platform by copying from an existing one, platform-specific references (command syntax, platform names, invocation instructions) weren't updated.
-
-**Fix**: After copying agent templates, search-and-replace all references to the source platform. Check for:
-
-- Platform name mentions (e.g., "Claude Code", "Kiro")
-- Command invocation syntax (e.g., `/arbor:xxx` vs `$skill-name`)
-- Config directory references (e.g., `.claude/` vs `.qoder/`)
+**Fix**: Always edit templates in `src/templates/common/commands/` or `src/templates/common/skills/`. Both platforms derive their content from there via `resolveCommands()` / `resolveSkills()`.
 
 ### Forgot to use shared hooks
 
-**Symptom**: Platform's hooks directory contains duplicated Python scripts instead of the shared ones.
+**Symptom**: A platform's hooks directory contains duplicated Python scripts instead of the shared ones.
 
-**Cause**: When adding a new agent-capable platform, developer copied hook scripts from another platform's template directory instead of calling `collectSharedHooks(hooksDir, platform)` from `shared.ts`.
+**Cause**: A hook script was copied from another platform's template directory instead of calling `collectSharedHooks(hooksDir, platform)` from `shared.ts`.
 
-**Fix**: Add the platform to `SHARED_HOOKS_BY_PLATFORM` with the hooks it can actually invoke, then use `collectSharedHooks()`. Only create platform-specific hook files when the platform has unique hook integration points (Codex and Copilot each bundle their own `session-start.py` for this reason).
+**Fix**: Add the platform to `SHARED_HOOKS_BY_PLATFORM` with the hooks it can actually invoke, then use `collectSharedHooks()`.
 
-**Prevention**: Declaring the platform in the table is only half the wiring — see "Declaring a shared hook is half the wiring" below.
+**Prevention**: Declaring the platform in the table is only half the wiring, see "Declaring a shared hook is half the wiring" above.
 
 ### Hardcoded JSONL fallback paths
 
 **Symptom**: Agent definitions reference JSONL files that don't exist (e.g., `debug.jsonl`, `plan.jsonl`).
 
-**Cause**: Only `implement.jsonl` and `check.jsonl` exist as task JSONL files. Agent templates were copied from older versions that referenced removed JSONL types.
+**Cause**: Only `implement.jsonl` and `check.jsonl` exist as task JSONL files. Definitions were copied from older versions that referenced removed JSONL types.
 
-**Fix**: Ensure agent `.md` definitions only reference `implement.jsonl` and `check.jsonl`. The debug, plan, and dispatch agents have been removed.
+**Fix**: Ensure `.arbor/agents/*.md` and the templates only reference `implement.jsonl` and `check.jsonl`.
 
 ### `__pycache__` in template hooks directory causes EISDIR crash
 
-**Symptom**: Tests fail with `EISDIR: illegal operation on a directory, read` in `getAllHooks()` at `src/templates/claude/index.ts`.
+**Symptom**: Tests fail with `EISDIR: illegal operation on a directory, read` when listing hook files under `src/templates/`.
 
-**Cause**: Running a Python hook locally (e.g., `python3 session-start.py` for testing) creates `__pycache__/` inside `src/templates/{platform}/hooks/`. `listFiles("hooks")` returns `__pycache__` as an entry, then `readFileSync("hooks/__pycache__")` fails because it's a directory.
+**Cause**: Running a Python hook locally (e.g., `python3 session-start.py` for testing) creates `__pycache__/` inside `src/templates/shared-hooks/` or `src/templates/claude/hooks/`. `listFiles("hooks")` returns `__pycache__` as an entry, then `readFileSync("hooks/__pycache__")` fails because it's a directory.
 
-**Fix**: `rm -rf src/templates/*/hooks/__pycache__`. Consider adding `__pycache__` to `.gitignore` or filtering directories in `listFiles()`.
+**Fix**: `find packages/cli/src/templates -name __pycache__ -type d -exec rm -rf {} +`. Consider adding `__pycache__` to `.gitignore` or filtering directories in `listFiles()`.
 
 **Prevention**: Don't run Python hooks directly from `src/templates/` during development. Use `/tmp` copies or the installed project copy instead.
-
 ### Added an init-time trigger but forgot the `handleReinit` fast path
 
 **Symptom**: The trigger works when users pass `--force` / `--skip-existing` / run init on an empty dir, but the default `arbor init --user <name>` on an existing checkout silently does nothing. Integration tests pass.
@@ -2321,25 +1139,13 @@ Note this is *only* about `{{…}}` placeholders. The separate `python3` → `py
 
 ---
 
-## Reference PRs
-
-| PR                            | Platform         | Pattern                                        | Notes                                                                                          |
-| ----------------------------- | ---------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| feat/gemini branch            | Gemini CLI       | Agents + shared hooks                          | First non-Markdown command format (TOML settings)                                              |
-| main                          | Antigravity      | Workflows + skills from `common/`              | No physical template dir — one `collectBothTemplates()` call; no Codex coupling                |
-| #71                           | Qoder            | Skills (like Codex/Kiro)                       | Skills with YAML frontmatter; Trae was dropped (IDE-only, no deterministic invocation trigger) |
-| feat/v0.5.0-beta              | All platforms (13 at the time; 21 today) | Unified template architecture | Common templates + shared hooks + `createTemplateReader()` factory                    |
-| `04-21-bootstrap-onboard-gap` | n/a              | Three-branch init dispatch + joiner onboarding | `.developer` file as per-checkout signal; documents the `handleReinit` two-point wiring        |
-
----
-
 ## Arbor dispatch hooks (current mechanism)
 
-Claude Code and StarFactory register two PreToolUse hooks (see `templates/claude/settings.json`):
+Claude Code and StarFactory register two PreToolUse hooks (see `templates/claude/settings.json` and `templates/star/settings.json`):
 
 | Hook | Matcher | Timeout | Behavior |
 |---|---|---|---|
 | `inject-delegation-context.py` | `^mcp__codeg[-_]mcp__delegate_to_agent$` | 30 | Inlines task context into `tool_input.task`, marked `<!-- arbor-hook-injected -->`. Role resolution: `Role:` header line, then `.arbor/.runtime/codeg-assistants.json` `by_id[assistant_id].role`, else no-op. Task: `Active task:` header, else the session active task. Output is `updatedInput` with only `task` replaced. Prompt assembly is shared with `dispatch.py` via `common/dispatch_context.py`. |
 | `guard-builtin-agent.py` | `^(Agent\|Task)$` | 10 | Denies the built-in Agent/Task tool when the call is an Arbor role dispatch (prompt carries `Active task:` / `Role:`, or `subagent_type` starts with `arbor-`), unless `dispatch.guard_builtin_agent` is false. Other calls pass through. |
 
-Older sections of this file that describe other platforms' sub-agent hooks (Cursor, OpenCode, Pi, Codex, ZCode, Kiro) are historical and no longer apply to Arbor; see `dispatch.md`.
+SessionStart (`session-start.py`) adds the `<dispatch>` section with the resolved assistant ids; UserPromptSubmit (`inject-workflow-state.py`) emits the per-turn breadcrumb. The dispatch contract itself is in `dispatch.md`.
