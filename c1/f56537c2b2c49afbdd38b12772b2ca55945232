@@ -1,0 +1,19 @@
+packages/cli/test/scripts/dispatch-config.integration.test.ts
+  s_15daf2f3dbf36a::t_783fbfe827309f 293-294,296-301,315-336
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "c1f56537c2b2c49afbdd38b12772b2ca55945232",
+  "prompts": {},
+  "sessions": {
+    "s_15daf2f3dbf36a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e99ddeeb-77f3-4238-9595-7637dd6b76ac",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
