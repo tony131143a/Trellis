@@ -222,6 +222,10 @@ const COMMAND_DESCRIPTIONS: Record<string, string> = {
     "Wrap up the current session: quality gate, commit reminder, archive, journal.",
   "dispatch-target":
     "Switch the codeg dispatch target for implement/check/research roles: star, pi, or clear.",
+  "workflow-star":
+    "Run the Arbor workflow with implement/check/research on StarFactory (star) and continue the current task.",
+  "workflow-pi":
+    "Run the Arbor workflow with implement/check/research on pi + DeepSeek and continue the current task.",
 };
 
 /** Wrap resolved command content with YAML frontmatter (name + description). */
