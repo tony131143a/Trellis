@@ -1,0 +1,33 @@
+.trellis/tasks/archive/2026-10/10-23-channel-idle-ttl-per-worker/brief-implement.md
+  s_4fb774c4268ce8::t_00f15dd04f3a63 1-13
+.trellis/tasks/archive/2026-10/10-23-channel-idle-ttl-per-worker/check.jsonl
+  s_4fb774c4268ce8::t_e5a4525d89eedf 1-2
+.trellis/tasks/archive/2026-10/10-23-channel-idle-ttl-per-worker/implement.jsonl
+  s_4fb774c4268ce8::t_9420b567eede63 1-3
+.trellis/tasks/archive/2026-10/10-23-channel-idle-ttl-per-worker/prd.md
+  s_64950571e2a0e7::t_9f12fdf74c4321 1-30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "509ae9f9096e6d789eda8b2fb35701087b2d862f",
+  "prompts": {},
+  "sessions": {
+    "s_4fb774c4268ce8": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a1679c-c8dc-7107-bcfa-55fa354d87a8",
+        "model": "DeepSeek-V4.1-Flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_64950571e2a0e7": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a167b0-e689-7599-a7a9-d67984d0e669",
+        "model": "DeepSeek-V4.1-Flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
