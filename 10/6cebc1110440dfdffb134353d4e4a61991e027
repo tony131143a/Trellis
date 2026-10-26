@@ -1,0 +1,33 @@
+.trellis/tasks/archive/2026-10/10-23-orch-spec-docs/brief-implement.md
+  s_eed1d77be7ebfe::t_2a9c55f9bab680 1-14
+.trellis/tasks/archive/2026-10/10-23-orch-spec-docs/check.jsonl
+  s_eed1d77be7ebfe::t_4046aaac2ad05c 1-5
+.trellis/tasks/archive/2026-10/10-23-orch-spec-docs/implement.jsonl
+  s_eed1d77be7ebfe::t_35723fa2096058 1-5
+.trellis/tasks/archive/2026-10/10-23-orch-spec-docs/prd.md
+  s_c6da82a3ddcfb3::t_e2be00f42ddd60 1-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "106cebc1110440dfdffb134353d4e4a61991e027",
+  "prompts": {},
+  "sessions": {
+    "s_c6da82a3ddcfb3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7859352b-a76a-4464-a685-61bd330cfbef",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_eed1d77be7ebfe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "105ce731-db64-4d05-a4a3-13ee995569a7",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
