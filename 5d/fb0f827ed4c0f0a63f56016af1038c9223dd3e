@@ -1,0 +1,69 @@
+.trellis/tasks/archive/2026-10/10-23-orch-engine-port/brief-e0.md
+  s_5f86a9f4ae0aec::t_5040c599207e84 1-23
+.trellis/tasks/archive/2026-10/10-23-orch-engine-port/brief-e1-core.md
+  s_84fea144c6821b::t_68e998c1a50b66 1-17
+.trellis/tasks/archive/2026-10/10-23-orch-engine-port/brief-e1-hooks.md
+  s_84fea144c6821b::t_e08b39224f09ec 1-22
+.trellis/tasks/archive/2026-10/10-23-orch-engine-port/brief-e1-pipeline.md
+  s_84fea144c6821b::t_fd42062d5d4539 1-22
+.trellis/tasks/archive/2026-10/10-23-orch-engine-port/brief-warmup-hooks.md
+  s_494d897134fa84::t_d115ce0944a4ea 1-7
+.trellis/tasks/archive/2026-10/10-23-orch-engine-port/brief-warmup-pipeline.md
+  s_494d897134fa84::t_e724c6b8cd4fa1 1-7
+.trellis/tasks/archive/2026-10/10-23-orch-engine-port/check.jsonl
+  s_84fea144c6821b::t_8e441d45cabdeb 1-3
+.trellis/tasks/archive/2026-10/10-23-orch-engine-port/e1-decisions.md
+  s_9d16d51b5c0a6b::t_23225a0af07deb 1-9
+.trellis/tasks/archive/2026-10/10-23-orch-engine-port/implement.jsonl
+  s_84fea144c6821b::t_fdb6d979a37a0d 1-3
+.trellis/tasks/archive/2026-10/10-23-orch-engine-port/research/engine-baseline.md
+  s_d2f10e313e54c9::t_9aa3f3e9f7a706 1-95
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "5dfb0f827ed4c0f0a63f56016af1038c9223dd3e",
+  "prompts": {},
+  "sessions": {
+    "s_494d897134fa84": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ca61861d-cdb2-49aa-9fb9-36670ae40ebd",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_5f86a9f4ae0aec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6e841ad6-7fb2-442f-a7b6-f38035d2c3c7",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_84fea144c6821b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4e0e9de5-7698-476b-b7c4-a33973b2f085",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_9d16d51b5c0a6b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "95e99144-61b5-41c5-9dac-ca4610ffb311",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_d2f10e313e54c9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "508ad67d-0656-4c35-94ae-23985386499c",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
