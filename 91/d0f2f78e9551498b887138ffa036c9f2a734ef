@@ -1,0 +1,71 @@
+.arbor/.template-hashes.json
+  s_0c74e745d325a1::t_db05574f7fdb40 18,22-25,28,32,79-81,87-88
+.arbor/spec/cli/backend/dispatch.md
+  s_64ae4987660d8f::t_afc56b522cde07 47
+.arbor/spec/cli/backend/platform-integration.md
+  s_64ae4987660d8f::t_744174b618396d 28,58
+.arbor/workflow.md
+  s_64ae4987660d8f::t_0762a80f0124ab 116
+.claude/commands/arbor/workflow.md
+  s_64ae4987660d8f::t_ab5f4d550a4a99 1,3,5-10,17,20-21,30,41,45
+.claude/skills/arbor-meta/SKILL.md
+  s_64ae4987660d8f::t_7a0add389ee0cc 69
+.claude/skills/arbor-meta/references/local-architecture/dispatch.md
+  s_64ae4987660d8f::t_4b61b3430c697b 22
+.claude/skills/arbor-meta/references/local-architecture/workflow.md
+  s_64ae4987660d8f::t_5e5853e6abd1c7 70
+.claude/skills/arbor-meta/references/platform-files/overview.md
+  s_64ae4987660d8f::t_5478dbd629f906 19
+.claude/skills/arbor-meta/references/platform-files/skills-and-commands.md
+  s_64ae4987660d8f::t_99c0d9ea111226 10
+AGENTS.md
+  s_64ae4987660d8f::t_0c30a2bfb5cc40 8
+CLAUDE.md
+  s_64ae4987660d8f::t_bc224af23c9611 83
+README.md
+  s_64ae4987660d8f::t_cacef3e4e59c16 134,137,139,186,237
+packages/cli/src/configurators/shared.ts
+  s_64ae4987660d8f::t_8a23d8b9bfaaab 223-224
+packages/cli/src/templates/arbor/workflow.md
+  s_64ae4987660d8f::t_ea6cc5930d8029 116
+packages/cli/src/templates/common/bundled-skills/arbor-meta/SKILL.md
+  s_64ae4987660d8f::t_e2f3aca31c0458 69
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/local-architecture/dispatch.md
+  s_64ae4987660d8f::t_f02fce7369ef1a 22
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/local-architecture/workflow.md
+  s_64ae4987660d8f::t_3a9da9f2a04466 70
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/platform-files/overview.md
+  s_64ae4987660d8f::t_7e464877f5b9ec 19
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/platform-files/skills-and-commands.md
+  s_64ae4987660d8f::t_6d8e3f99fcb277 10
+packages/cli/src/templates/common/commands/workflow.md
+  s_64ae4987660d8f::t_86c29b6e75f6ae 1,3,5-10,17,20-21,30,41,45
+packages/cli/src/templates/markdown/agents.md
+  s_64ae4987660d8f::t_665896ed6ca573 8
+packages/cli/src/templates/markdown/claude.md
+  s_64ae4987660d8f::t_a13cd3629bb58b 17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "91d0f2f78e9551498b887138ffa036c9f2a734ef",
+  "prompts": {},
+  "sessions": {
+    "s_0c74e745d325a1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7535a1d2-9892-41f6-86ee-da577e9b4501",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_64ae4987660d8f": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a17ca3-f569-7169-a406-47107b24f9f5",
+        "model": "DeepSeek-V4.1-Flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
