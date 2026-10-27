@@ -1,0 +1,41 @@
+packages/cli/src/templates/arbor/scripts/common/config.py
+  s_64ae4987660d8f::t_e09db9c18f4ab9 254,268,283-298,315-319,321,323,332-337,345-349,361-366,377-378
+packages/cli/src/templates/arbor/scripts/dispatch.py
+  s_6605e4159a5bfb::t_3ef5cefb9fc935 158-164,626,662,697,709-712,715,732,738-742,822-837,840-844,850-869
+packages/cli/src/templates/markdown/claude.md
+  s_224c9caf474794::t_d7462fd7cdfb7d 10,16
+packages/cli/test/scripts/dispatch-config.integration.test.ts
+  s_224c9caf474794::t_4821bab728f9e8 48,54,58-63,189,191-193,199-202,204-207,209
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "d2b778d50a315bd21c838bc1e4fba2bd2dbe0101",
+  "prompts": {},
+  "sessions": {
+    "s_224c9caf474794": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a17ca4-2067-702d-a48d-cde2363ffcfb",
+        "model": "DeepSeek-V4.1-Flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_64ae4987660d8f": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a17ca3-f569-7169-a406-47107b24f9f5",
+        "model": "DeepSeek-V4.1-Flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_6605e4159a5bfb": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a17ca1-c8fb-75e3-b2e5-6bd483d59372",
+        "model": "DeepSeek-V4.1-Flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
