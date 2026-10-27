@@ -746,7 +746,7 @@ describe.skipIf(!hasPython())("dispatch.py", () => {
       expect(r.status, r.stderr).toBe(0);
       expect(
         fs.readdirSync(path.dirname(rendered("pi", "review"))),
-      ).toHaveLength(14);
+      ).toHaveLength(21);
       expect(r.stderr).toContain("codeg is not reachable");
       expect(fs.existsSync(registryPath())).toBe(false);
     });
@@ -845,9 +845,9 @@ describe.skipIf(!hasPython())("dispatch.py", () => {
       const pipeline = rows.find((row) => row.name === "implementer");
       expect(pipeline?.sort_order).toBe(7);
       const arbor = rows.filter((row) => row.name.startsWith("arbor-"));
-      expect(arbor).toHaveLength(14);
+      expect(arbor).toHaveLength(21);
       expect(arbor.map((row) => row.sort_order)).toEqual(
-        Array.from({ length: 14 }, (_, i) => 8 + i),
+        Array.from({ length: 21 }, (_, i) => 8 + i),
       );
 
       const star = arbor.filter((row) => row.agent_type === "custom:star");
@@ -874,6 +874,69 @@ describe.skipIf(!hasPython())("dispatch.py", () => {
           row.sort_order,
         ]),
       ).toEqual(rows.map((row) => [row.name, row.sort_order]));
+    });
+
+    it("--install keeps the agent, mode and options of an existing assistant", () => {
+      const db = path.join(tmp, "codeg.db");
+      makeDb(db, ASSISTANT_COLUMNS_SQL);
+      const uid = python(
+        "import uuid\nprint(uuid.uuid5(uuid.NAMESPACE_URL, 'arbor/pi/implement'))",
+      ).trim();
+      // As the codeg UI would leave it after the user re-picked agent, mode and model.
+      makeDb(
+        db,
+        "INSERT INTO assistant (uid, name, avatar, agent_type, agent_options, label_snapshot," +
+          ` instructions, sort_order, revision, created_at, updated_at) VALUES ('${uid}',` +
+          " 'arbor-implement-pi', '{}', 'codex'," +
+          " '{\"mode_id\":\"read-only\",\"config_values\":{\"model\":\"gpt\"}}'," +
+          " '{\"agent\":\"Codex\",\"mode\":\"Read-only\",\"options\":[]}', 'stale', 3, 4, 'now', 'now')",
+      );
+
+      const r = dispatch(["codeg-setup", "--target", "pi", "--install", "--db", db]);
+      expect(r.status, r.stderr).toBe(0);
+      expect(r.stderr).toContain("agent/mode/options kept");
+      const row = dbRows(db).find((candidate) => candidate.uid === uid);
+      expect(row?.agent_type).toBe("codex");
+      expect(JSON.parse(row?.agent_options ?? "")).toEqual({
+        mode_id: "read-only",
+        config_values: { model: "gpt" },
+      });
+      expect(JSON.parse(row?.label_snapshot ?? "")).toEqual({
+        agent: "Codex",
+        mode: "Read-only",
+        options: [],
+      });
+      expect(row?.instructions).toBe(
+        fs.readFileSync(rendered("pi", "implement"), "utf-8").trimEnd(),
+      );
+      expect(row?.revision).toBe(5);
+    });
+
+    it("--install creates codex assistants in the agent-full-access mode", () => {
+      const db = path.join(tmp, "codeg.db");
+      makeDb(db, ASSISTANT_COLUMNS_SQL);
+      const r = dispatch(["codeg-setup", "--target", "codex", "--install", "--db", db]);
+      expect(r.status, r.stderr).toBe(0);
+      const rows = dbRows(db);
+      expect(rows.map((row) => row.name)).toEqual(
+        ["explore", "architect", "implement", "review", "verify", "fix", "simplify"].map(
+          (role) => `arbor-${role}-codex`,
+        ),
+      );
+      for (const row of rows) {
+        expect(row.agent_type).toBe("codex");
+        expect(JSON.parse(row.agent_options)).toEqual({ mode_id: "agent-full-access" });
+        expect(JSON.parse(row.label_snapshot)).toEqual({
+          agent: "Codex",
+          mode: "Full access",
+          options: [],
+        });
+      }
+
+      const printed = dispatch(["codeg-setup", "--target", "codex"]);
+      expect(printed.status, printed.stderr).toBe(0);
+      expect(printed.stdout).toContain("Agent:        codex");
+      expect(printed.stdout).toContain("Mode:         agent-full-access");
     });
 
     it("--install soft-deletes the retired check / research assistants", () => {

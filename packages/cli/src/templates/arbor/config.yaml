@@ -111,8 +111,12 @@ max_journal_lines: 2000
 # simplify) run as codeg assistants, never as the host's
 # built-in Agent/Task tool. The effective target is resolved at runtime:
 # .arbor/.runtime/dispatch-target > ARBOR_DISPATCH_TARGET > default_target.
-# Role names sit directly under each target; any other scalar key under a
-# target (model, thought_level) is passed as an agent option.
+# Role names sit directly under each target; `mode_id` picks the agent's
+# session mode (codex: agent-full-access | workspace-write | read-only); any
+# other scalar key (model, thought_level) is passed as an agent option.
+# `dispatch.py codeg-setup --install` creates missing assistants from these
+# values and only refreshes the instructions of existing ones: the agent,
+# mode and options of an existing assistant are edited in the codeg UI.
 dispatch:
   default_target: star
   max_parallel: 3
@@ -142,3 +146,13 @@ dispatch:
       verify: arbor-verify-pi
       fix: arbor-fix-pi
       simplify: arbor-simplify-pi
+    codex:
+      agent_type: codex
+      mode_id: agent-full-access
+      explore: arbor-explore-codex
+      architect: arbor-architect-codex
+      implement: arbor-implement-codex
+      review: arbor-review-codex
+      verify: arbor-verify-codex
+      fix: arbor-fix-codex
+      simplify: arbor-simplify-codex

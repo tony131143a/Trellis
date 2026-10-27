@@ -155,6 +155,13 @@ ROLE_DESCRIPTIONS = {
 RETIRED_ROLES = ("check", "research")
 AGENT_LABELS = {"pi": "Pi", "claude_code": "Claude Code", "codex": "Codex"}
 OPTION_LABELS = {"model": "Model", "thought_level": "Thinking"}
+# codex-acp session modes (`_AgentMode` in @agentclientprotocol/codex-acp 2.x).
+MODE_LABELS = {
+    "read-only": "Read-only",
+    "workspace-write": "Workspace access",
+    "agent": "Auto review",
+    "agent-full-access": "Full access",
+}
 
 
 class DispatchError(Exception):
@@ -616,6 +623,7 @@ def _assistant_rows(root: Path, config: dict, targets: list[str]) -> list[dict]:
     for target in targets:
         target_cfg = config["targets"][target]
         agent_type = target_cfg["agent_type"]
+        mode_id = target_cfg["mode_id"]
         options = {
             key: target_cfg["options"][key]
             for key in ("model", "thought_level")
@@ -651,6 +659,7 @@ def _assistant_rows(root: Path, config: dict, targets: list[str]) -> list[dict]:
                     "description": description[:MAX_DESCRIPTION_CHARS],
                     "avatar": {"kind": "emoji", "emoji": emoji, "color": color},
                     "agent_type": agent_type,
+                    "mode_id": mode_id,
                     "options": options,
                     "instructions": instructions,
                 }
@@ -685,6 +694,7 @@ def _print_manual_steps(root: Path, rows: list[dict], paths: dict[str, Path]) ->
             f"  {row['name']}",
             f"    Description:  {row['description']}",
             f"    Agent:        {row['agent_type']}",
+            f"    Mode:         {row['mode_id'] or '(agent default)'}",
             f"    Options:      {options}",
             f"    Instructions: paste {_rel(root, paths[row['name']])}",
         ]
@@ -696,9 +706,13 @@ def _dumps(value: object) -> str:
 
 
 def _label_snapshot(
-    agent_type: str, options: dict[str, str], agent_label: str | None = None
+    agent_type: str,
+    options: dict[str, str],
+    agent_label: str | None = None,
+    mode_id: str | None = None,
 ) -> dict:
     agent = agent_label or AGENT_LABELS.get(agent_type, agent_type.split(":", 1)[-1])
+    mode = MODE_LABELS.get(mode_id, mode_id) if mode_id else None
     labels = []
     for key, value in options.items():
         if key == "model":
@@ -715,11 +729,16 @@ def _label_snapshot(
                 "value_label": value_label,
             }
         )
-    return {"agent": agent, "mode": None, "options": labels}
+    return {"agent": agent, "mode": mode, "options": labels}
 
 
 def _install_rows(root: Path, db_path: Path, rows: list[dict]) -> dict[str, int] | None:
     """Upsert ``rows`` into codeg's assistant table.
+
+    A new row gets the target's agent, mode and options. An existing row keeps
+    its ``agent_type`` / ``agent_options`` / ``label_snapshot`` — once created,
+    those belong to the codeg UI — and only Arbor's own fields (name,
+    description, avatar, instructions, sort order) are refreshed.
 
     Returns name -> id of every live assistant afterwards, or None when the
     table schema is not the one this script was written against.
@@ -795,41 +814,59 @@ def _install_rows(root: Path, db_path: Path, rows: list[dict]) -> dict[str, int]
                         f"another codeg assistant is already named {row['name']!r}; "
                         "rename it or change dispatch.targets in .arbor/config.yaml"
                     )
-                values = (
-                    row["name"],
-                    row["description"],
-                    _dumps(row["avatar"]),
-                    row["agent_type"],
-                    _dumps({"config_values": row["options"]} if row["options"] else {}),
-                    _dumps(
-                        _label_snapshot(
-                            row["agent_type"],
-                            row["options"],
-                            custom_labels.get(row["agent_type"]),
-                        )
-                    ),
-                    row["instructions"],
-                    order,
-                )
                 existing = conn.execute(
                     "SELECT id FROM assistant WHERE uid = ?", (row["uid"],)
                 ).fetchone()
                 if existing:
                     conn.execute(
-                        "UPDATE assistant SET name=?, description=?, avatar=?, agent_type=?,"
-                        " agent_options=?, label_snapshot=?, instructions=?, enabled=1,"
-                        " sort_order=?, deleted_at=NULL, revision=revision+1, updated_at=?"
-                        " WHERE id=?",
-                        values + (now, existing[0]),
+                        "UPDATE assistant SET name=?, description=?, avatar=?, instructions=?,"
+                        " enabled=1, sort_order=?, deleted_at=NULL, revision=revision+1,"
+                        " updated_at=? WHERE id=?",
+                        (
+                            row["name"],
+                            row["description"],
+                            _dumps(row["avatar"]),
+                            row["instructions"],
+                            order,
+                            now,
+                            existing[0],
+                        ),
                     )
-                    _err(f"updated assistant {row['name']} (id {existing[0]})")
+                    _err(
+                        f"updated assistant {row['name']} (id {existing[0]}; "
+                        "agent/mode/options kept)"
+                    )
                 else:
+                    agent_options: dict = {}
+                    if row["mode_id"]:
+                        agent_options["mode_id"] = row["mode_id"]
+                    if row["options"]:
+                        agent_options["config_values"] = row["options"]
                     cursor = conn.execute(
                         "INSERT INTO assistant (uid, name, description, avatar, agent_type,"
                         " agent_options, label_snapshot, instructions, enabled, sort_order,"
                         " revision, created_at, updated_at, deleted_at)"
                         " VALUES (?,?,?,?,?,?,?,?,1,?,1,?,?,NULL)",
-                        (row["uid"],) + values + (now, now),
+                        (
+                            row["uid"],
+                            row["name"],
+                            row["description"],
+                            _dumps(row["avatar"]),
+                            row["agent_type"],
+                            _dumps(agent_options),
+                            _dumps(
+                                _label_snapshot(
+                                    row["agent_type"],
+                                    row["options"],
+                                    custom_labels.get(row["agent_type"]),
+                                    row["mode_id"],
+                                )
+                            ),
+                            row["instructions"],
+                            order,
+                            now,
+                            now,
+                        ),
                     )
                     _err(f"created assistant {row['name']} (id {cursor.lastrowid})")
             for uid, name, assistant_id in conn.execute(

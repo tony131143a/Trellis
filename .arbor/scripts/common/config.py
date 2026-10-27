@@ -251,6 +251,7 @@ DEFAULT_DISPATCH: dict = {
     "targets": {
         "star": {
             "agent_type": "custom:star",
+            "mode_id": None,
             "options": {},
             "assistants": {
                 "explore": "arbor-explore-star",
@@ -264,6 +265,7 @@ DEFAULT_DISPATCH: dict = {
         },
         "pi": {
             "agent_type": "pi",
+            "mode_id": None,
             "options": {
                 "model": "deepseek/DeepSeek-V4.1-Flash",
                 "thought_level": "max",
@@ -276,6 +278,22 @@ DEFAULT_DISPATCH: dict = {
                 "verify": "arbor-verify-pi",
                 "fix": "arbor-fix-pi",
                 "simplify": "arbor-simplify-pi",
+            },
+        },
+        "codex": {
+            "agent_type": "codex",
+            # codex-acp session mode: no sandbox and no approval prompts, so a
+            # dispatched role never parks on a permission request.
+            "mode_id": "agent-full-access",
+            "options": {},
+            "assistants": {
+                "explore": "arbor-explore-codex",
+                "architect": "arbor-architect-codex",
+                "implement": "arbor-implement-codex",
+                "review": "arbor-review-codex",
+                "verify": "arbor-verify-codex",
+                "fix": "arbor-fix-codex",
+                "simplify": "arbor-simplify-codex",
             },
         },
     },
@@ -294,12 +312,15 @@ def _dispatch_target(name: str, raw: object, default: dict | None) -> dict:
 
     The template keeps role names directly under the target (the parser has
     no flow mappings, and a fourth nesting level is noise); they are collected
-    into ``assistants``. Any other scalar key (``model``, ``thought_level``)
-    lands in ``options``. A missing role falls back to the shipped name, or to
-    ``arbor-<role>-<target>`` for a target Arbor does not ship.
+    into ``assistants``. ``mode_id`` is the agent's session mode (codeg
+    ``agent_options.mode_id``, e.g. codex ``agent-full-access``); any other
+    scalar key (``model``, ``thought_level``) lands in ``options``. A missing
+    role falls back to the shipped name, or to ``arbor-<role>-<target>`` for
+    a target Arbor does not ship.
     """
-    base = default or {"agent_type": name, "options": {}, "assistants": {}}
+    base = default or {"agent_type": name, "mode_id": None, "options": {}, "assistants": {}}
     agent_type = str(base.get("agent_type") or name)
+    mode_id = base.get("mode_id") or None
     options = dict(base.get("options") or {})
     assistants = {
         role: str((base.get("assistants") or {}).get(role) or f"arbor-{role}-{name}")
@@ -308,7 +329,12 @@ def _dispatch_target(name: str, raw: object, default: dict | None) -> dict:
     if not isinstance(raw, dict):
         if raw is not None and raw != {}:
             _warn_dispatch(f"targets.{name}", raw, "defaults")
-        return {"agent_type": agent_type, "options": options, "assistants": assistants}
+        return {
+            "agent_type": agent_type,
+            "mode_id": mode_id,
+            "options": options,
+            "assistants": assistants,
+        }
 
     for key, value in raw.items():
         if key == "agent_type":
@@ -316,6 +342,11 @@ def _dispatch_target(name: str, raw: object, default: dict | None) -> dict:
                 agent_type = value.strip()
             else:
                 _warn_dispatch(f"targets.{name}.agent_type", value, agent_type)
+        elif key == "mode_id":
+            if isinstance(value, str):
+                mode_id = value.strip() or None
+            else:
+                _warn_dispatch(f"targets.{name}.mode_id", value, mode_id)
         elif key in DISPATCH_ROLES:
             if isinstance(value, str) and value.strip():
                 assistants[key] = value.strip()
@@ -327,7 +358,12 @@ def _dispatch_target(name: str, raw: object, default: dict | None) -> dict:
             options[key] = value
         else:
             _warn_dispatch(f"targets.{name}.{key}", value, "ignored")
-    return {"agent_type": agent_type, "options": options, "assistants": assistants}
+    return {
+        "agent_type": agent_type,
+        "mode_id": mode_id,
+        "options": options,
+        "assistants": assistants,
+    }
 
 
 def get_dispatch_config(repo_root: Path | None = None) -> dict:
@@ -338,7 +374,8 @@ def get_dispatch_config(repo_root: Path | None = None) -> dict:
         {"default_target": "star", "max_parallel": 3,
          "guard_builtin_agent": True, "hook_decision": "allow",
          "codeg_cli": "", "permissions": "allow", "timeout": "90m",
-         "targets": {"<name>": {"agent_type": str, "options": {str: str},
+         "targets": {"<name>": {"agent_type": str, "mode_id": str | None,
+                                "options": {str: str},
                                 "assistants": {<role>: str
                                                for role in DISPATCH_ROLES}}}}
 

@@ -148,7 +148,7 @@ The diff excludes `.arbor/` and reports the changed-line count on stderr. Use `-
 **Path B: plain terminal** (no codeg MCP tools):
 
 ```bash
-python3 ./.arbor/scripts/dispatch.py run --role <role> [--mode M] [--diff F] [--target star|pi] [--task <dir>] [--workspace <worktree>] --wait   # brief on stdin, or --prompt / --prompt-file
+python3 ./.arbor/scripts/dispatch.py run --role <role> [--mode M] [--diff F] [--target star|pi|codex] [--task <dir>] [--workspace <worktree>] --wait   # brief on stdin, or --prompt / --prompt-file
 ```
 
 It runs `codeg-cli run -A <assistant>` against the running codeg app (`--url <server>` for a remote `codeg-server`; `--standalone --data-dir <codeg data dir>` while the app is closed) and prints the reply; prompt and reply are kept under `.arbor/.runtime/dispatch/`. `--detach` starts it in the background and prints a run id; `python3 ./.arbor/scripts/dispatch.py wait <run>...` collects results. `--print-prompt` / `--dry-run` show the prompt / the `codeg-cli` command without running.

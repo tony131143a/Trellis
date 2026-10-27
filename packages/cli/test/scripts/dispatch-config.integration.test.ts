@@ -45,13 +45,21 @@ const SHIPPED_DISPATCH = {
   targets: {
     star: {
       agent_type: "custom:star",
+      mode_id: null,
       options: {},
       assistants: roleNames("star"),
     },
     pi: {
       agent_type: "pi",
+      mode_id: null,
       options: { model: "deepseek/DeepSeek-V4.1-Flash", thought_level: "max" },
       assistants: roleNames("pi"),
+    },
+    codex: {
+      agent_type: "codex",
+      mode_id: "agent-full-access",
+      options: {},
+      assistants: roleNames("codex"),
     },
   },
 };
@@ -178,22 +186,27 @@ ${code}
       writeConfig(
         [
           "dispatch:",
-          "  default_target: codex",
+          "  default_target: gemini",
           "  targets:",
-          "    codex:",
-          "      agent_type: codex",
+          "    gemini:",
+          "      agent_type: gemini",
+          "      mode_id: read-only",
           "      implement: my-implementer",
           "      model: gpt",
         ].join("\n"),
       );
       const cfg = dispatchConfig() as typeof SHIPPED_DISPATCH & {
-        targets: Record<string, { agent_type: string; options: object; assistants: object }>;
+        targets: Record<
+          string,
+          { agent_type: string; mode_id: string | null; options: object; assistants: object }
+        >;
       };
-      expect(cfg.default_target).toBe("codex");
-      expect(cfg.targets.codex).toEqual({
-        agent_type: "codex",
+      expect(cfg.default_target).toBe("gemini");
+      expect(cfg.targets.gemini).toEqual({
+        agent_type: "gemini",
+        mode_id: "read-only",
         options: { model: "gpt" },
-        assistants: { ...roleNames("codex"), implement: "my-implementer" },
+        assistants: { ...roleNames("gemini"), implement: "my-implementer" },
       });
       // Shipped targets stay available next to the custom one.
       expect(cfg.targets.star).toEqual(SHIPPED_DISPATCH.targets.star);

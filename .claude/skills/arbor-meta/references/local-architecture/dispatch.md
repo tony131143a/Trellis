@@ -6,15 +6,15 @@ In Arbor the seven roles (`explore`, `architect`, `implement`, `review`, `verify
 
 | Role | Purpose | `star` assistant | `pi` assistant |
 | --- | --- | --- | --- |
-| explore | Trace code or fetch external docs; writes `research/<topic>.md` | `arbor-explore-star` | `arbor-explore-pi` |
-| architect | One design blueprint per perspective; writes `research/design-<perspective>.md` | `arbor-architect-star` | `arbor-architect-pi` |
-| implement | Write code (no commits) | `arbor-implement-star` | `arbor-implement-pi` |
-| review | Find bugs in a diff (`Mode: self-check`, `candidates`, or `sweep`) | `arbor-review-star` | `arbor-review-pi` |
-| verify | Confirm or refute candidate findings | `arbor-verify-star` | `arbor-verify-pi` |
-| fix | Apply chosen findings | `arbor-fix-star` | `arbor-fix-pi` |
-| simplify | Behavior-preserving cleanup of a diff | `arbor-simplify-star` | `arbor-simplify-pi` |
+| explore | Trace code or fetch external docs; writes `research/<topic>.md` | `arbor-explore-star` | `arbor-explore-pi` | `arbor-explore-codex` |
+| architect | One design blueprint per perspective; writes `research/design-<perspective>.md` | `arbor-architect-star` | `arbor-architect-pi` | `arbor-architect-codex` |
+| implement | Write code (no commits) | `arbor-implement-star` | `arbor-implement-pi` | `arbor-implement-codex` |
+| review | Find bugs in a diff (`Mode: self-check`, `candidates`, or `sweep`) | `arbor-review-star` | `arbor-review-pi` | `arbor-review-codex` |
+| verify | Confirm or refute candidate findings | `arbor-verify-star` | `arbor-verify-pi` | `arbor-verify-codex` |
+| fix | Apply chosen findings | `arbor-fix-star` | `arbor-fix-pi` | `arbor-fix-codex` |
+| simplify | Behavior-preserving cleanup of a diff | `arbor-simplify-star` | `arbor-simplify-pi` | `arbor-simplify-codex` |
 
-Names are defaults (`arbor-<role>-<target>`, 14 assistants) and can be overridden in the `dispatch:` section of `.arbor/config.yaml`. The earlier `check` and `research` roles are retired; `codeg-setup --install` soft-deletes their old assistants. Running finder and `verify` roles on different targets makes verification independent.
+Names are defaults (`arbor-<role>-<target>`, 21 assistants) and can be overridden in the `dispatch:` section of `.arbor/config.yaml`. The earlier `check` and `research` roles are retired; `codeg-setup --install` soft-deletes their old assistants. Running finder and `verify` roles on different targets makes verification independent.
 
 Target resolution, highest priority first:
 
@@ -57,7 +57,7 @@ Two shared PreToolUse hooks are installed under `.claude/hooks/` or `.starFactor
 When codeg MCP tools are unavailable:
 
 ```bash
-python3 ./.arbor/scripts/dispatch.py run --role <role> [--mode M] [--diff F] [--target star|pi] [--task <dir>] [--workspace <wt>]
+python3 ./.arbor/scripts/dispatch.py run --role <role> [--mode M] [--diff F] [--target star|pi|codex] [--task <dir>] [--workspace <wt>]
     [--prompt TEXT | --prompt-file F | stdin] [--detach] [--wait] [--worktree[=NAME]]
     [--standalone] [--data-dir DIR] [--url URL] [--dry-run] [--print-prompt]
 ```
@@ -76,7 +76,7 @@ It writes the prompt to `.arbor/.runtime/dispatch/<stamp>.md` and pipes it to `c
 
 ## codeg-setup
 
-`dispatch.py codeg-setup` renders each target x role instruction file (7 roles x 2 targets = 14 assistants) (`.arbor/agents/<role>.md` plus a one-line target note) to `.arbor/.runtime/codeg-assistants/<target>-<role>.md` and prints the codeg UI steps (name, description, agent type, options, instructions file). `--install` (macOS, or any platform with `--db`) upserts rows into the codeg database: it refuses and falls back to the printed steps (exit 2) unless the `assistant` table has exactly the 15 expected columns, backs the database up to `.arbor/.runtime/codeg-db-backups/`, and matches rows by a stable uid so re-running updates them in place. Both modes then run `codeg-cli assistants --json` and write `{"by_name": {name: id}, "by_id": {id: {"role", "target"}}}` to `.arbor/.runtime/codeg-assistants.json`; when codeg is unreachable that step is skipped (after `--install` the ids come from the database instead). Re-run it after editing any `.arbor/agents/*.md`. `--install` also soft-deletes the retired `arbor-check-*` / `arbor-research-*` assistants.
+`dispatch.py codeg-setup` renders each target x role instruction file (7 roles x 3 targets = 21 assistants) (`.arbor/agents/<role>.md` plus a one-line target note) to `.arbor/.runtime/codeg-assistants/<target>-<role>.md` and prints the codeg UI steps (name, description, agent type, options, instructions file). `--install` (macOS, or any platform with `--db`) upserts rows into the codeg database: it refuses and falls back to the printed steps (exit 2) unless the `assistant` table has exactly the 15 expected columns, backs the database up to `.arbor/.runtime/codeg-db-backups/`, and matches rows by a stable uid so re-running updates them in place — refreshing name, description, avatar and instructions only; an existing row keeps its agent, mode (`mode_id`) and options, which belong to the codeg UI. Both modes then run `codeg-cli assistants --json` and write `{"by_name": {name: id}, "by_id": {id: {"role", "target"}}}` to `.arbor/.runtime/codeg-assistants.json`; when codeg is unreachable that step is skipped (after `--install` the ids come from the database instead). Re-run it after editing any `.arbor/agents/*.md`. `--install` also soft-deletes the retired `arbor-check-*` / `arbor-research-*` assistants.
 
 ## Config: `dispatch:` In `.arbor/config.yaml`
 

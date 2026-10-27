@@ -107,7 +107,8 @@ python3 ./.arbor/scripts/dispatch.py codeg-setup            # print manual steps
 python3 ./.arbor/scripts/dispatch.py codeg-setup --install  # macOS: write the assistants into codeg's database (backed up first)
 ```
 
-- Fourteen assistants, named `arbor-<role>-<target>`: roles `explore`, `architect`, `implement`, `review`, `verify`, `fix`, `simplify`; targets `star`, `pi`. `--install` is needed once per machine; afterwards the plain command only refreshes the ids. It also soft-deletes the retired `arbor-check-*` and `arbor-research-*` assistants.
+- Twenty-one assistants, named `arbor-<role>-<target>`: roles `explore`, `architect`, `implement`, `review`, `verify`, `fix`, `simplify`; targets `star`, `pi`, `codex`. `--install` is needed once per machine; afterwards the plain command only refreshes the ids. It also soft-deletes the retired `arbor-check-*` and `arbor-research-*` assistants.
+- `--install` creates missing assistants with the target's agent, mode and options from `config.yaml`, but never changes those three on an assistant that already exists: pick them in the codeg UI (Settings → Assistants). Re-running only refreshes name, description, avatar and instructions.
 - Ids are written to `.arbor/.runtime/codeg-assistants.json`, which is gitignored, so run `codeg-setup` once in every repo and checkout.
 - `--target star` limits it to one target.
 
@@ -253,7 +254,7 @@ python3 ./.arbor/scripts/dispatch.py wait <run-id>...                           
 python3 ./.arbor/scripts/dispatch.py run --role implement --print-prompt -p "..."      # show the assembled prompt
 python3 ./.arbor/scripts/dispatch.py run --role implement --dry-run -p "..."           # show the codeg-cli command
 
-python3 ./.arbor/scripts/dispatch.py target get | set <star|pi> | clear                # read / set / clear the override
+python3 ./.arbor/scripts/dispatch.py target get | set <star|pi|codex> | clear                # read / set / clear the override
 ```
 
 Prompts and replies are kept under `.arbor/.runtime/dispatch/`.
@@ -313,9 +314,10 @@ dispatch:
   targets:
     star: { agent_type: "custom:star", explore: arbor-explore-star, architect: arbor-architect-star, implement: arbor-implement-star, review: arbor-review-star, verify: arbor-verify-star, fix: arbor-fix-star, simplify: arbor-simplify-star }
     pi:   { agent_type: pi, model: deepseek/DeepSeek-V4.1-Flash, thought_level: max, explore: arbor-explore-pi, ... }
+    codex: { agent_type: codex, mode_id: agent-full-access, explore: arbor-explore-codex, ... }
 ```
 
-Re-run `codeg-setup` after changing assistant names or models.
+`mode_id` is the agent's session mode (codex: `agent-full-access`, `workspace-write`, `read-only`); `model` / `thought_level` are agent options. Both only apply when `codeg-setup --install` creates an assistant; for an existing one change them in the codeg UI. Re-run `codeg-setup` after changing assistant names or editing `.arbor/agents/*.md`.
 
 ## Maintenance
 
