@@ -255,7 +255,7 @@ ${code}
   });
 
   describe("common/config.py: dispatch target precedence", () => {
-    it("runtime file > ARBOR_DISPATCH_TARGET > default_target", () => {
+    it("session file > runtime file > ARBOR_DISPATCH_TARGET > default_target", () => {
       const read = (env: NodeJS.ProcessEnv = {}): string[] =>
         JSON.parse(
           probe("print(json.dumps(resolve_dispatch_target(REPO_ROOT)))", env)
@@ -277,6 +277,21 @@ ${code}
         "star",
         ".arbor/.runtime/dispatch-target",
       ]);
+
+      // This session's file (identified like the active task) outranks all of
+      // the above; another session, or no session identity, does not see it.
+      const sessions = path.join(tmp, ".arbor", ".runtime", "sessions");
+      fs.mkdirSync(sessions, { recursive: true });
+      fs.writeFileSync(path.join(sessions, "claude_s1.dispatch-target"), "codex\n");
+      expect(read({ ARBOR_CONTEXT_ID: "claude_s1", ARBOR_DISPATCH_TARGET: "pi" })).toEqual([
+        "codex",
+        ".arbor/.runtime/sessions/claude_s1.dispatch-target",
+      ]);
+      expect(read({ ARBOR_CONTEXT_ID: "claude_s2" })).toEqual([
+        "star",
+        ".arbor/.runtime/dispatch-target",
+      ]);
+      expect(read()).toEqual(["star", ".arbor/.runtime/dispatch-target"]);
     });
 
     it("skips an unknown override with a warning", () => {
@@ -340,6 +355,19 @@ ${code}
       const section = sessionStart({ ARBOR_DISPATCH_TARGET: "pi" });
       expect(section).toContain("Target: pi (source: ARBOR_DISPATCH_TARGET)");
       expect(section).toContain("- implement: arbor-implement-pi (id unknown");
+    });
+
+    it("follows this session's target, not another session's", () => {
+      // The hook's session id is `dispatch-section` under platform claude.
+      const sessions = path.join(tmp, ".arbor", ".runtime", "sessions");
+      fs.mkdirSync(sessions, { recursive: true });
+      fs.writeFileSync(path.join(sessions, "claude_dispatch-section.dispatch-target"), "codex\n");
+      fs.writeFileSync(path.join(sessions, "claude_other.dispatch-target"), "pi\n");
+      const section = sessionStart({ ARBOR_DISPATCH_TARGET: "pi" });
+      expect(section).toContain(
+        "Target: codex (source: .arbor/.runtime/sessions/claude_dispatch-section.dispatch-target)",
+      );
+      expect(section).toContain("- implement: arbor-implement-codex (id unknown");
     });
 
     it("prints assistant ids from the codeg-setup registry", () => {

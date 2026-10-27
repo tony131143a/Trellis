@@ -538,9 +538,11 @@ def _read_assistant_ids(arbor_dir: Path) -> dict | None:
     return by_name if isinstance(by_name, dict) else None
 
 
-def _build_dispatch_section(arbor_dir: Path) -> str | None:
+def _build_dispatch_section(arbor_dir: Path, hook_input: dict) -> str | None:
     """Effective codeg dispatch target, per-role assistants with ids, routing rule.
 
+    The target is resolved for this session (hook stdin carries the session
+    id), so two windows on one checkout each see their own choice.
     Best-effort: an older scripts tree without the dispatch config accessors
     simply omits the section.
     """
@@ -552,7 +554,9 @@ def _build_dispatch_section(arbor_dir: Path) -> str | None:
 
         repo_root = arbor_dir.parent
         config = get_dispatch_config(repo_root)
-        target, source = resolve_dispatch_target(repo_root)
+        target, source = resolve_dispatch_target(
+            repo_root, hook_input, _detect_platform(hook_input)
+        )
         assistants = config["targets"][target]["assistants"]
     except Exception:
         return None  # Optional section; keep session-start non-fatal.
@@ -900,7 +904,7 @@ Arbor compact SessionStart context. Use it to orient the session; load details o
     output.write(_build_workflow_overview(arbor_dir / "workflow.md"))
     output.write("\n</arbor-workflow>\n\n")
 
-    dispatch_section = _build_dispatch_section(arbor_dir)
+    dispatch_section = _build_dispatch_section(arbor_dir, hook_input)
     if dispatch_section:
         output.write(f"<dispatch>\n{dispatch_section}\n</dispatch>\n\n")
 

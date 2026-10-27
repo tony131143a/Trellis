@@ -19,9 +19,12 @@ Names are defaults (`arbor-<role>-<target>`, 21 assistants) and can be overridde
 Target resolution, highest priority first:
 
 1. `Target:` header line, or `--target` on `dispatch.py run`
-2. `.arbor/.runtime/dispatch-target` (written by `dispatch.py target set` via `/arbor:workflow <target>`; `dispatch.py target clear` removes it)
-3. env `ARBOR_DISPATCH_TARGET`
-4. `dispatch.default_target` in `.arbor/config.yaml`
+2. this session's `.arbor/.runtime/sessions/<context>.dispatch-target` (written by `dispatch.py target set` via `/arbor:workflow <target>`; `dispatch.py target clear` removes it; the session is identified like the active task, so parallel sessions on one checkout keep separate targets)
+3. checkout-wide `.arbor/.runtime/dispatch-target` (`dispatch.py target set --repo`; also the fallback when no session identity is available)
+4. env `ARBOR_DISPATCH_TARGET`
+5. `dispatch.default_target` in `.arbor/config.yaml`
+
+The delegation hook enforces the result: when `codeg-assistants.json` says the `assistant_id` passed to `delegate_to_agent` belongs to another target, it swaps in the effective target's assistant for the role and says so in the permission reason (`reconcile_assistant` in `common/dispatch_context.py`).
 
 ## Inside codeg (MCP tools)
 
@@ -68,7 +71,7 @@ It writes the prompt to `.arbor/.runtime/dispatch/<stamp>.md` and pipes it to `c
 | --- | --- |
 | `wait RUN... [-o OUT] [--timeout DUR] [--url URL]` | Wait for detached runs (`codeg-cli result RUN --wait`); exit 6 keeps waiting until the timeout, results go to the run's `<stamp>.result.md`. |
 | `resolve --role <role> [--target T] [--json]` | Print effective target, assistant name, and `assistant_id` (from `codeg-assistants.json`). |
-| `target get\|set <T>\|clear` | Manage `.arbor/.runtime/dispatch-target`. |
+| `target get\|set <T>\|clear [--repo]` | Manage this session's target file under `.arbor/.runtime/sessions/`; `--repo` manages the checkout-wide `.arbor/.runtime/dispatch-target`. |
 | `snapshot [-C DIR]` | Print a tree id of the working tree (untracked files included, index untouched). |
 | `diff A [B] --name N [-C DIR]` | Write the diff between two snapshots, commits, or branches (B defaults to the working tree now) to `.arbor/.runtime/dispatch/diffs/N.diff`, print its path, and report the changed-line count on stderr. Excludes `.arbor/`. |
 | `codeg-setup [--target T] [--install] [--db PATH] [--codeg-cli PATH]` | Prepare the codeg assistants (below). |

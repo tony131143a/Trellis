@@ -19,7 +19,7 @@ Usage:
                             [--dry-run] [--print-prompt]
     python3 dispatch.py wait RUN... [-o OUT] [--timeout DUR] [--url URL]
     python3 dispatch.py resolve --role R [--target T] [--json]
-    python3 dispatch.py target get | set <T> | clear
+    python3 dispatch.py target get | set <T> | clear   [--repo]
     python3 dispatch.py print-context --role R [--task DIR] [--workspace WT] [--mode M]
                                       [--diff FILE] [--target T]
                                       [--prompt TEXT | --prompt-file F | stdin]
@@ -32,7 +32,8 @@ Runtime files (all under .arbor/.runtime/, gitignored):
     dispatch/<stamp>.result.md   final reply (codeg-cli -o)
     dispatch/<stamp>.run         run id of a --detach run
     dispatch/diffs/<name>.diff   diffs written by ``diff``
-    dispatch-target              target override (``target set``)
+    sessions/<context>.dispatch-target   this session's target (``target set``)
+    dispatch-target              checkout-wide target (``target set --repo``)
     codeg-assistants/<target>-<role>.md   rendered assistant instructions
     codeg-assistants.json        assistant name -> id registry
     codeg-db-backups/            codeg.db backups taken by --install
@@ -59,10 +60,12 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from common.active_task import resolve_context_key
 from common.config import (
     DISPATCH_TARGET_FILE,
     get_dispatch_config,
     resolve_dispatch_target,
+    session_dispatch_target_file,
 )
 from common.dispatch_context import (
     CODEG_ASSISTANTS_FILE,
@@ -575,21 +578,41 @@ def cmd_resolve(args: argparse.Namespace) -> int:
     return 0
 
 
+def _target_override_file(root: Path, repo_wide: bool) -> Path:
+    """Where ``target set`` / ``clear`` operate: this session's file by default.
+
+    Session identity comes from the same sources as the active task
+    (``ARBOR_CONTEXT_ID``, the host's shell env). Without it the command falls
+    back to the checkout-wide file and says so, mirroring ``task.py start``.
+    """
+    repo_file = _arbor_dir(root) / DISPATCH_TARGET_FILE
+    if repo_wide:
+        return repo_file
+    context_key = resolve_context_key()
+    if context_key:
+        return session_dispatch_target_file(root, context_key)
+    _err(
+        "no session identity (ARBOR_CONTEXT_ID); using the checkout-wide "
+        f"{_rel(root, repo_file)}, which every session in this checkout shares"
+    )
+    return repo_file
+
+
 def cmd_target(args: argparse.Namespace) -> int:
     root = get_repo_root()
     config = get_dispatch_config(root)
-    target_file = _arbor_dir(root) / DISPATCH_TARGET_FILE
 
     if args.action == "set":
         if not args.value:
-            raise DispatchError("usage: dispatch.py target set <target>", 2)
+            raise DispatchError("usage: dispatch.py target set <target> [--repo]", 2)
         value = _check_target(config, args.value)
+        target_file = _target_override_file(root, args.repo)
         target_file.parent.mkdir(parents=True, exist_ok=True)
         if not write_text_atomic(target_file, value + "\n"):
             raise DispatchError(f"cannot write {_rel(root, target_file)}")
     elif args.action == "clear":
         try:
-            target_file.unlink()
+            _target_override_file(root, args.repo).unlink()
         except FileNotFoundError:
             pass
     elif args.value:
@@ -1136,9 +1159,15 @@ def build_parser() -> argparse.ArgumentParser:
     resolve.add_argument("--json", action="store_true")
     resolve.set_defaults(func=cmd_resolve)
 
-    target = sub.add_parser("target", help="get, set, or clear the dispatch target override")
+    target = sub.add_parser(
+        "target", help="get, set, or clear this session's dispatch target override"
+    )
     target.add_argument("action", nargs="?", default="get", choices=("get", "set", "clear"))
     target.add_argument("value", nargs="?")
+    target.add_argument(
+        "--repo", action="store_true",
+        help="set/clear the checkout-wide target (shared by every session) instead",
+    )
     target.set_defaults(func=cmd_target)
 
     context = sub.add_parser(

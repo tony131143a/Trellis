@@ -19,7 +19,12 @@ Flow:
 - task: `Active task:` header -> session active task; a task-bound role
   (every role but explore) without a resolvable task -> no-op with a stderr
   warning
-- output: `updatedInput` = original tool_input with only `task` replaced
+- assistant: when `.arbor/.runtime/codeg-assistants.json` says the given
+  `assistant_id` runs on another target than this dispatch resolves to
+  (`Target:` header, else this session's target), swap in the expected
+  target's assistant for the role (`common.dispatch_context.reconcile_assistant`)
+- output: `updatedInput` = original tool_input with `task` replaced (and
+  `assistant_id` when it was swapped)
 
 Prompt assembly lives in `.arbor/scripts/common/dispatch_context.py`, shared
 with the terminal dispatch fallback.
@@ -115,7 +120,8 @@ def main() -> int:
         if role not in dc.ROLES:
             return 0
 
-        task_dir = dc.resolve_task_dir(root, header, data, _detect_platform())
+        platform = _detect_platform()
+        task_dir = dc.resolve_task_dir(root, header, data, platform)
         if role in dc.ROLES_REQUIRE_TASK and task_dir is None:
             print(
                 f"[arbor] delegate_to_agent ({role}) without a resolvable "
@@ -127,6 +133,9 @@ def main() -> int:
         prompt = dc.build_dispatch_prompt(
             dc.DispatchRequest(root, role, task_dir, header, task_text)
         )
+        assistant = dc.reconcile_assistant(
+            root, role, header, tool_input.get("assistant_id"), data, platform
+        )
         decision = dc.hook_decision(root)
     except Exception as exc:
         print(f"[arbor] dispatch context injection failed: {exc}", file=sys.stderr)
@@ -134,17 +143,24 @@ def main() -> int:
 
     for warning in prompt.warnings:
         print(f"[arbor] {warning}", file=sys.stderr)
+    if assistant.warning:
+        print(f"[arbor] {assistant.warning}", file=sys.stderr)
+
+    reason = f"Arbor injected {role} context ({prompt.context_bytes} bytes)"
+    # updatedInput replaces tool_input wholesale: carry every original field
+    # (assistant_id, working_dir, agent_type) and swap `task`, plus
+    # `assistant_id` when it disagreed with the dispatch target.
+    updated = {**tool_input, "task": prompt.text}
+    if assistant.note:
+        updated["assistant_id"] = assistant.assistant_id
+        reason += f"; {assistant.note}"
 
     output = {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
             "permissionDecision": decision,
-            "permissionDecisionReason": (
-                f"Arbor injected {role} context ({prompt.context_bytes} bytes)"
-            ),
-            # updatedInput replaces tool_input wholesale: carry every original
-            # field (assistant_id, working_dir, agent_type) and swap `task`.
-            "updatedInput": {**tool_input, "task": prompt.text},
+            "permissionDecisionReason": reason,
+            "updatedInput": updated,
         }
     }
     print(json.dumps(output, ensure_ascii=False))

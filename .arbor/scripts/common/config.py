@@ -11,6 +11,7 @@ import os
 import sys
 from pathlib import Path
 
+from .active_task import DIR_RUNTIME, DIR_SESSIONS, resolve_context_key
 from .paths import DIR_WORKFLOW, get_repo_root
 from .arbor_config import parse_simple_yaml
 
@@ -236,8 +237,11 @@ DISPATCH_ROLES = (
 # old config.yaml never passes them to codeg as agent options.
 RETIRED_DISPATCH_ROLES = ("check", "research")
 DISPATCH_HOOK_DECISIONS = ("allow", "ask")
-# Runtime override written by `dispatch.py target set`, relative to .arbor/.
+# Checkout-wide override written by `dispatch.py target set --repo`, relative
+# to .arbor/. The per-session override (`target set` without --repo) sits next
+# to the session's active-task file: .runtime/sessions/<context>.dispatch-target
 DISPATCH_TARGET_FILE = ".runtime/dispatch-target"
+SESSION_DISPATCH_TARGET_SUFFIX = ".dispatch-target"
 ENV_DISPATCH_TARGET = "ARBOR_DISPATCH_TARGET"
 
 DEFAULT_DISPATCH: dict = {
@@ -443,24 +447,49 @@ def get_dispatch_config(repo_root: Path | None = None) -> dict:
     return result
 
 
-def resolve_dispatch_target(repo_root: Path | None = None) -> tuple[str, str]:
+def session_dispatch_target_file(repo_root: Path, context_key: str) -> Path:
+    """This session's dispatch target override (next to its active-task file)."""
+    return (
+        repo_root / DIR_WORKFLOW / DIR_RUNTIME / DIR_SESSIONS
+        / f"{context_key}{SESSION_DISPATCH_TARGET_SUFFIX}"
+    )
+
+
+def _read_override(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeDecodeError):
+        return ""
+
+
+def resolve_dispatch_target(
+    repo_root: Path | None = None,
+    platform_input: dict | None = None,
+    platform: str | None = None,
+) -> tuple[str, str]:
     """Return ``(target, source)`` for the effective dispatch target.
 
-    Precedence: ``.arbor/.runtime/dispatch-target`` > ``ARBOR_DISPATCH_TARGET``
-    > ``dispatch.default_target``. An override naming an unknown target is
-    reported on stderr and skipped.
+    Precedence: this session's ``.arbor/.runtime/sessions/<context>.dispatch-target``
+    > ``.arbor/.runtime/dispatch-target`` > ``ARBOR_DISPATCH_TARGET``
+    > ``dispatch.default_target``. The session is identified like the active
+    task (``ARBOR_CONTEXT_ID``, hook stdin via ``platform_input``, the host's
+    shell env); without identity the session file is skipped. An override
+    naming an unknown target is reported on stderr and skipped.
     """
     root = repo_root or get_repo_root()
     config = get_dispatch_config(root)
-    override_file = root / DIR_WORKFLOW / DISPATCH_TARGET_FILE
-    try:
-        file_value = override_file.read_text(encoding="utf-8").strip()
-    except (OSError, UnicodeDecodeError):
-        file_value = ""
-    candidates = (
-        (file_value, f"{DIR_WORKFLOW}/{DISPATCH_TARGET_FILE}"),
+    candidates: list[tuple[str, str]] = []
+    context_key = resolve_context_key(platform_input, platform)
+    if context_key:
+        session_file = session_dispatch_target_file(root, context_key)
+        candidates.append(
+            (_read_override(session_file), session_file.relative_to(root).as_posix())
+        )
+    candidates += [
+        (_read_override(root / DIR_WORKFLOW / DISPATCH_TARGET_FILE),
+         f"{DIR_WORKFLOW}/{DISPATCH_TARGET_FILE}"),
         (os.environ.get(ENV_DISPATCH_TARGET, "").strip(), ENV_DISPATCH_TARGET),
-    )
+    ]
     for value, source in candidates:
         if not value:
             continue

@@ -44,9 +44,13 @@ assistant falls back to pulling the same files itself.
 Target (highest wins):
 
 1. `Target:` header line, or `--target` on `dispatch.py run`
-2. `.arbor/.runtime/dispatch-target` (`dispatch.py target set|clear`; `/arbor:workflow <target>` calls `target set`)
-3. `ARBOR_DISPATCH_TARGET`
-4. `dispatch.default_target` in `.arbor/config.yaml`
+2. this session's `.arbor/.runtime/sessions/<context>.dispatch-target` (`dispatch.py target set|clear`; `/arbor:workflow <target>` calls `target set`; session identity as for the active task)
+3. checkout-wide `.arbor/.runtime/dispatch-target` (`target set|clear --repo`; fallback without session identity)
+4. `ARBOR_DISPATCH_TARGET`
+5. `dispatch.default_target` in `.arbor/config.yaml`
+
+The delegation hook swaps an `assistant_id` registered under another target
+for the effective target's assistant (`reconcile_assistant`).
 
 Assistant name: `dispatch.targets.<target>.<role>` in config, else
 `arbor-<role>-<target>`. Assistant id (codeg path only): looked up in

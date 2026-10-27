@@ -136,7 +136,7 @@ python3 ./.arbor/scripts/dispatch.py resolve --role implement --json
 
 `/arbor:workflow pi` and `/arbor:workflow codex` do the same on pi + DeepSeek or Codex. The command:
 
-1. sets the dispatch target for this checkout (sticky until `/arbor:workflow <other>` or `dispatch.py target clear`);
+1. sets the dispatch target for this session (sticky until `/arbor:workflow <other>` or `dispatch.py target clear`; other sessions on the same checkout keep theirs);
 2. confirms the assistant ids for the seven roles;
 3. starts or continues the workflow.
 
@@ -234,9 +234,10 @@ python3 ./.arbor/scripts/dispatch.py diff <A> [<B>] --name r1    # writes .arbor
 Highest wins:
 
 1. `Target:` header line, or `--target`
-2. `.arbor/.runtime/dispatch-target` (written by `/arbor:workflow <target>`)
-3. env `ARBOR_DISPATCH_TARGET`
-4. `dispatch.default_target` in `.arbor/config.yaml` (`star`)
+2. this session's `.arbor/.runtime/sessions/<context>.dispatch-target` (written by `/arbor:workflow <target>`)
+3. checkout-wide `.arbor/.runtime/dispatch-target` (`dispatch.py target set --repo`)
+4. env `ARBOR_DISPATCH_TARGET`
+5. `dispatch.default_target` in `.arbor/config.yaml` (`star`)
 
 ### Terminal dispatch
 

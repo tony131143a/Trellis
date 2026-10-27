@@ -360,6 +360,53 @@ describe.skipIf(!hasPython())("inject-delegation-context.py", () => {
     expect(out.updatedInput.task).toContain(`${TASK_REL}/research/topic.md`);
   });
 
+  it("swaps an assistant_id from another target for this session's target assistant", () => {
+    const runtime = path.join(tmp, ".arbor", ".runtime");
+    fs.mkdirSync(path.join(runtime, "sessions"), { recursive: true });
+    fs.writeFileSync(
+      path.join(runtime, "codeg-assistants.json"),
+      JSON.stringify({
+        by_name: { "arbor-implement-star": 12, "arbor-implement-pi": 22 },
+        by_id: {
+          "12": { role: "implement", target: "star" },
+          "22": { role: "implement", target: "pi" },
+        },
+      }),
+    );
+    // This hook's session is `claude_delegation-session` (session_id on stdin);
+    // another session's choice on the same checkout must not leak in.
+    const mine = path.join(runtime, "sessions", "claude_delegation-session.dispatch-target");
+    fs.writeFileSync(mine, "pi\n");
+    fs.writeFileSync(path.join(runtime, "sessions", "claude_other.dispatch-target"), "star\n");
+    const task = `Active task: ${TASK_REL}\nRole: implement\n\nGo.`;
+
+    const swapped = parse(runHook({ task, assistant_id: 12, working_dir: tmp }));
+    expect(swapped.updatedInput.assistant_id).toBe(22);
+    expect(swapped.updatedInput.working_dir).toBe(tmp);
+    expect(swapped.permissionDecisionReason).toContain(
+      "assistant_id 12 (star) -> 22 (arbor-implement-pi) to match target pi",
+    );
+
+    // Already matching, explicitly overridden by Target:, or unknown to the
+    // registry: left alone.
+    expect(parse(runHook({ task, assistant_id: 22 })).updatedInput.assistant_id).toBe(22);
+    const explicit = parse(
+      runHook({
+        task: `Active task: ${TASK_REL}\nRole: implement\nTarget: star\n\nGo.`,
+        assistant_id: 12,
+      }),
+    );
+    expect(explicit.updatedInput.assistant_id).toBe(12);
+    expect(explicit.permissionDecisionReason).not.toContain("->");
+    expect(parse(runHook({ task, assistant_id: 99 })).updatedInput.assistant_id).toBe(99);
+
+    // A target whose assistant has no known id: keep the given one, warn.
+    fs.writeFileSync(mine, "codex\n");
+    const noId = runHook({ task, assistant_id: 12 });
+    expect(parse(noId).updatedInput.assistant_id).toBe(12);
+    expect(noId.stderr).toContain("no id known for arbor-implement-codex");
+  });
+
   it("preserves Workspace and Target header lines verbatim", () => {
     const out = parse(
       runHook({

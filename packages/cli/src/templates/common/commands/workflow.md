@@ -1,6 +1,6 @@
 # Workflow on One Target
 
-Run the Arbor workflow with every dispatched role (explore / architect / implement / review / verify / fix / simplify) on one dispatch target for this checkout, then continue the current task. The choice is sticky: all later dispatches in this project use that target until `/arbor:workflow <other>` or `{{PYTHON_CMD}} ./.arbor/scripts/dispatch.py target clear`.
+Run the Arbor workflow with every dispatched role (explore / architect / implement / review / verify / fix / simplify) on one dispatch target for this session, then continue the current task. The choice is sticky and per session: all later dispatches in this session use that target until `/arbor:workflow <other>` or `{{PYTHON_CMD}} ./.arbor/scripts/dispatch.py target clear`. Other sessions on the same checkout keep their own target (`target set --repo <target>` sets the checkout-wide fallback they share).
 
 Arguments: `<target> [request]`
 
@@ -17,7 +17,7 @@ If no target was given, run `{{PYTHON_CMD}} ./.arbor/scripts/dispatch.py target 
 {{PYTHON_CMD}} ./.arbor/scripts/dispatch.py target set <target>
 ```
 
-Exit code 2 with `unknown dispatch target` means the name is not configured; the message lists the known targets. Show them to the user and stop.
+Exit code 2 with `unknown dispatch target` means the name is not configured; the message lists the known targets. Show them to the user and stop. A stderr line about missing session identity means the target was written checkout-wide instead; tell the user in one line.
 
 ## Step 2: Confirm the assistants
 
@@ -42,4 +42,4 @@ Route exactly as `/arbor:continue` does, by the active task's `status`:
 - `planning` → finish the planning artifacts (1.2 explore & design dispatches `explore` / `architect`) and the context manifests, then `task.py start`
 - `in_progress` → Phase 2 (serial) or Phase 2P (`meta.execution=parallel`): dispatch `implement`, run the review loop (`review` → `verify` → `fix`), then for complex tasks Phase 2F (`simplify`, final `review`), then Phase 3
 
-From here on every dispatch resolves to the `<target>` assistants through `.arbor/.runtime/dispatch-target`; do not add a conflicting `Target:` header line. Everything else in `.arbor/workflow.md` is unchanged: the task text still starts with `Active task:` + `Role:` (plus `Mode:` / `Diff:` where the role takes them), roles never run through the built-in Agent/Task tool, and only you commit.
+From here on every dispatch in this session resolves to the `<target>` assistants (the delegation hook also swaps an `assistant_id` from another target to the matching `<target>` assistant); do not add a conflicting `Target:` header line. Everything else in `.arbor/workflow.md` is unchanged: the task text still starts with `Active task:` + `Role:` (plus `Mode:` / `Diff:` where the role takes them), roles never run through the built-in Agent/Task tool, and only you commit.

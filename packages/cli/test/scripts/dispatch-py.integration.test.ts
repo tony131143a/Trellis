@@ -160,11 +160,15 @@ describe.skipIf(!hasPython())("dispatch.py", () => {
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 
-  function dispatch(args: string[], input = ""): RunResult {
+  function dispatch(
+    args: string[],
+    input = "",
+    env: NodeJS.ProcessEnv = {},
+  ): RunResult {
     const r = spawnSync(
       "python3",
       [path.join(tmp, ".arbor", "scripts", "dispatch.py"), ...args],
-      { cwd: tmp, encoding: "utf-8", input, env: cleanEnv() },
+      { cwd: tmp, encoding: "utf-8", input, env: cleanEnv(env) },
     );
     if (r.error) throw r.error;
     return { status: r.status, stdout: r.stdout, stderr: r.stderr };
@@ -650,12 +654,13 @@ describe.skipIf(!hasPython())("dispatch.py", () => {
       );
     });
 
-    it("target set / get / clear manage .arbor/.runtime/dispatch-target", () => {
+    it("target set / get / clear fall back to the checkout-wide file without session identity", () => {
       const file = path.join(tmp, ".arbor", ".runtime", "dispatch-target");
       expect(dispatch(["target"]).stdout).toBe("star (source: config)\n");
 
       const set = dispatch(["target", "set", "pi"]);
       expect(set.status, set.stderr).toBe(0);
+      expect(set.stderr).toContain("no session identity");
       expect(set.stdout).toBe("pi (source: .arbor/.runtime/dispatch-target)\n");
       expect(fs.readFileSync(file, "utf-8")).toBe("pi\n");
       expect(dispatch(["target", "get"]).stdout).toBe(
@@ -675,6 +680,58 @@ describe.skipIf(!hasPython())("dispatch.py", () => {
       const cleared = dispatch(["target", "clear"]);
       expect(cleared.stdout).toBe("star (source: config)\n");
       expect(fs.existsSync(file)).toBe(false);
+    });
+
+    it("target set is per session: parallel sessions on one checkout keep their own targets", () => {
+      const sessionA = { ARBOR_CONTEXT_ID: "claude_a" };
+      const sessionB = { ARBOR_CONTEXT_ID: "claude_b" };
+      const runtime = path.join(tmp, ".arbor", ".runtime");
+      const fileA = path.join(runtime, "sessions", "claude_a.dispatch-target");
+      const sourceA = ".arbor/.runtime/sessions/claude_a.dispatch-target";
+      const sourceB = ".arbor/.runtime/sessions/claude_b.dispatch-target";
+
+      const setA = dispatch(["target", "set", "codex"], "", sessionA);
+      expect(setA.status, setA.stderr).toBe(0);
+      expect(setA.stderr).toBe("");
+      expect(setA.stdout).toBe(`codex (source: ${sourceA})\n`);
+      expect(fs.readFileSync(fileA, "utf-8")).toBe("codex\n");
+      expect(dispatch(["target", "set", "pi"], "", sessionB).stdout).toBe(
+        `pi (source: ${sourceB})\n`,
+      );
+
+      // Each session resolves its own choice; a third one sees the default.
+      expect(
+        JSON.parse(dispatch(["resolve", "--role", "implement", "--json"], "", sessionA).stdout),
+      ).toMatchObject({ target: "codex", target_source: sourceA, assistant: "arbor-implement-codex" });
+      expect(
+        JSON.parse(dispatch(["resolve", "--role", "implement", "--json"], "", sessionB).stdout),
+      ).toMatchObject({ target: "pi", assistant: "arbor-implement-pi" });
+      expect(dispatch(["target", "get"], "", { ARBOR_CONTEXT_ID: "claude_c" }).stdout).toBe(
+        "star (source: config)\n",
+      );
+      // Claude Code's own shell env identifies the session as well.
+      expect(dispatch(["target", "get"], "", { CLAUDE_CODE_SESSION_ID: "b" }).stdout).toBe(
+        `pi (source: ${sourceB})\n`,
+      );
+
+      // --repo writes the checkout-wide fallback; a session's own choice outranks it.
+      const repo = dispatch(["target", "set", "star", "--repo"], "", sessionA);
+      expect(repo.status, repo.stderr).toBe(0);
+      expect(repo.stdout).toBe(`codex (source: ${sourceA})\n`);
+      expect(fs.readFileSync(path.join(runtime, "dispatch-target"), "utf-8")).toBe("star\n");
+      expect(dispatch(["target", "get"], "", { ARBOR_CONTEXT_ID: "claude_c" }).stdout).toBe(
+        "star (source: .arbor/.runtime/dispatch-target)\n",
+      );
+
+      // clear is per session too; --repo clears the shared file.
+      expect(dispatch(["target", "clear"], "", sessionA).stdout).toBe(
+        "star (source: .arbor/.runtime/dispatch-target)\n",
+      );
+      expect(fs.existsSync(fileA)).toBe(false);
+      expect(dispatch(["target", "get"], "", sessionB).stdout).toBe(`pi (source: ${sourceB})\n`);
+      expect(dispatch(["target", "clear", "--repo"], "", sessionA).stdout).toBe(
+        "star (source: config)\n",
+      );
     });
   });
 
