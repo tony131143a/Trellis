@@ -131,12 +131,12 @@ python3 ./.arbor/scripts/dispatch.py resolve --role implement --json
 ### Start a task
 
 ```
-/arbor:workflow-star add rate limiting to the login endpoint, 10 requests per IP per minute
+/arbor:workflow star add rate limiting to the login endpoint, 10 requests per IP per minute
 ```
 
-`/arbor:workflow-pi` does the same with pi + DeepSeek. Either command:
+`/arbor:workflow pi` and `/arbor:workflow codex` do the same on pi + DeepSeek or Codex. The command:
 
-1. sets the dispatch target for this checkout (sticky until the other command runs);
+1. sets the dispatch target for this checkout (sticky until `/arbor:workflow <other>` or `dispatch.py target clear`);
 2. confirms the assistant ids for the seven roles;
 3. starts or continues the workflow.
 
@@ -183,8 +183,7 @@ In a new session, `/arbor:continue` finds the active task, works out the current
 
 | Command | Purpose |
 | --- | --- |
-| `/arbor:workflow-star [request]` | All seven roles on star, then start or continue the task |
-| `/arbor:workflow-pi [request]` | All seven roles on pi + DeepSeek, then start or continue the task |
+| `/arbor:workflow <target> [request]` | All seven roles on `star`, `pi` or `codex`, then start or continue the task |
 | `/arbor:continue` | Resume the current task at the right phase |
 | `/arbor:finish-work` | Wrap up: dirty-path check, archive, journal |
 
@@ -235,7 +234,7 @@ python3 ./.arbor/scripts/dispatch.py diff <A> [<B>] --name r1    # writes .arbor
 Highest wins:
 
 1. `Target:` header line, or `--target`
-2. `.arbor/.runtime/dispatch-target` (written by `/arbor:workflow-star` and `/arbor:workflow-pi`)
+2. `.arbor/.runtime/dispatch-target` (written by `/arbor:workflow <target>`)
 3. env `ARBOR_DISPATCH_TARGET`
 4. `dispatch.default_target` in `.arbor/config.yaml` (`star`)
 

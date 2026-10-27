@@ -67,7 +67,7 @@ After editing, make the AI reread `.arbor/workflow.md`; do not assume the flow f
 `workflow.md` is the semantic center of the local workflow, but each platform directory also has its own entry files:
 
 - skills, such as `brainstorm` and `check`.
-- commands, such as continue, finish-work, workflow-star, and workflow-pi.
+- commands, such as continue, finish-work, and workflow.
 - hooks, such as session-start or workflow-state injection.
 
 If only `workflow.md` changes, platform entry files may still contain old language. When the user wants to change "what the AI actually does," also inspect `.claude/` and `.starFactory/`.

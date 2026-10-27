@@ -220,10 +220,8 @@ const COMMAND_DESCRIPTIONS: Record<string, string> = {
   continue: "Resume work on the current task at the correct phase.",
   "finish-work":
     "Wrap up the current session: quality gate, commit reminder, archive, journal.",
-  "workflow-star":
-    "Run the Arbor workflow with all seven roles on StarFactory (star) and continue the current task.",
-  "workflow-pi":
-    "Run the Arbor workflow with all seven roles on pi + DeepSeek and continue the current task.",
+  workflow:
+    "Run the Arbor workflow with all seven roles on one dispatch target (star | pi | codex) and continue the current task.",
 };
 
 /** Wrap resolved command content with YAML frontmatter (name + description). */

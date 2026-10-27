@@ -7,7 +7,7 @@ Skills and commands are textual entry points for user interaction with Arbor. Di
 | Type | Trigger mode | Best for |
 | --- | --- | --- |
 | skill | AI auto-match or explicit user mention | Long-term capabilities, workflow rules, modification guides. |
-| command | Explicit user invocation (`/arbor:<name>`) | Clear operation entry points: `start`, `continue`, `finish-work`, `workflow-star`, `workflow-pi`. |
+| command | Explicit user invocation (`/arbor:<name>`) | Clear operation entry points: `start`, `continue`, `finish-work`, `workflow`. |
 
 Arbor workflow skills share one semantic set: brainstorm, before-dev, check, update-spec, break-loop. Multi-file bundled skills (`arbor-meta`, `arbor-spec-bootstrap`) use layered references.
 

@@ -113,7 +113,7 @@ The seven roles below are never performed in the main session and never through 
 | `fix` | code (no commits) | same as review | 2.2, 2P.3, 2F | fixed / skipped per finding |
 | `simplify` | code (no commits) | same as review | 2F.1 | behavior-preserving cleanup |
 
-**Target selection** (highest wins): `Target:` header line or `--target` → `.arbor/.runtime/dispatch-target` → env `ARBOR_DISPATCH_TARGET` → `dispatch.default_target` in config. Switch with `/arbor:workflow-star` or `/arbor:workflow-pi` (sets the target and continues the task). Running finders and `verify` on different targets (for example review on `pi`, verify on `star`) makes the verification independent.
+**Target selection** (highest wins): `Target:` header line or `--target` → `.arbor/.runtime/dispatch-target` → env `ARBOR_DISPATCH_TARGET` → `dispatch.default_target` in config. Switch with `/arbor:workflow <target>` (sets the target and continues the task). Running finders and `verify` on different targets (for example review on `pi`, verify on `star`) makes the verification independent.
 
 **Header protocol.** The `task` text of every dispatch MUST start with this header, followed by a blank line and a self-contained brief:
 

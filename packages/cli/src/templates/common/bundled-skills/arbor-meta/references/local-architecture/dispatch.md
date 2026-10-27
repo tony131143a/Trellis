@@ -19,7 +19,7 @@ Names are defaults (`arbor-<role>-<target>`, 21 assistants) and can be overridde
 Target resolution, highest priority first:
 
 1. `Target:` header line, or `--target` on `dispatch.py run`
-2. `.arbor/.runtime/dispatch-target` (written by `dispatch.py target set` via `/arbor:workflow-star` or `/arbor:workflow-pi`; `dispatch.py target clear` removes it)
+2. `.arbor/.runtime/dispatch-target` (written by `dispatch.py target set` via `/arbor:workflow <target>`; `dispatch.py target clear` removes it)
 3. env `ARBOR_DISPATCH_TARGET`
 4. `dispatch.default_target` in `.arbor/config.yaml`
 

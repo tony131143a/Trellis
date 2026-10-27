@@ -16,7 +16,7 @@ Platform files do not store business state.
 | settings | `.claude/settings.json`, `.starFactory/settings.json` | Register hooks. Hook commands use the project-relative path of the platform directory. |
 | hooks | `.claude/hooks/`, `.starFactory/hooks/` | Session-start context, per-turn workflow-state, dispatch context injection, dispatch guard, shell session bridge. |
 | skills | `.claude/skills/`, `.starFactory/skills/` | Workflow skills (brainstorm, before-dev, check, update-spec, break-loop) plus bundled skills (`arbor-meta`, `arbor-spec-bootstrap`). |
-| commands | `.claude/commands/arbor/`, `.starFactory/commands/arbor/` | Explicit entry points such as `/arbor:continue`, `/arbor:finish-work`, `/arbor:start`, `/arbor:workflow-star`, `/arbor:workflow-pi`. |
+| commands | `.claude/commands/arbor/`, `.starFactory/commands/arbor/` | Explicit entry points such as `/arbor:continue`, `/arbor:finish-work`, `/arbor:start`, `/arbor:workflow <target>`. |
 | root files | `CLAUDE.md`, `AGENTS.md` | Managed block between `<!-- ARBOR:START -->` and `<!-- ARBOR:END -->`; content outside the block is user-owned. |
 
 There are no platform-native sub-agent files. The seven roles (explore, architect, implement, review, verify, fix, simplify) are not Claude Code sub-agents; the main agent dispatches them to codeg assistants (see `../local-architecture/dispatch.md`). Their instruction text lives in `.arbor/agents/*.md`.

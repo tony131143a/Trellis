@@ -44,7 +44,7 @@ assistant falls back to pulling the same files itself.
 Target (highest wins):
 
 1. `Target:` header line, or `--target` on `dispatch.py run`
-2. `.arbor/.runtime/dispatch-target` (`dispatch.py target set|clear`; `/arbor:workflow-star` and `/arbor:workflow-pi` call `target set`)
+2. `.arbor/.runtime/dispatch-target` (`dispatch.py target set|clear`; `/arbor:workflow <target>` calls `target set`)
 3. `ARBOR_DISPATCH_TARGET`
 4. `dispatch.default_target` in `.arbor/config.yaml`
 

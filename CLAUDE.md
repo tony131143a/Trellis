@@ -80,7 +80,7 @@ This project is managed by Arbor. You are the **main agent**: plan, curate conte
   Role: explore | architect | implement | review | verify | fix | simplify
   ```
   Optional header lines: `Mode: self-check|candidates|sweep` (review only), `Diff: <absolute .diff path>` (review/verify/fix/simplify; make one with `dispatch.py snapshot` / `dispatch.py diff`), `Target: star|pi|codex`, `Workspace: <worktree>`. A project hook inlines the role's manifest (`implement.jsonl` for architect/implement, `check.jsonl` for review/verify/fix/simplify), `prd.md`/`design.md`/`implement.md`, and the `Diff:` file for you.
-- Run the whole workflow on one target with `/arbor:workflow-star` or `/arbor:workflow-pi`; override a single call with `Target: <t>` in the header or `--target`.
+- Run the whole workflow on one target with `/arbor:workflow <target>` (`star` | `pi` | `codex`); override a single call with `Target: <t>` in the header or `--target`.
 - Only you commit (Phase 3.4). Sub-agents never commit, push, merge, or run `task.py start/current`.
 - If your own first prompt starts with `Active task:` + `Role:`, you are a dispatched sub-agent: do that role directly and ignore the dispatch rules above.
 
