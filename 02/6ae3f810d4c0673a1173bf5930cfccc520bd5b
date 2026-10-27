@@ -1,0 +1,55 @@
+.arbor/.template-hashes.json
+  s_76db9c86e5d1b8::t_090c691e7d8deb 27-28,32,76,78-81,88
+.arbor/spec/cli/backend/dispatch.md
+  s_d3216478f0a206::t_50de31725f0659 47-53
+README.md
+  s_d3216478f0a206::t_0b1f17a72130bb 139,237-240
+packages/cli/src/templates/arbor/scripts/common/config.py
+  s_64dcbfdd366185::t_f38a4ad6648257 14,240-242,244,450-469,472-477,481-490,492
+packages/cli/src/templates/arbor/workflow.md
+  s_d3216478f0a206::t_fac2b7cb554d85 116
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/local-architecture/dispatch.md
+  s_d3216478f0a206::t_a0e922f01f786b 22-27,74
+packages/cli/src/templates/common/commands/workflow.md
+  s_d3216478f0a206::t_32fdecebb47041 3,20,45
+packages/cli/src/templates/markdown/claude.md
+  s_d3216478f0a206::t_a65366c470bf58 17
+packages/cli/test/scripts/dispatch-config.integration.test.ts
+  s_d3216478f0a206::t_9468f084ed1b1f 258,280-294,360-372
+packages/cli/test/scripts/dispatch-py.integration.test.ts
+  s_d3216478f0a206::t_2fc02832a8923e 163-167,171,657,663,684-735
+packages/cli/test/scripts/inject-delegation-context.integration.test.ts
+  s_d3216478f0a206::t_7f00373ea84047 363-409
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "026ae3f810d4c0673a1173bf5930cfccc520bd5b",
+  "prompts": {},
+  "sessions": {
+    "s_64dcbfdd366185": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a17d65-0a39-72c1-9c15-34a013a0b9f1",
+        "model": "DeepSeek-V4.1-Flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_76db9c86e5d1b8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17d74-a649-7b30-8a9d-7624c67f938b",
+        "model": "gpt-6.1-terra"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_d3216478f0a206": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17d6e-a04c-77e0-ba82-f0de8a793a83",
+        "model": "gpt-6.1-terra"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
