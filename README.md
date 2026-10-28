@@ -134,7 +134,7 @@ python3 ./.arbor/scripts/dispatch.py resolve --role implement --json
 /arbor:workflow star add rate limiting to the login endpoint, 10 requests per IP per minute
 ```
 
-`/arbor:workflow pi` and `/arbor:workflow codex` do the same on pi + DeepSeek or Codex. The command:
+`/arbor:workflow star --tier standard <request>` pins the tier (`light`, `standard` or `full`); without `--tier` the agent proposes one. `/arbor:workflow pi` and `/arbor:workflow codex` do the same on pi + DeepSeek or Codex. The command:
 
 1. sets the dispatch target for this session (sticky until `/arbor:workflow <other>` or `dispatch.py target clear`; other sessions on the same checkout keep theirs);
 2. confirms the assistant ids for the seven roles;
@@ -144,28 +144,35 @@ You can also just describe the change; dispatch then uses `dispatch.default_targ
 
 ### The phases
 
-The main agent drives these; see `.arbor/workflow.md` for every step.
+The main agent drives these; see `.arbor/workflow.md` for every step. The tier decides which roles take part and how long the review chain is.
+
+| | quick | light | standard | full |
+| --- | --- | --- | --- | --- |
+| Fits | at most 2 files, cause known, no design choice | one deliverable, a few files, existing patterns suffice | a feature or refactor across files or layers that needs a written design | several deliverables, contested design, risky migration, or parallel worktrees |
+| Artifacts | no task | `prd.md` | `prd.md` + `design.md` | `prd.md` + `design.md` + `implement.md` |
+| Roles | none, the main agent edits | implement, review, fix | + simplify, verify, optional `architect` | + 3 `architect`, review `Mode: sweep` |
+| Review chain | quality checks, one commit | one gate review (self-check) ⇄ fix, at most 2 rounds | gate review ⇄ fix (1 round), simplify, 3 final reviews, verify, fix ⇄ review (at most 2) | as standard with 5 final reviews + sweep |
 
 **Phase 1: Plan**
 
-1. The agent classifies the request and asks whether to create a task. Approval to create a task is not approval to implement.
-2. It creates `.arbor/tasks/MM-DD-<slug>/`, clarifies requirements with `arbor-brainstorm`, and writes `prd.md`. Complex tasks also get `design.md` and `implement.md`.
-3. Explore & design (1.2): it dispatches 2-3 `explore` roles in parallel (findings go to `research/`), reads the essential files they return, and puts the open questions to you as one list. For complex tasks it then dispatches 3 `architect` roles (minimal-change, clean-architecture, pragmatic), presents the trade-offs with a recommendation, and writes `design.md` and `implement.md` after you pick.
-4. It curates `implement.jsonl` (feeds `architect` and `implement`) and `check.jsonl` (feeds `review`, `verify`, `fix`, `simplify`) with the spec and research files the assistants need.
-5. Complex tasks are put to you for review. After your approval it runs `task.py start` (status `in_progress`).
+1. The agent classifies the request. Quick work is done directly without a task. Otherwise it proposes a tier and asks whether to create a task. Approval to create a task is not approval to implement.
+2. It creates `.arbor/tasks/MM-DD-<slug>/` with the tier, clarifies requirements with `arbor-brainstorm`, and writes `prd.md`. Open questions come to you as one numbered list, each with a recommendation and trade-off.
+3. Explore & design (1.2): when a few files it reads itself do not answer a question, it dispatches `explore` roles, one aspect each, in parallel (findings go to `research/`). Standard: the main agent writes `design.md`. Full: it dispatches 3 `architect` roles (minimal-change, clean-architecture, pragmatic), presents the trade-offs with a recommendation, and writes `design.md` and `implement.md` after you pick.
+4. `task.py seed-context` fills `implement.jsonl` (feeds `architect` and `implement`) and `check.jsonl` (feeds `review`, `verify`, `fix`, `simplify`) with the spec indexes, guides and research files; the agent then adds or drops entries.
+5. One approval gate: the agent presents the final planning summary. After your approval it runs `task.py start` (status `in_progress`).
 
 **Phase 2: Execute**
 
 1. Take a snapshot (`dispatch.py snapshot`), then dispatch `implement`. The hook inlines the jsonl-listed files, `prd.md`, `design.md` and `implement.md`.
-2. Review loop on the diff against the snapshot: `review`, then `verify` to filter candidates, then `fix`, then a re-review of the fix delta only. At most 2 rounds, then the agent stops and reports to you. A task without `design.md` is lightweight (one `review` in `Mode: self-check`); with `design.md` it is complex (three parallel `review` runs in `Mode: candidates` once the diff passes 300 changed lines).
+2. One gate review on the diff against the snapshot (`review` in `Mode: self-check`), then `fix`, then a re-review of the fix delta only. Light: at most 2 rounds. Standard / full: at most 1 round. Then the agent stops and reports to you.
 3. On a failed dispatch the agent tightens the brief and re-dispatches, optionally with another `Target:`. It never does the role's work itself.
 
 **Phase 2F: Polish**
 
-1. Complex tasks: `simplify` the whole diff and review its delta for unchanged behavior.
-2. Final review: five `review` runs in `Mode: candidates`, dedup, `verify`, one `review` in `Mode: sweep`, `verify` again.
-3. Only if findings survive, you decide: fix now, fix later, or leave. Chosen findings go to `fix`.
-4. Every task, lightweight included: the agent runs each affected package's Quality Check commands itself.
+1. Standard / full: `simplify` the whole diff, with no separate review; the project checks must stay green.
+2. Standard / full: final review. Standard runs three `review` runs in `Mode: candidates`, full runs five plus one `Mode: sweep`; candidates are deduplicated and `verify`-ed.
+3. CONFIRMED findings are fixed without asking; you are asked once, and only about PLAUSIBLE findings. Chosen findings go to `fix`, then a review of the fix delta, at most 2 rounds.
+4. Every task: the agent runs each affected package's Quality Check commands itself.
 
 **Phase 3: Finish**
 
@@ -173,7 +180,7 @@ The main agent drives these; see `.arbor/workflow.md` for every step.
 2. The agent commits in batches; no amend, no push.
 3. You run `/arbor:finish-work`: dirty-path check, archive, journal.
 
-Your part: approve task creation, review the PRD and design, read the final commits, run `/arbor:finish-work`.
+Your part: pick or confirm the tier, answer the question list, choose a design (full), approve the final planning summary, decide only the PLAUSIBLE findings, read the final commits, run `/arbor:finish-work`.
 
 ### Resume
 
@@ -261,9 +268,10 @@ Prompts and replies are kept under `.arbor/.runtime/dispatch/`.
 
 ## Parallel variant
 
-For work that splits into disjoint child tasks:
+For work that splits into disjoint child tasks. Only tier full may run in parallel; `task.py start` refuses `execution parallel` otherwise (`task.py set-meta <parent> tier full` if needed):
 
 ```bash
+python3 ./.arbor/scripts/task.py set-meta <parent> tier full
 python3 ./.arbor/scripts/task.py set-meta <parent> execution parallel
 python3 ./.arbor/scripts/task.py create "child A" --slug a --parent <parent> -d "..."
 ```
@@ -272,10 +280,10 @@ After `task.py start` the main agent follows Phase 2P in `.arbor/workflow.md`:
 
 1. One git worktree per child, on branch `wip/<parent>/<child>`.
 2. Up to `dispatch.max_parallel` (default 3) implement roles at once.
-3. The review loop in each worktree (diffs via `dispatch.py diff <task-branch> -C <worktree>`); the main agent commits each green child.
+3. One gate review per worktree (diffs via `dispatch.py diff <task-branch> -C <worktree>`), then fix; the main agent commits each green child.
 4. Serial `--no-ff` merges into the task branch.
 5. Worktree cleanup.
-6. Phase 2F (polish) on the merged tree for the parent task.
+6. Full-tier Phase 2F (polish) on the merged tree for the parent task.
 7. `/arbor:finish-work` archives the parent and its children.
 
 ## Task commands
@@ -284,11 +292,12 @@ After `task.py start` the main agent follows Phase 2P in `.arbor/workflow.md`:
 
 | Command | Purpose |
 | --- | --- |
-| `create "<title>" -s <slug> -d "<description>" [--parent P] [--no-start]` | New task. The description must be non-empty or archive refuses it |
+| `create "<title>" -s <slug> -d "<description>" [--tier light\|standard\|full] [--parent P] [--no-start]` | New task. The description must be non-empty or archive refuses it |
 | `start <dir>` / `current` / `finish` | Set / show / clear the active task |
 | `list` / `list-archive` | List tasks / archived tasks |
 | `add-context <dir> <implement\|check> <path> [reason]` / `list-context` / `validate` | Manage the jsonl manifests |
-| `set-meta <dir> <key> <value>` | Task metadata, e.g. `execution parallel` |
+| `seed-context <dir> [--package <pkg> ...]` | Fill both manifests with the package spec indexes, guides index and the task's research files (idempotent) |
+| `set-meta <dir> <key> <value>` | Task metadata, e.g. `tier standard` or `execution parallel` |
 | `add-subtask` / `remove-subtask` | Link / unlink parent and child |
 | `set-branch` / `set-base-branch` / `rename` / `archive` | Branch, PR target branch, rename, archive |
 

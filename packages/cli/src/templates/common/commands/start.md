@@ -37,12 +37,12 @@ Index files list the specific guideline docs to read when you actually start cod
 From Step 1 you know the current task and status. Check the task directory:
 
 - **Active task status `planning` + no `prd.md`** → Phase 1.1. Load the `arbor-brainstorm` skill.
-- **Active task status `planning` + `prd.md` exists** → stay in Phase 1. Lightweight tasks can be PRD-only; complex tasks need `design.md` + `implement.md`. Load the relevant Phase 1 step detail before `task.py start`.
-- **Active task status `in_progress`** → Phase 2 step 2.1 (or Phase 2P when `meta.execution=parallel`). The seven roles (explore / architect / implement / review / verify / fix / simplify) are dispatched to codeg assistants, not done here. Load the step detail:
+- **Active task status `planning` + `prd.md` exists** → stay in Phase 1. The tier decides the artifacts: light = `prd.md`; standard = + `design.md`; full = + `implement.md`. Load the relevant Phase 1 step detail before `task.py start`.
+- **Active task status `in_progress`** → Phase 2 step 2.1 (Phase 2P when tier full and `meta.execution=parallel`). The seven roles (explore / architect / implement / review / verify / fix / simplify) are dispatched to codeg assistants, not done here. Load the step detail:
   ```bash
   {{PYTHON_CMD}} ./.arbor/scripts/get_context.py --mode phase --step 2.1 --platform {{CLI_FLAG}}
   ```
-- **No active task** → classify first. For simple conversation / small task, ask only whether this turn should create a Arbor task. For complex work, ask whether you may create a Arbor task and enter planning. If the user says no, skip Arbor for this session.
+- **No active task** → classify first. Quick work (at most 2 files, cause known, no design choice) is done here without a task. Otherwise propose a tier (light / standard / full) with a one-line reason and ask for consent to create a Arbor task. If the user says no, skip Arbor for this session.
 
 ---
 

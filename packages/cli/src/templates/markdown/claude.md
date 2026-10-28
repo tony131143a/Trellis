@@ -5,9 +5,10 @@ This project is managed by Arbor. You are the **main agent**: plan, curate conte
 
 - Follow `.arbor/workflow.md` (Plan, Execute, Polish, Finish). Phase steps marked `[required]` are mandatory.
 - Guidelines live in `.arbor/spec/`; tasks in `.arbor/tasks/`; journals in `.arbor/workspace/`.
-- The explore / architect / implement / review / verify / fix / simplify roles run as **codeg assistants on other models**, never in this session and never through the built-in `Agent`/`Task` tool.
+- The explore / architect / implement / review / verify / fix / simplify roles run as **codeg assistants on other models**, never in this session and never through the built-in `Agent`/`Task` tool, inside an Arbor task; the no-task quick path (at most 2 files, cause known, no design choice) is the only exception, there you edit directly.
   - If `mcp__codeg-mcp__delegate_to_agent` is in your tool list: call it with the `assistant_id` for the role and target shown in the `<dispatch>` session context (or from `python3 ./.arbor/scripts/dispatch.py resolve --role <role>`), `working_dir` = repo root (or the worktree for parallel work), and `task` = the header block below followed by a self-contained brief. Collect results with `get_delegation_status(task_ids, wait_ms=60000)`.
   - Otherwise: `python3 ./.arbor/scripts/dispatch.py run --role <role> [--mode M] [--diff F] [--target star|pi|codex] --wait` with the brief on stdin.
+- Tiers: quick (no task) / light / standard / full decide which roles take part and how long the review chain is; stored in `task.json.meta.tier` (`task.py create --tier`), inferred from artifacts when absent; see the Tiers table in `.arbor/workflow.md`.
 - Every dispatch `task` MUST start with:
   ```
   Active task: <absolute path of the task directory in this checkout>

@@ -13,9 +13,9 @@
 ## Current Phase Model
 
 ```text
-Phase 1: Plan    -> clarify what to build, explore and design (1.2), produce prd.md (+ design.md / implement.md for complex tasks)
-Phase 2: Execute -> implement against the PRD and specs, then run the review loop (2.2); parallel tasks use Phase 2P
-Phase 2F: Polish -> complex tasks: simplify, final review, fix; every task: quality checks (2F.5)
+Phase 1: Plan    -> classify the tier (quick / light / standard / full), clarify what to build, explore and design (1.2), produce prd.md (+ design.md for standard, + implement.md for full)
+Phase 2: Execute -> implement against the PRD and specs, then one gate review and fix (2.2); parallel tasks (full only) use Phase 2P
+Phase 2F: Polish -> standard / full: simplify, final review, verify, fix; every task: quality checks (2F.5)
 Phase 3: Finish  -> preserve lessons (spec update), commit, and wrap up
 ```
 
@@ -23,7 +23,7 @@ Each phase contains numbered steps, such as `1.3 Configure context`. These numbe
 
 ## Skill Routing
 
-`workflow.md` routes work by intent. For exploration, design, implementation, review, verification, fixing, and simplification, the main agent dispatches the matching role (`explore`, `architect`, `implement`, `review`, `verify`, `fix`, `simplify`) to a codeg assistant (see `dispatch.md`) rather than doing it in its own session. Task tier follows the artifacts: no `design.md` is lightweight, `design.md` present is complex, and the tier decides how heavy the review loop and polish are. Small steps such as reading skills like `before-dev` stay in the main session.
+`workflow.md` routes work by intent. For exploration, design, implementation, review, verification, fixing, and simplification, the main agent dispatches the matching role (`explore`, `architect`, `implement`, `review`, `verify`, `fix`, `simplify`) to a codeg assistant (see `dispatch.md`) rather than doing it in its own session. The task tier (quick / light / standard / full) is stored in `task.json.meta.tier` (`task.py create --tier`, `task.py set-meta <task> tier <t>`); when absent it is inferred from the artifacts (`implement.md` is full, `design.md` is standard, otherwise light), and it decides which roles take part and how long the review chain and polish are. Small steps such as reading skills like `before-dev` stay in the main session.
 
 When changing local AI behavior, update the routing descriptions in `workflow.md` first, then check whether the corresponding skill, command, or `.arbor/agents/*.md` file needs to stay in sync.
 
@@ -43,7 +43,9 @@ Hooks choose the right block based on current task status and inject it into the
 | --- | --- |
 | `no_task` | The current session has no active task. |
 | `planning` | The task is still in requirements, exploration and design, or context configuration. |
-| `in_progress` | The task has entered implementation, review, and polish (also the parallel variant, `in_progress-parallel`). |
+| `in_progress-light` / `in_progress-standard` / `in_progress-full` | The task has entered implementation, review, and polish; one block per tier. |
+| `in_progress-parallel` | Tier full with `meta.execution=parallel` (Phase 2P). |
+| `in_progress` | Fallback only, shown when no block exists for the task's tier. |
 | `completed` | The task is complete and waiting for wrap-up or archive. |
 
 If the user wants to change policies such as "whether to create a task when there is no task," "when task creation may be skipped," or "whether sub-agents are required," edit these state blocks and the routing table above them.
@@ -56,7 +58,7 @@ Common changes:
 | --- | --- |
 | Add a phase | Update the Phase Index, phase body, routing, and state blocks. |
 | Change task creation policy | Update the `no_task` state block and Phase 1 description. |
-| Change the default implementation/review path | Update Phase 2 (2.2 review loop), Phase 2F, and skill routing. |
+| Change the default implementation/review path | Update Phase 2 (2.2 gate review), Phase 2F, and skill routing. |
 | Change the wrap-up flow | Update Phase 3 and `finish-work` related descriptions. Note the current split: Phase 3.4 = AI-driven code commits (batched, user-confirmed), Phase 3.5 = `/finish-work` (archive + record session). `/finish-work` refuses to run if the working tree is dirty. |
 | Change dispatch behavior | Update Phase 2 routing, and `dispatch.md`-related config in `.arbor/config.yaml`. |
 

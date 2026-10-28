@@ -18,8 +18,8 @@ Context loading determines when AI reads workflow, task, spec, research, workspa
 | --- | --- |
 | `.arbor/workflow.md` | Workflow and next-action hints. |
 | `.arbor/tasks/<task>/prd.md` | Current task requirements. |
-| `.arbor/tasks/<task>/design.md` | Complex task technical design. |
-| `.arbor/tasks/<task>/implement.md` | Complex task execution plan. |
+| `.arbor/tasks/<task>/design.md` | Technical design for standard and full tasks. |
+| `.arbor/tasks/<task>/implement.md` | Execution plan for full tasks. |
 | `.arbor/tasks/<task>/implement.jsonl` | Spec/research for the `architect` and `implement` roles. |
 | `.arbor/tasks/<task>/check.jsonl` | Spec/research for the `review`, `verify`, `fix`, and `simplify` roles. |
 | `.arbor/spec/` | Project specs. |
@@ -45,7 +45,7 @@ Context loading determines when AI reads workflow, task, spec, research, workspa
 {"file": ".arbor/tasks/04-28-x/research/api.md", "reason": "API research"}
 ```
 
-Include only spec/research files. Do not put code files that will be modified into these manifests; agents read code files themselves during implementation.
+`task.py seed-context <task> [--package <pkg> ...]` fills both manifests with the package's spec layer index files, the guides index, and the task's research files (idempotent); adjust the entries afterwards. Include only spec/research files. Do not put code files that will be modified into these manifests; agents read code files themselves during implementation.
 
 ## Change Session Context
 
