@@ -1,0 +1,19 @@
+packages/cli/src/templates/arbor/scripts/common/dispatch_context.py
+  s_434ac01f9368ea::t_5661af34e0ff3d 378-380,388,471,473-478,820,948-950
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "ba93ed5b5e3134fb454a1b321fa3cc3a8e7c86c4",
+  "prompts": {},
+  "sessions": {
+    "s_434ac01f9368ea": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-atier-python-39ca7dad54802cf8",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
