@@ -1,0 +1,35 @@
+packages/cli/src/templates/arbor/scripts/common/packages_context.py
+  s_434ac01f9368ea::t_8454076d1bbcf5 10,126-144
+packages/cli/src/templates/arbor/scripts/common/session_context.py
+  s_434ac01f9368ea::t_75ae468e160b70 28-35,643-645
+packages/cli/src/templates/arbor/scripts/common/task_context.py
+  s_434ac01f9368ea::t_37cb4f99bc7c60 7,10,28,31-37,41-49,76-141,186-188,190-191,194-325
+packages/cli/src/templates/arbor/scripts/common/task_store.py
+  s_433b03e0835b09::t_eeb31e1ffdd877 72,284-286,326-353,676-691,698-702,2006-2015
+packages/cli/src/templates/arbor/scripts/task.py
+  s_434ac01f9368ea::t_59a19efd8d62dc 7,9,12,18,59-66,83,182-224,248-252,593,595,598-599,605,613-617,643-644,727-731,750-761,870
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "a62717b8a777c186e8b8c4c242590866a26539bc",
+  "prompts": {},
+  "sessions": {
+    "s_433b03e0835b09": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-atier-docs-cc69822cd6818e10",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_434ac01f9368ea": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-atier-python-39ca7dad54802cf8",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
