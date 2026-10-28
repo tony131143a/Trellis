@@ -725,6 +725,99 @@ print("all-valid")
       });
     });
 
+    describe("dispatch_context.py: a path is materialized once per prompt", () => {
+      it("a research file listed in implement.jsonl and present in research/ is inlined and charged once (architect)", () => {
+        const taskDir = makeTask(tmp, "task-research-dedup");
+        const relTask = path.relative(tmp, taskDir).split(path.sep).join("/");
+        fs.mkdirSync(path.join(taskDir, "research"));
+        fs.writeFileSync(
+          path.join(taskDir, "research", "r1.md"),
+          "R1 body\n",
+          "utf-8",
+        );
+        fs.writeFileSync(
+          path.join(taskDir, "research", "r2.md"),
+          "R2 body\n",
+          "utf-8",
+        );
+        fs.writeFileSync(
+          path.join(taskDir, "implement.jsonl"),
+          JSON.stringify({
+            file: `${relTask}/research/r1.md`,
+            reason: "research",
+          }) + "\n",
+          "utf-8",
+        );
+        const out = runHookProbe(
+          tmp,
+          `
+import json
+from pathlib import Path
+rel = ${JSON.stringify(relTask)}
+header = mod.parse_dispatch_header(f"Active task: {rel}\\nRole: architect\\n\\nbrief")
+prompt = mod.build_dispatch_prompt(mod.DispatchRequest(
+    repo_root=Path(REPO_ROOT),
+    role="architect",
+    task_dir=Path(REPO_ROOT) / rel,
+    header=header,
+    original_text="",
+))
+limits = mod._get_limits(REPO_ROOT)
+budget = mod._Budget(0)
+mod._task_context(REPO_ROOT, rel, "implement", limits, budget)
+manifest_only = budget.used
+r2_block = len(f"=== {rel}/research/r2.md ===\\nR2 body\\n".encode("utf-8"))
+mod._materialize_directory(REPO_ROOT, f"{rel}/research", "Task research", limits, budget)
+print(json.dumps({
+    "text": prompt.text,
+    "degraded": list(prompt.degraded),
+    "manifest_only": manifest_only,
+    "after_dir": budget.used,
+    "r2_block": r2_block,
+}))
+`,
+        );
+        const result = JSON.parse(out) as {
+          text: string;
+          degraded: string[];
+          manifest_only: number;
+          after_dir: number;
+          r2_block: number;
+        };
+        expect(
+          result.text.split(`=== ${relTask}/research/r1.md ===`).length - 1,
+        ).toBe(1);
+        expect(result.text.split("R1 body").length - 1).toBe(1);
+        // The directory pass still inlines the file the manifest did not list.
+        expect(result.text).toContain(`=== ${relTask}/research/r2.md ===`);
+        expect(result.degraded).toEqual([]);
+        // r1 was charged by the manifest; the directory pass adds only r2.
+        expect(result.after_dir - result.manifest_only).toBe(result.r2_block);
+      });
+
+      it("a path repeated inside a manifest is materialized once", () => {
+        const taskDir = makeTask(tmp, "task-manifest-dedup");
+        fs.writeFileSync(path.join(tmp, "spec.md"), "spec body\n", "utf-8");
+        fs.writeFileSync(
+          path.join(taskDir, "implement.jsonl"),
+          [
+            JSON.stringify({ file: "spec.md", reason: "first" }),
+            JSON.stringify({ file: "./spec.md", reason: "second" }),
+            JSON.stringify({ file: "spec.md", reason: "third" }),
+          ].join("\n") + "\n",
+          "utf-8",
+        );
+        const relTask = path.relative(tmp, taskDir).split(path.sep).join("/");
+        const out = runHookProbe(
+          tmp,
+          `print(mod.get_implement_context(REPO_ROOT, ${JSON.stringify(relTask)}))`,
+        );
+        expect(out.split("spec body").length - 1).toBe(1);
+        expect(out).toContain("=== spec.md ===");
+        expect(out).not.toContain("=== ./spec.md ===");
+      });
+    });
+
     describe("task.py validate: JSONL hygiene warnings", () => {
       it("warns (does not error) on a jsonl entry that looks like a code file", () => {
         const taskDir = makeTask(tmp, "task-code-warn");

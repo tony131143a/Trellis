@@ -171,8 +171,11 @@ describe("shared-hooks capability table", () => {
     expect(content).toContain("<arbor-workflow>");
     expect(content).toContain("Dispatch context order");
     expect(content).toContain("jsonl entries -> `prd.md`");
-    expect(content).toContain("Lightweight task can request start review with PRD-only");
-    expect(content).toContain("complex task must add");
+    expect(content).toMatch(/Tier \S+ needs /);
+    expect(content).toContain("task.py set-meta <task> tier");
+    expect(content).toContain("task.py seed-context");
+    expect(content).not.toContain("Lightweight task can request start review with PRD-only");
+    expect(content).not.toContain("complex task must add");
     expect(content).not.toContain("Status: READY");
     expect(content).not.toContain("<workflow>");
   });

@@ -5759,28 +5759,36 @@ print(len(entries))
     return readFileSync(templatePath, "utf-8");
   }
 
-  it("[workflow-state-r1] template workflow.md [workflow-state:in_progress] mentions commit (Phase 3.4)", () => {
+  it("[workflow-state-r1] template workflow.md in_progress blocks mention commit (Phase 3.4)", () => {
     const wf = templateWorkflowMd();
-    const match = wf.match(
-      /\[workflow-state:in_progress\]([\s\S]*?)\[\/workflow-state:in_progress\]/,
-    );
-    expect(match).toBeTruthy();
-    const body = match?.[1] ?? "";
-    expect(body).toMatch(/commit \(3\.4/i);
+    for (const key of [
+      "in_progress",
+      "in_progress-light",
+      "in_progress-standard",
+      "in_progress-full",
+      "in_progress-parallel",
+    ]) {
+      const match = wf.match(
+        new RegExp(`\\[workflow-state:${key}\\]\\s*\\n([\\s\\S]*?)\\n\\s*\\[\\/workflow-state:${key}\\]`),
+      );
+      expect(match, key).toBeTruthy();
+      const body = match?.[1] ?? "";
+      expect(body, key).toMatch(/commit \(3\.4/i);
+    }
   });
 
   it("[workflow-state-r2] template workflow.md [workflow-state:planning] mentions artifact gates + required jsonl curation", () => {
     const wf = templateWorkflowMd();
     const match = wf.match(
-      /\[workflow-state:planning\]([\s\S]*?)\[\/workflow-state:planning\]/,
+      /\[workflow-state:planning\]\s*\n([\s\S]*?)\n\s*\[\/workflow-state:planning\]/,
     );
     expect(match).toBeTruthy();
     const body = match?.[1] ?? "";
-    expect(body).toMatch(/Lightweight: `prd\.md` can be enough/);
-    expect(body).toMatch(
-      /Complex: finish `prd\.md`, `design\.md`, and `implement\.md`/,
-    );
-    expect(body).toContain("Curate `implement.jsonl` and `check.jsonl` (1.3, required)");
+    expect(body).toContain("light = `prd.md`");
+    expect(body).toContain("standard = `prd.md` + `design.md`");
+    expect(body).toContain("full = `prd.md` + `design.md` + `implement.md`");
+    expect(body).toContain("`task.py seed-context");
+    expect(body).toContain("(1.3, required)");
   });
 
   it("[#292] workflow and brainstorm templates treat seed-only jsonl as not planning-ready", () => {
@@ -5933,9 +5941,11 @@ print(len(entries))
     );
 
     expect(output).toContain("## Phase Index");
+    expect(output).toContain("### Tiers");
     expect(output).toContain("### Request Triage");
     expect(output).toContain("### Planning Artifacts");
     expect(output).toContain("### Loading Step Detail");
+    expect(output).not.toContain("300");
     expect(output).not.toMatch(/^## Phase 1: Plan/m);
     expect(output).not.toContain("#### 1.1 Requirement exploration");
     expect(output).not.toContain("#### 2.1 Implement");

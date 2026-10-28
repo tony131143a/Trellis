@@ -2,9 +2,11 @@
  * Integration tests for the dispatch configuration surface:
  *   - `common/config.py`: `get_dispatch_config` / `resolve_dispatch_target`
  *     over the shipped `config.yaml` template's `dispatch:` block
- *   - `shared-hooks/session-start.py`: the `<dispatch>` section
- *   - `shared-hooks/inject-workflow-state.py`: the `<status>-parallel`
- *     breadcrumb for `meta.execution == "parallel"` tasks
+ *   - `shared-hooks/session-start.py`: the `<dispatch>` section and the
+ *     tier lines of `<task-status>`
+ *   - `shared-hooks/inject-workflow-state.py`: the breadcrumb key chain
+ *     (`<status>-parallel` for full + parallel, `<status>-<tier>`, `<status>`)
+ *     and the `· Tier:` header segment
  *
  * Scripts are stamped into a fresh temp dir and run under real `python3`.
  */
@@ -392,35 +394,128 @@ ${code}
     });
   });
 
-  describe("inject-workflow-state.py parallel breadcrumb", () => {
-    const TASK = "10-24-par";
+  describe("session-start.py <task-status> tier", () => {
+    const TASK = "10-28-tier";
 
-    function setup(meta: Record<string, string>, withParallelBlock: boolean): void {
-      const blocks = [
-        "# Workflow",
-        "",
-        "[workflow-state:in_progress]",
-        "SERIAL BODY",
-        "[/workflow-state:in_progress]",
-      ];
-      if (withParallelBlock) {
-        blocks.push(
-          "",
-          "[workflow-state:in_progress-parallel]",
-          "PARALLEL BODY",
-          "[/workflow-state:in_progress-parallel]",
-        );
-      }
-      fs.writeFileSync(
-        path.join(tmp, ".arbor", "workflow.md"),
-        blocks.join("\n") + "\n",
-      );
+    function writeTask(
+      meta: Record<string, string>,
+      status: string,
+      files: string[],
+    ): void {
       const taskDir = path.join(tmp, ".arbor", "tasks", TASK);
       fs.mkdirSync(taskDir, { recursive: true });
       fs.writeFileSync(
         path.join(taskDir, "task.json"),
-        JSON.stringify({ id: TASK, status: "in_progress", meta }) + "\n",
+        JSON.stringify({ id: TASK, title: "Tier task", status, meta }) + "\n",
       );
+      for (const name of files) {
+        fs.writeFileSync(path.join(taskDir, name), `# ${name}\n`);
+      }
+      fs.mkdirSync(path.join(tmp, ".arbor", ".runtime", "sessions"), {
+        recursive: true,
+      });
+      fs.writeFileSync(
+        path.join(tmp, ".arbor", ".runtime", "sessions", "claude_tier-status.json"),
+        JSON.stringify({ current_task: `.arbor/tasks/${TASK}`, platform: "claude" }),
+      );
+    }
+
+    function taskStatus(): string {
+      fs.writeFileSync(path.join(tmp, ".arbor", "workflow.md"), "# Workflow\n");
+      const r = spawnSync("python3", [path.join(SHARED_HOOKS, "session-start.py")], {
+        cwd: tmp,
+        encoding: "utf-8",
+        input: JSON.stringify({
+          hook_event_name: "SessionStart",
+          cwd: tmp,
+          session_id: "tier-status",
+        }),
+        env: cleanEnv({ CLAUDE_PROJECT_DIR: tmp }),
+      });
+      expect(r.status, r.stderr).toBe(0);
+      const context = (
+        JSON.parse(r.stdout) as {
+          hookSpecificOutput: { additionalContext: string };
+        }
+      ).hookSpecificOutput.additionalContext;
+      const section = /<task-status>\n([\s\S]*?)\n<\/task-status>/.exec(context)?.[1];
+      expect(section, "missing <task-status> section").toBeDefined();
+      return section ?? "";
+    }
+
+    it("a planning task pinned to standard without design.md needs design.md", () => {
+      writeTask({ tier: "standard" }, "planning", ["prd.md"]);
+      const status = taskStatus();
+      expect(status).toContain(`Task: Tier task\nTier: standard\n`);
+      expect(status).toContain("Tier standard needs design.md before start");
+      expect(status).toContain("task.py set-meta <task> tier <t>");
+      expect(status).not.toContain("(inferred)");
+    });
+
+    it("complete artifacts with empty manifests ask for approval and seed-context", () => {
+      writeTask({}, "planning", ["prd.md", "implement.jsonl", "check.jsonl"]);
+      const status = taskStatus();
+      expect(status).toContain("Tier: light (inferred)");
+      expect(status).toContain(
+        "Planning artifacts for tier light are present; present the final planning summary",
+      );
+      expect(status).toContain("`task.py seed-context <task>`");
+      expect(status).not.toContain("needs");
+    });
+
+    it("warns that parallel execution below tier full is refused at start", () => {
+      writeTask({ tier: "standard", execution: "parallel" }, "planning", [
+        "prd.md",
+        "design.md",
+      ]);
+      expect(taskStatus()).toContain(
+        "meta.execution=parallel requires tier full; `task.py start` refuses it while the tier is standard",
+      );
+    });
+
+    it("an in_progress legacy task infers its tier and points at that tier's block", () => {
+      writeTask({}, "in_progress", ["prd.md", "design.md"]);
+      const status = taskStatus();
+      expect(status).toContain("Tier: standard (inferred)");
+      expect(status).toContain("Follow the <workflow-state> block for tier standard.");
+      expect(status).toContain("Dispatch context order is jsonl entries");
+    });
+
+    it("no active task: classify first and mention the quick path", () => {
+      const status = taskStatus();
+      expect(status).toContain("Status: NO ACTIVE TASK");
+      expect(status).toContain("Quick");
+      expect(status).toContain("propose a tier (light / standard / full)");
+      expect(status).not.toContain("Tier:");
+    });
+  });
+
+  describe("inject-workflow-state.py tier and parallel breadcrumb", () => {
+    const TASK = "10-24-par";
+
+    function writeWorkflow(blocks: Record<string, string>): void {
+      const lines = ["# Workflow", ""];
+      for (const [key, body] of Object.entries(blocks)) {
+        lines.push(`[workflow-state:${key}]`, body, `[/workflow-state:${key}]`, "");
+      }
+      fs.writeFileSync(path.join(tmp, ".arbor", "workflow.md"), lines.join("\n"));
+    }
+
+    function writeTask(
+      meta: Record<string, string>,
+      opts: { status?: string; files?: string[]; taskJson?: string } = {},
+    ): void {
+      const taskDir = path.join(tmp, ".arbor", "tasks", TASK);
+      fs.rmSync(taskDir, { recursive: true, force: true });
+      fs.mkdirSync(taskDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(taskDir, "task.json"),
+        opts.taskJson ??
+          JSON.stringify({ id: TASK, status: opts.status ?? "in_progress", meta }) + "\n",
+      );
+      for (const name of opts.files ?? []) {
+        fs.writeFileSync(path.join(taskDir, name), `# ${name}\n`);
+      }
       fs.mkdirSync(path.join(tmp, ".arbor", ".runtime", "sessions"), {
         recursive: true,
       });
@@ -428,6 +523,14 @@ ${code}
         path.join(tmp, ".arbor", ".runtime", "sessions", "claude_par-session.json"),
         JSON.stringify({ current_task: `.arbor/tasks/${TASK}`, platform: "claude" }),
       );
+    }
+
+    function setup(meta: Record<string, string>, withParallelBlock: boolean): void {
+      writeWorkflow({
+        in_progress: "SERIAL BODY",
+        ...(withParallelBlock ? { "in_progress-parallel": "PARALLEL BODY" } : {}),
+      });
+      writeTask(meta);
     }
 
     function breadcrumb(): string {
@@ -454,16 +557,16 @@ ${code}
       ).hookSpecificOutput.additionalContext;
     }
 
-    it("uses the <status>-parallel block for meta.execution=parallel", () => {
-      setup({ execution: "parallel" }, true);
+    it("uses the <status>-parallel block for a full-tier meta.execution=parallel task", () => {
+      setup({ execution: "parallel", tier: "full" }, true);
       const out = breadcrumb();
-      expect(out).toContain(`Task: ${TASK} (in_progress)`);
+      expect(out).toContain(`Task: ${TASK} (in_progress) · Tier: full\n`);
       expect(out).toContain("PARALLEL BODY");
       expect(out).not.toContain("SERIAL BODY");
     });
 
-    it("falls back to the plain status block when workflow.md has no parallel block", () => {
-      setup({ execution: "parallel" }, false);
+    it("falls back to the plain status block when workflow.md has neither parallel nor tier block", () => {
+      setup({ execution: "parallel", tier: "full" }, false);
       expect(breadcrumb()).toContain("SERIAL BODY");
     });
 
@@ -474,38 +577,132 @@ ${code}
       expect(out).not.toContain("PARALLEL BODY");
     });
 
-    it("selects in_progress-parallel from the shipped workflow.md", () => {
-      const shipped = fs.readFileSync(
-        path.join(TEMPLATES, "arbor", "workflow.md"),
-        "utf-8",
-      );
+    it("selects the <status>-<tier> block and reports the pinned tier after the status", () => {
+      writeWorkflow({
+        in_progress: "SERIAL BODY",
+        "in_progress-light": "LIGHT BODY",
+        "in_progress-standard": "STANDARD BODY",
+      });
+      writeTask({ tier: "standard" });
+      const out = breadcrumb();
+      expect(out).toContain(`Task: ${TASK} (in_progress) · Tier: standard\n`);
+      expect(out).toContain("STANDARD BODY");
+      expect(out).not.toContain("SERIAL BODY");
+      expect(out).not.toContain("LIGHT BODY");
+    });
+
+    it("falls back to the plain status block when the tier block is missing", () => {
+      writeWorkflow({
+        in_progress: "SERIAL BODY",
+        "in_progress-light": "LIGHT BODY",
+      });
+      writeTask({ tier: "standard" });
+      const out = breadcrumb();
+      expect(out).toContain(`Task: ${TASK} (in_progress) · Tier: standard\n`);
+      expect(out).toContain("SERIAL BODY");
+      expect(out).not.toContain("LIGHT BODY");
+    });
+
+    it("infers a legacy task's tier from its artifacts and marks it inferred", () => {
+      writeWorkflow({
+        in_progress: "SERIAL BODY",
+        "in_progress-standard": "STANDARD BODY",
+      });
+      writeTask({}, { files: ["prd.md", "design.md"] });
+      const out = breadcrumb();
+      expect(out).toContain(`Task: ${TASK} (in_progress) · Tier: standard (inferred)\n`);
+      expect(out).toContain("STANDARD BODY");
+    });
+
+    it("ignores meta.execution=parallel below tier full", () => {
+      writeWorkflow({
+        in_progress: "SERIAL BODY",
+        "in_progress-standard": "STANDARD BODY",
+        "in_progress-parallel": "PARALLEL BODY",
+      });
+      writeTask({ tier: "standard", execution: "parallel" });
+      const out = breadcrumb();
+      expect(out).toContain("STANDARD BODY");
+      expect(out).not.toContain("PARALLEL BODY");
+    });
+
+    it("keeps a planning task on the plain planning block", () => {
+      writeWorkflow({
+        planning: "PLANNING BODY",
+        "in_progress-full": "FULL BODY",
+        "in_progress-parallel": "PARALLEL BODY",
+      });
+      writeTask({ tier: "full", execution: "parallel" }, { status: "planning" });
+      const out = breadcrumb();
+      expect(out).toContain(`Task: ${TASK} (planning) · Tier: full\n`);
+      expect(out).toContain("PLANNING BODY");
+      expect(out).not.toContain("FULL BODY");
+      expect(out).not.toContain("PARALLEL BODY");
+    });
+
+    it("task_error headers carry no tier", () => {
+      writeWorkflow({ task_error: "REPAIR BODY" });
+      writeTask({}, { taskJson: "{not json" });
+      const out = breadcrumb();
+      expect(out).toContain(`Task: ${TASK} (task_error)\n`);
+      expect(out).not.toContain("Tier:");
+      expect(out).toContain("REPAIR BODY");
+    });
+
+    describe("shipped workflow.md", () => {
+      const shipped = (): string =>
+        fs.readFileSync(path.join(TEMPLATES, "arbor", "workflow.md"), "utf-8");
       const bodyOf = (status: string): string => {
         const m = new RegExp(
           `\\[workflow-state:${status}\\]\\s*\\n([\\s\\S]*?)\\n\\s*\\[/workflow-state:${status}\\]`,
-        ).exec(shipped);
+        ).exec(shipped());
         expect(m, `shipped workflow.md lacks [workflow-state:${status}]`).not.toBeNull();
         return (m?.[1] ?? "").trim();
       };
-      const parallelBody = bodyOf("in_progress-parallel");
-      const serialBody = bodyOf("in_progress");
+      const shippedBreadcrumb = (
+        meta: Record<string, string>,
+        files: string[] = [],
+      ): string => {
+        writeTask(meta, { files });
+        fs.copyFileSync(
+          path.join(TEMPLATES, "arbor", "workflow.md"),
+          path.join(tmp, ".arbor", "workflow.md"),
+        );
+        return breadcrumb();
+      };
 
-      setup({ execution: "parallel" }, false);
-      fs.copyFileSync(
-        path.join(TEMPLATES, "arbor", "workflow.md"),
-        path.join(tmp, ".arbor", "workflow.md"),
-      );
-      const parallelOut = breadcrumb();
-      expect(parallelOut).toContain(parallelBody);
-      expect(parallelOut).not.toContain(serialBody);
+      it("selects in_progress-parallel for full + parallel and in_progress-light for a serial legacy task", () => {
+        const parallelBody = bodyOf("in_progress-parallel");
+        const lightBody = bodyOf("in_progress-light");
 
-      setup({ execution: "serial" }, false);
-      fs.copyFileSync(
-        path.join(TEMPLATES, "arbor", "workflow.md"),
-        path.join(tmp, ".arbor", "workflow.md"),
-      );
-      const serialOut = breadcrumb();
-      expect(serialOut).toContain(serialBody);
-      expect(serialOut).not.toContain(parallelBody);
+        const parallelOut = shippedBreadcrumb({ execution: "parallel", tier: "full" });
+        expect(parallelOut).toContain(parallelBody);
+        expect(parallelOut).not.toContain(lightBody);
+
+        const serialOut = shippedBreadcrumb({ execution: "serial" });
+        expect(serialOut).toContain(lightBody);
+        expect(serialOut).not.toContain(parallelBody);
+      });
+
+      it("emits only the task's own tier block", () => {
+        const tiers = ["light", "standard", "full"] as const;
+        const bodies = Object.fromEntries(
+          [...tiers.map((t) => `in_progress-${t}`), "in_progress-parallel", "in_progress"].map(
+            (key) => [key, bodyOf(key)],
+          ),
+        );
+        for (const tier of tiers) {
+          const out = shippedBreadcrumb({ tier });
+          expect(out).toContain(`Task: ${TASK} (in_progress) · Tier: ${tier}\n`);
+          for (const [key, body] of Object.entries(bodies)) {
+            if (key === `in_progress-${tier}`) {
+              expect(out, `${tier} must read ${key}`).toContain(body);
+            } else {
+              expect(out, `${tier} must not read ${key}`).not.toContain(body);
+            }
+          }
+        }
+      });
     });
   });
 });
