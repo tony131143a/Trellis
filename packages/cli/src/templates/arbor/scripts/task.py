@@ -4,17 +4,18 @@
 Task Management Script.
 
 Usage:
-    python3 task.py create "<title>" --description "<desc>" [--slug <name>] [--assignee <dev>] [--priority P0|P1|P2|P3] [--parent <dir>] [--package <pkg>] [--no-start] [--force]
+    python3 task.py create "<title>" --description "<desc>" [--slug <name>] [--assignee <dev>] [--priority P0|P1|P2|P3] [--parent <dir>] [--package <pkg>] [--tier light|standard|full] [--no-start] [--force]
     python3 task.py add-context <dir> <file> <path> [reason] # Add jsonl entry
+    python3 task.py seed-context <dir> [--package <pkg> ...]  # Seed both jsonl files (spec indexes, guides, research)
     python3 task.py validate <dir>              # Validate jsonl files
     python3 task.py list-context <dir>          # List jsonl entries
-    python3 task.py start <dir>                 # Set active task, record current branch
+    python3 task.py start <dir>                 # Set active task, record current branch (planning: checks the tier's files)
     python3 task.py current [--source] [--json] # Show active task
     python3 task.py finish                      # Clear active task
     python3 task.py set-branch <dir> <branch>   # Set git branch
     python3 task.py set-base-branch <dir> <branch>  # Set PR target branch
     python3 task.py set-scope <dir> <scope>     # Set scope for PR title
-    python3 task.py set-meta <dir> <key> <value>  # Set a task metadata key
+    python3 task.py set-meta <dir> <key> <value>  # Set a task metadata key (tier: light|standard|full)
     python3 task.py rename <dir> <new-slug> [--dry-run]  # Rename task + references
     python3 task.py archive <task-dir> [--skip-branch-validation]  # Archive completed task
     python3 task.py list                        # List active tasks
@@ -55,7 +56,14 @@ from common.io import (
     write_json,
 )
 from common.task_utils import resolve_task_dir, run_task_hooks
-from common.tasks import iter_active_tasks, children_progress
+from common.tasks import (
+    TIERS,
+    children_progress,
+    explicit_tier,
+    iter_active_tasks,
+    missing_tier_artifacts,
+    resolve_tier,
+)
 
 # Import command handlers from split modules (also re-exports for plan.py compatibility)
 from common.task_store import (
@@ -72,6 +80,7 @@ from common.task_store import (
 )
 from common.task_context import (
     cmd_add_context,
+    cmd_seed_context,
     cmd_validate,
     cmd_list_context,
     curated_entry_count,
@@ -170,6 +179,49 @@ def _record_start_state(
         )
 
 
+def _tier_gate(task_dir: Path, task_input: str) -> bool:
+    """Check a planning task's tier before it starts; False after printing why.
+
+    Only ``status == "planning"`` is gated: re-starting an in_progress task
+    (after a checkout, in another session) must not be blocked by artifacts
+    the task was already allowed to start without. An unreadable task.json is
+    not gated here either; ``start`` stays tolerant of it on purpose.
+    """
+    data, _ = read_json_checked(task_dir / FILE_TASK_JSON)
+    if not isinstance(data, dict) or data.get("status") != "planning":
+        return True
+
+    tier = resolve_tier(task_dir, data)
+    source = "meta.tier" if explicit_tier(data) else "inferred from artifacts"
+    set_meta = f"python3 ./.arbor/scripts/task.py set-meta {task_input}"
+
+    missing = missing_tier_artifacts(task_dir, tier)
+    if missing:
+        others = "|".join(t for t in TIERS if t != tier)
+        print(colored(
+            f"Error: tier '{tier}' requires {', '.join(missing)} before start",
+            Colors.RED,
+        ))
+        print(f"Tier: {tier} ({source})")
+        print(f"Write the missing file(s), or change the tier: {set_meta} tier {others}")
+        return False
+
+    meta = data.get("meta")
+    execution = meta.get("execution") if isinstance(meta, dict) else None
+    if isinstance(execution, str) and execution.strip().lower() == "parallel" and tier != "full":
+        print(colored(
+            f"Error: meta.execution=parallel requires tier full (this task: {tier})",
+            Colors.RED,
+        ))
+        print(
+            f"Either: {set_meta} tier full (and add design.md + implement.md with waves), "
+            f"or: {set_meta} execution serial"
+        )
+        return False
+
+    return True
+
+
 def cmd_start(args: argparse.Namespace) -> int:
     """Set active task."""
     repo_root = get_repo_root()
@@ -191,6 +243,11 @@ def cmd_start(args: argparse.Namespace) -> int:
     if not full_path.is_dir():
         print(colored(f"Error: Task not found: {task_input}", Colors.RED))
         print("Hint: Use task name (e.g., 'my-task') or full path (e.g., '.arbor/tasks/01-31-my-task')")
+        return 1
+
+    # Tier gate: a planning task needs its tier's planning artifacts, and a
+    # parallel run needs tier full. Not bypassed by --allow-empty-context.
+    if not _tier_gate(full_path, task_input):
         return 1
 
     # Context-manifest gate (#573): a seeded-but-uncurated implement/check
@@ -533,22 +590,30 @@ Usage:
   python3 task.py create <title> --description <desc> --package <pkg>   Create task for a specific package
   python3 task.py create <title> --description <desc> --parent <dir>    Create task as child of parent
   python3 task.py create <title> --description <desc> --no-start        Create without making it active in this session
+  python3 task.py create <title> --description <desc> --tier <tier>     Pin the tier (light|standard|full); else inferred from artifacts
   python3 task.py add-context <dir> <jsonl> <path> [reason]  Add entry to jsonl
+  python3 task.py seed-context <dir> [--package <pkg>]  Seed implement.jsonl + check.jsonl (spec indexes, guides, research/*.md)
   python3 task.py validate <dir>                     Validate jsonl files
   python3 task.py list-context <dir>                 List jsonl entries
-  python3 task.py start <dir>                        Set active task; records the checked-out branch when unset
+  python3 task.py start <dir>                        Set active task; records the checked-out branch when unset.
+                                                     A planning task must have its tier's files first
   python3 task.py current [--source]                 Show active task
   python3 task.py finish                             Clear active task
   python3 task.py set-branch <dir> <branch>          Set git branch
   python3 task.py set-base-branch <dir> <branch>     Set PR target branch
   python3 task.py set-scope <dir> <scope>            Set scope for PR title
-  python3 task.py set-meta <dir> <key> <value>       Set/overwrite a task metadata key
+  python3 task.py set-meta <dir> <key> <value>       Set/overwrite a task metadata key (tier: light|standard|full)
   python3 task.py rename <dir> <new-slug>            Rename task, identity fields and references
   python3 task.py archive <task-dir>                 Archive completed task
   python3 task.py add-subtask <parent> <child>       Link child task to parent
   python3 task.py remove-subtask <parent> <child>    Unlink child from parent
   python3 task.py list [--mine] [--status <status>] [--json]  List tasks
   python3 task.py list-archive [YYYY-MM]             List archived tasks
+
+Tiers (task.json meta.tier; without it: implement.md → full, design.md → standard, else light):
+  light       prd.md
+  standard    prd.md + design.md
+  full        prd.md + design.md + implement.md (required for meta.execution=parallel)
 
 Monorepo options:
   --package <pkg>      Package name (validated against config.yaml packages)
@@ -575,6 +640,8 @@ Examples:
   python3 task.py create "Add login feature" --description "Email + password sign-in" --slug add-login
   python3 task.py create "Add login feature" --description "Email + password sign-in" --slug add-login --package cli
   python3 task.py create "Add login feature" --description "Email + password sign-in" --meta linear=ENG-123 --meta epic=auth
+  python3 task.py create "Add login feature" --description "Email + password sign-in" --tier standard
+  python3 task.py seed-context <dir>
   python3 task.py create "Child task" --description "Session cookie handling" --slug child --parent .arbor/tasks/01-21-parent
   python3 task.py add-context <dir> implement .arbor/spec/cli/backend/auth.md "Auth guidelines"
   python3 task.py set-branch <dir> task/add-login
@@ -658,6 +725,11 @@ def main() -> int:
         help="Task metadata key=value (repeatable)",
     )
     p_create.add_argument(
+        "--tier",
+        choices=TIERS,
+        help="Task tier (same as --meta tier=); omit to infer it from the planning artifacts",
+    )
+    p_create.add_argument(
         "--no-start",
         action="store_true",
         help="Create the task without making it active in this session",
@@ -674,6 +746,18 @@ def main() -> int:
     p_add.add_argument("file", help="JSONL file (implement|check)")
     p_add.add_argument("path", help="File path to add")
     p_add.add_argument("reason", nargs="?", help="Reason for adding")
+
+    # seed-context
+    p_seed = subparsers.add_parser(
+        "seed-context",
+        help="Seed implement.jsonl / check.jsonl with spec indexes, guides and research",
+    )
+    p_seed.add_argument("dir", help="Task directory")
+    p_seed.add_argument(
+        "--package",
+        action="append",
+        help="Package whose spec layers to seed (repeatable; monorepo only, default: the task's package)",
+    )
 
     # validate
     p_validate = subparsers.add_parser("validate", help="Validate context files")
@@ -783,6 +867,7 @@ def main() -> int:
     commands = {
         "create": cmd_create,
         "add-context": cmd_add_context,
+        "seed-context": cmd_seed_context,
         "validate": cmd_validate,
         "list-context": cmd_list_context,
         "start": cmd_start,

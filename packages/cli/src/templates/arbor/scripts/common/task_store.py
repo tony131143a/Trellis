@@ -69,6 +69,7 @@ from .spec_trace import (
     derive_spec_changes,
     manual_spec_changes,
 )
+from .tasks import TIERS
 from .task_utils import (
     archive_destination_for,
     archive_task_complete,
@@ -280,8 +281,9 @@ def _default_prd_content(title: str, description: str | None = None) -> str:
 ## Notes
 
 - Keep `prd.md` focused on requirements, constraints, and acceptance criteria.
-- Lightweight tasks can remain PRD-only.
-- For complex tasks, add `design.md` for technical design and `implement.md` for execution planning before `task.py start`.
+- Tier light: `prd.md` is the only planning artifact.
+- Tier standard: also add `design.md` (technical design) before `task.py start`.
+- Tier full: also add `design.md` and `implement.md` (execution plan) before `task.py start`.
 """
 
 
@@ -320,6 +322,34 @@ def cmd_create(args: argparse.Namespace) -> int:
     meta = _parse_meta_pairs(getattr(args, "meta", None))
     if meta is None:
         return 1
+
+    # Validate the tier (CLI source: fail-fast). `--tier` and `--meta tier=`
+    # are the same setting. With neither, meta.tier stays unset and readers
+    # infer the tier from the planning artifacts on disk.
+    cli_tier: str | None = getattr(args, "tier", None)
+    if "tier" in meta:
+        meta_tier = meta["tier"].strip().lower()
+        if meta_tier not in TIERS:
+            print(
+                colored(
+                    f"Error: invalid --meta tier={meta['tier']} (valid tiers: {', '.join(TIERS)})",
+                    Colors.RED,
+                ),
+                file=sys.stderr,
+            )
+            return 1
+        if cli_tier and cli_tier != meta_tier:
+            print(
+                colored(
+                    f"Error: --tier {cli_tier} conflicts with --meta tier={meta['tier']}; pass one of them",
+                    Colors.RED,
+                ),
+                file=sys.stderr,
+            )
+            return 1
+        meta["tier"] = meta_tier
+    elif cli_tier:
+        meta["tier"] = cli_tier
 
     # Validate --package (CLI source: fail-fast)
     package: str | None = getattr(args, "package", None)
@@ -643,12 +673,31 @@ def cmd_create(args: argparse.Namespace) -> int:
     print("", file=sys.stderr)
     print(colored("Next steps:", Colors.BLUE), file=sys.stderr)
     print("  - Fill prd.md with requirements and acceptance criteria", file=sys.stderr)
-    print("  - Lightweight task: PRD-only is valid", file=sys.stderr)
-    print("  - Complex task: add design.md and implement.md before task.py start", file=sys.stderr)
+    tier_label = (
+        f"{meta['tier']} (meta.tier)"
+        if "tier" in meta
+        else "not set (inferred from the files present; light until design.md exists)"
+    )
+    print(f"  - Tier: {tier_label}", file=sys.stderr)
+    print(
+        "      light = prd.md; standard = prd.md + design.md; "
+        "full = prd.md + design.md + implement.md (task.py start checks them)",
+        file=sys.stderr,
+    )
+    print(
+        f"      set or change it: python3 .arbor/scripts/task.py set-meta {dir_name} tier "
+        f"{'|'.join(TIERS)}",
+        file=sys.stderr,
+    )
     print(
         "  - Curate implement.jsonl / check.jsonl (created empty) as spec/research "
         "manifests before task.py start (implement.jsonl feeds architect / implement, "
         "check.jsonl feeds review / verify / fix / simplify):",
+        file=sys.stderr,
+    )
+    print(
+        f"      seed both: python3 .arbor/scripts/task.py seed-context {dir_name} "
+        "(spec layer indexes, shared guides, research/*.md), then add / delete lines",
         file=sys.stderr,
     )
     print(
@@ -1953,6 +2002,16 @@ def cmd_set_meta(args: argparse.Namespace) -> int:
         print(colored("Error: Missing arguments", Colors.RED))
         print("Usage: python3 task.py set-meta <task-dir> <key> <value>")
         return 1
+
+    if key == "tier":
+        tier = (value or "").strip().lower()
+        if tier not in TIERS:
+            print(colored(
+                f"Error: invalid tier '{value}' (valid tiers: {', '.join(TIERS)})",
+                Colors.RED,
+            ))
+            return 1
+        value = tier
 
     if not target_dir:
         # target_dir is None here, so it must not appear in the message. This
