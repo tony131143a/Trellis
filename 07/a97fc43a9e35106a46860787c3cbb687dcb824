@@ -1,0 +1,31 @@
+packages/cli/src/templates/shared-hooks/inject-workflow-state.py
+  s_a3330d782feeb4::t_67fa9b531918b7 117-129,132,135-137,140-141,151,155,159,161,166,168-174,266-269,273-282,284-285,287-297,307,315-318,324-325,389,395-396
+.arbor/spec/cli/backend/workflow-state-contract.md
+  s_84efa10df20722::t_37fe65f0826de2 5-6,86-102,105-110,168,222-224,228-248,257-259,289-290,305-307,333-334
+packages/cli/src/templates/shared-hooks/session-start.py
+  s_84efa10df20722::t_0871461651ebf0 390-393,413-414,417-421,430,445,451,453,455-456,459-462,464-471,473,478-484,486,488,931-932
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "07a97fc43a9e35106a46860787c3cbb687dcb824",
+  "prompts": {},
+  "sessions": {
+    "s_84efa10df20722": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-atier-hooks-83e1876d482891bd",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_a3330d782feeb4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18300-6189-7841-b65f-b587ff3f9b00",
+        "model": "gpt-6.1-terra"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
