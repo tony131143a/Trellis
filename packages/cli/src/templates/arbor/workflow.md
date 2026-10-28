@@ -43,8 +43,8 @@ Every task has its own directory under `.arbor/tasks/{MM-DD-name}/` holding `tas
 
 ```bash
 # Task lifecycle
-python3 ./.arbor/scripts/task.py create "<title>" --description "<one-line summary>" [--slug <name>] [--parent <dir>]
-python3 ./.arbor/scripts/task.py start <name>          # set active task (session-scoped when available)
+python3 ./.arbor/scripts/task.py create "<title>" --description "<one-line summary>" [--slug <name>] [--tier light|standard|full] [--parent <dir>]
+python3 ./.arbor/scripts/task.py start <name>          # set active task (session-scoped when available); checks the tier's artifacts
 python3 ./.arbor/scripts/task.py current --source      # show active task and source
 python3 ./.arbor/scripts/task.py finish                # clear active task (triggers after_finish hooks)
 python3 ./.arbor/scripts/task.py archive <name>        # move to archive/{year-month}/
@@ -52,10 +52,12 @@ python3 ./.arbor/scripts/task.py list [--mine] [--status <s>]
 python3 ./.arbor/scripts/task.py list-archive
 
 # Code-spec context (injected into the dispatched assistants via JSONL).
-# `implement.jsonl` / `check.jsonl` are seeded (empty) on `task create`; the AI curates
-# real spec + research entries during planning. `validate` fails and `start` refuses while
-# a seeded manifest is still empty — assistants would run with zero spec context.
+# `implement.jsonl` / `check.jsonl` are seeded (empty) on `task create`. `seed-context` fills
+# both with the package's spec indexes, the shared guides index and the task's research files;
+# the AI then adds or drops entries. `validate` fails and `start` refuses while a manifest is
+# still empty — assistants would run with zero spec context.
 # Pass `start --allow-empty-context` when that is intentional.
+python3 ./.arbor/scripts/task.py seed-context <name> [--package <pkg> ...]
 python3 ./.arbor/scripts/task.py add-context <name> <action> <file> <reason>
 python3 ./.arbor/scripts/task.py list-context <name> [action]
 python3 ./.arbor/scripts/task.py validate <name>
@@ -64,7 +66,7 @@ python3 ./.arbor/scripts/task.py validate <name>
 python3 ./.arbor/scripts/task.py set-branch <name> <branch>
 python3 ./.arbor/scripts/task.py set-base-branch <name> <branch>    # PR target
 python3 ./.arbor/scripts/task.py set-scope <name> <scope>
-python3 ./.arbor/scripts/task.py set-meta <name> <key> <value>      # e.g. execution parallel
+python3 ./.arbor/scripts/task.py set-meta <name> <key> <value>      # e.g. tier standard, execution parallel
 
 # Hierarchy (parent/child)
 python3 ./.arbor/scripts/task.py add-subtask <parent> <child>
@@ -76,7 +78,7 @@ python3 ./.arbor/scripts/task.py create-pr [name] [--dry-run]
 
 > Run `python3 ./.arbor/scripts/task.py --help` to see the authoritative, up-to-date list.
 
-**Current-task mechanism**: `task.py create` creates the task directory and (when session identity is available) auto-sets the per-session active-task pointer so the planning breadcrumb fires immediately. `task.py start` writes the same pointer (idempotent if already set) and flips `task.json.status` from `planning` to `in_progress`. State is stored under `.arbor/.runtime/sessions/`. If no context key is available from hook input or `ARBOR_CONTEXT_ID`, there is no active task and `task.py start` fails with a session identity hint. `task.py finish` deletes the current session file (status unchanged). `task.py archive <task>` writes `status=completed`, moves the directory to `archive/`, and deletes any runtime session files that still point at the archived task.
+**Current-task mechanism**: `task.py create` creates the task directory and (when session identity is available) auto-sets the per-session active-task pointer so the planning breadcrumb fires immediately. `task.py start` writes the same pointer (idempotent if already set) and flips `task.json.status` from `planning` to `in_progress`; while the task is still in planning it refuses when the tier's artifacts (see Tiers) or the context manifests are missing. State is stored under `.arbor/.runtime/sessions/`. If no context key is available from hook input or `ARBOR_CONTEXT_ID`, there is no active task and `task.py start` fails with a session identity hint. `task.py finish` deletes the current session file (status unchanged). `task.py archive <task>` writes `status=completed`, moves the directory to `archive/`, and deletes any runtime session files that still point at the archived task.
 
 ### Workspace System
 
@@ -99,17 +101,17 @@ python3 ./.arbor/scripts/get_context.py --mode phase --step <X.Y>  # detailed gu
 
 ### Dispatch
 
-The seven roles below are never performed in the main session and never through the built-in `Agent`/`Task` tool (a guard hook denies it for arbor roles). They run as **codeg assistants** on another model. The main agent plans, curates context, dispatches, dedups findings, verifies, and commits.
+Inside an Arbor task the seven roles below are never performed in the main session (the no-task quick path is the only exception) and never through the built-in `Agent`/`Task` tool (a guard hook denies it for arbor roles). They run as **codeg assistants** on another model. The main agent plans, curates context, dispatches, dedups findings, verifies, and commits.
 
 **Roles.** Each role has one assistant per target. Default assistant names are `arbor-<role>-<target>` (for example `arbor-review-star`, `arbor-review-pi`); they are configured under `dispatch:` in `.arbor/config.yaml`, and the role instructions live in `.arbor/agents/<role>.md`.
 
 | Role | Writes | Context inlined | Used in | Output |
 |---|---|---|---|---|
-| `explore` | `<task>/research/<topic>.md` only | spec overview; with a task, `prd.md` + research file list | 1.2 | findings + 5-10 essential files |
-| `architect` | `<task>/research/design-<perspective>.md` only | `implement.jsonl` → prd → design → implement.md → `research/*.md` | 1.2 (complex) | one blueprint incl. parallel split |
+| `explore` | `<task>/research/<topic>.md` only | spec overview; with a task, `prd.md` + research file list | 1.2, any phase, as needed | findings + 5-10 essential files |
+| `architect` | `<task>/research/design-<perspective>.md` only | `implement.jsonl` → prd → design → implement.md → `research/*.md` | 1.2 (standard: at most 1; full: 3) | one blueprint incl. parallel split |
 | `implement` | code (no commits) | `implement.jsonl` → prd → design → implement.md | 2.1, 2P.2 | code + verification report |
 | `review` | nothing | `check.jsonl` → prd → design → implement.md → `Diff:` | 2.2, 2P.3, 2F | `PASS`/`FAIL` + JSON findings |
-| `verify` | nothing | same as review | 2.2, 2F | CONFIRMED / PLAUSIBLE / REFUTED per candidate |
+| `verify` | nothing | same as review | 2F (standard, full) | CONFIRMED / PLAUSIBLE / REFUTED per candidate |
 | `fix` | code (no commits) | same as review | 2.2, 2P.3, 2F | fixed / skipped per finding |
 | `simplify` | code (no commits) | same as review | 2F.1 | behavior-preserving cleanup |
 
@@ -171,24 +173,41 @@ It runs `codeg-cli run -A <assistant>` against the running codeg app (`--url <se
   degrades to a generic "Refer to workflow.md for current step." line —
   intentionally visible so users notice and fix a broken workflow.md.
 
-  INVARIANT (test/regression.test.ts):
+  KEY SELECTION (inject-workflow-state.py, resolve_breadcrumb_key):
+    tier = task.json.meta.tier when valid, otherwise inferred from the
+           artifacts (implement.md → full, design.md → standard, else light)
+    1. <status>-parallel   only when the tier is full and meta.execution=parallel
+    2. <status>-<tier>
+    3. <status>
+    The header line shows the tier: `Task: <id> (<status>) · Tier: <tier>`,
+    with "(inferred)" when meta.tier is not set.
+
+  INVARIANT (test/templates/arbor.test.ts):
     Every workflow-walkthrough step marked `[required · once]` must have a
-    matching enforcement line in its phase's [workflow-state:*] block. The
-    breadcrumb is the only per-turn channel; if a mandatory step isn't
-    mentioned there, the AI silently skips it (Phase 1 planning gate
-    skip and Phase 3.4 commit skip both manifested via this gap).
+    matching enforcement line in every [workflow-state:*] block of its
+    phase that is in the step's tier scope. `[required · once]` alone means
+    every tier; `[required · once; standard / full]` means the standard,
+    full and parallel blocks. The breadcrumb is the only per-turn channel;
+    if a mandatory step isn't mentioned there, the AI silently skips it
+    (Phase 1 planning gate skip and Phase 3.4 commit skip both manifested
+    via this gap).
+
+  PARSER TRAP: a line that ENDS with a `[workflow-state:X]` token opens a
+  block for the parser and swallows the real one. Never end a prose or
+  comment line with such a token; write "the no_task block" instead.
 
   TAG ↔ PHASE scoping:
-    [workflow-state:no_task]      → no active task; before Phase 1
+    [workflow-state:no_task]      → no active task; quick path or tier proposal before Phase 1
     [workflow-state:task_error]   → active task record is unreadable; repair it before continuing
-    [workflow-state:planning]     → all of Phase 1 (status='planning')
-    [workflow-state:in_progress]  → Phase 2 + Phase 2F + Phase 3.2-3.4, serial execution
-                                    (status stays 'in_progress' from
+    [workflow-state:planning]     → all of Phase 1 (status='planning'), every tier
+    [workflow-state:in_progress-light]    → Phase 2 + 2F.5 + Phase 3.2-3.4, tier light
+    [workflow-state:in_progress-standard] → Phase 2 + Phase 2F + Phase 3.2-3.4, tier standard
+    [workflow-state:in_progress-full]     → Phase 2 + Phase 2F + Phase 3.2-3.4, tier full, serial
+    [workflow-state:in_progress-parallel] → Phase 2P + Phase 2F + Phase 3.2-3.4, tier full with
+                                    meta.execution=parallel
+    [workflow-state:in_progress]  → fallback only, shown when no block exists for the
+                                    task's tier (status stays 'in_progress' from
                                     task.py start until task.py archive)
-    [workflow-state:in_progress-parallel] → Phase 2P + Phase 2F + Phase 3.2-3.4 when the
-                                    task has meta.execution=parallel (the hook
-                                    picks this key; if the block is missing it
-                                    falls back to in_progress)
     [workflow-state:completed]    → currently DEAD: cmd_archive flips
                                     status and moves the dir in the same
                                     call, so the resolver loses the
@@ -208,27 +227,42 @@ It runs `codeg-cli run -A <assistant>` against the running codeg app (`--url <se
 ## Phase Index
 
 ```
-Phase 1:  Plan    → classify, consent, explore + clarify, (complex) architect, write planning artifacts
-Phase 2:  Execute → implement, then the review → [verify] → fix loop (serial), or 2P for parallel worktrees
-Phase 2F: Polish  → (complex) simplify, final review → verify → sweep, user decides, fix, quality checks
+Phase 1:  Plan    → classify (quick / light / standard / full), consent, explore as needed, one question list, design, planning artifacts
+Phase 2:  Execute → implement, then one gate review → fix (serial), or 2P for parallel worktrees (full only)
+Phase 2F: Polish  → standard / full: simplify, one final review → verify → fix; every task: quality checks
 Phase 3:  Finish  → update spec, commit, and wrap up
 ```
 
+### Tiers
+
+The tier decides which roles take part and how long the review chain is. Explore is not a tier lever: read a few files yourself when that answers the question, otherwise dispatch `explore` roles, one aspect each, in parallel, as many as the task needs.
+
+| | quick | light | standard | full |
+|---|---|---|---|---|
+| Fits | at most 2 files, cause known, no design choice | one deliverable, a few files, existing patterns suffice | a feature or refactor across files or layers that needs a written design | several deliverables, contested design, risky migration, or parallel worktrees |
+| Task + artifacts | none | `prd.md` | `prd.md` + `design.md` (you write it; one `architect` only if unfamiliar) | `prd.md` + `design.md` + `implement.md` (3 `architect` roles, the user picks) |
+| Roles | none (you edit) | implement, review, fix | + simplify, verify | + architect, review `Mode: sweep` |
+| Execute (2.2) | edit, run the checks | review self-check (all angles) ⇄ fix, at most 2 rounds | review self-check (`A, B, Acceptance`) ⇄ fix, at most 1 round | same as standard |
+| Polish (2F) | none | 2F.5 only | simplify → 3 × review candidates → verify → fix ⇄ review (at most 2) | simplify → 5 × review candidates → verify → sweep → verify → fix ⇄ review (at most 2) |
+| Finish | one commit, ask once | 3.3 → 3.4 → `/arbor:finish-work` | same | same |
+
+The tier lives in `task.json.meta.tier` (`task.py create --tier <t>`, later `task.py set-meta <task> tier <t>`). Without it the tier is inferred from the artifacts: `implement.md` → full, `design.md` → standard, otherwise light. `task.py start` refuses a planning task whose tier artifacts are missing, and `meta.execution=parallel` requires tier full.
+
 ### Request Triage
 
-- Simple conversation or small task: ask only whether this turn should create an Arbor task. If the user says no, skip Arbor for this session.
-- Complex task: ask whether you may create an Arbor task and enter planning. If the user says no, do not do broad inline implementation; explain, clarify scope, or suggest a smaller split.
-- User approval to create a task is not approval to start implementation. Planning still happens first.
+- Classify first. **Quick** (at most 2 files, cause known, no design choice): do it in this session without a task: read, edit, run the project's checks, propose one commit message and ask once. Say in one line that no Arbor task was created (`/arbor:workflow` creates one). Quick work skips the spec update and the journal. Unsure whether it is quick: treat it as light.
+- Anything larger: in one message propose a tier (light / standard / full) with a one-line reason and ask whether to create a task. The user answers ok / light / standard / full / no. `/arbor:workflow <target> [--tier <t>] <request>` already counts as consent.
+- User approval to create a task is not approval to start implementation. Planning still happens first; approval of the final planning summary (1.4) is the only start gate.
+- If the user declines a task for non-quick work, do not do broad inline implementation; explain, clarify scope, or suggest a smaller split. Plain questions need no task.
 
 ### Planning Artifacts
 
 - `prd.md` — requirements, constraints, and acceptance criteria. Do not put technical design or execution checklists here.
-- `design.md` — technical design for complex tasks: boundaries, contracts, data flow, tradeoffs, compatibility, rollout / rollback shape.
-- `implement.md` — execution plan for complex tasks: ordered checklist, validation commands, review gates, and rollback points.
-- `implement.jsonl` / `check.jsonl` — spec and research manifests for the dispatched assistants (`implement.jsonl` feeds architect and implement; `check.jsonl` feeds review, verify, fix, and simplify). They do not replace `implement.md`.
+- `design.md` — technical design (standard and full): boundaries, contracts, data flow, tradeoffs, compatibility, rollout / rollback shape.
+- `implement.md` — execution plan (full): ordered checklist, validation commands, file ownership and waves, rollback points.
+- `implement.jsonl` / `check.jsonl` — spec and research manifests for the dispatched assistants (`implement.jsonl` feeds architect and implement; `check.jsonl` feeds review, verify, fix, and simplify). `task.py seed-context` fills them; they do not replace `implement.md`.
 - `research/` — explore findings (`<topic>.md`) and architect blueprints (`design-<perspective>.md`).
-- Lightweight tasks may be PRD-only. Complex tasks must have `prd.md`, `design.md`, and `implement.md` before `task.py start`.
-- **Tier = artifacts.** A task without `design.md` is **lightweight**; a task with `design.md` is **complex**. The tier decides how much of the explore / architect / review machinery runs (see 1.2, 2.2, Phase 2F).
+- Required before `task.py start`: light = `prd.md`; standard = `prd.md` + `design.md`; full = `prd.md` + `design.md` + `implement.md`.
 
 ### Parent / Child Task Trees
 
@@ -238,14 +272,15 @@ Use child tasks for deliverables that can be planned, implemented, checked, and 
 
 Create new children with `task.py create "<title>" --description "<one-line summary>" --slug <name> --parent <parent-dir>`. Link existing tasks with `task.py add-subtask <parent> <child>`, and unlink mistakes with `task.py remove-subtask <parent> <child>`.
 
-A parent task whose children run concurrently in separate git worktrees uses the parallel execution mode (step 1.4, Phase 2P).
+A parent task whose children run concurrently in separate git worktrees uses the parallel execution mode (tier full; step 1.4, Phase 2P).
 
 <!-- Per-turn breadcrumb: shown when there is no active task (before Phase 1) -->
 
 [workflow-state:no_task]
-No active task. First classify the current turn and ask for task-creation consent before creating any Arbor task.
-Simple conversation / small task: ask only whether this turn should create an Arbor task. If the user says no, skip Arbor for this session.
-Complex task: ask the user if you can create an Arbor task and enter the planning phase. If the user says no, explain, clarify scope, or suggest a smaller split.
+No active task. Classify the request before acting (Phase Index, Tiers).
+Quick (at most 2 files, cause known, no design choice): do it here without a task: read, edit, run the project's checks, propose one commit message and ask once. Say in one line that no Arbor task was created (`/arbor:workflow` creates one). Unsure whether it is quick: treat it as light.
+Anything larger: in one message propose a tier (light / standard / full) with a one-line reason and ask whether to create a task; the user answers ok / light / standard / full / no. On yes: `task.py create "<title>" --description "<summary>" --slug <name> --tier <tier>` (1.0), then `arbor-brainstorm`. Task-creation consent is not implementation consent; planning comes first.
+If the user declines a task for non-quick work, do not implement broadly inline: explain, clarify scope, or suggest a smaller split. Plain questions need no task.
 [/workflow-state:no_task]
 
 <!-- Per-turn breadcrumb: shown when the active task record cannot be read. -->
@@ -257,62 +292,90 @@ Preserve existing task fields and artifacts. If the correct status cannot be det
 [/workflow-state:task_error]
 
 ### Phase 1: Plan
-- 1.0 Create task `[required · once]` (only after task-creation consent)
-- 1.1 Requirement exploration `[required · repeatable]` (`prd.md`; complex tasks also need `design.md` + `implement.md`)
-- 1.2 Explore & design `[repeatable]` (explore roles in parallel → read essential files → clarify with the user; complex: architect roles in parallel → user picks → `design.md` + `implement.md`)
-- 1.3 Configure context `[required · once]` (curate `implement.jsonl` + `check.jsonl`)
-- 1.4 Activate task `[required · once]` (choose serial or parallel execution mode, review gate, then `task.py start`; status → in_progress)
+- 1.0 Create task `[required · once]` (only after task-creation consent; pass `--tier <t>`)
+- 1.1 Requirement exploration `[required · repeatable]` (`prd.md`; depth scaled by tier)
+- 1.2 Explore & design `[repeatable]` (explore as needed → one question list → standard: write `design.md`; full: 3 architect roles → user picks → `design.md` + `implement.md`)
+- 1.3 Configure context `[required · once]` (`task.py seed-context`, then adjust `implement.jsonl` + `check.jsonl`)
+- 1.4 Activate task `[required · once]` (final planning summary → user approval → `task.py start`; status → in_progress)
 - 1.5 Completion criteria
 
-<!-- Per-turn breadcrumb: shown throughout Phase 1 (status='planning') -->
+<!-- Per-turn breadcrumb: shown throughout Phase 1 (status='planning'), every tier -->
 
 [workflow-state:planning]
-Load `arbor-brainstorm`; stay in planning.
-Lightweight: `prd.md` can be enough. Complex: finish `prd.md`, `design.md`, and `implement.md`; ask for review before `task.py start` (1.4).
-Explore & design (1.2): dispatch 2-3 `explore` roles in parallel, one aspect each (required for complex tasks), read every essential file they return yourself, then put the open technical questions to the user as one list and wait. Complex: dispatch 3 `architect` roles in parallel (minimal-change / clean-architecture / pragmatic), present the trade-offs and your recommendation, and after the user picks, write `design.md` + `implement.md` (file ownership, waves).
-Curate `implement.jsonl` and `check.jsonl` (1.3, required): the dispatch hook inlines exactly those files into the codeg assistants.
-Multi-deliverable scope: consider a parent task plus independently verifiable child tasks (`task.py create --parent`); dependencies must be written in child artifacts, not implied by tree position.
-Decide the execution mode in 1.4: serial (default) or parallel (`task.py set-meta <task> execution parallel` plus child tasks), before `task.py start`.
+Load `arbor-brainstorm`; stay in planning. The tier is in the header; pin or change it with `task.py set-meta <task> tier <tier>`.
+Artifacts `task.py start` requires: light = `prd.md`; standard = `prd.md` + `design.md`; full = `prd.md` + `design.md` + `implement.md`. Light: goal, scope and testable acceptance criteria; ask only when a product decision is truly open.
+Explore & design (1.2): read a few files yourself when that answers it; otherwise dispatch `explore` roles, one aspect each, in parallel (any tier, count by need); from their essential-file lists read only the 2-3 files you need to write the next brief (their `research/*.md` is injected into architect and implement); then ask all open questions as ONE numbered list (recommendation + trade-off each) and wait. Standard: write `design.md` yourself (one `architect` with `Perspective: pragmatic` only if unfamiliar or asked). Full: 3 `architect` roles (minimal-change / clean-architecture / pragmatic), present trade-offs and your recommendation, and after the user picks write `design.md` + `implement.md` (file ownership, waves).
+Context (1.3, required): `task.py seed-context <task>` fills `implement.jsonl` + `check.jsonl` (spec indexes, guides, research); then add or drop entries per side.
+Multi-deliverable scope: consider a parent task plus independently verifiable child tasks (`task.py create --parent`); dependencies must be written in child artifacts, not implied by tree position. Parallel worktrees (`task.py set-meta <task> execution parallel`) only for full tasks whose `implement.md` has waves.
+Activate (1.4): end the final planning summary with the start question; run `task.py start` only after a later user message approves it.
 [/workflow-state:planning]
 
 ### Phase 2: Execute
 - 2.1 Implement `[required · repeatable]` (snapshot S0, then dispatch the implement role)
-- 2.2 Review loop `[required · repeatable]` (review → [verify] → fix, re-review of the fix delta only, at most 2 rounds)
+- 2.2 Gate review `[required · repeatable]` (one review `Mode: self-check` on the diff since S0, then fix; re-review the fix delta only; light at most 2 rounds, standard / full at most 1)
 - 2.3 Rollback `[on demand]`
-- Phase 2P replaces 2.1–2.2 when `meta.execution=parallel`: 2P.0 Split · 2P.1 Worktrees · 2P.2 Implement · 2P.3 Review loop + commit · 2P.4 Merge · 2P.5 Cleanup
+- Phase 2P replaces 2.1–2.2 when `meta.execution=parallel` (tier full): 2P.0 Split · 2P.1 Worktrees · 2P.2 Implement · 2P.3 Gate review + commit · 2P.4 Merge · 2P.5 Cleanup
 
-### Phase 2F: Polish (complex tasks; serial and parallel)
-- 2F.1 Simplify `[required · once]` (simplify the whole diff, review its delta for unchanged behavior)
-- 2F.2 Final review `[required · once]` (5 × review candidates → dedup → verify → sweep → verify)
-- 2F.3 User decision `[on demand]` (only when findings survive)
-- 2F.4 Fix `[on demand]` (fix the chosen findings, review the fix delta)
-- 2F.5 Quality checks `[required · once]` (run every affected package's Quality Check commands yourself; lightweight tasks run this step too)
+### Phase 2F: Polish (standard and full; light runs only 2F.5)
+- 2F.1 Simplify `[required · once; standard / full]` (simplify the whole diff; no separate review; run the checks)
+- 2F.2 Final review `[required · once; standard / full]` (standard: 3 × review candidates → dedup → verify; full: 5 × plus sweep → verify)
+- 2F.3 Decide `[on demand]` (CONFIRMED findings are fixed without asking; ask once only about PLAUSIBLE ones)
+- 2F.4 Fix `[on demand]` (fix the findings, review the fix delta, at most 2 rounds)
+- 2F.5 Quality checks `[required · once]` (run every affected package's Quality Check commands yourself; every tier)
 
-<!-- Per-turn breadcrumb: shown while status='in_progress' (serial execution).
-     Scope: all of Phase 2 + Phase 2F + Phase 3.2-3.4 (status stays
-     'in_progress' from task.py start until task.py archive; only archive
-     flips it). The body therefore must cover every required step from
-     implementation through commit, including Phase 3.3 spec update and
-     Phase 3.4 commit. -->
+<!-- Per-turn breadcrumb: fallback only. Shown while status='in_progress' when no
+     block exists for the task's tier (for example a customised workflow.md that
+     predates tiers). The tier blocks below are the normal path. -->
 
 [workflow-state:in_progress]
-Roles run as codeg assistants, never via the built-in Agent/Task tool: `delegate_to_agent(assistant_id=<from the <dispatch> context or dispatch.py resolve>, working_dir=<repo root>, task=<header + brief>)` and `get_delegation_status`; without those tools `python3 ./.arbor/scripts/dispatch.py run --role <role> --wait`. The task text starts with `Active task: <absolute task dir>` then `Role: <role>` (review adds `Mode:`; review/verify/fix/simplify add `Diff:`).
-Tier: no `design.md` = lightweight; `design.md` present = complex.
-Flow: `dispatch.py snapshot` -> S0, implement (2.1) -> review loop (2.2): `dispatch.py diff S0` -> lightweight, or diff under 300 changed lines: 1 review `Mode: self-check`; complex with 300+: 3 reviews `Mode: candidates` (A+D / B+Conventions / C+E) -> dedup -> verify -> fix -> review self-check of the fix delta only; at most 2 rounds, then stop and report to the user.
-Complex: polish (2F): simplify the whole diff and review its delta (2F.1) -> final review: 5 reviews `Mode: candidates` (A / B / C / D+E / Conventions+Acceptance) -> dedup -> verify -> 1 review `Mode: sweep` -> verify (2F.2) -> only if findings survive, ask the user once (2F.3) -> fix + review the fix delta (2F.4). Every task: run each affected package's Quality Check commands yourself (2F.5).
-Then `arbor-update-spec` (3.3, required) -> batched commit (3.4, required; no amend, no push) -> `/arbor:finish-work`.
+No block for this task's tier was found. Set the tier (`task.py set-meta <task> tier light|standard|full`) and follow that tier's Phase 2 / 2F steps in `.arbor/workflow.md`; every tier runs the 2F.5 quality checks, `arbor-update-spec` (3.3, required) and a batched commit (3.4, required; no amend, no push) before `/arbor:finish-work`.
 Sub-agent self-exemption: if you are already a dispatched sub-agent (your prompt starts with `Active task:` / `Role:`), perform that role directly; do not dispatch, commit, or call task.py start/current/finish. Dispatch is main session only.
 [/workflow-state:in_progress]
 
-<!-- Per-turn breadcrumb: shown while status='in_progress' and the task has
-     meta.execution=parallel. Same scope as [workflow-state:in_progress] but
-     for Phase 2P. -->
+<!-- Per-turn breadcrumb: shown while status='in_progress' for tier light.
+     Scope: Phase 2 + 2F.5 + Phase 3.2-3.4 (status stays 'in_progress' from
+     task.py start until task.py archive; only archive flips it). The body
+     must cover every required step from implementation through commit. -->
+
+[workflow-state:in_progress-light]
+Tier light. Roles run as codeg assistants only: `delegate_to_agent(assistant_id=<from the <dispatch> context or dispatch.py resolve>, working_dir=<repo root>, task=<header + brief>)` + `get_delegation_status`, or `python3 ./.arbor/scripts/dispatch.py run --role <role> --wait`; the task text starts with `Active task: <absolute task dir>` then `Role: <role>` (review adds `Mode:`; review/verify/fix/simplify add `Diff:`); never the built-in Agent/Task tool.
+Flow: `dispatch.py snapshot` -> S0, implement (2.1) -> gate review (2.2): `dispatch.py diff $S0 --name gate`, 1 review `Mode: self-check` with `Angles: A, B, C, D, E, Conventions, Acceptance, Cleanup-lite` (the only review for light) -> fix -> review self-check of the fix delta; at most 2 rounds, then stop and report to the user.
+No simplify and no final review: run each affected package's Quality Check commands yourself (2F.5).
+Then `arbor-update-spec` (3.3, required) -> batched commit (3.4, required; no amend, no push) -> `/arbor:finish-work`.
+Sub-agent self-exemption: if you are already a dispatched sub-agent (your prompt starts with `Active task:` / `Role:`), perform that role directly; do not dispatch, commit, or call task.py start/current/finish. Dispatch is main session only.
+[/workflow-state:in_progress-light]
+
+<!-- Per-turn breadcrumb: shown while status='in_progress' for tier standard.
+     Scope: Phase 2 + Phase 2F + Phase 3.2-3.4. -->
+
+[workflow-state:in_progress-standard]
+Tier standard. Roles run as codeg assistants only: `delegate_to_agent(assistant_id=<from the <dispatch> context or dispatch.py resolve>, working_dir=<repo root>, task=<header + brief>)` + `get_delegation_status`, or `python3 ./.arbor/scripts/dispatch.py run --role <role> --wait`; the task text starts with `Active task: <absolute task dir>` then `Role: <role>` (review adds `Mode:`; review/verify/fix/simplify add `Diff:`); never the built-in Agent/Task tool.
+Flow: `dispatch.py snapshot` -> S0, implement (2.1) -> gate review (2.2): `dispatch.py diff $S0 --name gate`, 1 review `Mode: self-check` with `Angles: A, B, Acceptance` -> fix -> re-review the fix delta; at most 1 round.
+Polish (2F): simplify on `dispatch.py diff $S0 --name whole`, no separate review; run the project checks, red -> fix (2F.1) -> final review on `dispatch.py diff $S0 --name final`: 3 reviews `Mode: candidates` (A+D / B+Conventions / C+E+Acceptance) -> dedup -> verify, at most 8 candidates per run, in parallel (2F.2) -> CONFIRMED findings are fixed without asking; ask the user once only about PLAUSIBLE ones (2F.3) -> fix + review self-check of the fix delta, at most 2 rounds (2F.4) -> run each affected package's Quality Check commands yourself (2F.5).
+Then `arbor-update-spec` (3.3, required) -> batched commit (3.4, required; no amend, no push) -> `/arbor:finish-work`.
+Sub-agent self-exemption: if you are already a dispatched sub-agent (your prompt starts with `Active task:` / `Role:`), perform that role directly; do not dispatch, commit, or call task.py start/current/finish. Dispatch is main session only.
+[/workflow-state:in_progress-standard]
+
+<!-- Per-turn breadcrumb: shown while status='in_progress' for tier full, serial
+     execution. Scope: Phase 2 + Phase 2F + Phase 3.2-3.4. -->
+
+[workflow-state:in_progress-full]
+Tier full. Roles run as codeg assistants only: `delegate_to_agent(assistant_id=<from the <dispatch> context or dispatch.py resolve>, working_dir=<repo root>, task=<header + brief>)` + `get_delegation_status`, or `python3 ./.arbor/scripts/dispatch.py run --role <role> --wait`; the task text starts with `Active task: <absolute task dir>` then `Role: <role>` (review adds `Mode:`; review/verify/fix/simplify add `Diff:`); never the built-in Agent/Task tool.
+Flow: as standard for 2.1 and 2.2: `dispatch.py snapshot` -> S0, implement, gate review `Mode: self-check` with `Angles: A, B, Acceptance` on `dispatch.py diff $S0 --name gate`, at most 1 fix round.
+Polish (2F): simplify the whole diff, no separate review; project checks, red -> fix (2F.1) -> final review on `dispatch.py diff $S0 --name final`: 5 reviews `Mode: candidates` (A / B / C / D+E / Conventions+Acceptance) -> dedup -> verify (at most 8 per run, in parallel) -> 1 review `Mode: sweep` with the verified list -> verify its new candidates (2F.2) -> CONFIRMED: fix without asking; ask once only about PLAUSIBLE (2F.3) -> fix + review self-check of the fix delta, at most 2 rounds (2F.4) -> run each affected package's Quality Check commands yourself (2F.5).
+Then `arbor-update-spec` (3.3, required) -> batched commit (3.4, required; no amend, no push) -> `/arbor:finish-work`.
+Sub-agent self-exemption: if you are already a dispatched sub-agent (your prompt starts with `Active task:` / `Role:`), perform that role directly; do not dispatch, commit, or call task.py start/current/finish. Dispatch is main session only.
+[/workflow-state:in_progress-full]
+
+<!-- Per-turn breadcrumb: shown while status='in_progress', tier full, and the
+     task has meta.execution=parallel. Same scope as in_progress-full but for
+     Phase 2P. -->
 
 [workflow-state:in_progress-parallel]
-Parallel execution is enabled for this task (meta.execution=parallel). Same dispatch rules as serial (codeg assistants only, header `Active task:` + `Role:`, never the built-in Agent/Task tool), plus Phase 2P:
+Tier full, parallel execution (meta.execution=parallel). Same dispatch rules as serial (codeg assistants only, header `Active task:` + `Role:`, never the built-in Agent/Task tool), plus Phase 2P:
 Each child task gets its own worktree (`git worktree add <WT_ROOT>/<parent>-<child> -b wip/<parent>/<child> <task-branch>`, 2P.1). Dispatch up to dispatch.max_parallel implement roles at once (2P.2) with `working_dir=<worktree>` and header `Active task: <absolute child dir in the MAIN checkout>`, `Role: implement`, `Workspace: <worktree>`.
-Run the 2.2 review loop in every worktree, all children in the same batch (diffs via `dispatch.py diff <task-branch> -C <worktree>`), and commit each green child yourself in its worktree (2P.3); merge serially with `git merge --no-ff` into the task branch and run the checks after each merge (2P.4); remove the worktrees (2P.5).
-Then Phase 2F on the merged tree for the parent task (diff base = the task branch's starting commit), then `arbor-update-spec` (3.3, required) -> batched commit (3.4, required; no amend, no push) -> `/arbor:finish-work` (archives parent and children).
+Run the 2.2 gate review in every worktree, all children in the same batch (1 review `Mode: self-check`, `Angles: A, B, Acceptance`, diffs via `dispatch.py diff <task-branch> -C <worktree>`, at most 1 fix round), and commit each green child yourself in its worktree (2P.3); merge serially with `git merge --no-ff` into the task branch and run the checks after each merge (2P.4); remove the worktrees (2P.5).
+Then the full-tier Phase 2F on the merged tree for the parent task (diff base = the task branch's starting commit): simplify (2F.1) -> 5 candidates + sweep -> verify (2F.2) -> ask only about PLAUSIBLE (2F.3) -> fix (2F.4) -> Quality Check commands (2F.5). Then `arbor-update-spec` (3.3, required) -> batched commit (3.4, required; no amend, no push) -> `/arbor:finish-work` (archives parent and children).
 Sub-agent self-exemption: if you are already a dispatched sub-agent, perform your role in your worktree only; never merge, commit, or dispatch.
 [/workflow-state:in_progress-parallel]
 
@@ -342,24 +405,24 @@ Code committed. Run `/arbor:finish-work`; if dirty, return to Phase 3.4 first.
 2. Run steps in order inside each Phase; `[required]` steps can't be skipped
 3. Phases can roll back (e.g., Execute reveals a prd defect → return to Plan to fix, then re-enter Execute)
 4. Steps tagged `[once]` are skipped if the output already exists; don't re-run
-5. Artifact presence informs the next step; missing `design.md` / `implement.md` is valid for lightweight tasks and incomplete planning for complex tasks.
+5. The tier decides which artifacts and steps are required; a missing `design.md` / `implement.md` is valid for light and incomplete planning for standard / full.
 
 ### Active Task Routing
 
 When a user request matches one of these intents inside an active task, route first, then load the detailed phase step if needed.
 
 - Planning or unclear requirements -> `arbor-brainstorm`.
-- Questions about existing code or external libraries -> dispatch `explore` (1.2), any phase.
-- `in_progress` implementation / review -> dispatch implement, then the 2.2 review loop (codeg `delegate_to_agent`, or `dispatch.py run`); with `meta.execution=parallel` follow Phase 2P; complex tasks then run Phase 2F.
+- Questions about existing code or external libraries -> read the files yourself, or dispatch `explore` (1.2), any phase.
+- `in_progress` implementation / review -> dispatch implement, then the 2.2 gate review (codeg `delegate_to_agent`, or `dispatch.py run`); standard / full continue with Phase 2F; with `meta.execution=parallel` (tier full) follow Phase 2P.
 - Repeated debugging -> `arbor-break-loop`; spec updates -> `arbor-update-spec`.
 
 ### Guardrails
 
-- Task creation approval is not implementation approval; implementation waits for `task.py start` after artifact review.
-- PRD-only is valid for lightweight tasks; complex tasks need `design.md` + `implement.md`.
+- Task creation approval is not implementation approval; implementation waits for `task.py start` after the final planning summary is approved.
+- Required artifacts follow the tier: light = `prd.md`; standard adds `design.md`; full adds `implement.md`. `task.py start` checks them.
 - Planning must be persisted to task artifacts; checks must run before reporting completion.
-- Never perform the explore / architect / implement / review / verify / fix / simplify roles in the main session or through the built-in Agent/Task tool; dispatch them (see Dispatch).
-- The review loop stops after 2 rounds; report what remains instead of re-dispatching indefinitely.
+- Inside an Arbor task, never perform the explore / architect / implement / review / verify / fix / simplify roles in the main session or through the built-in Agent/Task tool; dispatch them (see Dispatch). The no-task quick path is the only exception.
+- Review ⇄ fix loops stop at their round limit (2.2: light 2, standard / full 1; 2F.4: 2); report what remains instead of re-dispatching indefinitely.
 
 ### Loading Step Detail
 
@@ -374,21 +437,23 @@ python3 ./.arbor/scripts/get_context.py --mode phase --step <step>
 
 ## Phase 1: Plan
 
-Goal: classify the request, get task-creation consent when a task is needed, and produce the planning artifacts required before implementation.
+Goal: classify the request, pick the tier, get task-creation consent when a task is needed, and produce the planning artifacts the tier requires before implementation.
 
 #### 1.0 Create task `[required · once]`
 
-Create the task directory only after task-creation consent. The command sets status to `planning`, writes `task.json`, creates a default `prd.md`, and auto-targets the new task when session identity is available:
+Create the task directory only after task-creation consent (a `/arbor:workflow <target> <request>` call counts). The command sets status to `planning`, writes `task.json`, creates a default `prd.md`, and auto-targets the new task when session identity is available:
 
 ```bash
-python3 ./.arbor/scripts/task.py create "<task title>" --description "<one-line summary>" --slug <name>
+python3 ./.arbor/scripts/task.py create "<task title>" --description "<one-line summary>" --slug <name> --tier <light|standard|full>
 ```
 
 Both the title and `--description` must be non-empty — `create` rejects blanks, and a record with either one empty is refused at archive. `--slug` is the human-readable name only. Do **not** include the `MM-DD-` date prefix; `task.py create` adds that prefix automatically.
 
+`--tier` pins the tier the user agreed to (`--meta tier=<t>` is the same thing). Without it the tier is inferred from the artifacts as planning progresses (`design.md` → standard, `implement.md` → full); change it any time with `python3 ./.arbor/scripts/task.py set-meta <task-dir> tier <t>`. The per-turn breadcrumb header shows the current tier.
+
 For task trees, create the parent task first and then create each child with `--parent <parent-dir>`. Do not start the parent just because children exist; start the child that owns the next independently verifiable deliverable.
 
-After this command succeeds, the per-turn breadcrumb auto-switches to `[workflow-state:planning]`, telling the AI to stay in planning.
+After this command succeeds, the per-turn breadcrumb auto-switches to the planning block, telling the AI to stay in planning.
 
 Run only `create` here — do not also run `start`. `start` flips status to `in_progress`, which switches the breadcrumb to the implementation phase before planning artifacts are reviewed. Save `start` for step 1.4.
 
@@ -396,16 +461,18 @@ Skip when `python3 ./.arbor/scripts/task.py current --source` already points to 
 
 #### 1.1 Requirement exploration `[required · repeatable]`
 
-Load the `arbor-brainstorm` skill and explore requirements interactively with the user per the skill's guidance.
+Load the `arbor-brainstorm` skill and explore requirements with the user per the skill's guidance. The depth scales with the tier:
+
+- **Light**: write the goal, the scope boundary and testable acceptance criteria into `prd.md`. Ask only when a product decision is truly open; skip the first-principles analysis and the PRD convergence pass.
+- **Standard / full**: the full skill: evidence first, the requirement convergence gate, the PRD convergence pass, and `design.md` (+ `implement.md` for full) before implementation starts.
 
 The brainstorm skill will guide you to:
-- Ask one question at a time
-- Prefer researching over asking the user
+- Inspect the repository before asking; ask open questions as one numbered list, each with your recommendation
 - Prefer offering options over open-ended questions
 - Update `prd.md` immediately after each user answer
 - Split large scopes into a parent task plus child tasks when the deliverables can be verified independently
 - Keep `prd.md` focused on requirements and acceptance criteria
-- For complex tasks, produce `design.md` and `implement.md` before implementation starts
+- For standard and full tasks, produce `design.md` (and for full, `implement.md`) before implementation starts
 
 When considering a parent/child split:
 - Use a parent task when one request contains several independently verifiable deliverables.
@@ -418,25 +485,28 @@ Return to this step whenever requirements change and revise the relevant artifac
 
 #### 1.2 Explore & design `[repeatable]`
 
-Facts first, then questions, then design. Follows Claude Code's feature-dev flow (discover → explore → clarify → architect). Small questions you can answer by reading a few files yourself; write the finding into `{TASK_DIR}/research/` and move on.
+Facts first, then questions, then design. Follows Claude Code's feature-dev flow (discover → explore → clarify → architect), scaled by tier.
 
-**a. Explore** (required for complex tasks, optional for lightweight ones). Dispatch 2-3 **explore** roles in parallel, each on a different aspect, with thoroughness `very thorough`:
+**a. Explore** (as needed, any tier). Small questions you can answer by reading a few files yourself: do that, write the finding into `{TASK_DIR}/research/` if it matters later, and move on. Otherwise dispatch **explore** roles, one aspect each, in parallel; the task decides how many, not the tier:
 
 - Header: `Active task: <absolute task dir>` then `Role: explore`
 - Brief examples: "find features similar to <feature> and trace their implementation end to end"; "map the architecture and abstractions of <area>"; "find the test setup, UI patterns, or extension points relevant to <feature>"; "fetch <library>@<version> and document the APIs we need" (external)
 - Each writes `research/<topic>.md` and returns 5-10 **essential files**.
 
-When they return, **read every essential file yourself** before going on: the main agent needs first-hand context to write good briefs.
+When they return, read only the 2-3 files you need to write the next brief or the design. Do not re-read every essential file: `research/*.md` is injected into architect and implement by the dispatch hook, and those roles read the code themselves.
 
-**b. Clarify** (do not skip). Compare the findings with the requirements and list what is still unclear: edge cases, error handling, integration points, scope boundaries, design preferences, backward compatibility, performance. Put the questions to the user **as one list** and wait for the answers; fold them into `prd.md`. If the user says "your call", give your recommendation and get explicit confirmation.
+**b. Clarify** (do not skip). Compare the findings with the requirements and list what is still open: product intent, scope boundaries, edge cases, error handling, integration points, backward compatibility, performance, design preferences. Put every open question to the user **as one numbered list**, each with the decision needed, why it matters, your recommendation and the trade-off, and wait for the answers in one round; fold them into `prd.md`. Follow up only on new decisions the answers raise. If the user says "your call", give your recommendation and get explicit confirmation.
 
-**c. Architect** (complex tasks). Dispatch 3 **architect** roles in parallel, one perspective each:
+**c. Design**.
 
-- Header: `Active task: <absolute task dir>` then `Role: architect`
-- Brief: `Perspective: minimal-change` / `clean-architecture` / `pragmatic`, plus the clarified decisions and the essential files.
-- Each writes `research/design-<perspective>.md` with a parallel-split suggestion.
+- **Light**: nothing to write; the existing patterns are the design.
+- **Standard**: write `design.md` yourself from what you read (boundaries, contracts, data flow, trade-offs, compatibility). Dispatch one **architect** (`Perspective: pragmatic`) only when the area is unfamiliar or the user asks for a second opinion; it writes `research/design-pragmatic.md` and you fold it into `design.md`.
+- **Full**: dispatch 3 **architect** roles in parallel, one perspective each:
+  - Header: `Active task: <absolute task dir>` then `Role: architect`
+  - Brief: `Perspective: minimal-change` / `clean-architecture` / `pragmatic`, plus the clarified decisions and the essential files.
+  - Each writes `research/design-<perspective>.md` with a parallel-split suggestion.
 
-Then present to the user: a short summary of each design, the trade-offs, concrete differences, **your recommendation and why**, and the proposed split (children, owned files, interface contracts, waves). **Do not start implementation without the user's explicit choice.** Write the chosen design into `design.md` and the execution plan (ordered checklist, validation commands, file ownership, waves) into `implement.md`.
+  Then present to the user: a short summary of each design, the trade-offs, concrete differences, **your recommendation and why**, and the proposed split (children, owned files, interface contracts, waves). **Do not start implementation without the user's explicit choice.** Write the chosen design into `design.md` and the execution plan (ordered checklist, validation commands, file ownership, waves) into `implement.md`.
 
 **Research artifact conventions**:
 - One file per topic (e.g. `research/auth-library-comparison.md`); architect blueprints are `research/design-<perspective>.md`
@@ -447,44 +517,19 @@ Brainstorm (1.1) and 1.2 interleave freely. **Key principle**: research and desi
 
 #### 1.3 Configure context `[required · once]`
 
-Curate `implement.jsonl` and `check.jsonl` so the dispatched assistants get the right spec/research context (`implement.jsonl` → architect, implement; `check.jsonl` → review, verify, fix, simplify). The hook inlines exactly the files listed here; an empty manifest means the assistant runs with no spec. These files were seeded on `task create` with a single self-describing `_example` line; your job here is to fill in real entries.
-
-**Location**: `{TASK_DIR}/implement.jsonl` and `{TASK_DIR}/check.jsonl` (already exist).
-
-**Format**: one JSON object per line — `{"file": "<path>", "reason": "<why>"}`. Paths are repo-root relative.
-
-**What to put in**:
-- **Spec files** — `.arbor/spec/<package>/<layer>/index.md` and any specific guideline files (`error-handling.md`, `conventions.md`, etc.) relevant to this task
-- **Research files** — `{TASK_DIR}/research/*.md` that the assistant will need to consult
-
-**What NOT to put in**:
-- Code files (`src/**`, `packages/**/*.ts`, etc.) — those are read by the assistant during implementation, not pre-registered here
-- Files you're about to modify — same reason
-
-**Split between the two files**:
-- `implement.jsonl` → specs + research the implement role needs to write code correctly
-- `check.jsonl` → specs for the review side (quality guidelines, conventions the Conventions angle checks, same research if needed)
-
-These manifests do not replace `implement.md`. `implement.md` is the human-readable execution plan for a complex task; jsonl files only list context files to inject.
-
-**How to discover relevant specs**:
+`implement.jsonl` and `check.jsonl` tell the dispatch hook which spec and research files to inline into the assistants (`implement.jsonl` → architect, implement; `check.jsonl` → review, verify, fix, simplify). The hook inlines exactly the files listed here; an empty manifest means the assistant runs with no spec. Seed them, then adjust:
 
 ```bash
-python3 ./.arbor/scripts/get_context.py --mode packages
+python3 ./.arbor/scripts/task.py seed-context "$TASK_DIR" [--package <pkg> ...]
 ```
 
-Lists every package + its spec layers with paths. Pick the entries that match this task's domain.
+`seed-context` writes the chosen packages' spec layer `index.md` files, `.arbor/spec/guides/index.md`, and every `{TASK_DIR}/research/*.md` into **both** manifests (idempotent; the package defaults to the task's `package`). Then:
 
-**How to append entries**:
+- **Add** specific guideline files the task touches (`error-handling.md`, `conventions.md`, ...) with `python3 ./.arbor/scripts/task.py add-context "$TASK_DIR" implement|check "<path>" "<reason>"`.
+- **Drop** lines that do not apply to a side: `implement.jsonl` carries what the implement role needs to write code correctly; `check.jsonl` carries the review side (quality guidelines, conventions the Conventions angle checks).
+- **Never add** code files (`src/**`, `packages/**/*.ts`, ...) or files you are about to modify; the assistants read those themselves.
 
-Either edit the jsonl file directly in your editor, or use:
-
-```bash
-python3 ./.arbor/scripts/task.py add-context "$TASK_DIR" implement "<path>" "<reason>"
-python3 ./.arbor/scripts/task.py add-context "$TASK_DIR" check "<path>" "<reason>"
-```
-
-Delete the seed `_example` line once real entries exist (optional — it's skipped automatically by consumers).
+**Format**: one JSON object per line — `{"file": "<path>", "reason": "<why>"}`. Paths are repo-root relative. `python3 ./.arbor/scripts/get_context.py --mode packages` lists every package and its spec layers. These manifests do not replace `implement.md`.
 
 Ready gate: both `implement.jsonl` and `check.jsonl` must contain at least one real `{"file": "...", "reason": "..."}` entry before `task.py start`. The seed `_example` row alone is not ready. For a parallel parent task, curate the manifests of every child task too (children may start from a copy of the parent's).
 
@@ -492,48 +537,49 @@ Skip this step only when both files already have real curated entries.
 
 #### 1.4 Activate task `[required · once]`
 
-**Decide the execution mode first.**
+One gate. End the final planning summary (Goal, In Scope, Out of Scope, Acceptance Criteria, Key Decisions, Risks or Deferred Items, artifact status, tier) with the question whether to start. Only a later user message that explicitly approves that summary authorizes `task.py start`; task-creation consent and the original request do not.
 
-- **serial** (default): implement → review loop in the main checkout (Phase 2.1–2.2).
-- **parallel**: choose it only when the work splits into child tasks that touch disjoint files and can be verified independently (the chosen architect's parallel split is the starting point). Mark the parent, then follow Phase 2P:
+**Full tier only — decide the execution mode** before start:
+
+- **serial** (default): implement → gate review in the main checkout (Phase 2.1–2.2).
+- **parallel**: choose it only when `implement.md` splits the work into child tasks that touch disjoint files and can be verified independently (the chosen architect's parallel split is the starting point). Mark the parent, then follow Phase 2P:
 
   ```bash
   python3 ./.arbor/scripts/task.py set-meta <parent-dir> execution parallel
   ```
 
-  This stores `meta.execution = "parallel"` in the parent's `task.json`; the breadcrumb key becomes `in_progress-parallel` after `task.py start`. Child tasks are created in 2P.0 (or earlier, in planning, with `task.py create --parent`).
+  This stores `meta.execution = "parallel"` in the parent's `task.json`; the breadcrumb key becomes `in_progress-parallel` after `task.py start`. `start` refuses `execution=parallel` on a task whose tier is not full. Child tasks are created in 2P.0 (or earlier, in planning, with `task.py create --parent`).
 
-After artifact review, flip the task status to `in_progress`:
+After approval, flip the task status to `in_progress`:
 
 ```bash
 python3 ./.arbor/scripts/task.py start <task-dir>
 ```
 
-For lightweight tasks, `prd.md` can be enough. For complex tasks, `prd.md`, `design.md`, and `implement.md` must exist and be reviewed before start. `implement.jsonl` and `check.jsonl` must both have real curated entries before start. Runtime consumers tolerate missing or seed-only manifests for compatibility, but that tolerance is not a planning-ready state.
+`start` checks the tier's artifacts: light needs `prd.md`; standard needs `prd.md` + `design.md`; full needs `prd.md` + `design.md` + `implement.md`. A missing file stops the start and names it; write it or change the tier with `set-meta`. `implement.jsonl` and `check.jsonl` must both have real curated entries before start. Runtime consumers tolerate missing or seed-only manifests for compatibility, but that tolerance is not a planning-ready state.
 
-After this command succeeds, the breadcrumb auto-switches to `[workflow-state:in_progress]` (or `in_progress-parallel`), and the rest of Phase 2 / 3 follows.
+After this command succeeds, the breadcrumb auto-switches to the tier's `in_progress-<tier>` block (or `in_progress-parallel`), and the rest of Phase 2 / 2F / 3 follows.
 
 If `task.py start` errors with a session-identity message (no context key from hook input or `ARBOR_CONTEXT_ID`), follow the hint in the error to set up session identity, then retry.
 
 #### 1.5 Completion criteria
 
-| Condition | Required |
-|------|:---:|
-| `prd.md` exists | ✅ |
-| User confirms task should enter implementation | ✅ |
-| `task.py start` has been run (status = in_progress) | ✅ |
-| `research/` has explore findings (complex tasks) | ✅ |
-| User chose one architect design (complex tasks) | ✅ |
-| `design.md` exists (complex tasks) | ✅ |
-| `implement.md` exists (complex tasks) | ✅ |
-| `implement.jsonl` and `check.jsonl` each contain at least one real curated entry (seed row does not count) | ✅ |
-| Execution mode chosen; `meta.execution=parallel` set when parallel | ✅ |
+| Condition | light | standard | full |
+|------|:---:|:---:|:---:|
+| `prd.md` exists with testable acceptance criteria | ✅ | ✅ | ✅ |
+| Open questions were put to the user as one list and answered | ✅ | ✅ | ✅ |
+| User approved the final planning summary in a later message | ✅ | ✅ | ✅ |
+| `design.md` exists | — | ✅ | ✅ |
+| User chose one architect design; `implement.md` exists (ownership, waves) | — | — | ✅ |
+| `implement.jsonl` and `check.jsonl` each contain at least one real curated entry (seed row does not count) | ✅ | ✅ | ✅ |
+| Execution mode chosen; `meta.execution=parallel` set when parallel | — | — | ✅ |
+| `task.py start` has been run (status = in_progress) | ✅ | ✅ | ✅ |
 
 ---
 
 ## Phase 2: Execute
 
-Goal: turn reviewed planning artifacts into code whose review loop comes back clean. Dispatch mechanics (header protocol, the two paths, snapshots, target selection) are in the Dispatch subsection of the Arbor System section. Serial mode uses 2.1–2.3 below; parallel mode (`meta.execution=parallel`) uses Phase 2P instead. Complex tasks continue with Phase 2F afterwards.
+Goal: turn reviewed planning artifacts into code that passes one gate review. Dispatch mechanics (header protocol, the two paths, snapshots, target selection) are in the Dispatch subsection of the Arbor System section. Serial mode uses 2.1–2.3 below; parallel mode (`meta.execution=parallel`, full tier) uses Phase 2P instead. Standard and full tasks continue with Phase 2F afterwards; light tasks go straight to 2F.5.
 
 #### 2.1 Implement `[required · repeatable]`
 
@@ -550,21 +596,18 @@ Role: implement
 - **Dispatch prompt guard**: the assistant's own instructions already say it is the `implement` role and must not dispatch; keep the brief free of instructions to delegate or to spawn another role.
 - On completion, read the report (status, files modified, verification, deviations) and skim `git diff --stat`. The assistant does not commit. Partial or Blocked: add the missing information and re-dispatch, or return to Phase 1.
 
-#### 2.2 Review loop `[required · repeatable]`
+#### 2.2 Gate review `[required · repeatable]`
 
-Follows Claude Code's `/code-review`: finders surface candidates, an independent verifier filters them when finders do not self-filter, a fixer applies them.
+One self-checking review of the implementation, then a short fix loop. For light tasks this is the only review; for standard and full it is a gate (is the direction right, is anything obviously broken, are the acceptance criteria met) before the final review in Phase 2F.
 
-1. **Scope**: `python3 ./.arbor/scripts/dispatch.py diff $S0 --name r1` writes the diff and prints its path; stderr shows the changed-line count.
-2. **Find**:
-   - Lightweight task, or complex task with under 300 changed lines: one **review** with `Mode: self-check` and `Diff: <path>`. Lightweight briefs add `Angles: A, B, C, D, E, Conventions, Acceptance, Cleanup-lite`.
-   - Complex task with 300+ changed lines: three **review** roles in parallel with `Mode: candidates`, angles `A, D` / `B, Conventions` / `C, E`.
-   - Every brief carries the task goal and the acceptance criteria.
-3. **Dedup** (candidates mode): merge all JSON findings; one entry per line or mechanism, keeping the most concrete failure scenario.
-4. **Verify** (candidates mode): dispatch **verify** with the same `Diff:` and the deduplicated candidates as JSON in the brief, at most 8 candidates per verify run, runs in parallel. Keep CONFIRMED and PLAUSIBLE.
-5. **Fix**: when findings remain, dispatch **fix** with `Diff:` and the findings JSON. Snapshot first: `F0=$(dispatch.py snapshot)`.
-6. **Re-review**: `dispatch.py diff $F0 --name r2` and one **review** `Mode: self-check` on that fix delta only. Loop fix → re-review at most **2 rounds**; still FAIL after that: stop and report to the user.
+1. **Scope**: `python3 ./.arbor/scripts/dispatch.py diff $S0 --name gate` writes the diff and prints its path; stderr shows the changed-line count.
+2. **Review**: one **review** with `Mode: self-check` and `Diff: <path>`; the brief carries the task goal and the acceptance criteria plus the angles:
+   - **Light**: `Angles: A, B, C, D, E, Conventions, Acceptance, Cleanup-lite`
+   - **Standard / full**: `Angles: A, B, Acceptance`
+3. **Fix**: when CONFIRMED or PLAUSIBLE findings remain, snapshot first (`F0=$(dispatch.py snapshot)`) and dispatch **fix** with `Diff:` and the findings JSON.
+4. **Re-review**: `dispatch.py diff $F0 --name gate-fix` and one **review** `Mode: self-check` on that fix delta only. Round limit: **light 2**, **standard / full 1**; still FAIL after that: stop and report to the user (standard / full may also carry the leftovers into 2F.2).
 
-Findings you judge invalid may stay unfixed; record them and list them in the final summary.
+Findings you judge invalid may stay unfixed; record them and list them in the final summary. Light tasks continue with 2F.5; standard and full with 2F.1.
 
 #### 2.3 Rollback `[on demand]`
 
@@ -578,7 +621,7 @@ Findings you judge invalid may stay unfixed; record them and list them in the fi
 
 ## Phase 2P: Execute (parallel variant)
 
-Applies only when the parent task has `meta.execution=parallel`. Goal: implement independent child tasks concurrently, each in its own git worktree, then merge serially. Use it instead of 2.1–2.2; Phase 2F and Phase 3 run on the parent task afterwards.
+Applies only when the parent task has `meta.execution=parallel` (full tier; `task.py start` enforces it). Goal: implement independent child tasks concurrently, each in its own git worktree, then merge serially. Use it instead of 2.1–2.2; Phase 2F and Phase 3 run on the parent task afterwards.
 
 Invariants: sub-agents never commit, merge, or touch paths outside their worktree, and never write under `.arbor/`. The `Active task:` header line is **always** the absolute path of the task directory in the MAIN checkout, even when `working_dir` is a worktree (the `.arbor/tasks` copy inside a worktree is read-only noise). Runtime state (`.arbor/.runtime`, `.arbor/.developer`) is resolved from the main checkout only.
 
@@ -590,7 +633,7 @@ Start from the chosen architect's parallel split. Write the waves and file owner
 python3 ./.arbor/scripts/task.py create "<title>" --description "<one-line summary>" --slug <name> --parent <parent-dir>
 ```
 
-Give each child its own `prd.md` and curated `implement.jsonl` / `check.jsonl` (copying the parent's is fine).
+Give each child its own `prd.md` and run `task.py seed-context <child-dir>` for its `implement.jsonl` / `check.jsonl` (copying the parent's is also fine).
 
 #### 2P.1 Worktrees `[required · repeatable]`
 
@@ -614,9 +657,9 @@ Workspace: <absolute worktree path>
 
 with `working_dir=<worktree path>`; the brief carries the child's part of the design, its owned files, and the interface contracts. Collect all `task_id`s and wait with `get_delegation_status(task_ids, wait_ms=60000)`; in a terminal use `dispatch.py run --role implement --task <child-dir> --workspace <worktree> --detach` then `dispatch.py wait`. Handle failures as in 2.3, per child.
 
-#### 2P.3 Review loop + commit `[required · repeatable]`
+#### 2P.3 Gate review + commit `[required · repeatable]`
 
-Run the 2.2 loop in every worktree, all children in the same batch: scope with `dispatch.py diff <task-branch> -C <worktree> --name <child>-r1`, `working_dir` = the worktree, `Active task` = that child, `Workspace` = its worktree. Also check that the child touched only its owned files. When a child is green, commit it yourself inside its worktree: `git -C <worktree> add -A && git -C <worktree> commit -m "<msg>"`.
+Run the 2.2 gate review in every worktree, all children in the same batch (one review `Mode: self-check`, `Angles: A, B, Acceptance`, at most 1 fix round): scope with `dispatch.py diff <task-branch> -C <worktree> --name <child>-gate`, `working_dir` = the worktree, `Active task` = that child, `Workspace` = its worktree. Also check that the child touched only its owned files. When a child is green, commit it yourself inside its worktree: `git -C <worktree> add -A && git -C <worktree> commit -m "<msg>"`.
 
 #### 2P.4 Merge `[required · repeatable]`
 
@@ -629,37 +672,40 @@ git worktree remove "$WT_ROOT/<parent>-<child>"
 git branch -d "wip/<parent>/<child>"
 ```
 
-for every merged child. Then continue with Phase 2F on the parent task (diff base = the task branch's starting commit), and Phase 3. `/arbor:finish-work` archives the parent and its children.
+for every merged child. Then continue with the full-tier Phase 2F on the parent task (diff base = the task branch's starting commit), and Phase 3. `/arbor:finish-work` archives the parent and its children.
 
 ---
 
 ## Phase 2F: Polish
 
-Goal: code that is simple, free of duplication, correct, and meets every acceptance criterion. Runs for complex tasks after Phase 2 or 2P; lightweight tasks run only 2F.5. Follows Claude Code's `/simplify` and high-effort `/code-review` (find → verify → sweep). `S0` is the snapshot from 2.1, or the task branch's starting commit after 2P.
+Goal: code that is simple, free of duplication, correct, and meets every acceptance criterion. Runs for standard and full tasks after Phase 2 or 2P; light tasks run only 2F.5. Follows Claude Code's `/simplify` and `/code-review` (find → verify → fix; full adds the sweep). `S0` is the snapshot from 2.1, or the task branch's starting commit after 2P.
 
-#### 2F.1 Simplify `[required · once]`
+#### 2F.1 Simplify `[required · once; standard / full]`
 
-`dispatch.py diff $S0 --name whole` and dispatch **simplify** with `Diff:` set to it. Snapshot before (`P0`). If it changed anything, `dispatch.py diff $P0 --name simplify` and dispatch one **review** `Mode: self-check` on that delta with the brief "confirm behavior is unchanged". Problems go back through **fix**.
+Snapshot first (`P0=$(dispatch.py snapshot)`), then `dispatch.py diff $S0 --name whole` and dispatch **simplify** with `Diff:` set to it. No separate review of its delta: the final review in 2F.2 covers the simplified diff. Run the project's lint / typecheck / tests yourself afterwards; if they go red, dispatch **fix** with `dispatch.py diff $P0 --name simplify-fix`.
 
-#### 2F.2 Final review `[required · once]`
+#### 2F.2 Final review `[required · once; standard / full]`
 
 On the whole diff (`dispatch.py diff $S0 --name final`):
 
-1. Five **review** roles in parallel, `Mode: candidates`, angles `A` / `B` / `C` / `D, E` / `Conventions, Acceptance`.
-2. Dedup, then **verify** (at most 8 candidates per run, in parallel). Keep CONFIRMED and PLAUSIBLE.
-3. One **review** `Mode: sweep` with the verified list in the brief; send its new candidates through **verify** too.
+1. **Find**, `Mode: candidates`, in parallel:
+   - **Standard**: three **review** roles, angles `A, D` / `B, Conventions` / `C, E, Acceptance`.
+   - **Full**: five **review** roles, angles `A` / `B` / `C` / `D, E` / `Conventions, Acceptance`.
+2. **Dedup**: merge all JSON findings; one entry per line or mechanism, keeping the most concrete failure scenario.
+3. **Verify**: dispatch **verify** with the same `Diff:` and the deduplicated candidates as JSON in the brief, at most 8 candidates per run, runs in parallel. Keep CONFIRMED and PLAUSIBLE.
+4. **Sweep** (full only): one **review** `Mode: sweep` with the verified list in the brief; send its new candidates through **verify** too.
 
-#### 2F.3 User decision `[on demand]`
+#### 2F.3 Decide `[on demand]`
 
-Only when findings survive: present them once, most severe first, each with your recommendation (CONFIRMED: fix now; PLAUSIBLE: your call with reasoning), and ask: fix now, fix later, or leave as is. No surviving findings: go straight to 2F.5.
+CONFIRMED findings are fixed without asking. Only when PLAUSIBLE findings survive, present them once, most severe first, each with your recommendation and reasoning, and ask: fix now, fix later, or leave as is. The CONFIRMED list is shown alongside for information. No surviving findings: go straight to 2F.5.
 
 #### 2F.4 Fix `[on demand]`
 
-Dispatch **fix** with the chosen findings, then one **review** `Mode: self-check` on the fix delta (same 2-round limit as 2.2).
+Snapshot (`F0`), dispatch **fix** with `Diff:` and the findings JSON (CONFIRMED plus the PLAUSIBLE ones the user chose), then `dispatch.py diff $F0 --name final-fix` and one **review** `Mode: self-check` on the fix delta. At most **2 rounds**; still FAIL after that: stop and report to the user.
 
 #### 2F.5 Quality checks `[required · once]`
 
-Run every affected package's spec Quality Check commands yourself (`python3 ./.arbor/scripts/get_context.py --mode packages` lists the packages and their spec indexes). Lightweight tasks run this right after 2.2. Failures go back to a fix dispatch.
+Every tier. Run every affected package's spec Quality Check commands yourself (`python3 ./.arbor/scripts/get_context.py --mode packages` lists the packages and their spec indexes). Light tasks run this right after 2.2. Failures go back to a fix dispatch.
 
 ---
 
@@ -751,25 +797,28 @@ This section is for developers who want to modify the Arbor workflow itself. All
 
 ### Changing what a step means
 
-Edit the corresponding step's walkthrough body in the Phase 1 / 2 / 3 sections above. Critical invariants:
-- No active task must triage first and ask for task-creation consent before creating an Arbor task.
-- Planning must distinguish lightweight PRD-only tasks from complex tasks that require `prd.md`, `design.md`, and `implement.md` before start.
+Edit the corresponding step's walkthrough body in the Phase 1 / 2 / 2F / 3 sections above. Critical invariants:
+- No active task must classify first: quick work is done without a task; anything larger proposes a tier and asks for task-creation consent before creating an Arbor task.
+- Planning must require the tier's artifacts before start: light = `prd.md`; standard adds `design.md`; full adds `implement.md`.
 - Every required execution path must keep the Phase 3.4 commit reminder reachable before `/arbor:finish-work`.
 
 All tag blocks live in the `## Phase Index` section above, immediately after each phase summary:
 
 | Scope | Corresponding tag |
 |---|---|
-| No active task (before Phase 1) | `[workflow-state:no_task]` (after the Phase Index ASCII art) |
+| No active task (before Phase 1) | `[workflow-state:no_task]` (after the Parent / Child section) |
 | Active task record unreadable | `[workflow-state:task_error]` (repair the existing task before continuing) |
-| All of Phase 1 (task created → ready for implementation) | `[workflow-state:planning]` (after Phase 1 summary) |
-| Phase 2 + 2F + Phase 3.2–3.4, serial (implementation + review + polish + wrap-up) | `[workflow-state:in_progress]` (after Phase 2 summary) |
-| Phase 2P + 2F + Phase 3.2–3.4, parallel (task has `meta.execution=parallel`) | `[workflow-state:in_progress-parallel]` (right after `in_progress`) |
+| All of Phase 1 (task created → ready for implementation), every tier | `[workflow-state:planning]` (after Phase 1 summary) |
+| Phase 2 + 2F.5 + Phase 3.2–3.4, tier light | `[workflow-state:in_progress-light]` (after Phase 2F summary) |
+| Phase 2 + 2F + Phase 3.2–3.4, tier standard | `[workflow-state:in_progress-standard]` |
+| Phase 2 + 2F + Phase 3.2–3.4, tier full, serial | `[workflow-state:in_progress-full]` |
+| Phase 2P + 2F + Phase 3.2–3.4, tier full with `meta.execution=parallel` | `[workflow-state:in_progress-parallel]` |
+| Fallback when no block exists for the task's tier | `[workflow-state:in_progress]` (right after the Phase 2F summary) |
 | After Phase 3.5 (archived) | `[workflow-state:completed]` (after Phase 3 summary; **currently DEAD**) |
 
 ### Breadcrumb key selection
 
-`inject-workflow-state.py` normally uses `task.json.status` as the block name. For a task whose status is `in_progress` and whose `meta.execution` is `parallel`, it uses `in_progress-parallel` instead, and falls back to `in_progress` when that block is missing.
+`inject-workflow-state.py` resolves the task's tier first: `task.json.meta.tier` when it is one of `light` / `standard` / `full`, otherwise inferred from the artifacts (`implement.md` → full, `design.md` → standard, else light; the header then says "(inferred)"). It then uses the first block that exists: `<status>-parallel` (only when the tier is full and `meta.execution` is `parallel`), then `<status>-<tier>`, then `<status>`. No `planning-<tier>` blocks ship, so planning always lands on `planning`.
 
 ### Changing the per-turn prompt text
 
