@@ -375,7 +375,9 @@ class _Budget:
     """Tracks the running total of bytes emitted into the dispatched context.
 
     Also collects diagnostics (files degraded to index lines, manifest
-    warnings) so callers can surface them without re-reading anything.
+    warnings) so callers can surface them without re-reading anything, and
+    the paths already materialized so a file reached twice (a manifest row
+    and the architect's research directory, say) is inlined and charged once.
     """
 
     def __init__(self, max_total_bytes: int) -> None:
@@ -383,6 +385,7 @@ class _Budget:
         self.used = 0
         self.degraded: list[str] = []
         self.warnings: list[str] | None = None
+        self.seen: set[str] = set()
 
     def has_room(self, size: int) -> bool:
         if self.max_total_bytes <= 0:
@@ -465,9 +468,14 @@ def _budgeted_block(
     content: str,
     reason: str,
     size_for_index: int,
-) -> str:
+) -> str | None:
     """Return an inlined ``=== header ===`` block, or degrade to an index
-    notice once the total context budget is exhausted."""
+    notice once the total context budget is exhausted. None when this prompt
+    already materialized ``plain_path`` (first occurrence wins)."""
+    key = os.path.normpath(plain_path)
+    if key in budget.seen:
+        return None
+    budget.seen.add(key)
     block = f"=== {header} ===\n{content}"
     block_bytes = len(block.encode("utf-8"))
     if not budget.has_room(block_bytes):
@@ -809,7 +817,7 @@ To get structured package info, run: `python3 ./{DIR_WORKFLOW}/scripts/get_conte
 
 def _diff_block(
     repo_root: str, diff_path: str, limits: dict[str, int], budget: _Budget
-) -> str:
+) -> str | None:
     """Inline the file named by the ``Diff:`` header (per-artifact cap)."""
     data = _read_file_bytes(repo_root, diff_path)
     if data is None:
@@ -937,7 +945,9 @@ def build_dispatch_prompt(req: DispatchRequest) -> DispatchPrompt:
                 root_str, f"{task_rel}/research", "Task research", limits, budget
             )
         if req.header.diff:
-            extra.append(_diff_block(root_str, req.header.diff, limits, budget))
+            diff_block = _diff_block(root_str, req.header.diff, limits, budget)
+            if diff_block:
+                extra.append(diff_block)
         if extra:
             context = "\n\n".join([context, *extra])
     body = build_role_prompt(req.role, req.header.body, context, mode)

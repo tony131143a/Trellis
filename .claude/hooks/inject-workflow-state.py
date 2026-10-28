@@ -114,16 +114,31 @@ def _resolve_active_task(root: Path, input_data: dict):
     return resolve_active_task(root, input_data, platform=_detect_platform(input_data))
 
 
+def _tier_label(task_dir: Path, data: dict) -> str:
+    """``"<tier>"`` when ``meta.tier`` pins it, else ``"<tier> (inferred)"``.
+
+    Uses the same ``common.tasks`` helpers as ``task.py start`` and
+    session-start, so the breadcrumb cannot disagree with the start gate.
+    ``_resolve_active_task`` has already put ``.arbor/scripts`` on sys.path.
+    """
+    from common.tasks import explicit_tier, resolve_tier  # type: ignore[import-not-found]
+
+    tier = resolve_tier(task_dir, data)
+    return tier if explicit_tier(data) is not None else f"{tier} (inferred)"
+
+
 def get_active_task(
     root: Path, input_data: dict
-) -> tuple[str, str, str, dict] | None:
+) -> tuple[str, str, str, dict, str | None] | None:
     """Return active task data, a task-record error, or no task pointer.
 
-    ``(task_id, status, source, meta)``; ``meta`` is task.json ``meta`` (empty
-    when absent or unreadable). ``(task_id, "task_error", source, {})`` is
+    ``(task_id, status, source, meta, tier)``; ``meta`` is task.json ``meta``
+    (empty when absent or unreadable) and ``tier`` is the label from
+    :func:`_tier_label`. ``(task_id, "task_error", source, {}, None)`` is
     distinct from ``None``: a session pointer can exist even when its task
     record is missing or unreadable, and that state needs a diagnostic
-    breadcrumb rather than the normal ``no_task`` prompt.
+    breadcrumb rather than the normal ``no_task`` prompt. ``task_error`` and
+    ``stale_*`` carry no tier.
     """
     active = _resolve_active_task(root, input_data)
     if not active.task_path:
@@ -133,24 +148,30 @@ def get_active_task(
     if not task_dir.is_absolute():
         task_dir = root / task_dir
     if active.stale:
-        return task_dir.name, f"stale_{active.source_type}", active.source, {}
+        return task_dir.name, f"stale_{active.source_type}", active.source, {}, None
 
     task_json = task_dir / "task.json"
     if not task_json.is_file():
-        return task_dir.name, "task_error", active.source, {}
+        return task_dir.name, "task_error", active.source, {}, None
     try:
         data = json.loads(task_json.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
-        return task_dir.name, "task_error", active.source, {}
+        return task_dir.name, "task_error", active.source, {}, None
     if not isinstance(data, dict):
-        return task_dir.name, "task_error", active.source, {}
+        return task_dir.name, "task_error", active.source, {}, None
 
     task_id = data.get("id") or task_dir.name
     status = data.get("status", "")
     if not isinstance(status, str) or not status:
-        return task_dir.name, "task_error", active.source, {}
+        return task_dir.name, "task_error", active.source, {}, None
     meta = data.get("meta")
-    return task_id, status, active.source, meta if isinstance(meta, dict) else {}
+    return (
+        task_id,
+        status,
+        active.source,
+        meta if isinstance(meta, dict) else {},
+        _tier_label(task_dir, data),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -242,19 +263,38 @@ def prompt_has_skip_keyword(prompt: str, keyword: str) -> bool:
 
 
 def resolve_breadcrumb_key(
-    status: str, task_meta: dict | None, templates: dict[str, str]
+    status: str,
+    task_meta: dict | None,
+    templates: dict[str, str],
+    tier: str | None = None,
 ) -> str:
     """Pick the workflow.md breadcrumb block for a task.
 
-    A task with ``meta.execution == "parallel"`` reads the
-    ``[workflow-state:<status>-parallel]`` block when workflow.md has one;
-    otherwise (and for every serial task) the plain status block.
+    The first key workflow.md has wins:
+
+    1. ``<status>-parallel`` — only for tier ``full`` with
+       ``meta.execution == "parallel"`` (``task.py start`` refuses parallel
+       below full);
+    2. ``<status>-<tier>``;
+    3. ``<status>``.
+
+    ``tier`` is the header label; a `` (inferred)`` suffix is ignored here.
+    Custom statuses walk the same chain.
     """
+    tier_name = tier.split(" ", 1)[0] if isinstance(tier, str) and tier else None
+    candidates: list[str] = []
     execution = task_meta.get("execution") if isinstance(task_meta, dict) else None
-    if isinstance(execution, str) and execution.strip().lower() == "parallel":
-        parallel_key = f"{status}-parallel"
-        if parallel_key in templates:
-            return parallel_key
+    if (
+        tier_name == "full"
+        and isinstance(execution, str)
+        and execution.strip().lower() == "parallel"
+    ):
+        candidates.append(f"{status}-parallel")
+    if tier_name:
+        candidates.append(f"{status}-{tier_name}")
+    for key in candidates:
+        if key in templates:
+            return key
     return status
 
 
@@ -264,6 +304,7 @@ def build_breadcrumb(
     templates: dict[str, str],
     source: str | None = None,
     breadcrumb_key: str | None = None,
+    tier: str | None = None,
 ) -> str:
     """Build the <workflow-state>...</workflow-state> block.
 
@@ -271,13 +312,17 @@ def build_breadcrumb(
     - Unknown status (no tag, or workflow.md missing) → generic
       "Refer to workflow.md for current step." line
     - `no_task` pseudo-status (task_id is None) → header omits task info
-    - ``breadcrumb_key`` selects a variant block (``<status>-parallel``);
-      the header still reports the task's real status
+    - ``breadcrumb_key`` selects a variant block (``<status>-<tier>`` or
+      ``<status>-parallel``); the header still reports the task's real status
+    - ``tier`` is appended after the status parentheses
+      (``Task: <id> (<status>) · Tier: <tier>``); ``task_error`` passes None
     """
     body = templates.get(breadcrumb_key or status)
     if body is None:
         body = "Refer to workflow.md for current step."
     header = f"Status: {status}" if task_id is None else f"Task: {task_id} ({status})"
+    if task_id is not None and tier:
+        header += f" · Tier: {tier}"
     return f"<workflow-state>\n{header}\n{body}\n</workflow-state>"
 
 
@@ -341,13 +386,14 @@ def main() -> int:
         # arbor-brainstorm + task.py create when user describes real work.
         breadcrumb = build_breadcrumb(None, "no_task", templates)
     else:
-        task_id, status, source, meta = task
+        task_id, status, source, meta, tier = task
         breadcrumb = build_breadcrumb(
             task_id,
             status,
             templates,
             source,
-            resolve_breadcrumb_key(status, meta, templates),
+            resolve_breadcrumb_key(status, meta, templates, tier),
+            tier,
         )
 
     output = {

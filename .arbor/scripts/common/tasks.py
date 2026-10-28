@@ -8,6 +8,7 @@ Provides:
     load_task          — Load a single task by directory path
     iter_active_tasks  — Iterate all non-archived tasks (sorted)
     get_all_statuses   — Get {dir_name: status} map for children progress
+    resolve_tier       — Task tier (light / standard / full) from meta or artifacts
 """
 
 from __future__ import annotations
@@ -15,10 +16,65 @@ from __future__ import annotations
 import sys
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 from .io import describe_json_read_failure, read_json_checked
 from .paths import FILE_TASK_JSON
 from .types import TaskInfo
+
+
+# =============================================================================
+# Task tiers
+# =============================================================================
+#
+# A task's tier decides how much of the workflow runs (which roles take part
+# and how long the review chain is). It is stored in ``task.json.meta.tier``
+# when the main agent pins it; otherwise it is inferred from the planning
+# artifacts that exist, so a task that grows a ``design.md`` moves up on its
+# own. Every reader (task.py start, the breadcrumb hook, session-start,
+# get_context) goes through these helpers so they cannot disagree.
+
+TIERS: tuple[str, ...] = ("light", "standard", "full")
+
+TIER_ARTIFACTS: dict[str, tuple[str, ...]] = {
+    "light": ("prd.md",),
+    "standard": ("prd.md", "design.md"),
+    "full": ("prd.md", "design.md", "implement.md"),
+}
+
+
+def explicit_tier(task_data: Any) -> str | None:
+    """The tier pinned in ``meta.tier``, normalised, or None when absent or invalid."""
+    if not isinstance(task_data, dict):
+        return None
+    meta = task_data.get("meta")
+    if not isinstance(meta, dict):
+        return None
+    value = meta.get("tier")
+    if not isinstance(value, str):
+        return None
+    value = value.strip().lower()
+    return value if value in TIERS else None
+
+
+def infer_tier(task_dir: Path) -> str:
+    """Tier implied by the artifacts on disk: implement.md → full, design.md → standard, else light."""
+    if (task_dir / "implement.md").is_file():
+        return "full"
+    if (task_dir / "design.md").is_file():
+        return "standard"
+    return "light"
+
+
+def resolve_tier(task_dir: Path, task_data: Any) -> str:
+    """``meta.tier`` when valid, otherwise :func:`infer_tier`."""
+    return explicit_tier(task_data) or infer_tier(task_dir)
+
+
+def missing_tier_artifacts(task_dir: Path, tier: str) -> list[str]:
+    """Planning artifacts the tier requires that do not exist yet."""
+    required = TIER_ARTIFACTS.get(tier, TIER_ARTIFACTS["light"])
+    return [name for name in required if not (task_dir / name).is_file()]
 
 
 def load_task(task_dir: Path) -> TaskInfo | None:

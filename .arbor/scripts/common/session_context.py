@@ -25,7 +25,14 @@ from .active_task import resolve_context_key
 from .config import get_git_packages
 from .git import run_git
 from .packages_context import get_packages_section
-from .tasks import iter_active_tasks, load_task, get_all_statuses, children_progress
+from .tasks import (
+    children_progress,
+    explicit_tier,
+    get_all_statuses,
+    iter_active_tasks,
+    load_task,
+    resolve_tier,
+)
 from .paths import (
     DIR_SCRIPTS,
     DIR_SPEC,
@@ -633,6 +640,9 @@ def get_context_text(repo_root: Path | None = None) -> str:
         if ct:
             lines.append(f"Name: {ct.name}")
             lines.append(f"Status: {ct.status}")
+            tier = resolve_tier(current_task_dir, ct.raw)
+            inferred = "" if explicit_tier(ct.raw) else " (inferred)"
+            lines.append(f"Tier: {tier}{inferred}")
             lines.append(f"Created: {ct.raw.get('createdAt', 'unknown')}")
             if ct.description:
                 lines.append(f"Description: {ct.description}")

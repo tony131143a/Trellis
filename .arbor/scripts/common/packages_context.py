@@ -7,6 +7,7 @@ Provides:
     get_packages_section        - Build PACKAGES text section
     get_context_packages_text   - Full packages text output (--mode packages)
     get_context_packages_json   - Full packages JSON output (--mode packages --json)
+    spec_layer_index_paths      - Repo-relative spec layer index.md paths per package
 """
 
 from __future__ import annotations
@@ -120,6 +121,25 @@ def get_packages_info(repo_root: Path) -> list[dict]:
         })
 
     return result
+
+
+def spec_layer_index_paths(
+    repo_root: Path, packages: list[str | None] | tuple[str | None, ...]
+) -> list[str]:
+    """Repo-root-relative posix paths of each package's spec layer ``index.md``.
+
+    The layers are the ones ``--mode packages`` lists (shared ``guides``
+    excluded); ``None`` stands for the single-repo spec root. Only files that
+    exist are returned, in package then layer order.
+    """
+    spec_dir = repo_root / DIR_WORKFLOW / DIR_SPEC
+    paths: list[str] = []
+    for package in packages:
+        for layer in _scan_spec_layers(spec_dir, package):
+            parts = [part for part in (package, layer) if part]
+            if spec_dir.joinpath(*parts, "index.md").is_file():
+                paths.append("/".join([DIR_WORKFLOW, DIR_SPEC, *parts, "index.md"]))
+    return paths
 
 
 def get_packages_section(repo_root: Path) -> str:

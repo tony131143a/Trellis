@@ -21,12 +21,12 @@ The Arbor task system is stored entirely under `.arbor/tasks/` in the user proje
 | File | Purpose |
 | --- | --- |
 | `task.json` | Task metadata: status, assignee, priority, branch, parent/child tasks, and similar fields. |
-| `prd.md` | Requirements, constraints, and acceptance criteria. Lightweight tasks may be PRD-only. |
-| `design.md` | Technical design for complex tasks: boundaries, contracts, data flow, compatibility, tradeoffs. |
-| `implement.md` | Execution plan for complex tasks: ordered checklist, validation commands, review gates, rollback points. |
+| `prd.md` | Requirements, constraints, and acceptance criteria. Every tier; light tasks have only this. |
+| `design.md` | Technical design for standard and full tasks: boundaries, contracts, data flow, compatibility, tradeoffs. |
+| `implement.md` | Execution plan for full tasks: ordered checklist, validation commands, review gates, rollback points. |
 | `implement.jsonl` | List of spec/research files the `architect` and `implement` roles must read first. |
 | `check.jsonl` | List of spec/research files the `review`, `verify`, `fix`, and `simplify` roles must read first. |
-| `research/` | Research artifacts (`explore` findings, `architect` blueprints `design-<perspective>.md`, or the main agent's notes). Complex findings should not live only in chat. |
+| `research/` | Research artifacts (`explore` findings, `architect` blueprints `design-<perspective>.md`, or the main agent's notes). Larger findings should not live only in chat. |
 
 ## `task.json`
 
@@ -42,7 +42,7 @@ The Arbor task system is stored entirely under `.arbor/tasks/` in the user proje
 | `branch` / `base_branch` | Working branch and PR target branch. |
 | `children` / `parent` | Parent/child task relationships. |
 | `commit` / `pr_url` | Commit and PR information after completion. |
-| `meta` | Extension fields. |
+| `meta` | Extension fields. `meta.tier` (`light` / `standard` / `full`; inferred from the artifacts when absent) and `meta.execution` (`parallel` requires tier full). |
 
 ## Parent / Child Task Trees
 
@@ -71,7 +71,7 @@ python3 ./.arbor/scripts/task.py remove-subtask <parent-dir> <child-dir>
 
 `children` on the parent is a historical list. When a child is archived, Arbor keeps that child name in the parent so progress like `[2/3 done]` remains meaningful after completed children move to `archive/`.
 
-The AI should not treat phase numbers as task status. Task progress is mainly determined by `status`, artifact presence (`prd.md`, optional `design.md` / `implement.md`), whether JSONL context is configured for dispatched roles, and the phase descriptions in `workflow.md`.
+The AI should not treat phase numbers as task status. Task progress is mainly determined by `status`, artifact presence (`meta.tier`, else the artifacts: `prd.md`, `design.md` for standard, `implement.md` for full), whether JSONL context is configured for dispatched roles, and the phase descriptions in `workflow.md`.
 
 ## Active Task
 
@@ -88,6 +88,8 @@ If the platform or shell environment has no stable session identity, `task.py st
 ## JSONL Context
 
 `implement.jsonl` and `check.jsonl` are context manifests for dispatched roles to read first. They do not replace `implement.md`; `implement.md` is the human-readable execution plan.
+
+`task.py seed-context <task> [--package <pkg> ...]` fills both manifests with the package's spec layer index files, the guides index, and the task's research files (idempotent); the main agent then adds or drops entries per side. `task.py create --tier <light|standard|full>` sets the tier at creation, and `task.py start` refuses a planning task whose tier artifacts are missing.
 
 Format:
 

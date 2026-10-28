@@ -387,9 +387,10 @@ def _get_task_status(arbor_dir: Path, input_data: dict) -> str:
     if not active.task_path:
         return (
             "Status: NO ACTIVE TASK\n"
-            "Next-Action: Classify the current turn before creating any Arbor task. "
-            "Simple conversation / small task asks only whether this turn should create a Arbor task. "
-            "Complex task asks whether task creation and planning are allowed."
+            "Next-Action: Classify the request before creating any Arbor task. "
+            "Quick (≤2 files, cause known, no design choice): do it in this session without a task. "
+            "Otherwise propose a tier (light / standard / full) with a one-line reason "
+            "and ask whether to create the task. Plain questions need no task."
         )
 
     task_ref = active.task_path
@@ -409,8 +410,15 @@ def _get_task_status(arbor_dir: Path, input_data: dict) -> str:
         except (json.JSONDecodeError, PermissionError):
             pass  # Optional task metadata; fall back to generic status.
 
+    from common.tasks import explicit_tier, missing_tier_artifacts, resolve_tier  # type: ignore[import-not-found]
+
     task_title = task_data.get("title", task_ref)
     task_status = task_data.get("status", "unknown")
+    tier = resolve_tier(task_dir, task_data)
+    tier_line = f"Tier: {tier}" if explicit_tier(task_data) is not None else f"Tier: {tier} (inferred)"
+    meta = task_data.get("meta")
+    execution = meta.get("execution") if isinstance(meta, dict) else None
+    is_parallel = isinstance(execution, str) and execution.strip().lower() == "parallel"
     artifact_names = ("prd.md", "design.md", "implement.md", "implement.jsonl", "check.jsonl")
     present = [name for name in artifact_names if (task_dir / name).is_file()]
     if (task_dir / "research").is_dir():
@@ -419,14 +427,12 @@ def _get_task_status(arbor_dir: Path, input_data: dict) -> str:
 
     if task_status == "completed":
         return (
-            f"Status: COMPLETED\nTask: {task_title}\n"
+            f"Status: COMPLETED\nTask: {task_title}\n{tier_line}\n"
             f"Present: {present_line}\n"
             "Next-Action: Run `/arbor:finish-work`. If the working tree is dirty, return to Phase 3.4 first."
         )
 
     has_prd = (task_dir / "prd.md").is_file()
-    has_design = (task_dir / "design.md").is_file()
-    has_implement_plan = (task_dir / "implement.md").is_file()
     implement_jsonl = task_dir / "implement.jsonl"
     check_jsonl = task_dir / "check.jsonl"
     jsonl_ready = (
@@ -436,39 +442,50 @@ def _get_task_status(arbor_dir: Path, input_data: dict) -> str:
 
     if task_status == "planning" and not has_prd:
         return (
-            f"Status: PLANNING\nTask: {task_title}\n"
+            f"Status: PLANNING\nTask: {task_title}\n{tier_line}\n"
             f"Present: {present_line}\n"
             "Next-Action: Load `arbor-brainstorm` and write `prd.md`. Stay in planning."
         )
 
     if task_status == "planning":
-        missing_complex = [
-            name for name, exists in (
-                ("design.md", has_design),
-                ("implement.md", has_implement_plan),
-            )
-            if not exists
-        ]
+        missing = missing_tier_artifacts(task_dir, tier)
         next_bits: list[str] = []
-        if missing_complex:
+        if missing:
             next_bits.append(
-                "Lightweight task can request start review with PRD-only; "
-                f"complex task must add {', '.join(missing_complex)} before start"
+                f"Tier {tier} needs {', '.join(missing)} before start "
+                "(or change the tier with `task.py set-meta <task> tier <t>`)"
             )
         else:
-            next_bits.append("Planning artifacts are present; ask for review before `task.py start`")
+            next_bits.append(
+                f"Planning artifacts for tier {tier} are present; present the final planning "
+                "summary and wait for approval before `task.py start`"
+            )
         if not jsonl_ready:
-            next_bits.append("curate `implement.jsonl` and `check.jsonl` before start")
+            next_bits.append(
+                "run `task.py seed-context <task>` to fill `implement.jsonl` and `check.jsonl`, "
+                "then add or drop entries per side"
+            )
+        if is_parallel and tier != "full":
+            next_bits.append(
+                f"meta.execution=parallel requires tier full; `task.py start` refuses it while the tier is {tier}"
+            )
         return (
-            f"Status: PLANNING\nTask: {task_title}\n"
+            f"Status: PLANNING\nTask: {task_title}\n{tier_line}\n"
             f"Present: {present_line}\n"
             f"Next-Action: {'; '.join(next_bits)}. Do not enter implementation until the user confirms start."
         )
 
+    flow = f"Follow the <workflow-state> block for tier {tier}"
+    if is_parallel:
+        flow += (
+            " (meta.execution=parallel: Phase 2P replaces 2.1-2.2)"
+            if tier == "full"
+            else f" (meta.execution=parallel is ignored below tier full; tier {tier} runs serially)"
+        )
     return (
-        f"Status: {str(task_status).upper()}\nTask: {task_title}\n"
+        f"Status: {str(task_status).upper()}\nTask: {task_title}\n{tier_line}\n"
         f"Present: {present_line}\n"
-        "Next-Action: Follow the matching per-turn workflow-state. "
+        f"Next-Action: {flow}. "
         "Dispatch context order is jsonl entries (`implement.jsonl` for architect/implement, "
         "`check.jsonl` for review/verify/fix/simplify) -> `prd.md` -> `design.md if present` -> "
         "`implement.md if present`."
@@ -911,8 +928,8 @@ Arbor compact SessionStart context. Use it to orient the session; load details o
     output.write("<guidelines>\n")
     output.write(
         "Dispatch context order: jsonl entries -> `prd.md` -> "
-        "`design.md if present` -> `implement.md if present`. Missing optional artifacts "
-        "are skipped for lightweight tasks.\n\n"
+        "`design.md if present` -> `implement.md if present`. `design.md` exists only for standard / full "
+        "tiers and `implement.md` only for full; missing ones are skipped.\n\n"
     )
 
     if spec_index_paths:

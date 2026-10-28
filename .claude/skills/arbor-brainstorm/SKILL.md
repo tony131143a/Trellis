@@ -1,6 +1,6 @@
 ---
 name: arbor-brainstorm
-description: "Guides collaborative requirements discovery before implementation. Creates task directory, seeds PRD, asks high-value questions one at a time, researches technical choices, and converges on MVP scope. Use when requirements are unclear, there are multiple valid approaches, or the user describes a new feature or complex task."
+description: "Guides collaborative requirements discovery before implementation. Creates task directory, seeds PRD, asks open questions as one batched numbered list, researches technical choices, and converges on MVP scope. Use when requirements are unclear, there are multiple valid approaches, or the user describes a new feature or larger task."
 ---
 
 # Arbor Brainstorm
@@ -11,7 +11,7 @@ A request to build, implement, fix, refactor, or "go ahead" is not approval to l
 
 For every non-trivial task, the user must respond at least once after the initial request before implementation begins. If no clarification is needed, that response must approve the final planning summary described below.
 
-While any user-owned product, scope, UX, compatibility, risk, or acceptance decision remains unresolved, end the turn with exactly one highest-value question. Do not edit product code, dispatch implementation, or run `task.py start`.
+While any user-owned product, scope, UX, compatibility, risk, or acceptance decision remains unresolved, end the turn with the open user-owned questions as ONE numbered list (each with the decision, why it matters, your recommendation, and the trade-off). Do not edit product code, dispatch implementation, or run `task.py start`.
 
 ## Non-Negotiable Evidence Rule
 
@@ -34,10 +34,10 @@ Use this skill only after task-creation consent has been given and the user is r
 If no task exists yet, create one:
 
 ```bash
-TASK_DIR=$(python3 ./.arbor/scripts/task.py create "<short task title>" --description "<one-line summary>" --slug <slug>)
+TASK_DIR=$(python3 ./.arbor/scripts/task.py create "<short task title>" --description "<one-line summary>" --slug <slug> --tier <light|standard|full>)
 ```
 
-Use a concise title from the user's request. Both the title and `--description` must be non-empty — `create` rejects blanks, and a record with either one empty is refused at archive. Use a slug without a date prefix. `task.py create` adds the `MM-DD-` directory prefix automatically.
+`--tier` is the tier the user agreed to (light / standard / full; see the Tiers table in `.arbor/workflow.md`); omit it to let the tier follow the artifacts. Use a concise title from the user's request. Both the title and `--description` must be non-empty — `create` rejects blanks, and a record with either one empty is refused at archive. Use a slug without a date prefix. `task.py create` adds the `MM-DD-` directory prefix automatically.
 
 `task.py create` creates the default `prd.md`. Update that file with the current understanding before asking follow-up questions.
 
@@ -48,16 +48,16 @@ Use a concise title from the user's request. Both the title and `--description` 
    - code, tests, fixtures, and configs
    - README files, docs, existing specs, and domain notes
    - related Arbor tasks, research files, and session history when present
-   - for complex tasks or unfamiliar code, dispatch 2-3 `explore` roles in parallel (workflow step 1.2); read the essential files they return yourself
+   - when a few files you read yourself do not answer it, dispatch `explore` roles (workflow step 1.2), one aspect each, in parallel; afterwards read only the 2-3 files you need for the next brief
 3. Separate what you found into:
    - confirmed facts
    - product intent still needed from the user
    - scope or risk decisions still needed from the user
    - likely out-of-scope items
-4. If a user-owned decision remains, ask the single highest-value question, include your recommendation and trade-off, then stop. Do not perform implementation work in the same turn.
-5. After each user answer, update `prd.md`, recompute the decision inventory, and repeat from step 2.
-6. When no user-owned decision remains, create or update `design.md` and `implement.md` for complex tasks. For complex tasks, dispatch 3 `architect` roles in parallel (workflow step 1.2), present their trade-offs with your recommendation, and write `design.md` only after the user picks a design.
-7. Run the requirement convergence gate, then the PRD convergence pass.
+4. If user-owned decisions remain, ask all of them as ONE numbered list, each with your recommendation and trade-off, then stop. Do not perform implementation work in the same turn.
+5. After the user's answers, update `prd.md` and ask again only about decisions the answers raised; recompute the decision inventory and repeat from step 2.
+6. When no user-owned decision remains: light needs only `prd.md`. Standard: write `design.md` yourself (one `architect` with `Perspective: pragmatic` only if unfamiliar or asked). Full: dispatch 3 `architect` roles (workflow step 1.2), present their trade-offs with your recommendation, and write `design.md` + `implement.md` only after the user picks a design.
+7. Light: check that the acceptance criteria are testable. Standard / full: Run the requirement convergence gate, then the PRD convergence pass.
 8. Present the final planning summary and stop. Do not run `task.py start` or edit product code in the same turn.
 9. Only a subsequent user message that explicitly approves the latest planning summary authorizes `task.py start` and implementation. If the artifacts change materially after approval, repeat the final review.
 
@@ -65,9 +65,9 @@ Do not invent a project-specific product/spec hierarchy. If the repository alrea
 
 ## Question Rules
 
-Ask only one question per message.
+Ask all open questions in one message as ONE numbered list.
 
-Each question must include:
+Each item must include:
 
 - the decision needed
 - why the answer matters
@@ -82,7 +82,7 @@ Do not manufacture clarification questions when the request and repository evide
 
 The final review is a required phase-transition gate, not a prohibited process question. Task-creation consent, the initial implementation request, and approval given before the latest final summary do not satisfy this gate.
 
-## Thinking Framework: First Principles Analysis
+## Thinking Framework: First Principles Analysis (standard / full)
 
 When requirements are vague, solutions feel over-engineered, or you're about to add complexity "because everyone does" — decompose to fundamental truths before reasoning upward.
 
@@ -136,7 +136,7 @@ Before final review, verify all of the following:
 - blocking open questions are empty
 - technical unknowns are researched or explicitly deferred without changing MVP behavior
 
-Lightweight tasks may omit `design.md` and `implement.md`; they may not skip evidence inspection, requirement convergence, final review, or fresh implementation approval.
+Light tasks skip `design.md`, `implement.md`, the first-principles analysis and the PRD convergence pass; they may not skip evidence inspection, testable acceptance criteria, the final planning summary, or fresh implementation approval.
 
 The final planning summary must show Goal, In Scope, Out of Scope, Acceptance Criteria, Key Decisions, relevant Risks or Deferred Items, and artifact status.
 
@@ -151,7 +151,7 @@ The final planning summary must show Goal, In Scope, Out of Scope, Acceptance Cr
 - out of scope
 - open questions that still block planning
 
-`design.md` records technical design for complex tasks:
+`design.md` records technical design for standard and full tasks:
 
 - architecture and boundaries
 - data flow and contracts
@@ -159,18 +159,18 @@ The final planning summary must show Goal, In Scope, Out of Scope, Acceptance Cr
 - important trade-offs
 - operational or rollback considerations
 
-`implement.md` records execution planning for complex tasks:
+`implement.md` records execution planning for full tasks:
 
 - ordered implementation checklist
 - validation commands
 - risky files or rollback points
 - follow-up checks before `task.py start`
 
-Lightweight tasks may have only `prd.md`. Complex tasks must have `prd.md`, `design.md`, and `implement.md` before `task.py start`.
+Light tasks have only `prd.md`. Standard tasks add `design.md`; full tasks add `implement.md`. `task.py start` checks this.
 
-`implement.md` is not a replacement for `implement.jsonl`. The dispatched roles run as codeg assistants that receive only what the manifests list (`implement.jsonl` feeds `architect` and `implement`; `check.jsonl` feeds `review`, `verify`, `fix`, and `simplify`), so `implement.jsonl` and `check.jsonl` must each contain at least one real spec/research entry before `task.py start`; an empty manifest, or one holding only a legacy `_example` placeholder row, does not count.
+`implement.md` is not a replacement for `implement.jsonl`. The dispatched roles run as codeg assistants that receive only what the manifests list (`implement.jsonl` feeds `architect` and `implement`; `check.jsonl` feeds `review`, `verify`, `fix`, and `simplify`), so `implement.jsonl` and `check.jsonl` must each contain at least one real spec/research entry before `task.py start`; an empty manifest, or one holding only a legacy `_example` placeholder row, does not count. Fill them with `task.py seed-context <task> [--package <pkg> ...]` (spec layer index files, the guides index, and the task's research files; idempotent), then add or drop entries per side.
 
-## PRD Convergence Pass
+## PRD Convergence Pass (standard / full)
 
 Before declaring planning ready or running `task.py start`, rewrite `prd.md` once against the final structure described in the artifact rules above. This is not optional cleanup; it is the final planning gate.
 
@@ -193,8 +193,8 @@ Before declaring planning ready:
 - `prd.md` has passed the PRD convergence pass: no unresolved temporary brainstorm sections, no duplicate facts across sections, and no lost anchors, decisions, or acceptance mappings.
 - Repository-answerable questions have already been answered through inspection.
 - Blocking open questions are empty.
-- Complex tasks have `design.md` and `implement.md`.
-- Both `implement.jsonl` and `check.jsonl` have real curated entries (for a parallel parent task, every child too); seed-only manifests are not ready.
+- Standard tasks have `design.md`; full tasks have `design.md` and `implement.md`.
+- Both `implement.jsonl` and `check.jsonl` have real curated entries (for a parallel parent task, every child too); manifests holding only a legacy `_example` row are not ready.
 - The latest final planning summary has been presented to the user.
 - In a subsequent message, the user explicitly approved that summary for implementation.
 

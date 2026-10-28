@@ -27,7 +27,7 @@ If the user feels the AI does not know the current task in a new session, first 
 
 ## workflow-state
 
-workflow-state is a lightweight hint injected around each user turn. Based on current task status, it selects a block from `.arbor/workflow.md`, such as `no_task`, `planning`, `in_progress`, or `completed`.
+workflow-state is a short hint injected around each user turn. Based on current task status, it selects a block from `.arbor/workflow.md` by status plus the task's tier: `no_task`, `planning`, `in_progress-light` / `in_progress-standard` / `in_progress-full` (or `in_progress-parallel` for full with `meta.execution=parallel`), or `completed`. Plain `in_progress` is the fallback when no tier block exists.
 
 If the user wants to change "what the AI should do next in a given state," edit the corresponding state block in `.arbor/workflow.md` first.
 

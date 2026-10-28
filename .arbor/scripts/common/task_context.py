@@ -4,8 +4,10 @@ Task JSONL context management.
 
 Provides:
     cmd_add_context   - Add entry to JSONL context file
+    cmd_seed_context  - Seed both manifests with spec indexes, guides, research
     cmd_validate      - Validate JSONL context files
     cmd_list_context  - List JSONL context entries
+    append_context_entry - Append one manifest row unless the path is listed
 
 Note:
     ``cmd_init_context`` was removed in v0.5.0-beta.12. JSONL context files
@@ -23,13 +25,28 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
-from .config import get_context_injection_limits
+from .config import (
+    get_context_injection_limits,
+    get_packages,
+    is_monorepo,
+    resolve_package,
+    validate_package,
+)
 from .git import branch_exists_locally
 from .io import read_json
 from .log import Colors, colored
-from .paths import DIR_ARCHIVE, DIR_TASKS, DIR_WORKFLOW, FILE_TASK_JSON, get_repo_root
+from .packages_context import spec_layer_index_paths
+from .paths import (
+    DIR_ARCHIVE,
+    DIR_SPEC,
+    DIR_TASKS,
+    DIR_WORKFLOW,
+    FILE_TASK_JSON,
+    get_repo_root,
+)
 from .task_utils import resolve_task_dir
 
 # Extensions that look like code rather than spec/research docs. Entries with
@@ -54,6 +71,72 @@ _CODE_FILE_EXTENSIONS = {
     ".cpp",
     ".h",
 }
+
+
+# =============================================================================
+# Manifest writer
+# =============================================================================
+
+def _manifest_rows(jsonl_file: Path) -> list[dict]:
+    """JSON object rows of a manifest; unreadable files and bad lines are skipped."""
+    if not jsonl_file.is_file():
+        return []
+    try:
+        lines = jsonl_file.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    rows: list[dict] = []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            data = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(data, dict):
+            rows.append(data)
+    return rows
+
+
+def _manifest_files(jsonl_file: Path) -> set[str]:
+    """Paths a manifest already lists.
+
+    Same rows :func:`curated_entry_count` counts (a truthy ``file`` or legacy
+    ``path`` value), except that a legacy ``_example`` placeholder row never
+    lists anything, whatever text it carries.
+    """
+    files: set[str] = set()
+    for data in _manifest_rows(jsonl_file):
+        if "_example" in data:
+            continue
+        value = data.get("file") or data.get("path")
+        if isinstance(value, str) and value:
+            files.add(value)
+    return files
+
+
+def append_context_entry(
+    jsonl_file: Path, path: str, reason: str, entry_type: str = "file"
+) -> bool:
+    """Append one ``{"file", "reason"}`` row; False when the path is already listed."""
+    if path in _manifest_files(jsonl_file):
+        return False
+    entry: dict
+    if entry_type == "directory":
+        entry = {"file": path, "type": "directory", "reason": reason}
+    else:
+        entry = {"file": path, "reason": reason}
+    # A hand-edited manifest may lack the final newline; appending to it
+    # would glue the new row onto the last one and break both.
+    prefix = ""
+    if jsonl_file.is_file():
+        existing = jsonl_file.read_bytes()
+        if existing and not existing.endswith(b"\n"):
+            prefix = "\n"
+    with jsonl_file.open("a", encoding="utf-8") as f:
+        f.write(prefix + json.dumps(entry, ensure_ascii=False) + "\n")
+    return True
 
 
 # =============================================================================
@@ -100,24 +183,146 @@ def cmd_add_context(args: argparse.Namespace) -> int:
         print(colored(f"Error: Path not found: {path}", Colors.RED))
         return 1
 
-    # Check if already exists
-    if jsonl_file.is_file():
-        content = jsonl_file.read_text(encoding="utf-8")
-        if f'"{path}"' in content:
-            print(colored(f"Warning: Entry already exists for {path}", Colors.YELLOW))
-            return 0
-
-    # Add entry
-    entry: dict
-    if entry_type == "directory":
-        entry = {"file": path, "type": "directory", "reason": reason}
-    else:
-        entry = {"file": path, "reason": reason}
-
-    with jsonl_file.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    if not append_context_entry(jsonl_file, path, reason, entry_type):
+        print(colored(f"Warning: Entry already exists for {path}", Colors.YELLOW))
+        return 0
 
     print(colored(f"Added {entry_type}: {path}", Colors.GREEN))
+    return 0
+
+
+# =============================================================================
+# Command: seed-context
+# =============================================================================
+
+_SEED_MANIFESTS: tuple[str, ...] = ("implement.jsonl", "check.jsonl")
+
+
+def _repo_relative_posix(path: Path, repo_root: Path) -> str:
+    """Repo-root-relative posix form; task dirs are spelled through the repo root."""
+    for base in (repo_root, repo_root.resolve()):
+        try:
+            return path.relative_to(base).as_posix()
+        except ValueError:
+            continue
+    return path.as_posix()
+
+
+def _seed_packages(
+    args: argparse.Namespace, repo_root: Path, task_data: object
+) -> list[str | None] | None:
+    """Packages whose spec layers get seeded; None after printing an error.
+
+    Single repo → ``[None]`` (the spec root). Monorepo → the validated
+    ``--package`` values, else the task's package / default_package.
+    """
+    requested: list[str] = list(getattr(args, "package", None) or [])
+    if not is_monorepo(repo_root):
+        if requested:
+            print(colored("Warning: --package ignored in single-repo project", Colors.YELLOW), file=sys.stderr)
+        return [None]
+
+    packages = get_packages(repo_root) or {}
+    available = ", ".join(sorted(packages.keys())) if packages else "(none)"
+    for package in requested:
+        if not validate_package(package, repo_root):
+            print(colored(f"Error: unknown package '{package}'. Available: {available}", Colors.RED), file=sys.stderr)
+            return None
+    if requested:
+        return list(dict.fromkeys(requested))
+
+    task_package = task_data.get("package") if isinstance(task_data, dict) else None
+    package = resolve_package(task_package, repo_root)
+    if not package:
+        print(
+            colored(
+                "Error: this task has no package and config.yaml has no default_package; "
+                f"pass --package <pkg> (available: {available})",
+                Colors.RED,
+            ),
+            file=sys.stderr,
+        )
+        return None
+    return [package]
+
+
+def cmd_seed_context(args: argparse.Namespace) -> int:
+    """Seed implement.jsonl and check.jsonl with the task's starting context.
+
+    Rows: each chosen package's spec layer ``index.md``, the shared guides
+    index, and every ``research/*.md`` of the task. Both manifests get the
+    same rows (each feeds a different set of dispatched roles); the main
+    agent then adds the specific guideline files and deletes what does not
+    apply per side. Idempotent: paths already listed are skipped.
+    """
+    repo_root = get_repo_root()
+    target_dir = resolve_task_dir(args.dir, repo_root)
+    if target_dir is None:
+        return 1
+    if not target_dir.is_dir():
+        print(colored(f"Error: Task not found: {args.dir}", Colors.RED), file=sys.stderr)
+        return 1
+
+    task_data = read_json(target_dir / FILE_TASK_JSON)
+    packages = _seed_packages(args, repo_root, task_data)
+    if packages is None:
+        return 1
+
+    spec_prefix = f"{DIR_WORKFLOW}/{DIR_SPEC}/"
+    entries: list[tuple[str, str]] = []
+    for path in spec_layer_index_paths(repo_root, packages):
+        layer = path[len(spec_prefix):-len("/index.md")]
+        entries.append((path, f"Spec index: {layer} (seed-context)"))
+
+    guides_index = repo_root / DIR_WORKFLOW / DIR_SPEC / "guides" / "index.md"
+    if guides_index.is_file():
+        entries.append((f"{spec_prefix}guides/index.md", "Shared guides (seed-context)"))
+
+    research_dir = target_dir / "research"
+    if research_dir.is_dir():
+        for research_file in sorted(research_dir.glob("*.md")):
+            if research_file.is_file():
+                entries.append((
+                    _repo_relative_posix(research_file, repo_root),
+                    "Task research (seed-context)",
+                ))
+
+    added_by: dict[str, list[str]] = {}
+    with_example: list[str] = []
+    for manifest in _SEED_MANIFESTS:
+        jsonl_file = target_dir / manifest
+        if any("_example" in row for row in _manifest_rows(jsonl_file)):
+            with_example.append(manifest)
+        added = 0
+        for path, reason in entries:
+            if append_context_entry(jsonl_file, path, reason):
+                added += 1
+                added_by.setdefault(path, []).append(manifest)
+        print(f"{manifest}: +{added} ({len(entries) - added} already present)")
+
+    if not entries:
+        print("Nothing to seed: no spec layer index, shared guides index, or research/*.md found.")
+    if added_by:
+        print("Added:")
+        for path, manifests in added_by.items():
+            only = "" if len(manifests) == len(_SEED_MANIFESTS) else f"  ({manifests[0]} only)"
+            print(f"  {path}{only}")
+
+    if with_example:
+        print(colored(
+            f"Warning: {' and '.join(with_example)} still "
+            f"{'has' if len(with_example) == 1 else 'have'} a legacy `_example` row; "
+            "delete it (task.py validate rejects it)",
+            Colors.YELLOW,
+        ))
+
+    print()
+    print("Next: add the guideline files this task needs (the indexes list them):")
+    print(f"  python3 ./.arbor/scripts/task.py add-context {args.dir} implement|check <path> \"<why>\"")
+    print(
+        "Then delete lines that do not apply to each side "
+        "(implement.jsonl: architect / implement; check.jsonl: review / verify / fix / simplify)."
+    )
     return 0
 
 

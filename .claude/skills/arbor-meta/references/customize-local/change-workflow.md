@@ -45,19 +45,20 @@ If the user wants the main agent to do a role's work itself (for example review)
 
 ## `/arbor:continue` Route Table
 
-`/arbor:continue` resumes a task by deciding which phase step to load next. The decision combines `task.json.status` with the presence of artifacts inside the task directory. The mapping is fixed in the command itself; forks that add custom statuses must extend both the workflow.md tag block and this table.
+`/arbor:continue` resumes a task by deciding which phase step to load next. The decision combines `task.json.status`, the tier (`meta.tier`, else inferred from the artifacts), and the presence of artifacts inside the task directory. The mapping is fixed in the command itself; forks that add custom statuses must extend both the workflow.md tag block and this table.
 
 | `status` | Artifact state | Resume at |
 | --- | --- | --- |
 | `planning` | `prd.md` missing | Phase 1.1 (load `arbor-brainstorm`) |
-| `planning` | lightweight task with `prd.md` complete | ask for start review, then run `task.py start` |
+| `planning` | tier artifacts missing (light `prd.md`; standard + `design.md`; full + `implement.md`) | Phase 1.1 / 1.2 |
 | `planning` | `prd.md` done, technical facts or design choices still open | Phase 1.2 (explore & design: `explore`, clarify, `architect`) |
-| `planning` | complex task missing `design.md` or `implement.md` | complete missing planning artifacts |
-| `planning` | complex task has `prd.md`, `design.md`, and `implement.md` | ask for start review, then run `task.py start` |
+| `planning` | manifests empty or only a legacy `_example` row | Phase 1.3 (`task.py seed-context`, then adjust) |
+| `planning` | tier artifacts complete, manifests curated | final planning summary, then `task.py start` after approval |
 | `in_progress` | implementation not started | Phase 2.1 (snapshot S0, dispatch `implement`) |
-| `in_progress` | implementation done, review loop not clean | Phase 2.2 (review → verify → fix, at most 2 rounds) |
-| `in_progress` | review loop clean, complex task, polish not done | Phase 2F (2F.1–2F.4) |
-| `in_progress` | review loop / polish done, quality checks not run | 2F.5 (run the Quality Check commands yourself) |
+| `in_progress` | implementation done, gate review not clean | Phase 2.2 (one review self-check ⇄ fix; light at most 2 rounds, standard / full at most 1) |
+| `in_progress` | gate review clean, tier standard / full, polish not done | Phase 2F (2F.1–2F.4) |
+| `in_progress` | tier full, `meta.execution=parallel` | Phase 2P (2P.3 is gate review + commit) |
+| `in_progress` | gate review clean (light) or polish done, quality checks not run | 2F.5 (run the Quality Check commands yourself) |
 | `in_progress` | quality checks passed | Phase 3.3 (spec update) → 3.4 (commit) |
 | `completed` | task is still in active tree | Phase 3.5 (run `/arbor:finish-work` to archive) |
 
