@@ -1,0 +1,41 @@
+packages/cli/test/scripts/context-injection-limits.integration.test.ts
+  s_433b03e0835b09::t_d0612e1af8d90e 728-820
+packages/cli/test/scripts/dispatch-config.integration.test.ts
+  s_84efa10df20722::t_842e120c29ac15 5-9,397-398,400-412,414-416,418-419,421-507,509,513-514,516-518,528-535,560-561,563,568-569,580-654,658,662-672,674-705
+packages/cli/test/scripts/task-tier.integration.test.ts
+  s_434ac01f9368ea::t_f6e769eb9b3090 1-656
+packages/cli/test/templates/shared-hooks.test.ts
+  s_84efa10df20722::t_46fd9a595cd349 174-178
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "edc948c18b60dbd91d1ae062dd901bb542d48e1f",
+  "prompts": {},
+  "sessions": {
+    "s_433b03e0835b09": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-atier-docs-cc69822cd6818e10",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_434ac01f9368ea": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-atier-python-39ca7dad54802cf8",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_84efa10df20722": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-atier-hooks-83e1876d482891bd",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
