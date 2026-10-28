@@ -43,7 +43,7 @@ Every task has its own directory under `.arbor/tasks/{MM-DD-name}/` holding `tas
 
 ```bash
 # Task lifecycle
-python3 ./.arbor/scripts/task.py create "<title>" [--slug <name>] [--parent <dir>]
+python3 ./.arbor/scripts/task.py create "<title>" --description "<one-line summary>" [--slug <name>] [--parent <dir>]
 python3 ./.arbor/scripts/task.py start <name>          # set active task (session-scoped when available)
 python3 ./.arbor/scripts/task.py current --source      # show active task and source
 python3 ./.arbor/scripts/task.py finish                # clear active task (triggers after_finish hooks)
@@ -236,7 +236,7 @@ Use a parent task when one user request contains several independently verifiabl
 
 Use child tasks for deliverables that can be planned, implemented, checked, and archived independently. Parent/child structure is not a dependency system: if one child must wait for another, write that ordering in the child `prd.md` / `implement.md` and keep each child's acceptance criteria testable.
 
-Create new children with `task.py create "<title>" --slug <name> --parent <parent-dir>`. Link existing tasks with `task.py add-subtask <parent> <child>`, and unlink mistakes with `task.py remove-subtask <parent> <child>`.
+Create new children with `task.py create "<title>" --description "<one-line summary>" --slug <name> --parent <parent-dir>`. Link existing tasks with `task.py add-subtask <parent> <child>`, and unlink mistakes with `task.py remove-subtask <parent> <child>`.
 
 A parent task whose children run concurrently in separate git worktrees uses the parallel execution mode (step 1.4, Phase 2P).
 
@@ -381,10 +381,10 @@ Goal: classify the request, get task-creation consent when a task is needed, and
 Create the task directory only after task-creation consent. The command sets status to `planning`, writes `task.json`, creates a default `prd.md`, and auto-targets the new task when session identity is available:
 
 ```bash
-python3 ./.arbor/scripts/task.py create "<task title>" --slug <name>
+python3 ./.arbor/scripts/task.py create "<task title>" --description "<one-line summary>" --slug <name>
 ```
 
-`--slug` is the human-readable name only. Do **not** include the `MM-DD-` date prefix; `task.py create` adds that prefix automatically.
+Both the title and `--description` must be non-empty — `create` rejects blanks, and a record with either one empty is refused at archive. `--slug` is the human-readable name only. Do **not** include the `MM-DD-` date prefix; `task.py create` adds that prefix automatically.
 
 For task trees, create the parent task first and then create each child with `--parent <parent-dir>`. Do not start the parent just because children exist; start the child that owns the next independently verifiable deliverable.
 
@@ -587,7 +587,7 @@ Invariants: sub-agents never commit, merge, or touch paths outside their worktre
 Start from the chosen architect's parallel split. Write the waves and file ownership into the parent `implement.md`: which child owns which files, the interface contracts between children, and which children must wait for others. Children in the same wave must not modify the same file. Create each child:
 
 ```bash
-python3 ./.arbor/scripts/task.py create "<title>" --slug <name> --parent <parent-dir>
+python3 ./.arbor/scripts/task.py create "<title>" --description "<one-line summary>" --slug <name> --parent <parent-dir>
 ```
 
 Give each child its own `prd.md` and curated `implement.jsonl` / `check.jsonl` (copying the parent's is fine).

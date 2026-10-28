@@ -597,7 +597,7 @@ The general mechanism is the shell ticket — see "Shell-ticket bridge" below.
 
 ##### 2. Signatures
 
-- `python3 .arbor/scripts/task.py create "<title>" [--slug <slug>] [--description <text>] [--no-start]`
+- `python3 .arbor/scripts/task.py create "<title>" --description <text> [--slug <slug>] [--no-start]`
 - `python3 .arbor/scripts/task.py start <task-dir>`
 - `python3 .arbor/scripts/task.py current [--source] [--json]`
 - `python3 .arbor/scripts/task.py list [--mine] [--status <status>] [--json]`
@@ -610,9 +610,11 @@ The general mechanism is the shell ticket — see "Shell-ticket bridge" below.
 
 - `task.py create` always creates task-owned files under
   `.arbor/tasks/<date-slug>/`. It must never write `.arbor/.current-task`.
-- `task.py create` normalizes `--description` with `.strip()` before writing
-  `task.json` and `prd.md`. Missing or whitespace-only descriptions are stored
-  as `""` and emit a warning on stderr.
+- `task.py create` normalizes the title and `--description` with `.strip()`
+  before writing `task.json` and `prd.md`. A missing or whitespace-only title
+  or description exits 1 before any directory is created (archive refuses an
+  empty one, so create fails fast). Every `task.py create` command template in
+  `workflow.md` must pass `--description` (regression `[workflow-create-description]`).
 - Unless `--no-start` is passed, `task.py create` best-effort activates the new
   task for the current session when a context key is available. This writes
   `.arbor/.runtime/sessions/<session-key>.json` and prints both the activated

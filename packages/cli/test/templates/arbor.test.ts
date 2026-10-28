@@ -109,6 +109,16 @@ describe("arbor template constants", () => {
     expect(workflowMdTemplate).toContain("#");
   });
 
+  it("[workflow-create-description] every task.py create template passes --description", () => {
+    // task.py create exits 1 without a non-empty --description; an agent
+    // copying a [required] step template verbatim must not hit that.
+    const templates = workflowMdTemplate.match(/task\.py create "[^\n`]*/g) ?? [];
+    expect(templates.length).toBeGreaterThanOrEqual(4);
+    for (const line of templates) {
+      expect(line).toContain("--description");
+    }
+  });
+
   it("workflow.md in_progress breadcrumbs self-exempt dispatched sub-agents", () => {
     for (const key of ["in_progress", "in_progress-parallel"]) {
       const block = workflowStateBreadcrumb(key);

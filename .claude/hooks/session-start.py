@@ -812,8 +812,8 @@ _BREADCRUMB_TAG_RE = re.compile(
 def _strip_breadcrumb_tag_blocks(content: str) -> str:
     """Remove `[workflow-state:STATUS]...[/workflow-state:STATUS]` blocks.
 
-    The tag blocks live inside `## Phase Index` (since v0.5.0-rc.0, when
-    they were colocated with their phase summaries) and are consumed by the
+    The tag blocks live inside `## Phase Index` (colocated with their
+    phase summaries) and are consumed by the
     UserPromptSubmit hook (`inject-workflow-state.py`). The session-start
     payload already covers the full step bodies, so re-inlining the
     breadcrumbs here would just duplicate context.
