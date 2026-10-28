@@ -2,7 +2,8 @@
 sources:
   - packages/cli/src/templates/shared-hooks/*.py
   - packages/cli/src/templates/arbor/workflow.md
-last_verified: 2026-08-27
+  - packages/cli/src/templates/arbor/scripts/common/tasks.py
+last_verified: 2026-10-28
 ---
 # Workflow-State Breadcrumb Contract
 
@@ -82,13 +83,31 @@ Both regexes MUST use the `\1` backreference variant — `[workflow-state:([A-Za
    task directory name in the breadcrumb header.
 5. It opens `.arbor/workflow.md` and parses every `[workflow-state:STATUS]`
    block.
-6. Key selection: the block name is `task.json.status`, except that a task
-   with `status == "in_progress"` and `meta.execution == "parallel"` uses
-   `in_progress-parallel`. If that block is missing the hook falls back to
-   `in_progress`. There are no `*-inline` keys.
-7. It looks up the current status in the parsed map. If found → emits the
+6. Key selection. For a readable task the hook resolves the tier with
+   `common.tasks.resolve_tier(task_dir, task_data)`: `meta.tier` when it is
+   one of `light | standard | full` (case and surrounding whitespace
+   ignored), otherwise inferred from the artifacts on disk (`implement.md` →
+   full, `design.md` → standard, else light). `task.py start`, session-start
+   and `get_context.py` use the same helpers, so they cannot disagree. The
+   first key that exists in the parsed map wins:
+   1. `<status>-parallel`, only when the tier is `full` and
+      `meta.execution == "parallel"` (`task.py start` refuses parallel
+      below full);
+   2. `<status>-<tier>`;
+   3. `<status>`.
+
+   Custom statuses walk the same chain. No `planning-*` blocks ship, so a
+   planning task lands on `planning`. There are no `*-inline` keys.
+   `no_task`, `task_error` and `stale_*` skip tier resolution.
+7. It looks up the selected key in the parsed map. If found → emits the
    block body in `<workflow-state>...</workflow-state>`. If not found →
    emits the generic line `Refer to workflow.md for current step.`
+   The first line inside the block is the header: `Status: no_task` without
+   a task, otherwise `Task: <id> (<status>) · Tier: <tier>`, with
+   ` (inferred)` appended to the tier when `meta.tier` is absent or invalid.
+   The tier stays outside the parentheses because regression tests pin the
+   `Task: <id> (<status>)` substring. `task_error` and `stale_*` headers
+   carry no tier segment.
 8. The output JSON has shape:
 
    ```json
@@ -146,7 +165,7 @@ arbitrary prose outside tag blocks during automatic updates.
 
 Regression invariant: an older hash-tracked workflow must be replaced by the
 current packaged template, so step detail such as Phase 2.1 still loads.
-`workflow_phase.py` matches step headings with `\d+P?\.\d+`, so Phase 2P steps (`2P.0` and up) load with `--step` as well.
+`workflow_phase.py` matches step headings with `\d+[PF]?\.\d+`, so Phase 2P steps (`2P.0` and up) and Phase 2F steps (`2F.1` and up) load with `--step` as well.
 
 ---
 
@@ -200,21 +219,33 @@ Which breadcrumbs actually fire in normal flow:
 | `no_task` | ✅ reachable | Pseudo-status; emitted when `resolve_active_task()` returns no pointer. |
 | `task_error` | ✅ reachable | Pseudo-status; emitted when a session task pointer resolves to a directory whose `task.json` cannot be read or has no usable `status`. |
 | `planning` | ✅ reachable | After `cmd_create` (which now auto-sets the session pointer when available) and before `cmd_start`. |
-| `in_progress` | ✅ reachable | After `cmd_start`, until `cmd_archive`, for serial tasks. |
-| `in_progress-parallel` | ✅ reachable | Same status window, for tasks with `meta.execution=parallel` (set with `task.py set-meta <dir> execution parallel`). Not a stored status: it is a breadcrumb key derived from status plus meta. |
+| `in_progress-light` / `in_progress-standard` / `in_progress-full` | ✅ reachable | After `cmd_start`, until `cmd_archive`, for serial tasks of that tier (pinned `meta.tier` or inferred). Not stored statuses: breadcrumb keys derived from status plus tier. |
+| `in_progress-parallel` | ✅ reachable | Same status window, for tier `full` tasks with `meta.execution=parallel` (set with `task.py set-meta <dir> execution parallel`). A lower tier with `execution=parallel` reads its tier block; `task.py start` refuses that combination for planning tasks. |
+| `in_progress` | ⚠️ fallback only | Read only when workflow.md has no block for the task's tier (a customised workflow.md that predates tiers). The shipped body tells the agent to pin a tier and keeps the 3.3 / 3.4 gates. |
 | `completed` | ❌ DEAD in normal flow | `cmd_archive` writes `status="completed"` and immediately moves the task dir to `archive/`. The session-pointer cleanup in `clear_task_from_sessions` runs before the move, so the resolver loses the pointer in the same call. The block body in workflow.md is preserved for a future status-transition redesign (e.g. an explicit `in_progress → completed` command) but no current code path produces it. |
 | `stale_<source_type>` | ✅ reachable (rare) | Synthesized when the session pointer references a deleted task directory. Emits the generic body via `build_breadcrumb` because no `stale_*` tag is shipped. |
 
-**Test invariant** (`test/regression.test.ts`): workflow-state blocks must
-preserve the runtime gates that cannot be recovered from model memory:
-`no_task` triages and asks for task-creation consent; planning distinguishes
-lightweight PRD-only tasks from complex tasks requiring `prd.md`, `design.md`,
-and `implement.md`; in-progress keeps the commit step reachable before
-`/arbor:finish-work`. See:
+**Test invariants**: workflow-state blocks must preserve the runtime gates
+that cannot be recovered from model memory. `no_task` triages (quick path or
+a proposed tier) and asks for task-creation consent; planning lists the
+artifacts each tier requires before start; every `in_progress*` block keeps
+the commit step (3.4) reachable before `/arbor:finish-work`. See:
 
-- `test that workflow.md [workflow-state:in_progress] mentions commit (Phase 3.4)`
-- `test that workflow.md [workflow-state:planning] mentions planning artifact gate`
-- `test that workflow.md [workflow-state:no_task] asks for task-creation consent`
+- `test/templates/arbor.test.ts`, `[required · once] steps appear in every
+  breadcrumb block of their tier scope`: it parses every
+  `[required · once]` step heading in the shipped workflow.md
+  and asserts the step number appears in each breadcrumb block that covers
+  it (`1.0` → `no_task`, `1.x` → `planning`, later steps → the
+  `in_progress-<tier>` block of every tier the step applies to, plus
+  `in_progress-parallel` for full). The same file pins the block set and
+  checks that no parsed block body contains `[workflow-state:`, so a prose
+  line ending in a tag token cannot swallow a real block.
+- `test/scripts/dispatch-config.integration.test.ts`, the tier and parallel
+  breadcrumb group: the key chain, the header format, inferred tiers,
+  `task_error` without a tier, and each tier reading only its own block from
+  the shipped workflow.md.
+- `test/regression.test.ts` keeps the planning-artifact and commit (3.4)
+  wording pins and the `Task: <id> (<status>)` header pins.
 
 ---
 
@@ -223,7 +254,9 @@ and `implement.md`; in-progress keeps the commit step reachable before
 Forks can define custom statuses. To do so:
 
 1. Add a `[workflow-state:my-status]...[/workflow-state:my-status]` block to
-   `.arbor/workflow.md` (STATUS charset: `[A-Za-z0-9_-]+`).
+   `.arbor/workflow.md` (STATUS charset: `[A-Za-z0-9_-]+`). Optional
+   `my-status-<tier>` (and, for tier full, `my-status-parallel`) variants
+   are picked through the same key chain as the shipped statuses.
 2. Add a lifecycle hook (`task.json.hooks.after_*`) that writes
    `task.json.status = "my-status"` at the appropriate event. Without a
    writer, the tag is never read because no task ever carries that status.
@@ -253,7 +286,8 @@ jsonl entries -> `prd.md` -> `design.md if present` -> `implement.md if
 present`. Breadcrumb text must be safe if an assistant sees it: the dispatch
 guidance in `in_progress` and `in_progress-parallel` self-exempts a session
 whose first prompt starts with `Active task:` + `Role:` so it performs the
-role directly instead of dispatching again. See `dispatch.md` in this
+role directly instead of dispatching again. The same rule applies to every
+`in_progress*` block (fallback, three tiers, parallel). See `dispatch.md` in this
 directory.
 
 ---
@@ -268,8 +302,9 @@ directory.
 - Add a writer-table row to this spec when introducing a new status writer.
 - Run the regression tests after editing breadcrumb bodies.
 - When adding a `[required · once]` step to the workflow walkthrough, add a
-  matching enforcement line to that phase's breadcrumb tag block in the
-  same commit.
+  matching enforcement line to every breadcrumb block that covers it (for
+  Phase 2 / 2F / 3 steps, each `in_progress-<tier>` block of the tiers the
+  step applies to) in the same commit.
 
 ## DON'T
 
@@ -295,6 +330,8 @@ directory.
 - Marker syntax (regex / charset)
 - Hook script structural change (parser, output envelope, what reads
   `task.json.status`)
+- Tier resolution (`common.tasks.resolve_tier`, `TIER_ARTIFACTS`), the
+  breadcrumb key chain, or the header format
 - `workflow.md` update semantics in `arbor update`
 - New `task.json.status` writer (any path that mutates the field)
 - Breadcrumb body that changes the contract (e.g. removing a `[required ·
