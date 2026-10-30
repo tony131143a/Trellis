@@ -1,0 +1,63 @@
+packages/cli/src/templates/arbor/scripts/common/arbor_config.py
+  s_d070607db08d05::t_8533d89490637f 283-291
+packages/cli/src/templates/arbor/scripts/common/driver/__init__.py
+  s_d070607db08d05::t_132a29936db033 1-11
+packages/cli/src/templates/arbor/scripts/common/driver/gate.py
+  s_d070607db08d05::t_02edd63739a221 1-133
+packages/cli/test/scripts/v2-driver-helpers.ts
+  s_d450ccb7482fe4::t_7724a884b42cf7 1-191
+packages/cli/src/templates/arbor/index.ts
+  s_8d642f5b9ce846::t_be27b2df7f4fcb 74-82,92,153-157,167
+packages/cli/src/templates/arbor/scripts/arbor.py
+  s_8d642f5b9ce846::t_c01aa0fd7775f1 1-757
+packages/cli/src/templates/arbor/scripts/common/driver/executor.py
+  s_8d642f5b9ce846::t_fa398458bde217 1-160
+packages/cli/src/templates/arbor/scripts/common/driver/state.py
+  s_6b4251199dccd7::t_c9aece0823c5d7 1-443
+packages/cli/src/templates/arbor/scripts/common/driver/validate.py
+  s_8d642f5b9ce846::t_6cbe566b0f0218 1-251
+packages/cli/src/templates/arbor/scripts/common/types.py
+  s_8d642f5b9ce846::t_f1e0c8fa200abb 67-81
+packages/cli/test/scripts/v2-driver-build.integration.test.ts
+  s_8d642f5b9ce846::t_fe03fe869dbdd5 1-187
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "9ef6c5e7756dd22188c6e120d52ef0b7161944c1",
+  "prompts": {},
+  "sessions": {
+    "s_6b4251199dccd7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-awave2-docs-a8fee38f2e99e237",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_8d642f5b9ce846": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-awave2-driver-55cc905c63240176",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_d070607db08d05": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18bcf-6fb3-7a11-8111-adbc911985ba",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_d450ccb7482fe4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "766e32ab-03fc-46c6-8ac6-befe0b8b6b0d",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
