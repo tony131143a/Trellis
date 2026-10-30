@@ -1,0 +1,39 @@
+packages/cli/src/templates/shared-hooks/guard-builtin-agent.py
+  s_d070607db08d05::t_79bfac825d3532 7-14,45,52-54,103
+packages/cli/src/templates/shared-hooks/session-start.py
+  s_d070607db08d05::t_5562910a3d2c74 106,391-393,419-423,433,436,444,448,461-462,472,475-482,487,491-538,907-909
+packages/cli/src/cli/index.ts
+  s_6b4251199dccd7::t_10f683971db1c5 51
+packages/cli/src/configurators/shared.ts
+  s_6b4251199dccd7::t_0a21dff30d15d6 180,182,186,222,224
+packages/cli/src/templates/arbor/config.yaml
+  s_6b4251199dccd7::t_7c86a584d516d7 83,92,108-141
+packages/cli/src/templates/arbor/scripts/common/arbor_config.py
+  s_6b4251199dccd7::t_8db6ef0a1ef771 158-165
+packages/cli/src/templates/shared-hooks/index.ts
+  s_6b4251199dccd7::t_d2522c4bbcea85 4,46-47,72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "6db26eb2ae8b1042f5837007408d34a9fb36513e",
+  "prompts": {},
+  "sessions": {
+    "s_6b4251199dccd7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-awave2-docs-a8fee38f2e99e237",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_d070607db08d05": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18bcf-6fb3-7a11-8111-adbc911985ba",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
