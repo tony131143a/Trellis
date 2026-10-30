@@ -272,7 +272,7 @@ describe.skipIf(!hasPython())("dispatch.py", () => {
       expect(r.stdout).toContain("SPEC GUIDE CONTENT");
     });
 
-    it("byte-equals the hook for review with --mode and --diff", () => {
+    it("byte-equals the hook for review with --mode and the deprecated --diff", () => {
       const diff = path.join(tmp, ".arbor", ".runtime", "dispatch", "diffs", "r1.diff");
       fs.mkdirSync(path.dirname(diff), { recursive: true });
       fs.writeFileSync(diff, "+DIFF LINE\n");
@@ -285,7 +285,7 @@ describe.skipIf(!hasPython())("dispatch.py", () => {
       );
       expect(r.status, r.stderr).toBe(0);
       expect(r.stdout).toBe(hook);
-      expect(r.stdout).toContain("+DIFF LINE");
+      expect(r.stdout).not.toContain("+DIFF LINE");
     });
 
     it("rejects --mode for a role other than review", () => {
@@ -379,7 +379,7 @@ describe.skipIf(!hasPython())("dispatch.py", () => {
       expect(fs.existsSync(runsDir)).toBe(false);
     });
 
-    it("--print-prompt equals print-context plus the effective Target line", () => {
+    it("--print-prompt equals print-context with the effective target", () => {
       const printed = dispatch(
         ["run", "--role", "implement", "--task", TASK, "--print-prompt"],
         "Do X",
@@ -398,7 +398,7 @@ describe.skipIf(!hasPython())("dispatch.py", () => {
         "Do X",
       );
       expect(printed.stdout).toBe(context.stdout);
-      expect(printed.stdout).toContain("\nTarget: star\n");
+      expect(printed.stdout).not.toMatch(/^Target:/m);
     });
 
     it("pipes the assembled prompt to codeg-cli and stores prompt + result", () => {
@@ -451,7 +451,7 @@ describe.skipIf(!hasPython())("dispatch.py", () => {
       expect(call.stdin).toBe(prompt);
       expect(
         prompt.startsWith(
-          `Active task: ${taskDir}\nRole: review\nMode: self-check\nTarget: pi\nWorkspace: ${tmp}\n\n${MARKER}\n# Arbor \`review\` dispatch`,
+          `Active task: ${taskDir}\nRole: review\nMode: self-check\n\n${MARKER}\n# Arbor \`review\` dispatch`,
         ),
       ).toBe(true);
       expect(prompt).toContain("## Your Task\n\nReview the diff.");
@@ -468,7 +468,7 @@ describe.skipIf(!hasPython())("dispatch.py", () => {
       expect(r.status, r.stderr).toBe(0);
       expect(
         r.stdout.startsWith(
-          `Active task: ${taskDir}\nRole: implement\nTarget: pi\n\n${MARKER}`,
+          `Active task: ${taskDir}\nRole: implement\n\n${MARKER}`,
         ),
       ).toBe(true);
       expect(r.stdout).toContain("## Your Task\n\nBuild it.");
@@ -512,7 +512,7 @@ describe.skipIf(!hasPython())("dispatch.py", () => {
       expect(run.argv).not.toContain("-o");
       expect(run.argv.slice(-2)).toEqual(["-p", "-"]);
       expect(
-        run.stdin?.startsWith(`Role: explore\nTarget: star\n\n${MARKER}`),
+        run.stdin?.startsWith(`Role: explore\n\n${MARKER}`),
       ).toBe(true);
 
       // First result call said "still running" (6); the second collected it.

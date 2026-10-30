@@ -200,9 +200,9 @@ print(json.dumps({
         data_none: "light",
         normalised: "full",
         explicit_absent: null,
-        missing_full_none: ["design.md", "implement.md"],
-        missing_standard_design: ["prd.md"],
-        missing_unknown_impl: ["prd.md"],
+        missing_full_none: ["design.md", "waves.md"],
+        missing_standard_design: ["contract.md"],
+        missing_unknown_impl: ["contract.md"],
       });
     });
   });
@@ -309,7 +309,7 @@ print(json.dumps({
       for (const extra of [[], ["--allow-empty-context"]]) {
         const r = start(rel, ...extra);
         expect(r.status).toBe(1);
-        expect(r.stdout).toContain("tier 'light' requires prd.md before start");
+        expect(r.stdout).toContain("tier 'light' requires contract.md before start");
         expect(r.stdout).toContain("Tier: light (inferred from artifacts)");
         expect(r.stdout).not.toContain("Current task set to");
       }
@@ -346,7 +346,7 @@ print(json.dumps({
       );
       const r = start(rel);
       expect(r.status).toBe(1);
-      expect(r.stdout).toContain("tier 'full' requires implement.md before start");
+      expect(r.stdout).toContain("tier 'full' requires waves.md before start");
     });
 
     it("meta.execution=parallel needs tier full", () => {

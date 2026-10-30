@@ -23,6 +23,7 @@ from pathlib import Path
 
 from .active_task import resolve_context_key
 from .config import get_git_packages
+from .contract import find_contract
 from .git import run_git
 from .packages_context import get_packages_section
 from .tasks import (
@@ -647,11 +648,10 @@ def get_context_text(repo_root: Path | None = None) -> str:
             if ct.description:
                 lines.append(f"Description: {ct.description}")
 
-        # Check for prd.md
-        prd_file = current_task_dir / "prd.md"
-        if prd_file.is_file():
+        contract_file = find_contract(current_task_dir)
+        if contract_file is not None:
             lines.append("")
-            lines.append("[!] This task has prd.md - read it for task details")
+            lines.append(f"[!] This task has {contract_file.name} - read it for task details")
     else:
         lines.append("(none)")
     lines.append("")
