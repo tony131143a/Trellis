@@ -1,0 +1,39 @@
+packages/cli/src/templates/common/commands/continue.md
+  s_8d642f5b9ce846::t_b334ff212efbd9 3,21,25,27-40,42
+packages/cli/src/templates/common/commands/finish-work.md
+  s_6b4251199dccd7::t_e60be78cb8fc36 3,9,14,17,19,29,31,34,38,40-44,48-54,58-59,67
+packages/cli/src/templates/common/commands/start.md
+  s_6b4251199dccd7::t_3b6cc0da900976 17,37,39-40,42,44-45
+packages/cli/src/templates/common/commands/workflow.md
+  s_8d642f5b9ce846::t_51e7e04b36993e 1,3,5,7-8,12,15-16,19,21-26,28,30,32,35,38-44,46,48
+packages/cli/src/templates/common/skills/before-dev.md
+  s_6b4251199dccd7::t_3e99deaa3ed771 6,8
+packages/cli/src/templates/common/skills/brainstorm.md
+  s_6b4251199dccd7::t_3f51c8cd9c4cd1 9,23,37,41,46,53-55,57,134,136,140,142-150,160,162,164,166,168,173,176,179,185-186,189-190,192,194
+packages/cli/src/templates/common/skills/check.md
+  s_6b4251199dccd7::t_07af371fc18af7 18,20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "b4ca184f51a952c94713b8cd8c279c9d84cdac99",
+  "prompts": {},
+  "sessions": {
+    "s_6b4251199dccd7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-awave2-docs-a8fee38f2e99e237",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_8d642f5b9ce846": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-awave2-driver-55cc905c63240176",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
