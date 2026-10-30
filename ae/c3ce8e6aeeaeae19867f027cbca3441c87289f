@@ -1,0 +1,33 @@
+packages/cli/src/commands/init.ts
+  s_f5a35762a9935e::t_3afe154d393542 281,290,302-306,316,358-409,418-430,442-445,451-457,536-537,546-548,551-553,622,651-656,688,691-694,709-723,734-737,752-761,794-795,833-834
+packages/cli/test/commands/init.integration.test.ts
+  s_f5a35762a9935e::t_0cba212e847d89 351-386,532,544-548
+packages/cli/src/constants/paths.ts
+  s_29ddf67fa6b5ae::t_c50fdbca1b5695 38,40-41
+packages/cli/test/commands/init-joiner.integration.test.ts
+  s_29ddf67fa6b5ae::t_eac9b044ce7c53 131-145
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "aec3ce8e6aeeaeae19867f027cbca3441c87289f",
+  "prompts": {},
+  "sessions": {
+    "s_29ddf67fa6b5ae": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-awave3-cleanup-5d1d06a655396494",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_f5a35762a9935e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5eec63a6-1b3a-4083-ba18-e451eb5d3978",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
