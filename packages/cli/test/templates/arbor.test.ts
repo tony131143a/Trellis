@@ -360,13 +360,14 @@ describe("getAllScripts", () => {
 // =============================================================================
 
 describe("getAllAgents", () => {
-  it("ships exactly the seven role agents", () => {
+  it("ships exactly the eight role agents", () => {
     expect([...getAllAgents().keys()].sort()).toEqual(
       [...AGENT_ROLES].map((role) => `${role}.md`).sort(),
     );
     expect(AGENT_ROLES).toEqual([
       "explore",
       "architect",
+      "test",
       "implement",
       "review",
       "verify",
