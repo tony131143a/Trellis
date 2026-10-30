@@ -235,8 +235,8 @@ def append_result(main: Path, row: dict) -> None:
 def build_prompt(worktree: Path, task_dir: Path | None, role: str, mode: str | None,
                  range_spec: str | None, dispatch: str | None, brief: str) -> str:
     header = DispatchHeader(
-        task_dir=str(task_dir) if task_dir else None, role=role, mode=mode, diff=None,
-        target=None, workspace=None, body=brief.strip(), range=range_spec, dispatch=dispatch,
+        task_dir=str(task_dir) if task_dir else None, role=role, mode=mode,
+        body=brief.strip(), range=range_spec, dispatch=dispatch,
     )
     return build_dispatch_prompt(
         DispatchRequest(repo_root=worktree, role=role, task_dir=task_dir, header=header, original_text=brief)

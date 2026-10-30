@@ -5,10 +5,8 @@ Arbor dispatch context assembler.
 
 Single source of truth for the prompt a dispatched Arbor role (explore,
 architect, test, implement, review, verify, fix, simplify) receives. Both
-the PreToolUse hook on codeg ``delegate_to_agent``
-(``inject-delegation-context.py``) and the terminal
-fallback build the final task text through ``build_dispatch_prompt`` so the
-two paths cannot drift.
+``arbor.py run`` and ``arbor.py prompt`` build the final task text through
+``build_dispatch_prompt`` so the two cannot drift.
 
 Header protocol (written by the main agent at the top of the task text):
 
@@ -17,9 +15,6 @@ Header protocol (written by the main agent at the top of the task text):
     Mode: candidates           # review only: self-check | candidates | sweep | plan
     Range: <base>..<head>      # optional; not for explore / architect
     Dispatch: d-003            # optional; the id writers put in their commit trailer
-
-``Diff:``, ``Target:`` and ``Workspace:`` are still parsed (listed in
-``DispatchHeader.deprecated``) but no longer inlined or re-emitted.
 
 Context sources per role:
 - explore: spec directory overview; with a task, contract.md + research file list
@@ -30,9 +25,9 @@ Context sources per role:
 - every role given ``Range:``: ``git diff <range>`` run in the worktree that
   holds the task directory
 
-The role's method, limits and report format live in its codeg assistant
-instructions (``.arbor/agents/<role>.md``); the dispatch prompt only carries
-context, the review mode and the brief.
+The role's method, limits and report format live in its role instructions
+(``.arbor/agents/<role>.md``); the dispatch prompt only carries context, the
+review mode and the brief.
 
 Byte limits come from ``config.get_context_injection_limits()``.
 """
@@ -45,19 +40,15 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from .active_task import resolve_active_task
-from .config import get_context_injection_limits, get_dispatch_config, resolve_dispatch_target
+from .config import get_context_injection_limits
 from .contract import CONTRACT_FILE, find_contract
 from .git import run_git
 from .paths import DIR_SPEC, DIR_WORKFLOW, get_tasks_dir, resolve_task_ref
 from .tasks import WAVES_FILE, find_artifact
 
 
-# Roles with a codeg assistant per target (dispatch.py codeg-setup, the
-# delegation hook). `test` is v2-only and has no assistant there.
-ROLES = ("explore", "architect", "implement", "review", "verify", "fix", "simplify")
 # Every role a dispatch prompt can be built for.
 PROMPT_ROLES = (
     "explore", "architect", "test", "implement", "review", "verify", "fix", "simplify",
@@ -96,18 +87,11 @@ REVIEW_MODE_NOTES = {
         "wired; report gaps as findings against contract.md / design.md."
     ),
 }
-HEADER_KEYS = (
-    "active task", "role", "mode", "range", "dispatch", "diff", "target", "workspace",
-)
-# Parsed for compatibility with v1 dispatch texts, never used for inlining.
-DEPRECATED_HEADER_KEYS = {"diff": "Diff", "target": "Target", "workspace": "Workspace"}
+HEADER_KEYS = ("active task", "role", "mode", "range", "dispatch")
 MARKER = "<!-- arbor-hook-injected -->"
 
-# Written by codeg setup; maps codeg assistant ids to Arbor roles.
-CODEG_ASSISTANTS_FILE = ".runtime/codeg-assistants.json"
-
 _HEADER_RE = re.compile(
-    r"^\s*(active task|role|mode|range|dispatch|diff|target|workspace)\s*:\s*(.*?)\s*$",
+    r"^\s*(active task|role|mode|range|dispatch)\s*:\s*(.*?)\s*$",
     re.IGNORECASE,
 )
 # ``<base>..<head>`` / ``<base>...<head>``; no leading dash, so never a git option.
@@ -126,14 +110,9 @@ class DispatchHeader:
     task_dir: str | None
     role: str | None
     mode: str | None
-    diff: str | None
-    target: str | None
-    workspace: str | None
     body: str
     range: str | None = None
     dispatch: str | None = None
-    deprecated: tuple[str, ...] = ()
-    """``Diff`` / ``Target`` / ``Workspace`` when present, in header order."""
 
 
 @dataclass(frozen=True)
@@ -163,11 +142,8 @@ def parse_dispatch_header(text: str) -> DispatchHeader:
     Scans leading non-empty lines matching ``Key: value`` (keys in
     HEADER_KEYS, case-insensitive) and stops at the first other line.
     Role and mode are lower-cased; the first word of ``Role:`` is the role.
-    Deprecated keys are still parsed into their fields and listed in
-    ``deprecated``.
     """
     values: dict[str, str] = {}
-    deprecated: list[str] = []
     lines = text.splitlines()
     index = 0
     while index < len(lines) and not lines[index].strip():
@@ -179,8 +155,6 @@ def parse_dispatch_header(text: str) -> DispatchHeader:
         key = match.group(1).lower()
         if key not in values:
             values[key] = match.group(2)
-            if key in DEPRECATED_HEADER_KEYS:
-                deprecated.append(DEPRECATED_HEADER_KEYS[key])
         index += 1
 
     body = "\n".join(lines[index:]).strip() if values else text.strip()
@@ -192,13 +166,9 @@ def parse_dispatch_header(text: str) -> DispatchHeader:
         task_dir=values.get("active task") or None,
         role=tokens[0] if tokens else None,
         mode=mode or None,
-        diff=values.get("diff") or None,
-        target=values.get("target") or None,
-        workspace=values.get("workspace") or None,
         body=body,
         range=values.get("range") or None,
         dispatch=values.get("dispatch") or None,
-        deprecated=tuple(deprecated),
     )
 
 
@@ -252,110 +222,6 @@ def _inside_tasks_dir(repo_root: Path, resolved: Path) -> bool:
     except (OSError, ValueError):
         return False
     return resolved != tasks_root
-
-
-def _registry(repo_root: Path) -> dict:
-    """``.arbor/.runtime/codeg-assistants.json`` as a dict, or {} when missing/invalid."""
-    path = Path(repo_root) / DIR_WORKFLOW / CODEG_ASSISTANTS_FILE
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return data if isinstance(data, dict) else {}
-
-
-def _registry_entry(repo_root: Path, assistant_id: Any) -> dict | None:
-    """``by_id[str(assistant_id)]`` of the registry, or None for any missing piece."""
-    if assistant_id is None or isinstance(assistant_id, bool):
-        return None
-    key = str(assistant_id).strip()
-    if not key:
-        return None
-    by_id = _registry(repo_root).get("by_id")
-    if not isinstance(by_id, dict):
-        return None
-    entry = by_id.get(key)
-    return entry if isinstance(entry, dict) else None
-
-
-def role_from_assistant_id(repo_root: Path, assistant_id: Any) -> str | None:
-    """Map a codeg assistant id to an Arbor role via the runtime registry.
-
-    Reads ``.arbor/.runtime/codeg-assistants.json`` ->
-    ``by_id[str(assistant_id)]["role"]``. Any missing piece returns None.
-    """
-    entry = _registry_entry(repo_root, assistant_id)
-    role = entry.get("role") if entry else None
-    if isinstance(role, str) and role.strip().lower() in ROLES:
-        return role.strip().lower()
-    return None
-
-
-@dataclass(frozen=True)
-class AssistantReconciliation:
-    """Outcome of :func:`reconcile_assistant`."""
-
-    assistant_id: Any
-    """The id to delegate to; the original one unless ``note`` is set."""
-    note: str | None
-    """One line describing the switch, for the hook's decision reason."""
-    warning: str | None
-    """stderr line when the assistant disagrees with the target but no id is known."""
-
-
-def reconcile_assistant(
-    repo_root: Path,
-    role: str,
-    header: DispatchHeader,
-    assistant_id: Any,
-    hook_input: dict | None,
-    platform: str | None,
-) -> AssistantReconciliation:
-    """Make the delegated assistant agree with the effective dispatch target.
-
-    The main agent may carry assistant ids from another target: the SessionStart
-    ``<dispatch>`` section printed before ``/arbor:workflow`` switched, or ids
-    seen in a sibling session that runs on a different target. The target this
-    call should use is the ``Target:`` header when given, else this session's
-    resolved target. When the registry says ``assistant_id`` belongs to another
-    target and the expected target's ``role`` assistant has a known id, that id
-    is returned instead; without a known id the original is kept with a warning.
-    Ids the registry does not know are never touched.
-    """
-    unchanged = AssistantReconciliation(assistant_id, None, None)
-    entry = _registry_entry(repo_root, assistant_id)
-    current = entry.get("target") if entry else None
-    if not isinstance(current, str) or not current:
-        return unchanged
-    config = get_dispatch_config(repo_root)
-    expected = header.target or resolve_dispatch_target(repo_root, hook_input, platform)[0]
-    if expected == current or expected not in config["targets"]:
-        return unchanged
-    name = config["targets"][expected]["assistants"][role]
-    by_name = _registry(repo_root).get("by_name")
-    new_id = by_name.get(name) if isinstance(by_name, dict) else None
-    if isinstance(new_id, bool) or not isinstance(new_id, int):
-        return AssistantReconciliation(
-            assistant_id,
-            None,
-            f"assistant_id {assistant_id} runs on target {current!r} but this dispatch "
-            f"resolves to {expected!r}; no id known for {name} (run dispatch.py "
-            "codeg-setup) - left unchanged",
-        )
-    return AssistantReconciliation(
-        new_id,
-        f"assistant_id {assistant_id} ({current}) -> {new_id} ({name}) to match target {expected}",
-        None,
-    )
-
-
-def hook_decision(repo_root: Path) -> str:
-    """PreToolUse permission decision for an injected dispatch: allow | ask."""
-    try:
-        decision = get_dispatch_config(repo_root).get("hook_decision")
-    except Exception:
-        return "allow"
-    return decision if decision in ("allow", "ask") else "allow"
 
 
 # =============================================================================
@@ -918,7 +784,7 @@ def build_role_prompt(
     """Build the dispatch prompt for one role.
 
     Deliberately thin: the role's method, limits and report format are its
-    codeg assistant instructions, so they are not repeated here.
+    role instructions, so they are not repeated here.
     """
     mode_section = (
         f"\n\n## Mode\n\n`{mode}`: {REVIEW_MODE_NOTES[mode]}" if mode else ""
@@ -974,8 +840,8 @@ def build_dispatch_prompt(req: DispatchRequest) -> DispatchPrompt:
     """Assemble the final task text for one dispatched role.
 
     text = normalised header block (``Active task:`` always the absolute task
-    directory; ``Mode:`` resolved for review; Range / Dispatch kept as given;
-    deprecated keys dropped) + blank line + role template (starts with MARKER,
+    directory; ``Mode:`` resolved for review; Range / Dispatch kept as given)
+    + blank line + role template (starts with MARKER,
     carries the injected context and ``## Your Task`` = header body).
     """
     if req.role not in PROMPT_ROLES:

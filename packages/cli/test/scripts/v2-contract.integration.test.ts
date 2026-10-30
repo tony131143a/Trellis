@@ -6,8 +6,7 @@
  *     `path_matches`, `find_contract`, the contract.md template
  *   - `common/tasks.py` — tier inference by contract.md / design.md / waves.md
  *   - `common/dispatch_context.py` — `Range:` / `Dispatch:` header lines,
- *     deprecated `Diff:` / `Target:` / `Workspace:`, `git diff <range>`
- *     inlining and contract-first artifact inlining
+ *     `git diff <range>` inlining and contract-first artifact inlining
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -509,31 +508,27 @@ print(json.dumps({
   });
 
   describe("dispatch_context", () => {
-    it("parses Range: and Dispatch:, and flags Diff: / Target: / Workspace: as deprecated", () => {
+    it("parses Range: and Dispatch:; a retired Diff: line ends the header", () => {
       const out = py(`
-from common.dispatch_context import parse_dispatch_header
+from common.dispatch_context import DispatchHeader, parse_dispatch_header
 h = parse_dispatch_header(
     "\\nActive task: /w/.arbor/tasks/t\\nrole: Implement now\\nRANGE: abc..HEAD\\n"
-    "Dispatch: d-007\\nWorkspace: /w2\\nDiff: /x.diff\\nTarget: pi\\nRange: ignored..x\\n\\nDo it."
+    "Dispatch: d-007\\nRange: ignored..x\\nDiff: /x.diff\\n\\nDo it."
 )
 plain = parse_dispatch_header("Role: review\\n\\nGo.")
 print(json.dumps({
-    "role": h.role, "range": h.range, "dispatch": h.dispatch,
-    "deprecated": h.deprecated, "diff": h.diff, "target": h.target,
-    "workspace": h.workspace, "body": h.body,
-    "plain": [plain.range, plain.dispatch, plain.deprecated],
+    "role": h.role, "range": h.range, "dispatch": h.dispatch, "body": h.body,
+    "plain": [plain.range, plain.dispatch],
+    "fields": sorted(DispatchHeader.__dataclass_fields__),
 }))
 `);
       expect(out).toEqual({
         role: "implement",
         range: "abc..HEAD",
         dispatch: "d-007",
-        deprecated: ["Workspace", "Diff", "Target"],
-        diff: "/x.diff",
-        target: "pi",
-        workspace: "/w2",
-        body: "Do it.",
-        plain: [null, null, []],
+        body: "Diff: /x.diff\n\nDo it.",
+        plain: [null, null],
+        fields: ["body", "dispatch", "mode", "range", "role", "task_dir"],
       });
     });
 
@@ -616,9 +611,9 @@ except ValueError as exc:
         ) as { ok: boolean; text?: string; error?: string };
       }
 
-      it("inlines git diff <range> from the task worktree, without .arbor/, and re-emits Range/Dispatch only", () => {
+      it("inlines git diff <range> from the task worktree, without .arbor/, and re-emits Range/Dispatch", () => {
         const out = build(
-          `Active task: ${taskDir}\nRole: review\nRange: HEAD~1..HEAD\nDispatch: d-002\nDiff: /gone.diff\nTarget: pi\nWorkspace: /elsewhere\n\nReview it.`,
+          `Active task: ${taskDir}\nRole: review\nRange: HEAD~1..HEAD\nDispatch: d-002\n\nReview it.`,
           "review",
         );
         expect(out.ok, out.error).toBe(true);
@@ -628,11 +623,9 @@ except ValueError as exc:
             `Active task: ${taskDir}\nRole: review\nMode: self-check\nRange: HEAD~1..HEAD\nDispatch: d-002\n\n`,
           ),
         ).toBe(true);
-        expect(text).not.toMatch(/^(Diff|Target|Workspace):/m);
         expect(text).toContain("=== git diff HEAD~1..HEAD ===\n```diff\n");
         expect(text).toContain("+RANGE ADDED LINE");
         expect(text).not.toContain("BRIEF NOT IN DIFF");
-        expect(text).not.toContain("/gone.diff");
         expect(text).toContain("## Your Task\n\nReview it.");
       });
 
