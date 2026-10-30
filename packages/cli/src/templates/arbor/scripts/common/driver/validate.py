@@ -134,7 +134,7 @@ def check_reply(role: str, reply: str) -> ReplyCheck:
     match = status_re.match(first_line(reply))
     if match is None:
         return ReplyCheck(True, f"{role} reply lacks its status line", None, "low")
-    return ReplyCheck(True, None, match.group(1).title())
+    return ReplyCheck(True, None, match.group(1).title() if match.lastindex else None)
 
 
 def _section(reply: str, title: str) -> list[str]:

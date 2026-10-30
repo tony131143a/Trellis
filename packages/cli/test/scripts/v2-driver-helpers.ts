@@ -150,6 +150,7 @@ export function setupFixture(opts: { tier?: string; gate?: string[]; executor?: 
     }) + "\n",
   );
   writeFile(repo, `${rel}/contract.md`, CONTRACT);
+  if ((opts.tier ?? "light") !== "light") writeFile(repo, `${rel}/design.md`, "# Design\n");
   writeFile(repo, ".arbor/spec/guides/index.md", "# Guides\n");
   const curated = JSON.stringify({ file: ".arbor/spec/guides/index.md", reason: "guides" }) + "\n";
   writeFile(repo, `${rel}/implement.jsonl`, curated);

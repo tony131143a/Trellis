@@ -265,15 +265,15 @@ def on_gate(data: dict, failing: list[str]) -> None:
     if not failing:
         data["gate_reds"] = 0
         counters["no_progress"] = 0
-        target = data.pop("after_gate", None) or {"state": "REVIEW", "step": "review"}
-        if target.get("step") == "candidates":
+        dest = data.pop("after_gate", None) or {"state": "REVIEW", "step": "review"}
+        if dest.get("step") == "candidates":
             if counters.get("polish", 0) >= _cap(data, "polish", POLISH_ROUND_CAP):
                 stop(data, "BUDGET", f"POLISH round cap ({POLISH_ROUND_CAP}) reached with an unreviewed delta",
                      counter="polish")
                 return
             _start_polish_round(data)
             return
-        goto(data, target["state"], target.get("step"))
+        goto(data, dest["state"], dest.get("step"))
         return
 
     data["gate_reds"] = int(data.get("gate_reds", 0)) + 1
@@ -436,8 +436,8 @@ def resume(data: dict) -> str:
         data["state"], data["step"] = prev_state, prev.get("step") or DEFAULT_STEP[prev_state]
         return f"resumed {data['state']}/{data['step']}"
     if state == "CONTRACT":
-        target = data.pop("resume_to", None) or {"state": "BUILD", "step": "test"}
-        goto(data, target["state"], target.get("step"))
+        dest = data.pop("resume_to", None) or {"state": "BUILD", "step": "test"}
+        goto(data, dest["state"], dest.get("step"))
         data["counters"]["no_progress"] = 0
         return f"contract re-approved; resumed {data['state']}/{data['step']}"
     raise StateError(f"nothing to resume in {state}")
