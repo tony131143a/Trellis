@@ -226,7 +226,7 @@ def _tier_gate(task_dir: Path, task_input: str) -> bool:
             Colors.RED,
         ))
         print(
-            f"Either: {set_meta} tier full (and add design.md + implement.md with waves), "
+            f"Either: {set_meta} tier full (and add design.md + waves.md), "
             f"or: {set_meta} execution serial"
         )
         return False
@@ -907,7 +907,7 @@ def main() -> int:
         )
         print("See .arbor/workflow.md planning artifact guidance or run:", file=sys.stderr)
         print(
-            "  python3 ./.arbor/scripts/get_context.py --mode phase --step 1",
+            "  python3 ./.arbor/scripts/get_context.py --mode phase --step 1.5",
             file=sys.stderr,
         )
         print(

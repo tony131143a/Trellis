@@ -80,7 +80,7 @@ max_journal_lines: 2000
 # Sub-agent context injection limits
 #-------------------------------------------------------------------------------
 # Caps how much task context (implement.jsonl / check.jsonl referenced files,
-# plus prd.md / design.md / implement.md) gets inlined into a sub-agent's
+# plus contract.md / design.md / waves.md) gets inlined into a sub-agent's
 # first prompt. Oversized files are truncated with a notice; once the total
 # payload cap is reached, remaining files degrade to index lines (path +
 # reason + size) instead of being inlined.
@@ -89,7 +89,7 @@ max_journal_lines: 2000
 #
 # context_injection:
 #   max_file_bytes: 32768        # per implement.jsonl / check.jsonl referenced file
-#   max_artifact_bytes: 65536    # per task artifact (prd.md / design.md / implement.md)
+#   max_artifact_bytes: 65536    # per task artifact (contract.md / design.md / waves.md)
 #   max_total_bytes: 131072      # whole injected payload; overflow degrades to index lines
 
 #-------------------------------------------------------------------------------
@@ -105,57 +105,40 @@ max_journal_lines: 2000
 #   skip_keyword: "no-arbor"   # "" disables the escape hatch entirely
 
 #-------------------------------------------------------------------------------
-# Dispatch (codeg assistants)
+# Executors
 #-------------------------------------------------------------------------------
-# The seven roles (explore, architect, implement, review, verify, fix,
-# simplify) run as codeg assistants, never as the host's
-# built-in Agent/Task tool. The effective target is resolved at runtime:
-# .arbor/.runtime/dispatch-target > ARBOR_DISPATCH_TARGET > default_target.
-# Role names sit directly under each target; `mode_id` picks the agent's
-# session mode (codex: agent-full-access | workspace-write | read-only); any
-# other scalar key (model, thought_level) is passed as an agent option.
-# `dispatch.py codeg-setup --install` creates missing assistants from these
-# values and only refreshes the instructions of existing ones: the agent,
-# mode and options of an existing assistant are edited in the codeg UI.
-dispatch:
-  default_target: star
-  max_parallel: 3
-  guard_builtin_agent: true
-  hook_decision: allow
-  codeg_cli: ""
-  permissions: allow
-  timeout: 90m
-  targets:
-    star:
-      agent_type: "custom:star"
-      explore: arbor-explore-star
-      architect: arbor-architect-star
-      implement: arbor-implement-star
-      review: arbor-review-star
-      verify: arbor-verify-star
-      fix: arbor-fix-star
-      simplify: arbor-simplify-star
-    pi:
-      agent_type: pi
-      model: deepseek/DeepSeek-V4.1-Flash
-      thought_level: max
-      explore: arbor-explore-pi
-      architect: arbor-architect-pi
-      implement: arbor-implement-pi
-      review: arbor-review-pi
-      verify: arbor-verify-pi
-      fix: arbor-fix-pi
-      simplify: arbor-simplify-pi
-    codex:
-      agent_type: codex
-      mode_id: agent-full-access
-      explore: arbor-explore-codex
-      architect: arbor-architect-codex
-      implement: arbor-implement-codex
-      review: arbor-review-codex
-      verify: arbor-verify-codex
-      fix: arbor-fix-codex
-      simplify: arbor-simplify-codex
+# How `arbor.py run` executes a role. The driver writes the full prompt to
+# tasks/<task>/briefs/<dispatch>.md and runs `command` from the executor named
+# by `default`. Placeholders: {role} {prompt} {worktree} {task} {dispatch}.
+# Model, effort and permissions belong to the executor, not to Arbor: with
+# codeg, configure one `arbor-<role>` assistant per role. `timeout` bounds one
+# dispatch; `max_parallel` bounds concurrent read-only dispatches.
+#
+# Other executors (copy one, then point `default` at it):
+#   claude:
+#     command: "claude -p {prompt}"
+#     cwd: "{worktree}"
+#   codex:
+#     command: "codex exec --cd {worktree} {prompt}"
+executors:
+  default: codeg
+  codeg:
+    command: "codeg-cli run -A arbor-{role} --prompt-file {prompt} --cwd {worktree}"
+    timeout: 90m
+    max_parallel: 3
+
+#-------------------------------------------------------------------------------
+# Gate
+#-------------------------------------------------------------------------------
+# Project-wide checks the driver runs at GATE level 0 (`arbor.py gate`), in
+# the task worktree, before the contract's `auto` verification-map commands.
+# Each entry is one shell command; a non-zero exit turns the gate red. Empty
+# means only the verification map runs.
+#   commands:
+#     - "pnpm lint"
+#     - "pnpm typecheck"
+gate:
+  commands: []
 
 #-------------------------------------------------------------------------------
 # Task worktrees

@@ -1,7 +1,7 @@
 /**
  * Shared hook templates — platform-independent Python hook scripts.
  *
- * These scripts read only from .arbor/ paths (JSONL, prd.md, spec/) and
+ * These scripts read only from .arbor/ paths (task state, spec/) and
  * have no platform-specific placeholders. They can be written as-is to any
  * platform's hooks directory.
  */
@@ -28,7 +28,6 @@ export type SharedHookName =
   | "session-start.py"
   | "inject-shell-session-context.py"
   | "inject-workflow-state.py"
-  | "inject-delegation-context.py"
   | "guard-builtin-agent.py";
 
 export type SharedHookPlatform = "claude" | "star";
@@ -43,11 +42,9 @@ export type SharedHookPlatform = "claude" | "star";
  *   hook event.
  * - `inject-workflow-state.py` — every platform with a UserPromptSubmit
  *   (or equivalent) event.
- * - `inject-delegation-context.py` — PreToolUse on codeg
- *   `delegate_to_agent`: inlines Arbor task context into the delegated
- *   `task` text for the seven Arbor roles.
  * - `guard-builtin-agent.py` — PreToolUse on the built-in `Agent|Task` tool:
- *   denies Arbor role dispatches that bypass codeg.
+ *   denies Arbor role dispatches; roles run only through the driver
+ *   (`arbor.py run`) and its configured executor.
  * - `inject-shell-session-context.py` — platforms with a hook that fires
  *   *before* a shell command and receives both the session id and the pending
  *   command. That hook is the only channel by which session identity reaches
@@ -68,13 +65,11 @@ export const SHARED_HOOKS_BY_PLATFORM: Record<
   claude: [
     "session-start.py",
     "inject-workflow-state.py",
-    "inject-delegation-context.py",
     "guard-builtin-agent.py",
   ],
   // StarFactory is a Claude Code-compatible fork and ships the same set as
   // Claude Code. Verified on star 1.0.49: SessionStart, UserPromptSubmit, and
-  // PreToolUse all fire, and PreToolUse can rewrite tool input, so the
-  // delegation-context and built-in-agent guard hooks work unchanged. It also
+  // PreToolUse all fire, so the built-in-agent guard works unchanged. It also
   // takes inject-shell-session-context.py: unlike Claude Code, StarFactory
   // exports no session id into its shell children (a live probe of a Bash
   // child found only CLAUDECODE / CLAUDE_CONFIG_DIR / STARFACTORY_*), so
@@ -83,7 +78,6 @@ export const SHARED_HOOKS_BY_PLATFORM: Record<
     "session-start.py",
     "inject-shell-session-context.py",
     "inject-workflow-state.py",
-    "inject-delegation-context.py",
     "guard-builtin-agent.py",
   ],
 };

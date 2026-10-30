@@ -103,7 +103,7 @@ def _build_first_reply_notice(update_hint: str | None) -> str:
 
 
 # Force UTF-8 on stdin/stdout/stderr on Windows. Default codepage there is
-# cp936 / cp1252 / etc. — non-ASCII content (Chinese task names, prd snippets)
+# cp936 / cp1252 / etc. — non-ASCII content (Chinese task names, contract snippets)
 # both in stdin (hook payload from host CLI) and stdout (our emitted blocks)
 # raises UnicodeDecodeError / UnicodeEncodeError. Equivalent to `python -X utf8`
 # but applied per-stream so we don't depend on host CLI's command wiring.
@@ -388,9 +388,9 @@ def _get_task_status(arbor_dir: Path, input_data: dict) -> str:
         return (
             "Status: NO ACTIVE TASK\n"
             "Next-Action: Classify the request before creating any Arbor task. "
-            "Quick (≤2 files, cause known, no design choice): do it in this session without a task. "
-            "Otherwise propose a tier (light / standard / full) with a one-line reason "
-            "and ask whether to create the task. Plain questions need no task."
+            "Simple change (≤2 files, cause known, no design choice): do it in this session; "
+            "Arbor is not used. Otherwise propose a tier (light / standard / full) with a one-line "
+            "reason and ask whether to create the task. Plain questions need no task."
         )
 
     task_ref = active.task_path
@@ -416,10 +416,11 @@ def _get_task_status(arbor_dir: Path, input_data: dict) -> str:
     task_status = task_data.get("status", "unknown")
     tier = resolve_tier(task_dir, task_data)
     tier_line = f"Tier: {tier}" if explicit_tier(task_data) is not None else f"Tier: {tier} (inferred)"
-    meta = task_data.get("meta")
-    execution = meta.get("execution") if isinstance(meta, dict) else None
-    is_parallel = isinstance(execution, str) and execution.strip().lower() == "parallel"
-    artifact_names = ("prd.md", "design.md", "implement.md", "implement.jsonl", "check.jsonl")
+    # Legacy names (prd.md, implement.md) are listed only when present.
+    artifact_names = (
+        "contract.md", "prd.md", "design.md", "waves.md", "implement.md",
+        "implement.jsonl", "check.jsonl",
+    )
     present = [name for name in artifact_names if (task_dir / name).is_file()]
     if (task_dir / "research").is_dir():
         present.append("research/")
@@ -429,10 +430,10 @@ def _get_task_status(arbor_dir: Path, input_data: dict) -> str:
         return (
             f"Status: COMPLETED\nTask: {task_title}\n{tier_line}\n"
             f"Present: {present_line}\n"
-            "Next-Action: Run `/arbor:finish-work`. If the working tree is dirty, return to Phase 3.4 first."
+            "Next-Action: Run `/arbor:finish-work`."
         )
 
-    has_prd = (task_dir / "prd.md").is_file()
+    has_contract = (task_dir / "contract.md").is_file() or (task_dir / "prd.md").is_file()
     implement_jsonl = task_dir / "implement.jsonl"
     check_jsonl = task_dir / "check.jsonl"
     jsonl_ready = (
@@ -440,11 +441,11 @@ def _get_task_status(arbor_dir: Path, input_data: dict) -> str:
         and (not check_jsonl.is_file() or _has_curated_jsonl_entry(check_jsonl))
     )
 
-    if task_status == "planning" and not has_prd:
+    if task_status == "planning" and not has_contract:
         return (
             f"Status: PLANNING\nTask: {task_title}\n{tier_line}\n"
             f"Present: {present_line}\n"
-            "Next-Action: Load `arbor-brainstorm` and write `prd.md`. Stay in planning."
+            "Next-Action: Load `arbor-brainstorm` and write `contract.md`. Stay in planning."
         )
 
     if task_status == "planning":
@@ -457,39 +458,82 @@ def _get_task_status(arbor_dir: Path, input_data: dict) -> str:
             )
         else:
             next_bits.append(
-                f"Planning artifacts for tier {tier} are present; present the final planning "
-                "summary and wait for approval before `task.py start`"
+                f"Contract artifacts for tier {tier} are present; validate the contract, present "
+                "the planning summary and wait for the user to approve the contract before `task.py start`"
             )
         if not jsonl_ready:
             next_bits.append(
                 "run `task.py seed-context <task>` to fill `implement.jsonl` and `check.jsonl`, "
                 "then add or drop entries per side"
             )
-        if is_parallel and tier != "full":
-            next_bits.append(
-                f"meta.execution=parallel requires tier full; `task.py start` refuses it while the tier is {tier}"
-            )
         return (
             f"Status: PLANNING\nTask: {task_title}\n{tier_line}\n"
             f"Present: {present_line}\n"
-            f"Next-Action: {'; '.join(next_bits)}. Do not enter implementation until the user confirms start."
+            f"Next-Action: {'; '.join(next_bits)}. Do not enter BUILD until the user approves the contract."
         )
 
-    flow = f"Follow the <workflow-state> block for tier {tier}"
-    if is_parallel:
-        flow += (
-            " (meta.execution=parallel: Phase 2P replaces 2.1-2.2)"
-            if tier == "full"
-            else f" (meta.execution=parallel is ignored below tier full; tier {tier} runs serially)"
+    next_step = _arbor_next(arbor_dir.parent, _resolve_context_key(arbor_dir, input_data))
+    if next_step is not None:
+        summary = " ".join(str(next_step["summary"]).split())
+        flow = f"{summary} (needs={str(next_step['needs']).strip()})"
+    else:
+        flow = (
+            "Run `python3 ./.arbor/scripts/arbor.py next` and do the one step it names "
+            "(write a brief, `arbor.py decide`, or wait for the human)"
         )
     return (
         f"Status: {str(task_status).upper()}\nTask: {task_title}\n{tier_line}\n"
         f"Present: {present_line}\n"
-        f"Next-Action: {flow}. "
-        "Dispatch context order is jsonl entries (`implement.jsonl` for architect/implement, "
-        "`check.jsonl` for review/verify/fix/simplify) -> `prd.md` -> `design.md if present` -> "
-        "`implement.md if present`."
+        f"Next-Action: {flow}."
     )
+
+
+# Well inside the 30 s SessionStart timeout; `next` only reads task state.
+ARBOR_NEXT_TIMEOUT_S = 8
+
+
+def _arbor_next(repo_root: Path, context_key: str | None) -> dict | None:
+    """Parsed ``arbor.py next --json`` output, or None when unavailable.
+
+    Only ``summary`` and ``needs`` are relied on. A missing driver, a non-zero
+    exit, a timeout or unusable output all return None so the caller falls
+    back to the static next action.
+    """
+    script = repo_root / ".arbor" / "scripts" / "arbor.py"
+    if not script.is_file():
+        return None
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
+    if context_key:
+        env["ARBOR_CONTEXT_ID"] = context_key
+    try:
+        result = subprocess.run(
+            [sys.executable, "-W", "ignore", str(script), "next", "--json"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=ARBOR_NEXT_TIMEOUT_S,
+            cwd=str(repo_root),
+            env=env,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    try:
+        data = json.loads(result.stdout)
+    except ValueError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    summary = data.get("summary")
+    needs = data.get("needs")
+    if not isinstance(summary, str) or not summary.strip():
+        return None
+    if not isinstance(needs, str) or not needs.strip():
+        return None
+    return data
 
 
 def _load_arbor_config(arbor_dir: Path, input_data: dict) -> tuple:
@@ -534,69 +578,6 @@ def _load_arbor_config(arbor_dir: Path, input_data: dict) -> tuple:
         return is_mono, packages, scope, task_pkg, default_pkg
     except Exception:
         return False, {}, None, None, None
-
-
-DISPATCH_ROUTING = (
-    "If `mcp__codeg-mcp__delegate_to_agent` is among your tools, call it; "
-    "otherwise run `python3 ./.arbor/scripts/dispatch.py run --role <role>`. "
-    "Never use the built-in Agent/Task tool for arbor roles."
-)
-
-
-def _read_assistant_ids(arbor_dir: Path) -> dict | None:
-    """`by_name` of `.arbor/.runtime/codeg-assistants.json` (codeg-setup), or None."""
-    try:
-        data = json.loads(
-            (arbor_dir / ".runtime" / "codeg-assistants.json").read_text(encoding="utf-8")
-        )
-    except (OSError, ValueError):
-        return None
-    by_name = data.get("by_name") if isinstance(data, dict) else None
-    return by_name if isinstance(by_name, dict) else None
-
-
-def _build_dispatch_section(arbor_dir: Path, hook_input: dict) -> str | None:
-    """Effective codeg dispatch target, per-role assistants with ids, routing rule.
-
-    The target is resolved for this session (hook stdin carries the session
-    id), so two windows on one checkout each see their own choice.
-    Best-effort: an older scripts tree without the dispatch config accessors
-    simply omits the section.
-    """
-    scripts_dir = arbor_dir / "scripts"
-    if str(scripts_dir) not in sys.path:
-        sys.path.insert(0, str(scripts_dir))
-    try:
-        from common.config import get_dispatch_config, resolve_dispatch_target  # type: ignore[import-not-found]
-
-        repo_root = arbor_dir.parent
-        config = get_dispatch_config(repo_root)
-        target, source = resolve_dispatch_target(
-            repo_root, hook_input, _detect_platform(hook_input)
-        )
-        assistants = config["targets"][target]["assistants"]
-    except Exception:
-        return None  # Optional section; keep session-start non-fatal.
-
-    ids = _read_assistant_ids(arbor_dir) or {}
-    lines = [f"Target: {target} (source: {source})", "Assistants:"]
-    for role in ("explore", "architect", "implement", "review", "verify", "fix", "simplify"):
-        name = assistants[role]
-        assistant_id = ids.get(name)
-        if isinstance(assistant_id, int) and not isinstance(assistant_id, bool):
-            lines.append(f"- {role}: {name} (id {assistant_id})")
-        else:
-            lines.append(
-                f"- {role}: {name} (id unknown — run "
-                "python3 ./.arbor/scripts/dispatch.py codeg-setup)"
-            )
-    lines.append(
-        "Start every delegated task with `Active task: <task dir>` and "
-        "`Role: <role>` lines; review also takes `Mode: self-check|candidates|sweep`, "
-        "and review/verify/fix/simplify take `Diff: <file from dispatch.py diff>`."
-    )
-    lines.append(DISPATCH_ROUTING)
-    return "\n".join(lines)
 
 
 def _check_legacy_spec(arbor_dir: Path, is_mono: bool, packages: dict) -> str | None:
@@ -921,15 +902,11 @@ Arbor compact SessionStart context. Use it to orient the session; load details o
     output.write(_build_workflow_overview(arbor_dir / "workflow.md"))
     output.write("\n</arbor-workflow>\n\n")
 
-    dispatch_section = _build_dispatch_section(arbor_dir, hook_input)
-    if dispatch_section:
-        output.write(f"<dispatch>\n{dispatch_section}\n</dispatch>\n\n")
-
     output.write("<guidelines>\n")
     output.write(
-        "Dispatch context order: jsonl entries -> `prd.md` -> "
-        "`design.md if present` -> `implement.md if present`. `design.md` exists only for standard / full "
-        "tiers and `implement.md` only for full; missing ones are skipped.\n\n"
+        "Roles run only through the driver (`python3 ./.arbor/scripts/arbor.py run`). It assembles each "
+        "role's prompt: jsonl entries -> `contract.md` -> `design.md if present` -> `waves.md if present` "
+        "-> the `Range:` diff; you write only the brief.\n\n"
     )
 
     if spec_index_paths:
