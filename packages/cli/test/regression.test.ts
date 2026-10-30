@@ -1544,7 +1544,7 @@ describe("regression: JSON read/write failure reporting", () => {
     const name = `${datePrefix}-rot`;
     fs.writeFileSync(taskJsonPath(name), "{ not json");
 
-    const r = runTask(["start", name, "--allow-empty-context"], env);
+    const r = runTask(["start", name, "--no-worktree", "--allow-empty-context"], env);
     // Tolerant: the session pointer is the point of the command.
     expect(r.status).toBe(0);
     expect(r.stdout).toContain("Current task set to");
@@ -1571,7 +1571,7 @@ describe("regression: JSON read/write failure reporting", () => {
     ).toBe(0);
     const name = `${datePrefix}-live`;
     expect(
-      runTask(["start", name, "--allow-empty-context"], env).status,
+      runTask(["start", name, "--no-worktree", "--allow-empty-context"], env).status,
     ).toBe(0);
 
     const healthy = runTask(["current", "--json"], env);
@@ -1633,7 +1633,7 @@ describe("regression: JSON read/write failure reporting", () => {
         ).status,
       ).toBe(0);
       expect(
-        runTask(["start", `${datePrefix}-one`, "--allow-empty-context"], env)
+        runTask(["start", `${datePrefix}-one`, "--no-worktree", "--allow-empty-context"], env)
           .status,
       ).toBe(0);
 
@@ -1647,7 +1647,7 @@ describe("regression: JSON read/write failure reporting", () => {
       fs.chmodSync(sessionsDir, 0o555);
       try {
         const r = runTask(
-          ["start", `${datePrefix}-two`, "--allow-empty-context"],
+          ["start", `${datePrefix}-two`, "--no-worktree", "--allow-empty-context"],
           env,
         );
         expect(r.status).not.toBe(0);
@@ -5661,7 +5661,7 @@ print(len(entries))
       const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
       return spawnSync(
         pythonCmd,
-        [taskScriptPath, "start", ".arbor/tasks/issue-106", ...extra],
+        [taskScriptPath, "start", ".arbor/tasks/issue-106", "--no-worktree", ...extra],
         {
           cwd: tmpDir,
           encoding: "utf-8",
@@ -6503,7 +6503,7 @@ print(len(entries))
     const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     const result = spawnSync(
       pythonCmd,
-      [taskScriptPath, "start", ".arbor/tasks/issue-106"],
+      [taskScriptPath, "start", ".arbor/tasks/issue-106", "--no-worktree"],
       {
         cwd: tmpDir,
         encoding: "utf-8",
@@ -6531,7 +6531,7 @@ print(len(entries))
     const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     const result = spawnSync(
       pythonCmd,
-      [taskScriptPath, "start", ".arbor/tasks/issue-106"],
+      [taskScriptPath, "start", ".arbor/tasks/issue-106", "--no-worktree"],
       {
         cwd: tmpDir,
         encoding: "utf-8",
@@ -6552,7 +6552,7 @@ print(len(entries))
     const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     const result = spawnSync(
       pythonCmd,
-      [taskScriptPath, "start", ".arbor/tasks/issue-106"],
+      [taskScriptPath, "start", ".arbor/tasks/issue-106", "--no-worktree"],
       {
         cwd: tmpDir,
         encoding: "utf-8",
@@ -8570,6 +8570,7 @@ describe("regression: a linked worktree inherits developer identity", () => {
     const started = runTask(worktreeDir, [
       "start",
       `${datePrefix}-inherited`,
+      "--no-worktree",
       "--allow-empty-context",
     ]);
     expect(started.status, started.stderr).toBe(0);

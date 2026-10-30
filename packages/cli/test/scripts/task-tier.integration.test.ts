@@ -233,9 +233,9 @@ print(json.dumps({
       expect(r.stderr).toContain('{"file": "<path>", "reason": "<why>"}');
       expect(r.stderr).toContain("get_context.py --mode packages");
 
-      const prd = readFile(tmp, `.arbor/tasks/${dir}/prd.md`);
-      expect(prd).toContain("Tier light");
-      expect(prd).not.toContain("Lightweight");
+      const contract = readFile(tmp, `.arbor/tasks/${dir}/contract.md`);
+      expect(contract).toContain("## Acceptance criteria");
+      expect(contract).not.toContain("Lightweight");
     });
 
     it("--tier standard stores meta.tier", () => {
@@ -297,7 +297,7 @@ print(json.dumps({
 
   describe("task.py start: tier gate", () => {
     function start(rel: string, ...extra: string[]) {
-      return runTask(tmp, ["start", rel, ...extra], SESSION);
+      return runTask(tmp, ["start", rel, "--no-worktree", ...extra], SESSION);
     }
 
     function status(rel: string): unknown {
@@ -487,7 +487,7 @@ print(json.dumps({
 
       const validate = runTask(tmp, ["validate", rel]);
       expect(validate.status, validate.stdout).toBe(0);
-      const started = runTask(tmp, ["start", rel], SESSION);
+      const started = runTask(tmp, ["start", rel, "--no-worktree"], SESSION);
       expect(started.status, started.stdout + started.stderr).toBe(0);
       expect(started.stdout).not.toContain("no curated entries");
     });
