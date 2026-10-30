@@ -16,6 +16,13 @@ stayed inside its boundary.
 
 Every role: no push, merge, rebase or checkout of another branch; no writes
 under ``.arbor/`` outside ``tasks/<task>/``.
+
+    ref                          allowed during a dispatch
+    own branch                   fast-forward only (writers); never rewritten
+    other ``arbor/*`` branches   created or moved (other tasks' drivers run
+                                 concurrently); never deleted
+    any other local branch       nothing
+    remote refs                  nothing
 """
 
 from __future__ import annotations
@@ -37,6 +44,8 @@ COMMIT_SUBJECT_RE = re.compile(
 TRAILER_RE = re.compile(r"^Arbor-Dispatch: d-\d{3,}$", re.MULTILINE)
 
 ARBOR_DIR = ".arbor/"
+# Local branches other tasks' drivers create and advance concurrently.
+TASK_BRANCH_PREFIX = "arbor/"
 
 
 @dataclass(frozen=True)
@@ -182,13 +191,23 @@ def validate_commit(
     return problems
 
 
-def _diff_refs(label: str, before: dict[str, str], after: dict[str, str], skip: str | None = None) -> list[str]:
+def _diff_refs(
+    label: str,
+    before: dict[str, str],
+    after: dict[str, str],
+    skip: str | None = None,
+    concurrent_prefix: str | None = None,
+) -> list[str]:
+    """Ref changes as violations. Refs under ``concurrent_prefix`` may be
+    created or moved (only their deletion counts)."""
     problems: list[str] = []
     for ref in sorted(set(before) | set(after)):
         if ref == skip:
             continue
         old, new = before.get(ref), after.get(ref)
         if old == new:
+            continue
+        if concurrent_prefix and ref.startswith(concurrent_prefix) and new is not None:
             continue
         if old is None:
             problems.append(f"{label} {ref} was created")
@@ -222,7 +241,10 @@ def check_after_dispatch(
     violations: list[str] = []
 
     violations += _diff_refs("remote ref", before.remotes, after.remotes)
-    violations += _diff_refs("branch", before.branches, after.branches, skip=own_branch)
+    violations += _diff_refs(
+        "branch", before.branches, after.branches,
+        skip=own_branch, concurrent_prefix=TASK_BRANCH_PREFIX,
+    )
     if after.head_ref != before.head_ref:
         violations.append(
             f"HEAD switched from {before.head_ref or 'detached'} to {after.head_ref or 'detached'}"
