@@ -178,7 +178,7 @@ release line.
       not a rendering bug
 
 **Real-world example**: A beta-only task workflow change documented
-`prd.md` + `design.md` + `implement.md`, task-creation consent, and Codex
+`contract.md` + `design.md` + `waves.md`, task-creation consent, and Codex
 mode banners under root `start/` and `advanced/` paths. The docs site then
 served 0.6 beta behavior under the Release selector. The fix was to restore root
 release docs, move the 0.6 content to `beta/` and `zh/beta/`, and add a grep

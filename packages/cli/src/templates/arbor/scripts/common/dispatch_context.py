@@ -214,7 +214,7 @@ def _inside_tasks_dir(repo_root: Path, resolved: Path) -> bool:
     `resolve_task_ref` only guarantees containment in the repo; a dispatch
     header must point at a task directory (active or archived), never at the
     repo root or an arbitrary source folder, or the hook would inline whatever
-    `prd.md` / `*.jsonl` happen to live there.
+    `contract.md` / `*.jsonl` happen to live there.
     """
     try:
         tasks_root = get_tasks_dir(repo_root).resolve()
