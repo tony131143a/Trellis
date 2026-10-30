@@ -378,7 +378,7 @@ def _start_in_worktree(args: argparse.Namespace, task_dir: Path, repo_root: Path
         "worktree_path": str(wt.path),
         "contract_hash": contract_hash(contract_path) if contract_path else None,
         "counters": dict(NEW_COUNTERS),
-        "dispatches": [],
+        "dispatches": data.get("dispatches") or [],  # CONTRACT-phase dispatches stay
     })
     if not data.get("base_branch"):
         base_branch = current_branch_name(repo_root)
