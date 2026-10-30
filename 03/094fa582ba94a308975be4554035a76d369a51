@@ -1,0 +1,25 @@
+packages/cli/src/templates/arbor/scripts/arbor.py
+  s_8d642f5b9ce846::t_7638d71238c9a8 10,20-24,76,210-216,256-262,273,461-464,474,526-637,750-753,757-761,763,771,859-860
+packages/cli/test/scripts/v2-driver-build.integration.test.ts
+  s_8d642f5b9ce846::t_c36032aa970264 50-51
+packages/cli/test/scripts/v2-driver-contract.integration.test.ts
+  s_8d642f5b9ce846::t_f3f3762ab55556 1-133
+packages/cli/test/scripts/v2-driver-helpers.ts
+  s_8d642f5b9ce846::t_ecbc35dd95e3e2 123-126,130-131,172-175
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "03094fa582ba94a308975be4554035a76d369a51",
+  "prompts": {},
+  "sessions": {
+    "s_8d642f5b9ce846": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-awave2-driver-55cc905c63240176",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
