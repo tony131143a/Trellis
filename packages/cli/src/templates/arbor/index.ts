@@ -69,6 +69,8 @@ export const commonDispatchContext = readTemplate(
   "scripts/common/dispatch_context.py",
 );
 export const commonContract = readTemplate("scripts/common/contract.py");
+export const commonWorktree = readTemplate("scripts/common/worktree.py");
+export const commonInvariants = readTemplate("scripts/common/invariants.py");
 
 // Python scripts - main
 export const getDeveloperScript = readTemplate("scripts/get_developer.py");
@@ -136,6 +138,8 @@ export function getAllScripts(): Map<string, string> {
   scripts.set("common/spec_trace.py", commonSpecTrace);
   scripts.set("common/dispatch_context.py", commonDispatchContext);
   scripts.set("common/contract.py", commonContract);
+  scripts.set("common/worktree.py", commonWorktree);
+  scripts.set("common/invariants.py", commonInvariants);
 
   // Main
   scripts.set("get_developer.py", getDeveloperScript);

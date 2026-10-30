@@ -54,6 +54,16 @@ class TaskData(TypedDict, total=False):
     # as [] / "none".
     spec_changes: list[str]
     spec_changes_source: str
+    # v2 driver state, written by `task.py start` (worktree mode) and the
+    # driver; absent on tasks started without a worktree.
+    state: str  # CONTRACT|BUILD|GATE|REVIEW|POLISH|FINISH|DONE|STOP
+    base: str  # sha the task branch started from
+    contract_hash: str  # sha256 hex of contract.md at approval
+    wave: int
+    last_reviewed: str | None
+    counters: dict  # {"gate", "review", "polish", "no_progress"} -> int
+    dispatches: list[dict]  # {"id", "role", "mode", "commit", "status", "started", "ended"}
+    stop: dict  # {"reason": NO_PROGRESS|BUDGET|VIOLATION|HUMAN, "detail"}
 
 
 # =============================================================================

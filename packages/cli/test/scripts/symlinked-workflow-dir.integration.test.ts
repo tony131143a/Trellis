@@ -110,13 +110,13 @@ describe.skipIf(!hasPython() || process.platform === "win32")(
     });
 
     it("task.py start resolves a task by name and stores the in-repo ref", () => {
-      const r = runTask(repo, "start", TASK);
+      const r = runTask(repo, "start", TASK, "--no-worktree");
       expect(r.status).toBe(0);
       expect(r.stdout).toContain(`Current task set to: .arbor/tasks/${TASK}`);
     });
 
     it("task.py start resolves the path form too", () => {
-      const r = runTask(repo, "start", `.arbor/tasks/${TASK}`);
+      const r = runTask(repo, "start", `.arbor/tasks/${TASK}`, "--no-worktree");
       expect(r.status).toBe(0);
       expect(r.stdout).toContain(`Current task set to: .arbor/tasks/${TASK}`);
     });

@@ -102,7 +102,8 @@ def normalize_task_ref(task_ref: str) -> str:
 
 
 def resolve_task_ref(task_ref: str, repo_root: Path) -> Path | None:
-    """Resolve a task ref to an absolute task directory inside the repo.
+    """Resolve a task ref to an absolute task directory inside the repo or
+    inside a worktree registered for it.
 
     Mirrors `paths.resolve_task_ref` (same containment check). Duplicated
     rather than imported because this module is loaded standalone — hooks add
@@ -147,9 +148,33 @@ def resolve_task_ref(task_ref: str, repo_root: Path) -> Path | None:
     try:
         rel = resolved.relative_to(workflow_real)
     except ValueError:
-        return None
+        # A started task lives in its own worktree; any worktree registered
+        # for this repo is the third base, kept absolute.
+        return resolved if in_registered_worktree(resolved, root) else None
 
     return root / DIR_WORKFLOW / rel
+
+
+def in_registered_worktree(resolved: Path, repo_root: Path) -> bool:
+    """Whether a resolved path lies inside a worktree registered for this repo
+    (`git worktree list`; the main checkout counts too).
+
+    Only when `repo_root` is itself one of those worktrees: an Arbor project
+    nested in an unrelated outer repository must not inherit the outer one's
+    checkouts as containment bases.
+    """
+    from .worktree import list_worktrees
+
+    worktrees = list_worktrees(repo_root)
+    if repo_root.resolve() not in worktrees:
+        return False
+    for worktree in worktrees:
+        try:
+            resolved.relative_to(worktree)
+            return True
+        except ValueError:
+            continue
+    return False
 
 
 def _runtime_sessions_dir(repo_root: Path) -> Path:
@@ -470,11 +495,10 @@ def _canonical_task_ref(task_path: str, repo_root: Path) -> str | None:
     try:
         return full_path.relative_to(repo_root.resolve()).as_posix()
     except ValueError:
-        # resolve_task_ref already refused everything outside the repo, so this
-        # is unreachable. Refuse rather than fall back to an absolute path —
-        # that fallback is how an out-of-repo ref used to reach the session
-        # pointer and get replayed on every later turn.
-        return None
+        # resolve_task_ref only lets a path outside the repo through when it
+        # sits in a registered worktree of this repo (a started task); that
+        # one is stored absolute. Anything else was refused above.
+        return full_path.as_posix()
 
 
 def _relative_task_ref(task_path: str, repo_root: Path) -> str:

@@ -280,7 +280,8 @@ def normalize_task_ref(task_ref: str) -> str:
 def resolve_task_ref(task_ref: str, repo_root: Path | None = None) -> Path | None:
     """Resolve a task ref to an absolute task directory path inside the repo.
 
-    Returns None when the ref resolves outside `repo_root`. Every reader of the
+    Returns None when the ref resolves outside `repo_root` and outside every
+    worktree registered for this repo (a started task lives in its own). Every reader of the
     active task — `task.py`, the shared hooks, the platform extensions — comes
     through here, so containment is enforced at this one point rather than at
     each call site.
@@ -340,7 +341,11 @@ def resolve_task_ref(task_ref: str, repo_root: Path | None = None) -> Path | Non
     try:
         rel = resolved.relative_to(workflow_real)
     except ValueError:
-        return None
+        # Third base: a started task lives in its own worktree, and any
+        # worktree registered for this repo is legitimate (kept absolute).
+        from .active_task import in_registered_worktree
+
+        return resolved if in_registered_worktree(resolved, root) else None
 
     # Map back to the in-repo (lexical) form so callers store the same
     # repo-relative ref as in the non-symlinked layout.
