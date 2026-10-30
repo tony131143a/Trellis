@@ -97,9 +97,9 @@ describe.skipIf(!hasPython())("add_session.py worktree warning", () => {
       spawnSync("git", ["worktree", "remove", "--force", worktreeDir], {
         cwd: tmp,
       });
-      fs.rmSync(worktreeDir, { recursive: true, force: true });
+      fs.rmSync(worktreeDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     }
-    fs.rmSync(tmp, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
   it("stays silent in the main working tree even with auto-commit enabled", () => {

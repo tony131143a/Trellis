@@ -222,7 +222,7 @@ describe.skipIf(!hasPython())("add_session.py auto-commit", () => {
   });
 
   afterEach(() => {
-    fs.rmSync(tmp, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
   it("does not bundle dirty changes from other task dirs (scope-creep fix)", () => {
@@ -450,7 +450,7 @@ describe.skipIf(!hasPython())("add_session.py commit evidence (R1)", () => {
   });
 
   afterEach(() => {
-    fs.rmSync(tmp, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
   it("renders the real local commit subject, never a (see git log) placeholder", () => {
@@ -633,7 +633,7 @@ describe.skipIf(!hasPython())("add_session.py fingerprint date rollover", () => 
   });
 
   afterEach(() => {
-    fs.rmSync(tmp, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
   it("resumes a record written yesterday under the pre-versioning scheme", () => {
@@ -724,7 +724,7 @@ describe.skipIf(!hasPython())("add_session.py retry convergence (R2-R5)", () => 
   });
 
   afterEach(() => {
-    fs.rmSync(tmp, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
   it("repairs the index row on retry when the index update failed after the append", () => {
@@ -945,7 +945,7 @@ describe.skipIf(!hasPython())("add_session.py session numbering", () => {
   });
 
   afterEach(() => {
-    fs.rmSync(tmp, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
   it("does not reuse a number already claimed on a concurrent branch", () => {
@@ -1005,7 +1005,7 @@ describe.skipIf(!hasPython())("add_session.py with .arbor below the git root", (
   });
 
   afterEach(() => {
-    fs.rmSync(outer, { recursive: true, force: true });
+    fs.rmSync(outer, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
   it("verifies the committed record and still numbers a repeat as a new session", () => {
@@ -1043,7 +1043,7 @@ describe.skipIf(!hasPython())("add_session.py outside any git repository", () =>
   });
 
   afterEach(() => {
-    fs.rmSync(project, { recursive: true, force: true });
+    fs.rmSync(project, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
   it("records the session and exits 0 — a configured skip, not a retry loop", () => {
