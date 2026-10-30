@@ -94,6 +94,16 @@ def partition_branch(task_name: str, partition: str) -> str:
     return f"{TASK_BRANCH_PREFIX}{task_name}{PARTITION_SEPARATOR}{partition}"
 
 
+def partition_worktree_path(repo_root: Path, config: dict, task_name: str, partition: str) -> Path:
+    return worktree_root(repo_root, config) / f"{task_name}-{partition}"
+
+
+def is_ancestor(worktree: Path, commit: str, of: str = "HEAD") -> bool:
+    """True when ``commit`` is reachable from ``of``."""
+    rc, _, _ = run_git(["merge-base", "--is-ancestor", commit, of], cwd=worktree)
+    return rc == 0
+
+
 def add_worktree(repo_root: Path, path: Path, branch: str, start_point: str) -> None:
     """Create ``branch`` at ``start_point`` and check it out at ``path``."""
     path.parent.mkdir(parents=True, exist_ok=True)

@@ -5,7 +5,9 @@ of the contract's Verification map, run in the task worktree.
 Gate commands come from ``gate.commands`` in ``.arbor/config.yaml`` and are
 reported as ``GATE-1``, ``GATE-2``, ...; map checks keep their criterion id.
 The same runner serves the red check after the ``test`` dispatch, where every
-check must fail and a collection / import error is not a valid red.
+check must fail and a collection / import error is not a valid red. A
+partition's red check runs only the auto checks whose ``file`` lies inside
+the partition's paths (checks without a file wait for GATE).
 """
 
 from __future__ import annotations
@@ -14,8 +16,9 @@ import re
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Sequence
 
-from ..contract import Contract
+from ..contract import Contract, path_matches
 
 #: Upper bound for one check; a hung test runner must not hang the driver.
 CHECK_TIMEOUT_S = 30 * 60
@@ -82,8 +85,13 @@ def run_check(check_id: str, command: str, worktree: Path) -> CheckResult:
     return CheckResult(check_id, command, proc.returncode, tail)
 
 
-def auto_checks(contract: Contract) -> list[tuple[str, str]]:
-    return [(e.id, e.check) for e in contract.auto_checks() if e.check.strip()]
+def auto_checks(contract: Contract, paths: Sequence[str] | None = None) -> list[tuple[str, str]]:
+    """``(id, command)`` of the auto checks; with ``paths``, only those whose
+    ``file`` matches one of them."""
+    return [
+        (e.id, e.check) for e in contract.auto_checks()
+        if e.check.strip() and (paths is None or (e.file and path_matches(e.file, paths)))
+    ]
 
 
 def run_gate(gate_commands: list[str], contract: Contract, worktree: Path) -> GateResult:
@@ -115,9 +123,10 @@ class RedResult:
         return not self.passing and not self.errored
 
 
-def run_red_check(contract: Contract, worktree: Path) -> RedResult:
-    """After ``test``: every auto check must fail, and for the right reason."""
-    return RedResult([run_check(cid, command, worktree) for cid, command in auto_checks(contract)])
+def run_red_check(contract: Contract, worktree: Path, paths: Sequence[str] | None = None) -> RedResult:
+    """After ``test``: every auto check (of the partition owning ``paths``)
+    must fail, and for the right reason."""
+    return RedResult([run_check(cid, command, worktree) for cid, command in auto_checks(contract, paths)])
 
 
 def format_checks(checks: list[CheckResult]) -> str:
