@@ -1,0 +1,21 @@
+packages/cli/test/scripts/v2-driver-build.integration.test.ts
+  s_8d642f5b9ce846::t_aa95523f7d5007 12
+packages/cli/test/scripts/v2-driver-helpers.ts
+  s_8d642f5b9ce846::t_a35b9cda6b907d 105-108,115-116,119,132-134,191
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "cbde84aa02dc440203773a82d5c99914eb92c100",
+  "prompts": {},
+  "sessions": {
+    "s_8d642f5b9ce846": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-awave2-driver-55cc905c63240176",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
