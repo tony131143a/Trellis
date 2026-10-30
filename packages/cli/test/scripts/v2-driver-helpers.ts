@@ -5,12 +5,13 @@
  *
  * The fake (`fake_exec.py`) saves the prompt it received to
  * `<tmp>/received/<dispatch>.md`, then follows `<tmp>/fake.json`
- * (keyed by dispatch id): `write` files and commit them with the pinned
- * format (or `message`), leave `dirty` files uncommitted, print `reply`
- * (default: a valid report for the role), exit with `exit`.
+ * (keyed by dispatch id): `sleep` seconds first, `write` files and commit
+ * them with the pinned format (or `message`), leave `dirty` files
+ * uncommitted, print `reply` (default: a valid report for the role), exit
+ * with `exit`.
  */
 
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -38,7 +39,7 @@ export function writeFile(root: string, rel: string, content: string): void {
   fs.writeFileSync(full, content, "utf-8");
 }
 
-const FAKE_EXEC = String.raw`import json, pathlib, subprocess, sys
+const FAKE_EXEC = String.raw`import json, pathlib, subprocess, sys, time
 role, prompt, worktree, task, dispatch = sys.argv[1:6]
 here = pathlib.Path(__file__).resolve().parent
 (here / "received").mkdir(exist_ok=True)
@@ -57,6 +58,7 @@ DEFAULT = {
 }
 def git(*args):
     subprocess.run(["git", *args], cwd=worktree, check=True, capture_output=True)
+time.sleep(spec.get("sleep", 0))
 for f in spec.get("write", []):
     p = pathlib.Path(worktree, f["path"])
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -122,7 +124,7 @@ export interface Fixture {
 
 /** `start: false` leaves the task in planning, in the main checkout (CONTRACT phase). */
 export function setupFixture(
-  opts: { tier?: string; gate?: string[]; executor?: string; start?: boolean } = {},
+  opts: { tier?: string; gate?: string[]; executor?: string; start?: boolean; contract?: string } = {},
 ): Fixture {
   const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "arbor-v2-driver-")));
   const repo = path.join(tmp, "proj");
@@ -160,8 +162,9 @@ export function setupFixture(
       meta: { tier: opts.tier ?? "light" },
     }) + "\n",
   );
-  writeFile(repo, `${rel}/contract.md`, CONTRACT);
+  writeFile(repo, `${rel}/contract.md`, opts.contract ?? CONTRACT);
   if ((opts.tier ?? "light") !== "light") writeFile(repo, `${rel}/design.md`, "# Design\n");
+  if (opts.tier === "full") writeFile(repo, `${rel}/waves.md`, "# Waves\n");
   writeFile(repo, ".arbor/spec/guides/index.md", "# Guides\n");
   const curated = JSON.stringify({ file: ".arbor/spec/guides/index.md", reason: "guides" }) + "\n";
   writeFile(repo, `${rel}/implement.jsonl`, curated);
@@ -202,4 +205,18 @@ export function setupFixture(
 export function dispatch(f: Fixture, id: string) {
   f.brief(id);
   return f.run("run", "--dispatch", id);
+}
+
+/** `arbor.py <args>` as a child process that runs alongside others. */
+export function runAsync(f: Fixture, ...args: string[]): Promise<{ status: number | null; stdout: string; stderr: string }> {
+  return new Promise((resolve) => {
+    const child = spawn("python3", [path.join(f.repo, ".arbor/scripts/arbor.py"), ...args], {
+      cwd: f.repo, env: { ...process.env, ...SESSION },
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (d) => (stdout += d));
+    child.stderr.on("data", (d) => (stderr += d));
+    child.on("close", (status) => resolve({ status, stdout, stderr }));
+  });
 }

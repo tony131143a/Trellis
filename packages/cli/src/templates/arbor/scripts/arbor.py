@@ -56,6 +56,7 @@ from typing import Iterator
 from common.active_task import resolve_active_task, resolve_task_ref
 from common.arbor_config import get_executors_config, get_gate_commands, get_test_paths, read_arbor_config
 from common.contract import (
+    Contract,
     ContractError,
     contract_hash,
     effective_test_paths,
@@ -239,6 +240,13 @@ def waves_of(ctx: Ctx) -> tuple[tuple[str, ...], ...] | None:
         return load_contract(path).waves
     except ContractError:
         return None
+
+
+def require_contract(ctx: Ctx) -> Contract:
+    path = find_contract(ctx.task_dir)
+    if path is None:
+        raise DriverError(f"{ctx.name} has no contract.md")
+    return load_contract(path)
 
 
 def plan_for(ctx: Ctx, partition: str | None = None) -> sm.Step:
@@ -604,8 +612,9 @@ def _advance(ctx: Ctx, state: str, step: str, role: str, dispatch: str, out: Out
     return notes
 
 
-def _advance_partition(ctx: Ctx, job: Job, out: Outcome, red: RedResult | None) -> list[str]:
+def _advance_partition(ctx: Ctx, job: Job, red: RedResult | None) -> list[str]:
     name = job.unit.partition
+    assert name is not None
     if job.role == "test":
         assert red is not None
         sm.on_partition_red_check(ctx.data, name, red.passing, red.errored)
@@ -665,6 +674,7 @@ def _begin(ctx: Ctx, step: sm.Step, requested: str | None) -> Job:
         save(ctx)
     else:
         state, step_name = data["state"], sm.step_of(data)
+    assert step.role is not None
     commit_task_dir(ctx, f"arbor({ctx.name}): {dispatch} {step.role} brief")
     return Job(dispatch, step.role, step.mode, state, step_name, step.range_from, unit, brief,
                data.get("override_role") if not unit.partition else None)
@@ -686,7 +696,7 @@ def _finish(ctx: Ctx, job: Job, out: Outcome, red: RedResult | None) -> None:
         else:
             sm.on_dispatch_failed(data, role)
     elif name:
-        notes = _advance_partition(ctx, job, out, red)
+        notes = _advance_partition(ctx, job, red)
     elif not job.override:
         notes = _advance(ctx, job.state, job.step, role, dispatch, out)
 
@@ -743,7 +753,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     out = dispatch_once(ctx, job.unit, job.role, job.mode, job.range_from, job.dispatch, job.brief)
     red = None
     if job.unit.partition and job.role == "test" and out.status == "ok":
-        contract = load_contract(find_contract(ctx.task_dir))
+        contract = require_contract(ctx)
         spec = contract.partition(job.unit.partition)
         red = run_red_check(contract, job.unit.worktree, spec.paths if spec else ())
     with editing(ctx):
@@ -764,7 +774,7 @@ def cmd_run(args: argparse.Namespace) -> int:
 def start_wave(ctx: Ctx) -> int:
     """Locked: create the wave's partition branches and worktrees from the task HEAD."""
     data = ctx.data
-    contract = load_contract(find_contract(ctx.task_dir))
+    contract = require_contract(ctx)
     wave = data.get("wave", 1)
     parts = sm.wave_partitions(contract.waves, wave)
     start = head(ctx)
