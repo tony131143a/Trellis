@@ -128,8 +128,21 @@ describe("init() joiner onboarding", () => {
     expect(taskJson.assignee).toBe("bob");
     expect(taskJson.title).toContain("bob");
 
-    const prd = fs.readFileSync(path.join(joiner, FILE_NAMES.PRD), "utf-8");
-    // PRD is AI-facing instructions ("you (the AI) are running this task").
+    expect(fs.existsSync(path.join(joiner, FILE_NAMES.PRD))).toBe(false);
+    const prd = fs.readFileSync(path.join(joiner, FILE_NAMES.CONTRACT), "utf-8");
+    // contract.md carries the v2 sections the driver parses.
+    for (const heading of [
+      "## Goal",
+      "## Scope",
+      "## Acceptance criteria",
+      "## Verification map",
+      "## Interface pins",
+    ]) {
+      expect(prd).toContain(`\n${heading}\n`);
+    }
+    expect(prd).toContain("| AC-1 | manual |");
+    expect(prd).not.toMatch(/prd\.md|sub-agent|arbor-implement|arbor-check/);
+    // The rest is AI-facing instructions ("you (the AI) are running this task").
     // Mentions the developer in context + user-facing elements the AI should
     // reference.
     expect(prd).toContain("bob");

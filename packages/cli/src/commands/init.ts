@@ -278,7 +278,7 @@ export function slugifyDeveloperName(name: string): string {
 }
 
 /**
- * Write a task skeleton (task.json + prd.md).
+ * Write a task skeleton (task.json + contract.md).
  *
  * Idempotent: if the task dir already exists, returns true without touching
  * anything. Shared by both creator bootstrap and joiner onboarding flows.
@@ -287,7 +287,7 @@ function writeTaskSkeleton(
   cwd: string,
   taskName: string,
   taskJson: TaskJson,
-  prdContent: string,
+  contractContent: string,
 ): boolean {
   const taskDir = path.join(cwd, PATHS.TASKS, taskName);
   if (fs.existsSync(taskDir)) return true; // idempotent
@@ -299,7 +299,11 @@ function writeTaskSkeleton(
       JSON.stringify(taskJson, null, 2),
       "utf-8",
     );
-    fs.writeFileSync(path.join(taskDir, FILE_NAMES.PRD), prdContent, "utf-8");
+    fs.writeFileSync(
+      path.join(taskDir, FILE_NAMES.CONTRACT),
+      contractContent,
+      "utf-8",
+    );
     return true;
   } catch {
     return false;
@@ -309,7 +313,7 @@ function writeTaskSkeleton(
 /**
  * Compute the bootstrap checklist items (previously stored as structured
  * `subtasks: [{name, status}]` in task.json). Per task 04-21-task-schema-unify
- * (D1), these live as markdown `- [ ]` items in prd.md instead, so task.json
+ * (D1), these live as markdown `- [ ]` items in contract.md instead, so task.json
  * stays canonical with `subtasks: string[]` (child task dir names, same as
  * task_store.py).
  */
@@ -351,7 +355,58 @@ function getBootstrapRelatedFiles(
   return [".arbor/spec/backend/", ".arbor/spec/frontend/"];
 }
 
-function getBootstrapPrdContent(
+interface ContractCriterion {
+  /** "Given … When … Then …" text after the `AC-n:` id */
+  text: string;
+  /** Manual check: how the developer confirms the criterion */
+  check: string;
+}
+
+/**
+ * The v2 contract sections (mirrors `CONTRACT_TEMPLATE` in
+ * `common/contract.py`): Goal, Scope, Acceptance criteria, Verification map,
+ * Interface pins. Every criterion is a `manual` row; the onboarding tasks
+ * change no code, so the pin is "existing interfaces" and Test paths /
+ * Partitions / Waves are left to their defaults.
+ */
+function renderContractSections(opts: {
+  goal: string;
+  scopeIn: string;
+  scopeOut: string;
+  criteria: ContractCriterion[];
+}): string {
+  const acs = opts.criteria
+    .map((c, i) => `- AC-${i + 1}: ${c.text}`)
+    .join("\n");
+  const rows = opts.criteria
+    .map((c, i) => `| AC-${i + 1} | manual | ${c.check} | |`)
+    .join("\n");
+  return `## Goal
+
+${opts.goal}
+
+## Scope
+
+- in: ${opts.scopeIn}
+- out: ${opts.scopeOut}
+
+## Acceptance criteria
+
+${acs}
+
+## Verification map
+
+| id | kind | check | file |
+|----|------|-------|------|
+${rows}
+
+## Interface pins
+
+- existing interfaces
+`;
+}
+
+function getBootstrapContractContent(
   projectType: ProjectType,
   pythonCmd: string,
   packages?: DetectedPackage[],
@@ -360,6 +415,19 @@ function getBootstrapPrdContent(
   const checklistMarkdown = checklistItems
     .map((item) => `- [ ] ${item}`)
     .join("\n");
+  const criteria = checklistItems.map(
+    (item): ContractCriterion =>
+      item === "Add code examples"
+        ? {
+            text: "Given the filled spec files When a dispatched role reads them Then each one shows at least one real code example from this repository",
+            check:
+              "the developer confirms every filled spec file has a real example",
+          }
+        : {
+            text: `Given the existing code When the ${item.replace(/^Fill /, "")} are written Then they describe what the code actually does, cite real file paths and contain no placeholder text`,
+            check: `the developer confirms: ${item}`,
+          },
+  );
 
   const header = `# Bootstrap Task: Fill Project Development Guidelines
 
@@ -371,17 +439,22 @@ exists under \`.arbor/tasks/\`. When they want to work on it, they should start
 this task from a session that provides Arbor session identity.
 
 **Your job**: help them populate \`.arbor/spec/\` with the team's real
-coding conventions. Every future AI session — this project's
-\`arbor-implement\` and \`arbor-check\` sub-agents — auto-loads spec files
-listed in per-task jsonl manifests. Empty spec = sub-agents write generic
-code. Real spec = sub-agents match the team's actual patterns.
+coding conventions. Every role the Arbor driver dispatches (architect, test,
+implement, review, verify, fix, simplify) gets the spec files listed in its
+task's jsonl manifests inlined into its prompt. Empty spec = roles write
+generic code. Real spec = roles match the team's actual patterns.
 
 Don't dump instructions. Open with a short greeting, figure out if the repo
 has any existing convention docs (CLAUDE.md, .cursorrules, etc.), and drive
 the rest conversationally.
 
----
-
+${renderContractSections({
+  goal: "Populate `.arbor/spec/` with the conventions this codebase actually follows, so every dispatched role writes and reviews code the way the team does.",
+  scopeIn: "the spec files listed under Spec files to populate",
+  scopeOut:
+    "source code changes; the shared thinking guides in `.arbor/spec/guides/` unless one clearly does not fit",
+  criteria,
+})}
 ## Status (update the checkboxes as you complete each item)
 
 ${checklistMarkdown}
@@ -460,8 +533,8 @@ Scan real code to discover patterns. Before writing each spec file:
 ### Step 3: Document reality, not ideals
 
 **Critical**: write what the code *actually does*, not what it should do.
-Sub-agents match the spec, so aspirational patterns that don't exist in the
-codebase will cause sub-agents to write code that looks out of place.
+Dispatched roles match the spec, so aspirational patterns that don't exist in
+the codebase will cause them to write code that looks out of place.
 
 If the team has known tech debt, document the current state — improvement
 is a separate conversation, not a bootstrap concern.
@@ -470,13 +543,14 @@ is a separate conversation, not a bootstrap concern.
 
 ## Quick explainer of the runtime (share when they ask "why do we need spec at all")
 
-- Every AI coding task spawns two sub-agents: \`arbor-implement\` (writes
-  code) and \`arbor-check\` (verifies quality).
+- Every Arbor task is run by the driver (\`.arbor/scripts/arbor.py\`), which
+  dispatches roles (test, implement, review, fix, …) through the executor
+  configured under \`executors:\` in \`.arbor/config.yaml\`.
 - Each task has \`implement.jsonl\` / \`check.jsonl\` manifests listing which
   spec files to load.
-- The platform hook auto-injects those spec files + the task's \`prd.md\`
-  into every sub-agent prompt, so the sub-agent codes/reviews per team
-  conventions without anyone pasting them manually.
+- The driver inlines those spec files + the task's \`contract.md\` into every
+  role prompt, so each role codes/reviews per team conventions without anyone
+  pasting them manually.
 - Source of truth: \`.arbor/spec/\`. That's why filling it well now pays
   off forever.
 
@@ -545,7 +619,7 @@ function getBootstrapTaskJson(
 
   // Canonical 24-field shape via emptyTaskJson factory.
   // Checklist items (previously stored as structured `subtasks`) are now
-  // rendered as `- [ ]` items in prd.md; task.json.subtasks is always
+  // rendered as `- [ ]` items in contract.md; task.json.subtasks is always
   // string[] (child task dir names) per the canonical schema.
   return emptyTaskJson({
     id: BOOTSTRAP_TASK_NAME,
@@ -574,8 +648,12 @@ function createBootstrapTask(
   packages?: DetectedPackage[],
 ): boolean {
   const taskJson = getBootstrapTaskJson(developer, projectType, packages);
-  const prdContent = getBootstrapPrdContent(projectType, pythonCmd, packages);
-  return writeTaskSkeleton(cwd, BOOTSTRAP_TASK_NAME, taskJson, prdContent);
+  const contractContent = getBootstrapContractContent(
+    projectType,
+    pythonCmd,
+    packages,
+  );
+  return writeTaskSkeleton(cwd, BOOTSTRAP_TASK_NAME, taskJson, contractContent);
 }
 
 // =============================================================================
@@ -607,10 +685,13 @@ function getJoinerTaskJson(developer: string, taskName: string): TaskJson {
 }
 
 /**
- * PRD content for joiner onboarding. Kept concise (~80 lines) — deeper
+ * contract.md for joiner onboarding. Kept concise (~100 lines) — deeper
  * guidance lives in skills and docs.
  */
-function getJoinerPrdContent(developer: string, pythonCmd: string): string {
+function getJoinerContractContent(
+  developer: string,
+  pythonCmd: string,
+): string {
   const slug = slugifyDeveloperName(developer);
   return `# Joiner Onboarding Task
 
@@ -625,6 +706,21 @@ Your job is to orient them to Arbor. Don't dump all of this at them — open
 with a short greeting, ask where they want to start, and fill in the rest as
 they engage.
 
+${renderContractSections({
+  goal: `Orient \`${developer}\` to Arbor and this project: the workflow, the runtime, the team's spec and their assigned work.`,
+  scopeIn: "explaining the four topics below and answering their questions",
+  scopeOut: "teaching the business code itself; changes to code or spec",
+  criteria: [
+    {
+      text: "Given a fresh clone When the four topics below have been covered Then the developer can say how a task moves from contract to merge",
+      check: "the developer confirms they feel oriented",
+    },
+    {
+      text: `Given \`task.py list --assignee ${developer}\` When it is run Then the developer knows which tasks are theirs, or that none are assigned yet`,
+      check: "the developer has seen their task list",
+    },
+  ],
+})}
 ---
 
 ## Topics to cover (adapt order to their questions)
@@ -635,8 +731,10 @@ Arbor is a workflow layer over Claude Code / Cursor / etc. that keeps AI
 agents consistent with project-specific conventions instead of writing generic
 code every session.
 
-- **Three phases**: Plan (brainstorm → \`prd.md\`) → Execute (code + check) →
-  Finish (capture + wrap). Full reference: \`.arbor/workflow.md\`.
+- **Three phases**: Plan (explore, questions, \`contract.md\` approved by a
+  human) → Drive (the \`arbor.py next\` loop: tests red → implement green →
+  gate → review → polish) → Finish (scorecard, spec update, PR, human merge).
+  Full reference: \`.arbor/workflow.md\`.
 - **Task lifecycle**: planning → in_progress → done → archive, under
   \`.arbor/tasks/\`.
 - **Core slash commands**:
@@ -651,16 +749,16 @@ code every session.
   status, session active task, active tasks, and workflow phase into the AI
   conversation at every session start.
 - **\`<workflow-state>\` tag** is auto-injected with every user message,
-  carrying the current task + phase hint.
-- **\`/arbor:continue\`** loads the Phase Index, reads \`prd.md\` + recent
-  activity, and routes to the right skill (\`arbor-brainstorm\` for planning,
-  \`arbor-implement\` for coding, \`arbor-check\` for verification).
-- **\`arbor-implement\` sub-agent** is spawned when code needs to be written.
-  The platform hook reads \`{TASK_DIR}/implement.jsonl\` and auto-injects those
-  spec files + \`prd.md\` into the sub-agent's prompt so it codes per project
-  conventions.
-- **\`arbor-check\` sub-agent** follows the same pattern with \`check.jsonl\`
-  — reviews changes against specs, auto-fixes issues, runs lint/typecheck.
+  carrying the current task + the driver's one-line summary of the next step.
+- **\`/arbor:continue\`** loads the Phase Index, reads \`contract.md\` + recent
+  activity, and routes to the right step (planning: explore / questions /
+  contract; driven: \`arbor.py next\`).
+- **The driver** (\`.arbor/scripts/arbor.py\`) runs every role (explore,
+  architect, test, implement, review, verify, fix, simplify) through the
+  executor configured under \`executors:\` in \`.arbor/config.yaml\`. It
+  inlines the spec files listed in \`{TASK_DIR}/implement.jsonl\` (writers) or
+  \`check.jsonl\` (reviewers) + \`contract.md\` into each role prompt, then
+  checks the git invariants and runs the gate.
 
 File layout (mention when they ask "where does what live"):
 - \`.arbor/.runtime/sessions/<session>.json\` — session active-task state, gitignored
@@ -693,8 +791,8 @@ File layout (mention when they ask "where does what live"):
 ## Optional: walk through a small task end-to-end
 
 If they want to practice before touching real work, offer to pick a tiny
-P3 task or a typo fix and run the full cycle together: \`/arbor:continue\`
-→ you implement via sub-agents → \`/arbor:finish-work\`.
+P3 task and run the full cycle together: contract → \`task.py start\` →
+the \`arbor.py next\` loop → \`/arbor:finish-work\`.
 
 ---
 
@@ -732,8 +830,8 @@ function createJoinerOnboardingTask(
   const slug = slugifyDeveloperName(developer);
   const taskName = `00-join-${slug}`;
   const taskJson = getJoinerTaskJson(developer, taskName);
-  const prdContent = getJoinerPrdContent(developer, pythonCmd);
-  return writeTaskSkeleton(cwd, taskName, taskJson, prdContent);
+  const contractContent = getJoinerContractContent(developer, pythonCmd);
+  return writeTaskSkeleton(cwd, taskName, taskJson, contractContent);
 }
 
 /**
