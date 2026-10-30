@@ -25,7 +25,7 @@ Context sources per role:
 - every role given ``Range:``: ``git diff <range>`` run in the worktree that
   holds the task directory
 
-The role's method, limits and report format live in its role instructions
+The role's method, limits and report format are loaded from its role instructions
 (``.arbor/agents/<role>.md``); the dispatch prompt only carries context, the
 review mode and the brief.
 
@@ -889,7 +889,18 @@ def build_dispatch_prompt(req: DispatchRequest) -> DispatchPrompt:
                 extra.append(diff_block)
         if extra:
             context = "\n\n".join([context, *extra])
+    role_file = repo_root / DIR_WORKFLOW / "agents" / f"{req.role}.md"
+    try:
+        instructions = role_file.read_text(encoding="utf-8").strip()
+    except OSError:
+        instructions = ""
+    if not instructions:
+        instructions = (
+            f"Read `{role_file}` for your role instructions before proceeding. "
+            "If unavailable, report Blocked; do not perform the role without its instructions."
+        )
     body = build_role_prompt(req.role, req.header.body, context, mode)
+    body = f"## Role Instructions\n\n{instructions}\n\n{body}"
 
     warnings = list(budget.warnings)
     if budget.degraded:

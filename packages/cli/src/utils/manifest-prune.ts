@@ -37,6 +37,7 @@ import path from "node:path";
 import { collectPlatformTemplates } from "../configurators/index.js";
 import { FILE_NAMES } from "../constants/paths.js";
 import { getAllMigrations } from "../migrations/index.js";
+import { RETIRED_PLATFORM_PATHS } from "./retired-platforms.js";
 import { saveHashes } from "./template-hash.js";
 import { toPosix } from "./posix.js";
 import { ARBOR_BLOCK_END, ARBOR_BLOCK_START } from "./managed-paths.js";
@@ -58,7 +59,7 @@ export interface PruneResult {
  *     pending migrations can find their source/target)
  */
 function buildKnownKeys(configuredPlatforms: readonly AITool[]): Set<string> {
-  const known = new Set<string>();
+  const known = new Set<string>(RETIRED_PLATFORM_PATHS);
   for (const id of configuredPlatforms) {
     const templates = collectPlatformTemplates(id);
     if (!templates) continue;
@@ -98,8 +99,7 @@ function shouldKeepManagedBlockFile(cwd: string, fileName: string): boolean {
   try {
     const content = fs.readFileSync(fullPath, "utf-8");
     return (
-      content.includes(ARBOR_BLOCK_START) &&
-      content.includes(ARBOR_BLOCK_END)
+      content.includes(ARBOR_BLOCK_START) && content.includes(ARBOR_BLOCK_END)
     );
   } catch {
     return true;

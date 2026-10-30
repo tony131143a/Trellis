@@ -38,7 +38,7 @@ Shows the Phase Index (Plan / Drive / Finish), the state machine, tiers and huma
   `needs=brief` → write the brief at `brief_path`, then `arbor.py run`; `needs=run` → `arbor.py gate`; `needs=decide` → `arbor.py decide <choice> --reason "…"`; `needs=human` → ask the user (`human.kind`: `approve_contract` → re-approval, then `arbor.py resume`; `plausible` → `arbor.py decide fix|skip --reason "…"`; `merge` → Phase 3); `done` → Phase 3. A `STOP` state: report it; the user chooses `resume`, `override --reason "…" (--to STATE[/step] | --role <role>)` or `abandon [--reason "…"]`.
 - `status=completed` (rare; usually archived immediately) → `{{CMD_REF:finish-work}}`
 
-Roles are never performed in this session and never through the built-in `Agent`/`Task` tool; only `arbor.py run` executes them.
+Roles are never performed in this session and never through the built-in `Agent`/`Task` tool; the driver prepares and validates them; codeg MCP executes the prepared delegation.
 
 ## Step 4: Load the Specific Step
 
@@ -53,3 +53,8 @@ Follow the loaded instructions. After each `[required]` step completes, move to 
 ## Reference
 
 Full workflow and detailed phase steps live in `.arbor/workflow.md`. This command is only an entry point — the canonical guidance is there.
+
+
+## codeg MCP delegation
+
+With the `codeg-mcp` executor, `arbor.py run` returns `needs=delegation`. Call codeg MCP `delegate_to_agent` with the returned `mcp.arguments` (resolve the named assistant from the MCP roster if no id is configured), then immediately run `arbor.py bind --request <request_path> --task-id <returned task_id>`. Poll `get_delegation_status`, save its complete JSON response at the returned `result_path` outside the task worktree, and run `arbor.py collect --request <request_path> --result <file>` before proceeding. Resume/poll a bound task after interruptions; never start it again. If the configured timeout expires, cancel it through `cancel_delegation` and collect the terminal report. Claude Code and Codex both use this same MCP flow. Do not substitute `codeg-cli run` or native Agent/Task/spawn_agent.

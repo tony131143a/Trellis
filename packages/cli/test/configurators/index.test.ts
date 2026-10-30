@@ -246,7 +246,7 @@ describe("getPlatformsWithPythonHooks", () => {
 describe("collectPlatformTemplates", () => {
   const SKILL_ROOTS: Record<AITool, string> = {
     "claude-code": ".claude/skills",
-    star: ".starFactory/skills",
+    codex: ".agents/skills",
   };
 
   it("does not throw for any platform", () => {
@@ -324,5 +324,4 @@ describe("collectPlatformTemplates", () => {
       }
     }
   });
-
 });

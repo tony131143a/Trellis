@@ -113,23 +113,34 @@ default_package: cli
 #-------------------------------------------------------------------------------
 # Executors
 #-------------------------------------------------------------------------------
-# How `arbor.py run` executes a role. The driver assembles the full prompt
-# (header + injected context + your brief) into a file and runs `command` from
-# the executor named by `default`. Placeholders: {role} {prompt} {worktree} {task} {dispatch}.
+# How `arbor.py run` prepares a role. With codeg-mcp, Claude Code and Codex
+# call codeg's delegate_to_agent using the driver-produced request, bind its
+# task_id, then collect the terminal MCP report for validation. No CLI child.
 # Model, effort and permissions belong to the executor, not to Arbor: with
 # codeg, configure one `arbor-<role>` assistant per role. `timeout` bounds one
-# dispatch; `max_parallel` bounds concurrent read-only dispatches.
+# dispatch (the host cancels overdue MCP tasks); max_parallel is the fan-out limit.
+# Optional assistant_ids maps role names to codeg assistant ids. Without it,
+# the host resolves `assistant` from the MCP tool's assistant roster.
 #
 # Other executors (copy one, then point `default` at it):
 #   claude:
-#     command: "claude -p {prompt}"
-#     cwd: "{worktree}"
+#     command: "claude -p < {prompt}"
 #   codex:
-#     command: "codex exec --cd {worktree} {prompt}"
+#     command: "codex exec --cd {worktree} --sandbox workspace-write - < {prompt}"
 executors:
   default: codeg
   codeg:
-    command: "/Applications/codeg.app/Contents/MacOS/codeg-cli run -A arbor-{role} -w {worktree} --permissions allow --timeout 90m --title arbor-{role}-{task}-{dispatch} -q -p - < {prompt}"
+    type: codeg-mcp
+    assistant: "arbor-{role}"
+    assistant_ids:
+      explore: 2
+      architect: 3
+      test: 4
+      implement: 5
+      review: 6
+      verify: 7
+      fix: 8
+      simplify: 9
     timeout: 90m
     max_parallel: 3
 

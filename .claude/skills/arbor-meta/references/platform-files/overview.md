@@ -19,7 +19,7 @@ Platform files do not store business state.
 | commands | `.claude/commands/arbor/`, `.starFactory/commands/arbor/` | Explicit entry points such as `/arbor:continue`, `/arbor:finish-work`, `/arbor:start`, `/arbor:workflow [request]`. |
 | root files | `CLAUDE.md`, `AGENTS.md` | Managed block between `<!-- ARBOR:START -->` and `<!-- ARBOR:END -->`; content outside the block is user-owned. |
 
-There are no platform-native sub-agent files. The eight roles (explore, architect, test, implement, review, verify, fix, simplify) are not Claude Code sub-agents; the driver runs them through its configured executor (see `../local-architecture/dispatch.md`). Their instruction text lives in `.arbor/agents/*.md`.
+There are no platform-native sub-agent files. The eight roles (explore, architect, test, implement, review, verify, fix, simplify) use codeg MCP delegation after driver preparation (see `../local-architecture/dispatch.md`). Their instruction text lives in `.arbor/agents/*.md`.
 
 ## Integration Mode
 

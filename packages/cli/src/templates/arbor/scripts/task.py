@@ -449,6 +449,11 @@ def cmd_start(args: argparse.Namespace) -> int:
         print("Hint: Use task name (e.g., 'my-task') or full path (e.g., '.arbor/tasks/01-31-my-task')")
         return 1
 
+    pending_data, _ = read_json_checked(full_path / FILE_TASK_JSON)
+    if pending_data and pending_data.get("mcp_pending"):
+        print(colored("Error: collect pending MCP delegations before starting this task", Colors.RED))
+        return 1
+
     # The contract is what start approves and freezes; without one there is
     # nothing to build against.
     if use_worktree and find_contract(full_path) is None:

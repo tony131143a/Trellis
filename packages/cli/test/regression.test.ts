@@ -474,7 +474,7 @@ describe("regression: Windows path separator (beta.12)", () => {
   it("[beta.12] isManagedPath handles Windows backslash paths", () => {
     expect(isManagedPath(".claude\\commands\\foo.md")).toBe(true);
     expect(isManagedPath(".arbor\\spec\\backend")).toBe(true);
-    expect(isManagedPath(".starFactory\\commands\\start.md")).toBe(true);
+    expect(isManagedPath(".codex\\hooks\\session-start.py")).toBe(true);
   });
 
   it("[beta.12] isManagedPath handles mixed separators", () => {
@@ -2131,7 +2131,7 @@ describe("regression: migration data integrity (beta.14)", () => {
 
 describe("regression: update only configured platforms (beta.16)", () => {
   it("[beta.16] collectPlatformTemplates returns Map for platforms with tracking", () => {
-    const withTracking = ["claude-code", "star"] as const;
+    const withTracking = ["claude-code", "codex"] as const;
     for (const id of withTracking) {
       const result = collectPlatformTemplates(id);
       expect(result, `${id} should have template tracking`).toBeInstanceOf(Map);
@@ -6603,18 +6603,11 @@ describe("regression: platform additions (beta.9, beta.13, beta.16)", () => {
 });
 
 describe("regression: cli_adapter platform support (beta.9, beta.13, beta.16)", () => {
-  it("[star] StarFactory is registered as a class-1 Claude-compatible platform", () => {
-    expect(AI_TOOLS).toHaveProperty("star");
-    expect(AI_TOOLS.star.name).toBe("StarFactory");
-    // StarFactory is a Claude Code fork whose project-level config dir is
-    // .starFactory/ — .claude/ at project level is ignored by the CLI.
-    expect(AI_TOOLS.star.configDir).toBe(".starFactory");
-    expect(AI_TOOLS.star.cliFlag).toBe("star");
-    expect(AI_TOOLS.star.hasPythonHooks).toBe(true);
-    expect(AI_TOOLS.star.supportsAgentSkills ?? false).toBe(false);
-    expect(AI_TOOLS.star.templateContext.agentCapable).toBe(true);
-    expect(AI_TOOLS.star.templateContext.hasHooks).toBe(true);
-    expect(AI_TOOLS.star.templateContext.cmdRefPrefix).toBe("/arbor:");
+  it("[codex] only Claude Code and Codex are registered", () => {
+    expect(Object.keys(AI_TOOLS)).toEqual(["claude-code", "codex"]);
+    expect(AI_TOOLS.codex.configDir).toBe(".codex");
+    expect(AI_TOOLS.codex.supportsAgentSkills).toBe(true);
+    expect(AI_TOOLS.codex.templateContext.cmdRefPrefix).toBe("$");
   });
 
   // v0.5.0-beta.12 removed `task.py init-context`; jsonl manifests are now
@@ -6734,7 +6727,7 @@ describe("regression: migration manifest consistency", () => {
 
 describe("regression: collectTemplates paths match init directory structure (0.3.1)", () => {
   it("[0.3.1] all platforms with commands use consistent arbor/ subdirectory", () => {
-    const platformsWithCommands = ["claude-code", "star"] as const;
+    const platformsWithCommands = ["claude-code"] as const;
     for (const id of platformsWithCommands) {
       const templates = collectPlatformTemplates(id);
       if (!templates) continue;
@@ -7120,7 +7113,8 @@ describe("regression: sub-agent context injection fallback (0.5.3)", () => {
     );
     expect(wf).toContain("Range: <base>..<head>");
     expect(wf).toContain("Dispatch: d-NNN");
-    expect(wf).toContain("never the built-in Agent/Task tool");
+    expect(wf).toContain("never use the built-in Agent/Task tool");
+    expect(wf).toContain("executed through codeg MCP");
   });
 });
 

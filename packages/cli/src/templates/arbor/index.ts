@@ -58,9 +58,7 @@ export const commonPackagesContext = readTemplate(
 export const commonWorkflowPhase = readTemplate(
   "scripts/common/workflow_phase.py",
 );
-export const commonArborConfig = readTemplate(
-  "scripts/common/arbor_config.py",
-);
+export const commonArborConfig = readTemplate("scripts/common/arbor_config.py");
 export const commonSafeCommit = readTemplate("scripts/common/safe_commit.py");
 export const commonSpecMeta = readTemplate("scripts/common/spec_meta.py");
 export const commonSpecLint = readTemplate("scripts/common/spec_lint.py");
@@ -71,11 +69,14 @@ export const commonDispatchContext = readTemplate(
 export const commonContract = readTemplate("scripts/common/contract.py");
 export const commonWorktree = readTemplate("scripts/common/worktree.py");
 export const commonInvariants = readTemplate("scripts/common/invariants.py");
-export const commonDriverInit = readTemplate("scripts/common/driver/__init__.py");
+export const commonDriverInit = readTemplate(
+  "scripts/common/driver/__init__.py",
+);
 export const commonDriverState = readTemplate("scripts/common/driver/state.py");
 export const commonDriverExecutor = readTemplate(
   "scripts/common/driver/executor.py",
 );
+export const commonDriverMcp = readTemplate("scripts/common/driver/mcp.py");
 export const commonDriverValidate = readTemplate(
   "scripts/common/driver/validate.py",
 );
@@ -84,7 +85,9 @@ export const commonDriverLock = readTemplate("scripts/common/driver/lock.py");
 export const commonDriverPartitions = readTemplate(
   "scripts/common/driver/partitions.py",
 );
-export const commonDriverFinish = readTemplate("scripts/common/driver/finish.py");
+export const commonDriverFinish = readTemplate(
+  "scripts/common/driver/finish.py",
+);
 export const commonDriverAutopilot = readTemplate(
   "scripts/common/driver/autopilot.py",
 );
@@ -160,6 +163,7 @@ export function getAllScripts(): Map<string, string> {
   scripts.set("common/driver/__init__.py", commonDriverInit);
   scripts.set("common/driver/state.py", commonDriverState);
   scripts.set("common/driver/executor.py", commonDriverExecutor);
+  scripts.set("common/driver/mcp.py", commonDriverMcp);
   scripts.set("common/driver/validate.py", commonDriverValidate);
   scripts.set("common/driver/gate.py", commonDriverGate);
   scripts.set("common/driver/lock.py", commonDriverLock);

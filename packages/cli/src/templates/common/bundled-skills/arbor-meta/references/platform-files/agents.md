@@ -1,6 +1,6 @@
 # Agents (Role Instruction Sources)
 
-Arbor has eight roles: `explore`, `architect`, `test`, `implement`, `review`, `verify`, `fix`, and `simplify`. In Arbor they are not platform-native sub-agents and there are no `.claude/agents/` or `.starFactory/agents/` files. The driver (`.arbor/scripts/arbor.py`) runs each role through the executor configured under `executors:` in `.arbor/config.yaml`. See `../local-architecture/dispatch.md` for the mechanism.
+Arbor has eight roles: `explore`, `architect`, `test`, `implement`, `review`, `verify`, `fix`, and `simplify`. In Arbor they are not platform-native sub-agents and there are no `.claude/agents/` or `.starFactory/agents/` files. The driver (`.arbor/scripts/arbor.py`) prepares and validates roles; the default `codeg-mcp` executor uses the host’s codeg MCP delegation tools. See `../local-architecture/dispatch.md` for the mechanism.
 
 ## Instruction Sources
 
@@ -15,7 +15,7 @@ Arbor has eight roles: `explore`, `architect`, `test`, `implement`, `review`, `v
 | `.arbor/agents/fix.md` | Apply the chosen findings, commit, report fixed or skipped per finding. |
 | `.arbor/agents/simplify.md` | Behavior-preserving cleanup of a range (reuse, duplication, needless complexity); commit or report no change. |
 
-These are plain markdown with no frontmatter. How the text reaches the executor is the executor's business; for the default codeg executor it is the instruction text of the matching `arbor-<role>` assistant.
+These are plain markdown with no frontmatter. The driver inlines these role instructions into the prepared MCP prompt. The selected `arbor-<role>` codeg assistant supplies the underlying agent, model and permissions.
 
 ## What The Files Contain
 

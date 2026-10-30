@@ -92,6 +92,10 @@ def find_arbor_root(start: Path) -> Optional[Path]:
 # ---------------------------------------------------------------------------
 
 def _detect_platform(input_data: dict) -> str | None:
+    if ".codex" in Path(sys.argv[0]).parts:
+        return "codex"
+    if os.environ.get("CODEX_THREAD_ID") and not os.environ.get("CLAUDE_PROJECT_DIR"):
+        return "codex"
     # StarFactory is a Claude Code fork: it exports CLAUDE_PROJECT_DIR too, so
     # its own vendor key must be checked FIRST or a star session is detected as
     # claude and the context key becomes `claude_<session-id>`. That key does

@@ -53,6 +53,334 @@
         "94e95f0bb38f8e0fb52a6dab21f7708dde104b7edeb2eb5ce6b7e68f1328c295",
         "243b0dc9b847e66c440dca985e10fe0ce9e29c379b018ddd5747ba8948f84cc8"
       ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/settings.json",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "702c67fbd1cb2301a72911356637524b1c3f59fac81ec91d87ac0f08cfeddf58"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/commands/arbor/continue.md",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "ae14fe7feeb44350fafc847b124418ea21fbaa54b10a452f25eaa63f134fd5f0"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/commands/arbor/finish-work.md",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "5d32f27d9a4a2644fc1fa8fc69849e2e4d5f48f8c0eb5c5d8e0b5613bfb544cb"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/commands/arbor/workflow.md",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "dae80beeb63a3560ff5c55abff2047e58c48e89d1555631cd2e578d4c306123d"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/skills/arbor-before-dev/SKILL.md",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "601b5929ee42a064a0fc52ac13d6476ecd22493eeb836158026a15e849122ccf"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/skills/arbor-brainstorm/SKILL.md",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "83a064716d9bc1e70137ff30bc7e8281ba6ffc2dcde627297974839df4ca93d8"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/skills/arbor-break-loop/SKILL.md",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "8fac7c21617362f5e54efebeacd22f6b40b6f182e81e705e7ba7da01eb9da33f"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/skills/arbor-check/SKILL.md",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "b1ebea73d111a7f95e0ab27bdeb6e88a297ed0c7003cd3329c0f3f7528dd90ee"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/skills/arbor-update-spec/SKILL.md",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "1455c949a527f78642f7b6b43fb5905114eac3f4d0a6e5a7f6e6b7d993bdfea9"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/skills/arbor-meta/references/customize-local/add-project-local-conventions.md",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "8decc5b5d0d80a2a7ae52b148adbdf46d896c9ae5a50609eeec2dfd4b2997f0f"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/skills/arbor-meta/references/customize-local/change-agents.md",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "2512db4c71e8ef9aa98e44b47ff3eaed7102e94cb01ea247049240cf5bfd6269"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/skills/arbor-meta/references/customize-local/change-context-loading.md",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "afa005d3243e347ba13b79640e266d18a0c262bc382cf22ca513cb3e571ce884"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/skills/arbor-meta/references/customize-local/change-hooks.md",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "84c99a926b5461b0af977c0f229e5ef7cb6d6dcaae8fd1b75b0dbd0ba48ab653"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/skills/arbor-meta/references/customize-local/change-skills-or-commands.md",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "5edfbc175175a413839551c28059b14a43c598057c98331972d5dff927842f8f"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/skills/arbor-meta/references/customize-local/change-spec-structure.md",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "07bf5b0e2aaa2f4934dc671feaffe86f6d79d5a71b1aef71a2fee75fbe350483"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/skills/arbor-meta/references/customize-local/change-task-lifecycle.md",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "daab61aa41f78ac1deef06a87f8bc0b0594861ac174c636cb3afc75f7a7f8b41"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/skills/arbor-meta/references/customize-local/change-workflow.md",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "a4283a6009f942a01237e388549b98ab972d7d369eb303e7608a637074b1ce9c"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/skills/arbor-meta/references/customize-local/overview.md",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "358413e539863f479098d77499e8f0cccf192907c9d20fe3e0f19f332be46384"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/skills/arbor-meta/references/local-architecture/bundled-skills.md",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "abcbf6bbc3a69368c11decd8dcbfa1c7b6bb9b341e115113d8911563fe7341a3"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/skills/arbor-meta/references/local-architecture/context-injection.md",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "b6d86e088393bb2df272e02e90c5f2ebac6e8180d5b8c77acfffa1db2751c3f3"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/skills/arbor-meta/references/local-architecture/dispatch.md",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "c74aca14362e336e5990f15fefefa3c3f53f9ab981b9c0fe792de70f3972c973"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/skills/arbor-meta/references/local-architecture/generated-files.md",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "e9c50a84c8655c71b02ca0c73ef701821f9d7e50423b8b0130e234df4a96e021"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/skills/arbor-meta/references/local-architecture/overview.md",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "574121ae1791d61b1cbcd225474b737761616915980be7f09ecf7e512ec8f078"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/skills/arbor-meta/references/local-architecture/spec-system.md",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "52c8813835fb710f35ca60497f41753eb5a3a9de2ef9602230a514e9558c7715"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/skills/arbor-meta/references/local-architecture/task-system.md",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "44d930327a5ea3437633a293bc1ffece645f89e231867e2135b72263f3f86277"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/skills/arbor-meta/references/local-architecture/workflow.md",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "8811c660097503775011cea53222559a866e1a600297c5adb1ae4f38049fe4f2"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/skills/arbor-meta/references/local-architecture/workspace-memory.md",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "106056f41a388b09a44c0a11b845a20bf269ae7ab6743c94bbb887cc678eb051"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/skills/arbor-meta/references/platform-files/agents.md",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "4238c12eced39138e82f723ccb5cf2ea6fab9c6e6c8d7627ec12edcdb15ea14c"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/skills/arbor-meta/references/platform-files/hooks-and-settings.md",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "da84221634309976c41809109b4a147b7350b67c4f83edf7176a8932c0ddbcd3"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/skills/arbor-meta/references/platform-files/overview.md",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "b034b7bd0fe0dc9ddaed747554b7be2599ab3be5ac481feb8f0434a40523e21b"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/skills/arbor-meta/references/platform-files/skills-and-commands.md",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "bf84efa24fc6adfade0bc213584993aa977431fa0b8e293bb7603bc716224cb0"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/skills/arbor-meta/SKILL.md",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "ec5321580828d9a3db09a2dd2fee4b222d544204ba02e1a0fa0e09d0d7c9d17b"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/skills/arbor-spec-bootstrap/references/mcp-setup.md",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "0bcafa90e47bd2c15f33fecd8ffad2894b40109e3aedd195f6fe433114c67009"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/skills/arbor-spec-bootstrap/references/repository-analysis.md",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "638ded909cc76bbc0633c650533238777a5765803fb7d6a15468613aadbf222b"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/skills/arbor-spec-bootstrap/references/spec-task-planning.md",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "4ec5c51bbcb9bc30a91d5714f8dc10505513fec532f265fb4d308141c376bcf7"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/skills/arbor-spec-bootstrap/references/spec-writing.md",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "5cdda274b883468f919d74f12e27626d2d8fb8dd7d325d4a562daf27f95002a0"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/skills/arbor-spec-bootstrap/SKILL.md",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "9a57e5191f02ba73b3ff0b1244d35e2105661f4d1fee7996a27309d80bebfb71"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/hooks/guard-builtin-agent.py",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "a1ac7eb7187c4cc4590be8771f44376a98d07ecf493c6c2bcfa1442c0382220f"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/hooks/inject-shell-session-context.py",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "31107562e94f1a78ff3931e15958a2c2fd4fbfe6f2ff78d84228526c595871cc"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/hooks/inject-workflow-state.py",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "208006d941ed9245cac3ee882ea1789358067e68cce1c22404761dd3634b5da9"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/hooks/session-start.py",
+      "description": "Retire unchanged Arbor-managed StarFactory template; preserve modified files",
+      "allowed_hashes": [
+        "bf948377cafaf9d7f2f96e5973259fd9b7cd460d621108ce7fd362797324aac4"
+      ]
     }
   ],
   "configSectionsAdded": [

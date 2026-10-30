@@ -1,6 +1,7 @@
 """
-Executor adapter: run one dispatch through the command configured under
-``executors:`` in ``.arbor/config.yaml``.
+Executor configuration and optional direct command adapter. The default
+``type: codeg-mcp`` uses the host's real codeg MCP tools via the durable
+prepare / bind / collect protocol in ``mcp.py``. Explicit command executors:
 
     executors:
       default: <name>
@@ -42,6 +43,10 @@ class Executor:
     name: str
     command: str
     timeout: float | None
+    kind: str = "command"
+    assistant: str = "arbor-{role}"
+    assistant_ids: dict | None = None
+    agent_type: str | None = None
 
 
 @dataclass(frozen=True)
@@ -85,10 +90,17 @@ def resolve_executor(config: dict, name: str | None = None) -> Executor:
     spec = section.get(chosen)
     if not isinstance(spec, dict):
         raise ExecutorError(f"executor {chosen!r} is not configured under executors:")
+    kind = str(spec.get("type") or "command")
+    if kind not in ("command", "codeg-mcp"):
+        raise ExecutorError(f"executor {chosen!r}: unknown type {kind!r}")
     command = str(spec.get("command") or "").strip()
-    if not command:
+    if kind == "command" and not command:
         raise ExecutorError(f"executor {chosen!r} has no command")
-    return Executor(chosen, command, parse_timeout(spec.get("timeout")))
+    if spec.get("assistant_ids") is not None and not isinstance(spec["assistant_ids"], dict):
+        raise ExecutorError("assistant_ids must map role names to codeg assistant ids")
+    return Executor(chosen, command, parse_timeout(spec.get("timeout")), kind,
+                    str(spec.get("assistant") or "arbor-{role}"), spec.get("assistant_ids"),
+                    str(spec["agent_type"]) if spec.get("agent_type") else None)
 
 
 def build_command(template: str, values: dict[str, str]) -> str:
@@ -111,6 +123,8 @@ def run_executor(
     dispatch: str,
 ) -> ExecResult:
     """Run the dispatch; never raises for executor failures."""
+    if executor.kind != "command":
+        raise ExecutorError("codeg-mcp dispatches must be prepared, delegated by the host, then collected")
     command = build_command(
         executor.command,
         {
@@ -129,11 +143,17 @@ def run_executor(
             round(time.monotonic() - t0, 3), error,
         )
 
+    # A role is a new host session, not the parent Arbor controller.
+    env = os.environ.copy()
+    for key in ("ARBOR_CONTEXT_ID", "CODEX_THREAD_ID", "CLAUDE_CODE_SESSION_ID", "CLAUDE_ENV_FILE"):
+        env.pop(key, None)
+
     try:
         proc = subprocess.Popen(
             command,
             shell=True,
             cwd=worktree,
+            env=env,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

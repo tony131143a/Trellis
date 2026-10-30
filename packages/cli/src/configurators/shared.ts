@@ -174,6 +174,8 @@ export function resolvePlaceholders(
 
 /** Skill description registry — maps template name to auto-trigger description. */
 const SKILL_DESCRIPTIONS: Record<string, string> = {
+  workflow:
+    "Start an Arbor task or continue work through the Arbor driver. Use when explicitly invoking the Arbor workflow.",
   start:
     "Initializes an AI development session by reading workflow guides, developer identity, git status, active tasks, and project guidelines from .arbor/. Classifies incoming tasks and routes to brainstorm, direct edit, or task workflow. Use when beginning a new coding session, resuming work, starting a new task, or re-establishing project context.",
   continue:
@@ -216,7 +218,7 @@ export function wrapWithSkillFrontmatter(
  * SKILL_DESCRIPTIONS, which is long prose aimed at the skill matcher.
  */
 const COMMAND_DESCRIPTIONS: Record<string, string> = {
-  start: "Initialize a Arbor development session.",
+  start: "Initialize an Arbor development session.",
   continue: "Resume work on the current task at the correct phase.",
   "finish-work":
     "Wrap up the current session: task state, commits, archive, journal.",
@@ -295,7 +297,7 @@ function filterCommands(
   templates: CommonTemplate[],
   ctx: TemplateContext,
 ): CommonTemplate[] {
-  if (ctx.agentCapable && ctx.hasHooks) {
+  if (ctx.agentCapable && ctx.hasHooks && ctx.cliFlag !== "codex") {
     return templates.filter((t) => t.name !== "start");
   }
   return templates;

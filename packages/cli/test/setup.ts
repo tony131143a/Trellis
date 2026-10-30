@@ -14,3 +14,6 @@ delete process.env.CLAUDE_ENV_FILE;
 // repo's .arbor/ instead of the test tmpDir.
 delete process.env.CLAUDE_PROJECT_DIR;
 delete process.env.STARFACTORY_PROJECT_DIR;
+
+// Codex exports its thread into shell children; isolate resolver fixtures.
+delete process.env.CODEX_THREAD_ID;

@@ -64,12 +64,12 @@ describe("init + uninstall: manifest accuracy + homedir guard", () => {
 
   // ----- R1: manifest accuracy after init -----
 
-  it("#R1.1 init does not hash pre-existing .starFactory/sessions/ user data (issue #221)", async () => {
+  it("#R1.1 init does not hash pre-existing .codex/sessions/ user data (issue #221)", async () => {
     // Repro from the issue body. User has star chat history before they ever
     // ran arbor.
     const userSession = path.join(
       tmpDir,
-      ".starFactory",
+      ".codex",
       "sessions",
       "2026",
       "x.jsonl",
@@ -77,13 +77,13 @@ describe("init + uninstall: manifest accuracy + homedir guard", () => {
     fs.mkdirSync(path.dirname(userSession), { recursive: true });
     fs.writeFileSync(userSession, "user-chat-data\n");
 
-    await init({ yes: true, star: true, force: true });
+    await init({ yes: true, codex: true, force: true });
 
     const hashes = loadHashes(tmpDir);
-    expect(hashes).not.toHaveProperty(".starFactory/sessions/2026/x.jsonl");
+    expect(hashes).not.toHaveProperty(".codex/sessions/2026/x.jsonl");
     // Sanity: arbor's own star files ARE tracked.
     const trackedCodex = Object.keys(hashes).filter((k) =>
-      k.startsWith(".starFactory/"),
+      k.startsWith(".codex/"),
     );
     expect(trackedCodex.length).toBeGreaterThan(0);
   });
@@ -132,10 +132,10 @@ describe("init + uninstall: manifest accuracy + homedir guard", () => {
 
   // ----- R1 → uninstall outcome: user data survives -----
 
-  it("#R1.4 init → uninstall preserves user data under .starFactory/sessions/", async () => {
+  it("#R1.4 init → uninstall preserves user data under .codex/sessions/", async () => {
     const userSession = path.join(
       tmpDir,
-      ".starFactory",
+      ".codex",
       "sessions",
       "2026",
       "x.jsonl",
@@ -143,7 +143,7 @@ describe("init + uninstall: manifest accuracy + homedir guard", () => {
     fs.mkdirSync(path.dirname(userSession), { recursive: true });
     fs.writeFileSync(userSession, "user-chat-data\n");
 
-    await init({ yes: true, star: true, force: true });
+    await init({ yes: true, codex: true, force: true });
     await uninstall({ yes: true });
 
     // The user's session JSONL survives.
@@ -225,9 +225,7 @@ describe("init + uninstall: manifest accuracy + homedir guard", () => {
     await update({});
 
     // The orphan entry is silently pruned; user file is untouched.
-    expect(loadHashes(tmpDir)).not.toHaveProperty(
-      ".codex/sessions/user.jsonl",
-    );
+    expect(loadHashes(tmpDir)).not.toHaveProperty(".codex/sessions/user.jsonl");
     expect(fs.existsSync(userFile)).toBe(true);
   });
 
@@ -326,11 +324,11 @@ describe("init + uninstall: manifest accuracy + homedir guard", () => {
     try {
       vi.spyOn(process, "cwd").mockReturnValue(fakeHome);
 
-      const exitSpy = vi
-        .spyOn(process, "exit")
-        .mockImplementation(((code?: number) => {
-          throw new Error(`process.exit(${code ?? 0})`);
-        }) as never);
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation(((
+        code?: number,
+      ) => {
+        throw new Error(`process.exit(${code ?? 0})`);
+      }) as never);
 
       await withFakeHome(fakeHome, async () => {
         await expect(init({ yes: true, force: true })).rejects.toThrow(
@@ -350,16 +348,14 @@ describe("init + uninstall: manifest accuracy + homedir guard", () => {
     // Set up a valid arbor project, then pretend its cwd is the homedir.
     await init({ yes: true, claude: true, force: true });
 
-    const exitSpy = vi
-      .spyOn(process, "exit")
-      .mockImplementation(((code?: number) => {
-        throw new Error(`process.exit(${code ?? 0})`);
-      }) as never);
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(((
+      code?: number,
+    ) => {
+      throw new Error(`process.exit(${code ?? 0})`);
+    }) as never);
 
     await withFakeHome(tmpDir, async () => {
-      await expect(uninstall({ yes: true })).rejects.toThrow(
-        "process.exit(1)",
-      );
+      await expect(uninstall({ yes: true })).rejects.toThrow("process.exit(1)");
     });
     expect(exitSpy).toHaveBeenCalledWith(1);
 

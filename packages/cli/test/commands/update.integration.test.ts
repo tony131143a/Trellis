@@ -386,7 +386,7 @@ describe("update() integration", () => {
   });
 
   it("#4g CLAUDE.md is not managed when Claude Code is not configured", async () => {
-    await init({ yes: true, star: true, force: true });
+    await init({ yes: true, codex: true, force: true });
     expect(fs.existsSync(projectFile(FILE_NAMES.CLAUDE))).toBe(false);
 
     await update({ force: true });
@@ -785,12 +785,12 @@ describe("update() integration", () => {
       DIR_NAMES.WORKFLOW,
       backupDirs[0] as string,
     );
-    expect(
-      fs.existsSync(path.join(backupDir, ".claude", "package.json")),
-    ).toBe(true);
-    expect(
-      fs.existsSync(path.join(backupDir, ".claude", "node_modules")),
-    ).toBe(false);
+    expect(fs.existsSync(path.join(backupDir, ".claude", "package.json"))).toBe(
+      true,
+    );
+    expect(fs.existsSync(path.join(backupDir, ".claude", "node_modules"))).toBe(
+      false,
+    );
   });
 
   it("#v2-0.2.0 removes v1 dispatch leftovers by hash and appends the v2 config sections", async () => {
@@ -803,14 +803,20 @@ describe("update() integration", () => {
     // A pre-v2 config.yaml without the gate / worktree / test_paths sections.
     const configPath = ".arbor/config.yaml";
     const config = readProjectFile(configPath);
-    const cut = config.indexOf("#-------------------------------------------------------------------------------\n# Gate\n");
+    const cut = config.indexOf(
+      "#-------------------------------------------------------------------------------\n# Gate\n",
+    );
     expect(cut).toBeGreaterThan(0);
     writeProjectFile(configPath, config.slice(0, cut));
 
     await update({});
 
-    expect(fs.existsSync(projectFile(".arbor/.runtime/dispatch-target"))).toBe(false);
-    expect(readProjectFile(".arbor/scripts/dispatch.py")).toBe("# locally edited\n");
+    expect(fs.existsSync(projectFile(".arbor/.runtime/dispatch-target"))).toBe(
+      false,
+    );
+    expect(readProjectFile(".arbor/scripts/dispatch.py")).toBe(
+      "# locally edited\n",
+    );
     const updated = readProjectFile(configPath);
     for (const key of ["gate:", "worktree:", "test_paths:"]) {
       expect(updated).toContain(`\n${key}\n`);

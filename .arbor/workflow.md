@@ -95,7 +95,11 @@ python3 ./.arbor/scripts/get_context.py --mode phase --step <X.Y>  # detailed gu
 
 ### Driver
 
-`arbor.py` is the only thing that runs roles. It keeps the task's state in `task.json`, runs the deterministic checks, executes each role through the executor configured under `executors:` in `.arbor/config.yaml`, validates the reply and the git invariants, records metrics in `.arbor/.runtime/results.jsonl`, and advances the state. It never asks you to forward a result: you read what `arbor.py next` says and do that one thing.
+`arbor.py` owns role preparation, task state, deterministic checks, report and git validation, metrics and state transitions. The default `codeg-mcp` executor hands execution to the main session's codeg MCP tools. The main session carries the request and terminal JSON between MCP and the driver; it never performs the role or judges its own completion.
+
+With the `codeg-mcp` executor, `arbor.py run` returns `needs=delegation`. Call codeg MCP `delegate_to_agent` with the returned `mcp.arguments` (resolve the named assistant from the MCP roster if no id is configured), then immediately run `arbor.py bind --request <request_path> --task-id <returned task_id>`. Poll `get_delegation_status`, save its complete JSON response at the returned `result_path` outside the task worktree, and run `arbor.py collect --request <request_path> --result <file>` before proceeding. Resume/poll a bound task after interruptions; never start it again. If the configured timeout expires, cancel it through `cancel_delegation` and collect the terminal report. Claude Code and Codex both use this same MCP flow. Do not substitute `codeg-cli run` or native Agent/Task/spawn_agent.
+
+Request and snapshot records live in `.arbor/.runtime/delegations/<task>/<dispatch>.json`. `next --json` returns the pending request path and bound task id until collection; a successfully collected request cannot be collected twice. If MCP or the named assistant is unavailable, report the blocker instead of switching execution paths. Model, effort and permission settings come from the selected codeg assistant.
 
 ```bash
 python3 ./.arbor/scripts/arbor.py next [--json]               # the single next step
@@ -115,6 +119,7 @@ Every command takes `--task <dir>` before the command name (default: this sessio
 
 | `needs` | Meaning | You do |
 |---|---|---|
+| `delegation` | a prepared codeg MCP task is pending | read `request_path`; delegate once and bind, or poll/resume `task_id`; collect its terminal JSON before advancing |
 | `brief` | a role must run | write the brief for that `role` at `brief_path`, then `arbor.py run` |
 | `run` | the driver has deterministic work: GATE, or merging a finished wave back into the task branch | `arbor.py gate` for GATE (`arbor.py run` does the same there); `arbor.py run` for the wave merge |
 | `wait` | multi-partition wave: every ready partition is running or finished and the wave cannot merge yet | wait for the running `arbor.py run --partition <p>` calls, then `arbor.py next` again |
@@ -373,7 +378,7 @@ Approve (1.7): end the planning summary with the approval question; run `task.py
 
 [workflow-state:in_progress]
 The driver did not answer. Run `python3 ./.arbor/scripts/arbor.py next` and do the one step it names: `brief` → write the brief at its path, then `arbor.py run`; `decide` → `arbor.py decide <choice> --reason "…"`; `human` → ask the user; `done` → Phase 3. If `arbor.py` is missing, run `arbor update`.
-Roles run only through `arbor.py run`; never the built-in Agent/Task tool, never in this session.
+Roles are prepared by `arbor.py run`, executed through codeg MCP, and accepted by `arbor.py collect`; never use the built-in Agent/Task tool or perform the role in this session.
 Sub-agent self-exemption: if you are already a dispatched sub-agent (your prompt starts with `Active task:` / `Role:`), perform that role directly; do not run arbor.py or task.py start/current/finish. Dispatch is main session only.
 [/workflow-state:in_progress]
 
@@ -394,7 +399,7 @@ Task archived. Run `/arbor:finish-work` to record the session.
 ### Rules
 
 1. `arbor.py next` is the source of truth for where a started task is; do the one step it names
-2. Only the driver changes `task.json` state and counters, runs roles, and runs the gate
+2. Only the driver changes `task.json` state and counters, prepares and validates roles, and runs the gate; the host executes prepared requests through codeg MCP
 3. Contract changes after approval go through `decide contract` and a new human approval
 4. Steps tagged `[once]` are skipped when their output already exists
 5. Inside an Arbor task, never perform a role in this session and never use the built-in Agent/Task tool for one

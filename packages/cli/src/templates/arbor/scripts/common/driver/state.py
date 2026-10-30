@@ -643,7 +643,7 @@ def reap_stale(data: dict, alive) -> list[str]:
     reaped: list[str] = []
     for rec in (data.get("partitions") or {}).values():
         running = rec.get("running")
-        if isinstance(running, dict) and not alive(int(running.get("pid") or 0)):
+        if isinstance(running, dict) and not running.get("external") and not alive(int(running.get("pid") or 0)):
             rec.pop("running")
             reaped.append(str(running.get("dispatch")))
     for entry in data.get("dispatches") or []:

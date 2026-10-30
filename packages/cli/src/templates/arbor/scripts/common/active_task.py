@@ -34,7 +34,8 @@ _TRANSCRIPT_KEYS = ("transcript_path", "transcriptPath", "transcript")
 _NESTED_KEYS = ("input", "properties", "event", "hook_input", "hookInput")
 _KNOWN_PLATFORMS = {
     "claude",
-    "star",
+    "codex",
+    "star",  # Legacy session tickets only; not an installable platform.
 }
 
 # Every name below records how it was checked. Do NOT add a name by analogy
@@ -43,6 +44,8 @@ _KNOWN_PLATFORMS = {
 # verified name belongs in no table; it resolves through ARBOR_CONTEXT_ID or
 # its hook/shell-ticket bridge.
 _ENV_SESSION_KEYS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    # Verified in a live Codex 0.166.0 shell child on 2026-10-30.
+    ("codex", ("CODEX_THREAD_ID",)),
     # REAL, undocumented (verified 2026-08-05 in a live Claude Code 2.1.221 bash
     # child; absent from code.claude.com/docs/en/env-vars). CLAUDE_SESSION_ID
     # was removed here — verified absent from that same live environment.

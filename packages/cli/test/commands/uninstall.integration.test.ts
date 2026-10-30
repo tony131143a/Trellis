@@ -65,23 +65,23 @@ describe("uninstall() integration", () => {
 
   it("#2 errors when manifest is missing but .arbor/ exists", async () => {
     fs.mkdirSync(path.join(tmpDir, DIR_NAMES.WORKFLOW));
-    const exitSpy = vi
-      .spyOn(process, "exit")
-      .mockImplementation(((code?: number) => {
-        throw new Error(`process.exit(${code ?? 0})`);
-      }) as never);
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(((
+      code?: number,
+    ) => {
+      throw new Error(`process.exit(${code ?? 0})`);
+    }) as never);
 
     await expect(uninstall({ yes: true })).rejects.toThrow("process.exit(1)");
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
 
   it("#3 init → uninstall → project is clean", async () => {
-    await init({ yes: true, claude: true, star: true, force: true });
+    await init({ yes: true, claude: true, codex: true, force: true });
 
     // Sanity: init wrote things.
     expect(fs.existsSync(path.join(tmpDir, ".arbor"))).toBe(true);
     expect(fs.existsSync(path.join(tmpDir, ".claude"))).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, ".starFactory"))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, ".codex"))).toBe(true);
 
     const hashesBefore = loadHashes(tmpDir);
     expect(Object.keys(hashesBefore).length).toBeGreaterThan(0);
@@ -164,17 +164,17 @@ describe("uninstall() integration", () => {
   });
 
   it("#6 user-modified arbor file is still deleted (manifest defines scope)", async () => {
-    await init({ yes: true, star: true, force: true });
+    await init({ yes: true, codex: true, force: true });
 
-    // Pick any manifest-tracked file under .starFactory/ and overwrite it.
+    // Pick any manifest-tracked file under .codex/ and overwrite it.
     const hashesBefore = loadHashes(tmpDir);
     // Pick an opaque (non-structured) file: settings.json is scrubbed, not deleted.
     const starTrackedPath = Object.keys(hashesBefore).find(
-      (p) => p.startsWith(".starFactory/") && !p.endsWith("settings.json"),
+      (p) => p.startsWith(".codex/") && p.endsWith(".py"),
     );
     if (!starTrackedPath) {
       throw new Error(
-        "Test fixture: expected at least one .starFactory/ entry in manifest",
+        "Test fixture: expected at least one .codex/ entry in manifest",
       );
     }
     const abs = path.join(tmpDir, ...starTrackedPath.split("/"));
@@ -203,20 +203,20 @@ describe("uninstall() integration", () => {
   });
 
   it("#8b platform root dir survives only when scrubbing leaves residual structured content", async () => {
-    // StarFactory's settings.json template ships an `env` block alongside the
+    // Codex's settings.json template ships an `env` block alongside the
     // arbor hooks. After the hooks are stripped, `env` remains — not fully
-    // empty per the scrubber, so the file (and therefore .starFactory/) survive.
+    // empty per the scrubber, so the file (and therefore .codex/) survive.
     // This documents the boundary of the cleanup contract.
-    await init({ yes: true, star: true, force: true });
+    await init({ yes: true, codex: true, force: true });
     await uninstall({ yes: true });
 
-    // Sub-directories under .starFactory/ that became empty should be gone.
+    // Sub-directories under .codex/ that became empty should be gone.
     for (const sub of ["commands", "hooks", "skills"]) {
-      expect(fs.existsSync(path.join(tmpDir, ".starFactory", sub))).toBe(false);
+      expect(fs.existsSync(path.join(tmpDir, ".codex", sub))).toBe(false);
     }
-    // settings.json residual (env) keeps .starFactory/ alive.
-    if (fs.existsSync(path.join(tmpDir, ".starFactory"))) {
-      const remaining = fs.readdirSync(path.join(tmpDir, ".starFactory"));
+    // settings.json residual (env) keeps .codex/ alive.
+    if (fs.existsSync(path.join(tmpDir, ".codex"))) {
+      const remaining = fs.readdirSync(path.join(tmpDir, ".codex"));
       expect(remaining).toEqual(["settings.json"]);
     }
   });
@@ -287,7 +287,9 @@ describe("uninstall() integration", () => {
     // We need this file in the manifest for it to be processed. If init
     // didn't track it, add it manually so the scrubber path runs.
     const hashes = loadHashes(tmpDir);
-    if (!Object.prototype.hasOwnProperty.call(hashes, ".claude/settings.json")) {
+    if (
+      !Object.prototype.hasOwnProperty.call(hashes, ".claude/settings.json")
+    ) {
       hashes[".claude/settings.json"] = "synthetic-hash";
       const hashFile = path.join(
         tmpDir,
@@ -304,10 +306,9 @@ describe("uninstall() integration", () => {
 
     // .arbor/ is gone, but settings.json should remain (had user fields).
     if (fs.existsSync(settingsPath)) {
-      const after = JSON.parse(fs.readFileSync(settingsPath, "utf-8")) as Record<
-        string,
-        unknown
-      >;
+      const after = JSON.parse(
+        fs.readFileSync(settingsPath, "utf-8"),
+      ) as Record<string, unknown>;
       expect(after.model).toBe("claude-sonnet-4");
       expect(after.permissions).toEqual({ allow: ["Bash(git:*)"] });
 
@@ -356,13 +357,13 @@ describe("uninstall() integration", () => {
     }
   });
 
-  it("#9 .starFactory/settings.json keeps user fields and survives uninstall", async () => {
-    await init({ yes: true, star: true, force: true });
+  it("#9 .codex/hooks.json keeps user fields and survives uninstall", async () => {
+    await init({ yes: true, codex: true, force: true });
 
-    // StarFactory is a Claude Code fork, so its settings.json is Claude-shaped
+    // Codex is a Claude Code fork, so its settings.json is Claude-shaped
     // and must be scrubbed rather than deleted — otherwise a user's own model /
     // permissions / hooks are discarded on uninstall.
-    const settingsPath = path.join(tmpDir, ".starFactory", "settings.json");
+    const settingsPath = path.join(tmpDir, ".codex", "hooks.json");
     expect(fs.existsSync(settingsPath)).toBe(true);
 
     const original = JSON.parse(
@@ -380,7 +381,7 @@ describe("uninstall() integration", () => {
       if (Array.isArray(block.hooks)) {
         (block.hooks as unknown[]).push({
           type: "command",
-          command: "python3 .starFactory/hooks/my-user-hook.py",
+          command: "python3 .codex/hooks/my-user-hook.py",
           timeout: 5,
         });
       }
@@ -394,11 +395,9 @@ describe("uninstall() integration", () => {
     const after = JSON.parse(afterText) as Record<string, unknown>;
     expect(after.model).toBe("star-model");
     expect(after.permissions).toEqual({ allow: ["Bash(git:*)"] });
-    expect(afterText).toContain(".starFactory/hooks/my-user-hook.py");
-    expect(afterText).not.toContain(".starFactory/hooks/session-start.py");
-    expect(afterText).not.toContain(
-      ".starFactory/hooks/inject-workflow-state.py",
-    );
+    expect(afterText).toContain(".codex/hooks/my-user-hook.py");
+    expect(afterText).not.toContain(".codex/hooks/session-start.py");
+    expect(afterText).not.toContain(".codex/hooks/inject-workflow-state.py");
   });
 
   it("#10 CLAUDE.md: uninstall strips only the Arbor block and keeps user text", async () => {

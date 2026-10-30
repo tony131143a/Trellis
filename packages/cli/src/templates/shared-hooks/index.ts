@@ -30,7 +30,7 @@ export type SharedHookName =
   | "inject-workflow-state.py"
   | "guard-builtin-agent.py";
 
-export type SharedHookPlatform = "claude" | "star";
+export type SharedHookPlatform = "claude" | "codex";
 
 /**
  * Which shared hooks each platform actually invokes. Single source of truth
@@ -67,14 +67,7 @@ export const SHARED_HOOKS_BY_PLATFORM: Record<
     "inject-workflow-state.py",
     "guard-builtin-agent.py",
   ],
-  // StarFactory is a Claude Code-compatible fork and ships the same set as
-  // Claude Code. Verified on star 1.0.49: SessionStart, UserPromptSubmit, and
-  // PreToolUse all fire, so the built-in-agent guard works unchanged. It also
-  // takes inject-shell-session-context.py: unlike Claude Code, StarFactory
-  // exports no session id into its shell children (a live probe of a Bash
-  // child found only CLAUDECODE / CLAUDE_CONFIG_DIR / STARFACTORY_*), so
-  // PreToolUse matcher Bash is its only route to session identity.
-  star: [
+  codex: [
     "session-start.py",
     "inject-shell-session-context.py",
     "inject-workflow-state.py",

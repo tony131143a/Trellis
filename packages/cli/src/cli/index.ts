@@ -57,7 +57,7 @@ const program = new Command();
 program
   .name("arbor")
   .description(
-    "AI-assisted development workflow framework for Claude Code and StarFactory",
+    "AI-assisted development workflow framework for Claude Code and Codex",
   )
   .version(VERSION, "-v, --version", "output the version number");
 
@@ -65,7 +65,7 @@ program
   .command("init")
   .description("Initialize arbor in the current project")
   .option("--claude", "Include Claude Code commands")
-  .option("--star", "Include StarFactory skills and commands")
+  .option("--codex", "Include Codex skills and hooks")
   .option(
     "--with-statusline",
     "Install the Arbor statusLine for Claude Code (off by default)",

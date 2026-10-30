@@ -1,3 +1,4 @@
+import { RETIRED_PLATFORM_PATHS } from "../../src/utils/retired-platforms.js";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   clearManifestCache,
@@ -230,6 +231,7 @@ describe("0.2.0 manifest", () => {
       ".claude/hooks/inject-delegation-context.py",
       ".starFactory/hooks/inject-delegation-context.py",
       ".arbor/.runtime/dispatch-target",
+      ...RETIRED_PLATFORM_PATHS,
     ]);
   });
 

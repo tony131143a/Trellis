@@ -27,10 +27,7 @@ function runCli(cwd: string, args: string[]) {
   });
 }
 
-function writeTrackedPlatforms(
-  cwd: string,
-  relativePaths: string[],
-): void {
+function writeTrackedPlatforms(cwd: string, relativePaths: string[]): void {
   const arborDir = path.join(cwd, ".arbor");
   fs.mkdirSync(arborDir, { recursive: true });
   fs.writeFileSync(
@@ -55,10 +52,10 @@ describe("arbor platforms (#396)", () => {
 
   it("--json reports configured platforms with id, displayName, configDir", () => {
     fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
-    fs.mkdirSync(path.join(tmpDir, ".starFactory"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, ".codex"), { recursive: true });
     writeTrackedPlatforms(tmpDir, [
       ".claude/commands/arbor/continue.md",
-      ".starFactory/commands/arbor/continue.md",
+      ".codex/hooks.json",
     ]);
 
     const result = runCli(tmpDir, ["platforms", "--json"]);
@@ -68,7 +65,7 @@ describe("arbor platforms (#396)", () => {
       platforms: { id: string; displayName: string; configDir: string }[];
     };
     const ids = parsed.platforms.map((p) => p.id).sort();
-    expect(ids).toEqual(["claude-code", "star"]);
+    expect(ids).toEqual(["claude-code", "codex"]);
 
     const claude = parsed.platforms.find((p) => p.id === "claude-code");
     expect(claude).toEqual({
@@ -88,9 +85,7 @@ describe("arbor platforms (#396)", () => {
 
   it("human output lists configured platforms without --json", () => {
     fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
-    writeTrackedPlatforms(tmpDir, [
-      ".claude/commands/arbor/continue.md",
-    ]);
+    writeTrackedPlatforms(tmpDir, [".claude/commands/arbor/continue.md"]);
 
     const result = runCli(tmpDir, ["platforms"]);
 

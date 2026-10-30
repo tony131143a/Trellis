@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Built-in Agent Guard Hook (Claude Code / StarFactory)
+Built-in Agent Guard Hook (Claude Code / Codex)
 
 PreToolUse hook on the host's built-in sub-agent tool (matcher
 `^(Agent|Task)$`). Arbor roles (explore / architect / test / implement /
@@ -39,7 +39,7 @@ if callable(_stdin_reconfigure):
 
 
 DIR_WORKFLOW = ".arbor"
-GUARDED_TOOLS = ("Agent", "Task")
+GUARDED_TOOLS = ("Agent", "Task", "spawn_agent")
 ROLE_RE = re.compile(
     r"^\s*(?:Active task:|Role:\s*"
     r"(?:explore|architect|test|implement|review|verify|fix|simplify)\b)",
@@ -71,7 +71,7 @@ def _find_root(start: str) -> Path | None:
 
 
 def _subagent_type(tool_input: dict) -> str:
-    for key in ("subagent_type", "subagentType"):
+    for key in ("subagent_type", "subagentType", "agent_type"):
         value = tool_input.get(key)
         if isinstance(value, str) and value.strip():
             return value.strip()
@@ -91,7 +91,7 @@ def main() -> int:
 
     raw_input = data.get("tool_input")
     tool_input = raw_input if isinstance(raw_input, dict) else {}
-    prompt = tool_input.get("prompt")
+    prompt = tool_input.get("prompt", tool_input.get("message"))
     prompt = prompt if isinstance(prompt, str) else ""
     is_role_dispatch = bool(ROLE_RE.search(prompt[:HEADER_SCAN_CHARS])) or (
         _subagent_type(tool_input).lower().startswith("arbor-")

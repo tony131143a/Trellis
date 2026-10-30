@@ -9,6 +9,8 @@ Usage (from the main checkout or any worktree of the repo):
     python3 ./.arbor/scripts/arbor.py run [--partition P] [--dispatch d-NNN]
     python3 ./.arbor/scripts/arbor.py run --role explore|architect|review [--mode plan] [--dispatch d-NNN]
     python3 ./.arbor/scripts/arbor.py run --autopilot
+    python3 ./.arbor/scripts/arbor.py bind --request <path> --task-id <codeg-task-id>
+    python3 ./.arbor/scripts/arbor.py collect --request <path> --result <terminal-MCP-JSON-file>
     python3 ./.arbor/scripts/arbor.py finish [--pr]
     python3 ./.arbor/scripts/arbor.py gate
     python3 ./.arbor/scripts/arbor.py decide <impl|tests|contract|fix|skip> --reason "..." [--partition P]
@@ -60,6 +62,8 @@ import json
 import os
 import re
 import sys
+from dataclasses import asdict
+from uuid import uuid4
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -86,6 +90,7 @@ from common.dispatch_context import (
 )
 from common.driver import partitions as pt
 from common.driver import autopilot
+from common.driver import mcp
 from common.driver import finish as fin
 from common.driver import state as sm
 from common.driver import validate as rv
@@ -352,12 +357,29 @@ def _max_parallel(config: dict) -> int | None:
 
 def next_payload(ctx: Ctx | None, partition: str | None = None) -> dict:
     if ctx is None:
+        external = mcp.find_pending(_main())
+        if external:
+            path, record = external
+            return {"task": None, "state": record["state"], "needs": "delegation",
+                    "dispatch": record["dispatch"], "request_path": str(path),
+                    "task_id": record.get("task_id"),
+                    "summary": f"MCP delegation pending: read {path}, bind/poll its task_id, then collect"}
         pending = fin.pending_records(_main())
         if pending:
             return {"task": pending[0], "state": "FINISH", "needs": "run",
                     "summary": f"FINISH: cleanup of {', '.join(pending)} is incomplete: `arbor finish`"}
         return {"task": None, "state": "INTAKE", "needs": "human", "started": False,
                 "summary": "No active task: agree a tier, write contract.md, then `task.py start`"}
+    pending = _pending(ctx, partition)
+    if pending:
+        path, record = pending
+        return {"task": ctx.name, "state": record["state"], "needs": "delegation",
+                "dispatch": record["dispatch"], "role": record["role"], "request_path": str(path),
+                "task_id": record.get("task_id"), "started": ctx.started,
+                "delegation_started": record["started"],
+                "summary": f"MCP delegation {record['dispatch']}: " + (
+                    f"poll/resume task {record['task_id']}, then arbor collect --request {path} --result <file>"
+                    if record.get("task_id") else f"read {path}, call codeg MCP once, then arbor bind")}
     if not ctx.started:
         dispatch = next_dispatch_id(ctx.data, ctx.task_dir)
         return {"task": ctx.name, "state": "CONTRACT", "needs": "human", "started": False, "dispatch": dispatch,
@@ -478,6 +500,152 @@ class Job:
     override: dict | None
 
 
+def _pending(ctx: Ctx, partition: str | None = None) -> tuple[Path, dict] | None:
+    for path in (ctx.data.get("mcp_pending") or {}).values():
+        pair = mcp.load(ctx.main, path)
+        if partition is None or pair[1].get("partition") == partition:
+            return pair
+    return None
+
+
+def require_collected(ctx: Ctx) -> None:
+    if ctx.data.get("mcp_pending"):
+        raise DriverError("an MCP dispatch is pending; cancel/finish it and collect its terminal report first")
+
+
+def prepare_mcp(ctx: Ctx | None, main: Path, executor, role: str, mode: str | None, dispatch: str,
+                kind: str, worktree: Path, branch: str, prompt: str, before, **extra) -> int:
+    """Caller holds the task lock. Persist the handoff before returning to the host."""
+    if ctx is None:
+        pending = mcp.find_pending(main)
+        if pending:
+            print(json.dumps(mcp.envelope(*pending), ensure_ascii=False))
+            return 0
+    if ctx and _pending(ctx, extra.get("partition")):
+        raise DriverError("an MCP dispatch is already pending; poll/collect it before starting another")
+    if ctx is None or kind == "canary":
+        dispatch = f"{dispatch}-{uuid4().hex[:8]}"
+    path = mcp.pending_path(main, ctx.name if ctx else "_intake", dispatch)
+    record = {
+        "schema": 1, "main": str(main), "task_dir": str(ctx.task_dir) if ctx else None,
+        "task": ctx.name if ctx else None, "dispatch": dispatch, "role": role, "mode": mode,
+        "kind": kind, "state": ctx.data.get("state", "CONTRACT") if ctx else "INTAKE",
+        "worktree": str(worktree), "branch": branch, "executor": executor.name,
+        "timeout_s": executor.timeout, "started": utc_now(), "task_id": None, "status": "pending",
+        "before": mcp.snapshot_dict(before), "mcp": mcp.request(executor, role, prompt, worktree), **extra,
+    }
+    mcp.store(path, record)
+    if ctx:
+        ctx.data.setdefault("mcp_pending", {})[dispatch] = str(path)
+        if kind != "canary":
+            entry = {"id": dispatch, "role": role, "mode": mode, "status": "running",
+                     "started": record["started"], "ended": None, "commit": None,
+                     **({"phase": "CONTRACT"} if kind == "contract" else {}),
+                     **({"partition": extra["partition"]} if extra.get("partition") else {})}
+            entries = ctx.data.setdefault("dispatches", [])
+            slot = next((i for i, d in enumerate(entries) if d.get("id") == dispatch), None)
+            if slot is None:
+                entries.append(entry)
+            else:
+                entries[slot] = entry
+        if extra.get("partition"):
+            ctx.data["partitions"][extra["partition"]]["running"]["external"] = True
+        save(ctx)
+    # Driver-created metadata must not be mistaken for the child's writes.
+    record["before"] = mcp.snapshot_dict(snapshot_refs(worktree))
+    mcp.store(path, record)
+    print(json.dumps(mcp.envelope(path, record), ensure_ascii=False))
+    return 0
+
+
+def prepare_run(ctx: Ctx, job: Job, executor) -> int:
+    unit = job.unit
+    base = head(ctx, unit.worktree)
+    range_spec = f"{job.range_from}..{base}" if job.range_from and job.role in RANGE_ROLES else None
+    contract = require_contract(ctx)
+    paths = _partition_paths(contract, unit.partition)
+    brief = pt.scope_line(unit.worktree, unit.branch, paths) + "\n\n" + job.brief if unit.partition else job.brief
+    prompt = build_prompt(ctx.worktree, ctx.task_dir, job.role, job.mode, range_spec, job.dispatch, brief)
+    (runtime_dir(ctx.main, "prompts", ctx.name) / f"{job.dispatch}.md").write_text(prompt, encoding="utf-8")
+    job_data = {**asdict(job), "unit": {"partition": unit.partition, "worktree": str(unit.worktree),
+                                      "branch": unit.branch}}
+    return prepare_mcp(ctx, ctx.main, executor, job.role, job.mode, job.dispatch, "run", unit.worktree,
+                       unit.branch, prompt, snapshot_refs(unit.worktree), job=job_data,
+                       partition=unit.partition, range_spec=range_spec, head_before=base, paths=paths,
+                       test_paths=effective_test_paths(contract, get_test_paths(ctx.config)))
+
+
+def cmd_bind(args: argparse.Namespace) -> int:
+    main = _main()
+    path, record = mcp.load(main, args.request)
+    ctx = load_ctx(record["task_dir"]) if record.get("task_dir") else None
+    if not args.task_id.strip():
+        raise DriverError("task_id cannot be empty")
+    with editing(ctx) if ctx else task_lock(runtime_dir(main, "mcp-intake")):
+        path, record = mcp.load(main, args.request)
+        if record["status"] != "pending":
+            raise DriverError("this MCP dispatch has already been collected")
+        if record.get("task_id") not in (None, args.task_id):
+            raise DriverError("dispatch is already bound to a different codeg task_id")
+        record["task_id"] = args.task_id
+        mcp.store(path, record)
+    print(json.dumps(mcp.envelope(path, record), ensure_ascii=False))
+    return 0
+
+
+def cmd_collect(args: argparse.Namespace) -> int:
+    main = _main()
+    path, record = mcp.load(main, args.request)
+    ctx = load_ctx(record["task_dir"]) if record.get("task_dir") else None
+    payload = json.loads(Path(args.result).read_text(encoding="utf-8"))
+    with editing(ctx) if ctx else task_lock(runtime_dir(main, "mcp-intake")):
+        path, record = mcp.load(main, args.request)
+        if record["status"] != "pending":
+            raise DriverError("this MCP dispatch has already been collected")
+        if ctx and (ctx.data.get("mcp_pending") or {}).get(record["dispatch"]) != str(path):
+            raise DriverError("MCP request is no longer pending in this task")
+        result, report = mcp.terminal_result(record, payload)
+        before = mcp.snapshot_from(record["before"])
+        role, mode, dispatch = record["role"], record["mode"], record["dispatch"]
+        if record["kind"] == "run":
+            assert ctx is not None
+            if contract_changed(ctx):
+                raise DriverError("contract changed during delegation; restore the approved contract before collecting")
+            data = record["job"]
+            unit = Unit(data["unit"]["partition"], Path(data["unit"]["worktree"]), data["unit"]["branch"])
+            job = Job(**{**data, "unit": unit})
+            if ctx.data["state"] != job.state:
+                raise DriverError("task state changed while delegated; resolve the pending task before advancing")
+            out = validate_dispatch(ctx, unit, role, dispatch, before, record["test_paths"], record["paths"],
+                                    record["head_before"], record["range_spec"], result)
+            red = None
+            if unit.partition and role == "test" and out.status == "ok":
+                contract = require_contract(ctx)
+                spec = contract.partition(unit.partition)
+                red = run_red_check(contract, unit.worktree, spec.paths if spec else ())
+            ctx.data["mcp_pending"].pop(dispatch)
+            _finish(ctx, job, out, red)
+            rc = 0 if out.status == "ok" else 1
+            print(f"{dispatch} {role}: {out.status}; report: {ctx.task_dir / 'reports' / (dispatch + '.md')}")
+        elif record["kind"] == "contract":
+            if ctx:
+                if ctx.started:
+                    raise DriverError("task was started before its pending CONTRACT dispatch was collected")
+                ctx.data["mcp_pending"].pop(dispatch)
+                ctx.data["dispatches"] = [d for d in ctx.data["dispatches"] if d.get("id") != dispatch]
+            rc = finish_contract(ctx, main, read_arbor_config(main), role, mode, dispatch, record["branch"],
+                                 record["task_rel"], before, result)
+        else:
+            rc = finish_canary(ctx, main, Path(record["worktree"]), role, before, result)
+            if ctx:
+                ctx.data["mcp_pending"].pop(dispatch)
+                save(ctx)
+        record.update(status="collected", driver_exit_code=rc, ended=utc_now(),
+                      child_conversation_id=report.get("child_conversation_id"))
+        mcp.store(path, record)
+    return rc
+
+
 def _restore(ctx: Ctx, unit: Unit, before) -> None:
     """Put the unit's branch back where it was before the dispatch."""
     after = snapshot_refs(unit.worktree)
@@ -550,6 +718,12 @@ def dispatch_once(ctx: Ctx, unit: Unit, role: str, mode: str | None, range_from:
         return Outcome("fail", "", empty, None, [], str(e), range_spec, head_before, head_before)
     result = run_executor(executor, role=role, prompt_path=prompt_file, worktree=unit.worktree,
                           task=ctx.name, dispatch=dispatch)
+    return validate_dispatch(ctx, unit, role, dispatch, before, test_paths, paths, head_before, range_spec, result)
+
+
+def validate_dispatch(ctx: Ctx, unit: Unit, role: str, dispatch: str, before, test_paths, paths,
+                      head_before: str, range_spec: str | None, result: ExecResult) -> Outcome:
+    """Identical acceptance checks for command executors and external MCP replies."""
     reply = result.stdout
     violations = check_after_dispatch(role, before, unit.worktree, own_branch=unit.branch, test_paths=test_paths,
                                       task_rel_dir=ctx.task_rel, dispatch_id=dispatch)
@@ -783,12 +957,23 @@ def cmd_run(args: argparse.Namespace) -> int:
     ctx = require_started(load_ctx(args.task))
     guard_contract(ctx)
     with editing(ctx):
+        pending = _pending(ctx, args.partition)
+        if pending:
+            print(json.dumps(mcp.envelope(*pending), ensure_ascii=False))
+            return 0
         step = plan_for(ctx, args.partition)
         if step.action == "start_wave":
             return start_wave(ctx)
         if step.action == "merge":
             return merge_wave(ctx)
+        executor = resolve_executor(ctx.config) if step.needs == "brief" else None
+        if executor is not None and executor.kind == "codeg-mcp":
+            limit = _max_parallel(ctx.config)
+            if limit and len(ctx.data.get("mcp_pending") or {}) >= limit:
+                raise DriverError(f"MCP max_parallel={limit} reached; collect an existing delegation first")
         job = _begin(ctx, step, args.dispatch) if step.needs == "brief" else None
+        if job is not None and executor is not None and executor.kind == "codeg-mcp":
+            return prepare_run(ctx, job, executor)
     if step.action == "gate":
         return cmd_gate(args, ctx)
     if job is None:
@@ -915,6 +1100,12 @@ def cmd_run_contract(args: argparse.Namespace) -> int:
         raise DriverError(f"{ctx.name} is started; use `arbor override --role {role}` for an extra dispatch")
     main = ctx.main if ctx else _main()
     config = ctx.config if ctx else read_arbor_config(main)
+    if ctx is not None:
+        with editing(ctx):
+            pending = _pending(ctx)
+            if pending:
+                print(json.dumps(mcp.envelope(*pending), ensure_ascii=False))
+                return 0
 
     if ctx is None:
         if role != "explore":
@@ -951,9 +1142,18 @@ def cmd_run_contract(args: argparse.Namespace) -> int:
     before = snapshot_refs(main)  # the prompt file is not the dispatch's doing
 
     executor = resolve_executor(config)
+    if executor.kind == "codeg-mcp":
+        with editing(ctx) if ctx else task_lock(runtime_dir(main, "mcp-intake")):
+            return prepare_mcp(ctx, main, executor, role, mode, dispatch, "contract", main, branch,
+                               prompt, before, task_rel=task_rel)
     print(colored(f"{dispatch}: {role}{' (' + mode + ')' if mode else ''} in {main}", Colors.BLUE))
     result = run_executor(executor, role=role, prompt_path=prompt_file, worktree=main,
                           task=ctx.name if ctx else "", dispatch=dispatch)
+    return finish_contract(ctx, main, config, role, mode, dispatch, branch, task_rel, before, result)
+
+
+def finish_contract(ctx: Ctx | None, main: Path, config: dict, role: str, mode: str | None, dispatch: str,
+                    branch: str, task_rel: str | None, before, result: ExecResult) -> int:
     violations = check_after_dispatch(
         role, before, main, own_branch=branch, test_paths=get_test_paths(config),
         task_rel_dir=task_rel or f"{DIR_WORKFLOW}/{DIR_TASKS}/-", dispatch_id=None,
@@ -1012,6 +1212,7 @@ def cmd_run_contract(args: argparse.Namespace) -> int:
 
 def cmd_gate(args: argparse.Namespace, ctx: Ctx | None = None) -> int:
     ctx = ctx or require_started(load_ctx(args.task))
+    require_collected(ctx)
     guard_contract(ctx)
     contract_path = find_contract(ctx.task_dir)
     if contract_path is None:
@@ -1044,6 +1245,7 @@ def cmd_gate(args: argparse.Namespace, ctx: Ctx | None = None) -> int:
 def cmd_decide(args: argparse.Namespace) -> int:
     ctx = require_started(load_ctx(args.task))
     with editing(ctx):
+        require_collected(ctx)
         decision = sm.decide(ctx.data, args.choice, ctx.tier, args.partition)
         ctx.data.setdefault("decisions", []).append({
             "ts": utc_now(), "kind": decision.get("kind"), "choice": args.choice, "reason": args.reason,
@@ -1058,6 +1260,7 @@ def cmd_decide(args: argparse.Namespace) -> int:
 def cmd_override(args: argparse.Namespace) -> int:
     ctx = require_started(load_ctx(args.task))
     with editing(ctx):
+        require_collected(ctx)
         return _override(ctx, args)
 
 
@@ -1090,6 +1293,7 @@ def _override(ctx: Ctx, args: argparse.Namespace) -> int:
 def cmd_resume(args: argparse.Namespace) -> int:
     ctx = require_started(load_ctx(args.task))
     with editing(ctx):
+        require_collected(ctx)
         if ctx.data.get("merge_conflict") and ctx.data.get("state") == "BUILD":
             return _resume_merge(ctx)
         return _resume(ctx)
@@ -1136,6 +1340,7 @@ def _resume(ctx: Ctx) -> int:
 def cmd_abandon(args: argparse.Namespace) -> int:
     ctx = require_started(load_ctx(args.task))
     with editing(ctx):
+        require_collected(ctx)
         sm.stop(ctx.data, "HUMAN", f"abandoned{': ' + args.reason if args.reason else ''}")
         save(ctx)
     print(colored(f"{ctx.name}: STOP (HUMAN, abandoned)", Colors.YELLOW))
@@ -1161,6 +1366,7 @@ def cmd_finish(args: argparse.Namespace) -> int:
         if pending:
             return fin.cleanup(main, fin.load_record(main, pending[0]))
     ctx = require_started(ctx)
+    require_collected(ctx)
     record = fin.load_record(ctx.main, ctx.name)
     if record:
         return fin.cleanup(ctx.main, record)
@@ -1262,8 +1468,18 @@ def cmd_canary(args: argparse.Namespace) -> int:
 
     executor = resolve_executor(config)
     before = snapshot_refs(worktree)
+    if executor.kind == "codeg-mcp":
+        branch = (before.head_ref or "").removeprefix("refs/heads/")
+        with editing(ctx) if ctx else task_lock(runtime_dir(main, "mcp-intake")):
+            return prepare_mcp(ctx, main, executor, role, "self-check" if role == "review" else None,
+                               "canary", "canary", worktree, branch, prompt, before)
     result = run_executor(executor, role=role, prompt_path=prompt_file, worktree=worktree,
                           task=ctx.name if ctx else "", dispatch="canary")
+    return finish_canary(ctx, main, worktree, role, before, result)
+
+
+def finish_canary(ctx: Ctx | None, main: Path, worktree: Path, role: str, before, result: ExecResult) -> int:
+    started = ctx is not None and ctx.started
     after = snapshot_refs(worktree)
     problems: list[str] = []
     if not result.ok:
@@ -1314,6 +1530,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--autopilot", action="store_true",
                    help="keep going until a decision, a human gate, STOP, red or a failed dispatch")
     p.set_defaults(func=cmd_run)
+    p = sub.add_parser("bind", help="bind a prepared MCP dispatch to codeg's returned task_id")
+    p.add_argument("--request", required=True)
+    p.add_argument("--task-id", required=True)
+    p.set_defaults(func=cmd_bind)
+    p = sub.add_parser("collect", help="validate a terminal codeg MCP report and advance the task")
+    p.add_argument("--request", required=True)
+    p.add_argument("--result", required=True, help="file containing the complete get_delegation_status JSON")
+    p.set_defaults(func=cmd_collect)
     p = sub.add_parser("finish", help="FINISH: scorecard + PR / merge command; cleanup after the merge")
     p.add_argument("--pr", action="store_true", help="push the task branch and open a PR with gh")
     p.set_defaults(func=cmd_finish)
@@ -1345,7 +1569,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return args.func(args)
-    except (DriverError, sm.StateError, ExecutorError, ContractError, WorktreeError, fin.FinishError) as e:
+    except (DriverError, sm.StateError, ExecutorError, ContractError, WorktreeError, fin.FinishError, LockTimeout, OSError,
+            ValueError) as e:
         print(colored(f"Error: {e}", Colors.RED), file=sys.stderr)
         return 1
 

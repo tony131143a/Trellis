@@ -1,0 +1,49 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact|fork",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{PYTHON_CMD}} -X utf8 \"$(git rev-parse --show-toplevel)/.codex/hooks/session-start.py\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{PYTHON_CMD}} -X utf8 \"$(git rev-parse --show-toplevel)/.codex/hooks/inject-workflow-state.py\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "^(Agent|Task|spawn_agent)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{PYTHON_CMD}} -X utf8 \"$(git rev-parse --show-toplevel)/.codex/hooks/guard-builtin-agent.py\"",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{PYTHON_CMD}} -X utf8 \"$(git rev-parse --show-toplevel)/.codex/hooks/inject-shell-session-context.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

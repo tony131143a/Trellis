@@ -55,4 +55,8 @@ Do the one thing it names, then run `next` again:
 
 On STOP, report the reason and the last evidence; the user decides between `arbor.py resume`, `arbor.py override --reason "…" (--to STATE[/step] | --role <role>)` and `arbor.py abandon [--reason "…"]`.
 
-Never perform a role in this session and never use the built-in Agent/Task tool for one. The driver writes the dispatch header and injects the contract, design and diff; your brief carries only what those do not say.
+Never perform a role in this session and never use the built-in Agent/Task tool for one. Use the codeg MCP handoff below when the driver returns `needs=delegation`. The driver writes the dispatch header and injects the contract, design and diff; your brief carries only what those do not say.
+
+## codeg MCP delegation
+
+With the `codeg-mcp` executor, `arbor.py run` returns `needs=delegation`. Call codeg MCP `delegate_to_agent` with the returned `mcp.arguments` (resolve the named assistant from the MCP roster if no id is configured), then immediately run `arbor.py bind --request <request_path> --task-id <returned task_id>`. Poll `get_delegation_status`, save its complete JSON response at the returned `result_path` outside the task worktree, and run `arbor.py collect --request <request_path> --result <file>` before proceeding. Resume/poll a bound task after interruptions; never start it again. If the configured timeout expires, cancel it through `cancel_delegation` and collect the terminal report. Claude Code and Codex both use this same MCP flow. Do not substitute `codeg-cli run` or native Agent/Task/spawn_agent.

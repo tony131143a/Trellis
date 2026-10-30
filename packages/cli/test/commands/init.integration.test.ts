@@ -74,7 +74,7 @@ describe("init() integration", () => {
 
     // Default platform: claude
     expect(fs.existsSync(path.join(tmpDir, ".claude"))).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, ".starFactory"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".codex"))).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, ".agents", "skills"))).toBe(false);
 
     // Root files
@@ -143,7 +143,7 @@ describe("init() integration", () => {
     await init({ yes: true, claude: true });
 
     expect(fs.existsSync(path.join(tmpDir, ".claude"))).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, ".starFactory"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".codex"))).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, ".agents", "skills"))).toBe(false);
     expect(
       fs.existsSync(
@@ -153,61 +153,42 @@ describe("init() integration", () => {
   });
 
   it("#3 multi platform creates all selected platform directories", async () => {
-    await init({ yes: true, claude: true, star: true });
+    await init({ yes: true, claude: true, codex: true });
 
     expect(fs.existsSync(path.join(tmpDir, ".claude"))).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, ".starFactory"))).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, ".agents", "skills"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".codex"))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, ".agents", "skills"))).toBe(true);
   });
 
-  it("#3n star platform writes .starFactory hooks, commands, and tracked templates", async () => {
-    await init({ yes: true, star: true });
-
-    const starFactory = (p: string) => path.join(tmpDir, ".starFactory", p);
-
-    // Class-1: SessionStart injects the workflow, so arbor-start is filtered.
-    expect(fs.existsSync(starFactory("settings.json"))).toBe(true);
-    expect(fs.existsSync(starFactory("commands/arbor/start.md"))).toBe(false);
-    expect(fs.existsSync(starFactory("commands/arbor/finish-work.md"))).toBe(
-      true,
+  it("#3n Codex installs skills and hooks without changing user config", async () => {
+    fs.mkdirSync(path.join(tmpDir, ".codex"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".codex/config.toml"),
+      'model = "user-model"\n',
     );
-    for (const hook of [
-      "session-start.py",
-      "inject-workflow-state.py",
-      "guard-builtin-agent.py",
-      "inject-shell-session-context.py",
-    ]) {
-      expect(fs.existsSync(starFactory(`hooks/${hook}`))).toBe(true);
+    await init({ yes: true, codex: true });
+    expect(
+      fs.existsSync(path.join(tmpDir, ".agents/skills/arbor-start/SKILL.md")),
+    ).toBe(true);
+    expect(
+      fs.existsSync(
+        path.join(tmpDir, ".agents/skills/arbor-continue/SKILL.md"),
+      ),
+    ).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, ".codex/hooks.json"))).toBe(true);
+    expect(
+      fs.readFileSync(path.join(tmpDir, ".codex/config.toml"), "utf8"),
+    ).toBe('model = "user-model"\n');
+    const data = JSON.parse(
+      fs.readFileSync(
+        path.join(tmpDir, DIR_NAMES.WORKFLOW, ".template-hashes.json"),
+        "utf8",
+      ),
+    ) as { hashes: Record<string, string> };
+    for (const name of collectPlatformTemplates("codex")?.keys() ?? []) {
+      expect(data.hashes).toHaveProperty(name);
     }
-    expect(fs.existsSync(starFactory("hooks/inject-delegation-context.py"))).toBe(
-      false,
-    );
-    // Native sub-agent definition files are no longer shipped.
-    expect(fs.existsSync(starFactory("agents"))).toBe(false);
-
-    // The project-level .claude/ dir is a different platform; star never writes it.
     expect(fs.existsSync(path.join(tmpDir, ".claude"))).toBe(false);
-    expect(fs.existsSync(path.join(tmpDir, ".agents", "skills"))).toBe(false);
-
-    const hashFile = path.join(
-      tmpDir,
-      DIR_NAMES.WORKFLOW,
-      ".template-hashes.json",
-    );
-    const hashesFile = JSON.parse(fs.readFileSync(hashFile, "utf-8")) as {
-      __version?: number;
-      hashes?: Record<string, string>;
-    };
-    const hashes = hashesFile.hashes ?? {};
-    const trackedPaths = Object.keys(hashes).map((p) => p.replace(/\\/g, "/"));
-    const starTemplates = collectPlatformTemplates("star");
-    expect(starTemplates).toBeInstanceOf(Map);
-    if (!starTemplates) {
-      throw new Error("Expected StarFactory templates to be collectable");
-    }
-    expect(trackedPaths).toEqual(
-      expect.arrayContaining([...starTemplates.keys()]),
-    );
   });
 
   it("#4 force mode overwrites previously modified files", async () => {
@@ -543,8 +524,13 @@ describe("init() integration", () => {
 
     // contract.md mentions packages + renders per-package checklist items
     // and one acceptance criterion per item
-    const prd = fs.readFileSync(path.join(taskDir, FILE_NAMES.CONTRACT), "utf-8");
-    expect(prd).toMatch(/^- AC-1: Given the existing code When the guidelines for core are written Then /m);
+    const prd = fs.readFileSync(
+      path.join(taskDir, FILE_NAMES.CONTRACT),
+      "utf-8",
+    );
+    expect(prd).toMatch(
+      /^- AC-1: Given the existing code When the guidelines for core are written Then /m,
+    );
     expect(prd).toContain("| AC-3 | manual |");
     const expectedPythonCmd =
       process.platform === "win32" ? "python" : "python3";
@@ -767,7 +753,7 @@ describe("init() integration", () => {
   it("#28 reinit add-platform: statusLine confirm fires for newly added claude", async () => {
     // user is required so the bootstrap task is created — otherwise the second
     // init routes through the aborted-init recovery instead of handleReinit
-    await init({ yes: true, star: true, user: "alice" });
+    await init({ yes: true, codex: true, user: "alice" });
     expect(fs.existsSync(path.join(tmpDir, ".claude"))).toBe(false);
 
     const { confirms } = await installStatuslinePromptMock(true);
@@ -789,7 +775,7 @@ describe("init() integration", () => {
     fs.mkdirSync(path.dirname(nativeSettingsPath), { recursive: true });
     fs.writeFileSync(nativeSettingsPath, '{"permissions":{"allow":[]}}\n');
 
-    await init({ yes: true, star: true, user: "alice" });
+    await init({ yes: true, codex: true, user: "alice" });
     expect(
       fs.existsSync(
         path.join(tmpDir, ".claude", "skills", "arbor-meta", "SKILL.md"),
@@ -837,7 +823,7 @@ describe("init() integration", () => {
   });
 
   it("#30a star-only init does not write CLAUDE.md", async () => {
-    await init({ yes: true, star: true });
+    await init({ yes: true, codex: true });
 
     expect(fs.existsSync(path.join(tmpDir, FILE_NAMES.CLAUDE))).toBe(false);
   });
@@ -860,7 +846,7 @@ describe("init() integration", () => {
   });
 
   it("#30c reinit add-platform claude writes CLAUDE.md", async () => {
-    await init({ yes: true, star: true, user: "alice" });
+    await init({ yes: true, codex: true, user: "alice" });
     expect(fs.existsSync(path.join(tmpDir, FILE_NAMES.CLAUDE))).toBe(false);
 
     await init({ yes: true, claude: true });

@@ -67,8 +67,9 @@ const CONFIGURE_ONLY_PATHS = new Set([".claude/hooks/statusline.py"]);
  * `Map<path, content>` cannot express an empty directory, so each one is
  * named here against the platform that needs it.
  */
-const CONFIGURE_ONLY_EMPTY_DIRS: Partial<Record<(typeof PLATFORM_IDS)[number], string[]>> =
-  {};
+const CONFIGURE_ONLY_EMPTY_DIRS: Partial<
+  Record<(typeof PLATFORM_IDS)[number], string[]>
+> = {};
 
 /** Every file under `root`, as POSIX paths relative to `root`. */
 function walkFiles(root: string, rel = ""): string[] {
@@ -329,98 +330,25 @@ describe("configurePlatform", () => {
     );
   });
 
-  it("configurePlatform('star') writes class-1 hooks, skills, and commands under .starFactory/", async () => {
-    await configurePlatform("star", tmpDir);
-
-    const starFactory = (p: string) => path.join(tmpDir, ".starFactory", p);
-
-    // hasHooks=true → arbor-start is filtered out (session inject replaces it)
-    expect(fs.existsSync(starFactory("commands/arbor/start.md"))).toBe(false);
-    expect(
-      fs.existsSync(starFactory("skills/arbor-start/SKILL.md")),
-    ).toBe(false);
-    expect(fs.existsSync(starFactory("commands/arbor/continue.md"))).toBe(
-      true,
-    );
-    expect(fs.existsSync(starFactory("commands/arbor/finish-work.md"))).toBe(
-      true,
-    );
-    expect(fs.existsSync(starFactory("skills/arbor-check/SKILL.md"))).toBe(
-      true,
-    );
-
-    for (const hook of [
-      "session-start.py",
-      "inject-workflow-state.py",
-      "guard-builtin-agent.py",
-      "inject-shell-session-context.py",
-    ]) {
-      expect(fs.existsSync(starFactory(`hooks/${hook}`))).toBe(true);
+  it("configurePlatform('codex') installs tracked shared skills and hooks", async () => {
+    await configurePlatform("codex", tmpDir);
+    const templates = collectPlatformTemplates("codex");
+    expect(templates).toBeDefined();
+    for (const [relativePath, content] of templates ?? []) {
+      expect(readConfiguredFile(tmpDir, relativePath)).toBe(content);
     }
-    expect(fs.existsSync(starFactory("hooks/inject-delegation-context.py"))).toBe(
-      false,
-    );
-
-    const settings = JSON.parse(
-      fs.readFileSync(starFactory("settings.json"), "utf-8"),
-    ) as {
-      hooks: Record<
-        string,
-        { matcher?: string; hooks: { command: string }[] }[]
-      >;
-    };
-    // Claude-compatible event names, with the Bash ticket wired for session
-    // identity (StarFactory exports no session id into shell children).
-    expect(settings.hooks.SessionStart[0].hooks[0].command).toContain(
-      ".starFactory/hooks/session-start.py",
-    );
     expect(
-      settings.hooks.PreToolUse.find((e) => e.matcher === "Bash")?.hooks[0]
-        .command,
-    ).toContain(".starFactory/hooks/inject-shell-session-context.py");
-    expect(settings.hooks.UserPromptSubmit[0].hooks[0].command).toContain(
-      ".starFactory/hooks/inject-workflow-state.py",
-    );
-
-    // A native StarFactory directory without Arbor-owned files is not a
-    // configured platform.
-    const emptyDir = fs.mkdtempSync(
-      path.join(os.tmpdir(), "arbor-star-det-"),
-    );
-    try {
-      fs.mkdirSync(path.join(emptyDir, ".starFactory"), { recursive: true });
-      fs.writeFileSync(
-        path.join(emptyDir, ".starFactory", "settings.json"),
-        "{}",
-      );
-      expect(getConfiguredPlatforms(emptyDir).has("star")).toBe(false);
-      fs.mkdirSync(path.join(emptyDir, ".starFactory", "commands"), {
-        recursive: true,
-      });
-      expect(getConfiguredPlatforms(emptyDir).has("star")).toBe(false);
-    } finally {
-      fs.rmSync(emptyDir, { recursive: true, force: true });
-    }
-
-    const templates = collectPlatformTemplates("star");
-    expect(templates?.has(".starFactory/settings.json")).toBe(true);
-    expect(templates?.has(".starFactory/commands/arbor/start.md")).toBe(
-      false,
-    );
-    expect(templates?.has(".starFactory/hooks/guard-builtin-agent.py")).toBe(
-      true,
-    );
+      fs.existsSync(path.join(tmpDir, ".agents/skills/arbor-start/SKILL.md")),
+    ).toBe(true);
     expect(
-      templates?.has(".starFactory/hooks/inject-delegation-context.py"),
-    ).toBe(false);
-    // .claude/ belongs to the claude-code platform; star must not write it.
-    expect([...(templates?.keys() ?? [])].some((k) => k.startsWith(".claude/"))).toBe(
-      false,
-    );
-
-    expect(AI_TOOLS.star.templateContext.hasHooks).toBe(true);
-    expect(AI_TOOLS.star.hasPythonHooks).toBe(true);
-    expect(AI_TOOLS.star.supportsAgentSkills ?? false).toBe(false);
+      fs.existsSync(
+        path.join(tmpDir, ".agents/skills/arbor-workflow/SKILL.md"),
+      ),
+    ).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, ".codex/hooks.json"))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, ".codex/config.toml"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".starFactory"))).toBe(false);
+    expect(AI_TOOLS.codex.supportsAgentSkills).toBe(true);
   });
 
   it("claude-code configuration includes commands directory", async () => {
@@ -532,5 +460,4 @@ describe("configurePlatform", () => {
       }
     }
   });
-
 });

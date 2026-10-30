@@ -59,12 +59,15 @@ The older `Diff:`, `Target:` and `Workspace:` lines are gone. After the header c
 executors:
   default: codeg
   codeg:
-    command: "codeg-cli run -A arbor-{role} -w {worktree} --permissions allow --timeout 90m --title arbor-{role}-{task}-{dispatch} -q -p - < {prompt}"
+    type: codeg-mcp
+    assistant: "arbor-{role}"
     timeout: 90m
     max_parallel: 3
 ```
 
-Placeholders: `{role}`, `{prompt}` (the assembled prompt file under `.arbor/.runtime/prompts/`), `{worktree}`, `{task}`, `{dispatch}`. Add another executor block (the template comments show `claude -p` and `codex exec` shapes) and point `default` at it to switch. Model, effort and permissions belong to the executor (for codeg: one `arbor-<role>` assistant per role, configured in codeg). Arbor has no per-role model setting. `arbor.py canary` checks a new executor before real work.
+With the `codeg-mcp` executor, `arbor.py run` returns `needs=delegation`. Call codeg MCP `delegate_to_agent` with the returned `mcp.arguments` (resolve the named assistant from the MCP roster if no id is configured), then immediately run `arbor.py bind --request <request_path> --task-id <returned task_id>`. Poll `get_delegation_status`, save its complete JSON response at the returned `result_path` outside the task worktree, and run `arbor.py collect --request <request_path> --result <file>` before proceeding. Resume/poll a bound task after interruptions; never start it again. If the configured timeout expires, cancel it through `cancel_delegation` and collect the terminal report. Claude Code and Codex both use this same MCP flow. Do not substitute `codeg-cli run` or native Agent/Task/spawn_agent.
+
+Model, effort and permissions belong to the selected codeg assistant. `arbor.py canary` uses the same prepare/bind/collect flow. CLI executors remain available only when explicitly configured with `command`; their shell-quoted placeholders are `{role}`, `{prompt}`, `{worktree}`, `{task}`, `{dispatch}`. `run --autopilot` stops at MCP handoffs; the host handles delegation and resumes the driver afterwards.
 
 ## Invariants And Commit Format
 

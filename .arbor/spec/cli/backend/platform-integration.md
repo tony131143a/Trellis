@@ -4,23 +4,22 @@ sources:
   - packages/cli/src/configurators/index.ts
   - packages/cli/src/configurators/shared.ts
   - packages/cli/src/configurators/claude.ts
-  - packages/cli/src/configurators/star.ts
+  - packages/cli/src/configurators/codex.ts
   - packages/cli/src/templates/shared-hooks/index.ts
   - packages/cli/src/templates/claude/settings.json
-  - packages/cli/src/templates/star/settings.json
-last_verified: 2026-10-23
+  - packages/cli/src/templates/codex/hooks.json
+last_verified: 2026-10-30
 ---
 # Platform Integration Guide
 
-How Arbor integrates with its two main-agent platforms, Claude Code (`.claude/`) and StarFactory (`.starFactory/`), and the contracts shared by their hooks, commands and skills. `PLATFORM_IDS` in `configurators/index.ts` is the list that counts. Sub-agent roles (implement / check / research) are not platform features: they run as codeg assistants, see `dispatch.md`.
-
+Arbor supports Claude Code (`.claude/`) and Codex (`.codex/` plus `.agents/skills/`). `PLATFORM_IDS` is authoritative. Arbor v2 roles run through `arbor.py` and a configured executor; native platform agent profiles are not installed.
 ---
 
 ## Architecture
 
 Platform support uses a **centralized registry pattern**:
 
-- **Data registry**: `src/types/ai-tools.ts` — `AI_TOOLS` record with all platform metadata (`claude-code`, `star`)
+- **Data registry**: `src/types/ai-tools.ts` — `AI_TOOLS` record with all platform metadata (`claude-code`, `codex`)
 - **Function registry**: `src/configurators/index.ts` — `PLATFORM_FUNCTIONS`, one entry per platform. It holds no per-platform logic
 - **Shared configurator utilities**: `src/configurators/shared.ts` — renderers (`resolvePlaceholders()`), resolvers (`resolveCommands()`, `resolveSkills()`, `resolveBundledSkills()`), map builders (`collectSkillTemplates()`, `collectSharedHooks()`), and the render/write pair (`renderTemplateMap()`, `writeTemplateMap()`). See `configurator-shared.md`
 - **Shared template utilities**: `src/templates/template-utils.ts` — `createTemplateReader()` factory
@@ -35,18 +34,20 @@ All lists (backup dirs, template dirs, platform detection, cleanup whitelist) ar
 
 ## The two platforms
 
-| | Claude Code | StarFactory |
-| --- | --- | --- |
-| Registry id / CLI flag | `claude-code` / `--claude` | `star` / `--star` |
-| Config dir | `.claude/` | `.starFactory/` |
-| Template dir | `src/templates/claude/` (`settings.json`, `hooks/statusline.py`) | `src/templates/star/` (`settings.json`) |
-| Configurator | `configurators/claude.ts` (spells out `configure` and `collectTemplates` because of the opt-in statusline) | `configurators/star.ts` (plain `fromTemplates`) |
-| Shared hooks | session-start, inject-workflow-state, inject-delegation-context, guard-builtin-agent | the same four plus inject-shell-session-context |
-| Command format | `/arbor:xxx`, Markdown under `commands/arbor/` | same, under `.starFactory/commands/arbor/` |
+| | Claude Code | Codex |
+|---|---|---|
+| Registry id / CLI flag | `claude-code` / `--claude` | `codex` / `--codex` |
+| Hook config | `.claude/settings.json` | `.codex/hooks.json` |
+| Skills | `.claude/skills/` | `.agents/skills/` |
+| Commands | `/arbor:<name>` | `$arbor-<name>` skills |
+| Startup | SessionStart | SessionStart, plus `$arbor-start` fallback |
+| Shell identity | CLAUDE_CODE_SESSION_ID / ARBOR_CONTEXT_ID | CODEX_THREAD_ID / ARBOR_CONTEXT_ID |
 
-StarFactory is a Claude Code-compatible fork. Its **project-level** config directory is `.starFactory/`; `.claude/` at project level is ignored, and it does not read the shared `.agents/skills/` root. StarFactory exports no session id into its shell children, which is why it alone gets the shell-ticket hook.
+`collectClaudeTemplates()` and `collectCodexTemplates()` each describe the exact init/update file set. Codex deliberately does not generate `config.toml`: users retain their model, provider, permission and MCP configuration. Hooks require a trusted project layer and reviewed hook definitions; keep the startup skill for unavailable or untrusted hooks. Codex guard payloads use `spawn_agent` / `message` / `agent_type` as well as Claude-compatible aliases.
 
-`collectClaudeTemplates()` / `collectStarTemplates()` are the single description of each file set: `arbor init` writes the map and `arbor update` diffs it, so the two cannot disagree. The shape to copy for any new configurator is `configurators/star.ts`.
+StarFactory is retired. Its historical managed paths remain cleanup-only entries outside the active registry. Update backs them up and removes only exact known template hashes; modified files remain for review. Uninstall preserves user-owned settings fields and untracked files. Legacy session-ticket decoding does not make StarFactory an installable platform.
+
+Every CLI executor receives the role instructions inline from `.arbor/agents/<role>.md`, after the dispatch header. Parent Arbor/host session variables are removed from executor children. Prompts are supplied as file contents through stdin, never as literal filenames.
 
 **Required commands/skills**: both platforms receive everything from `src/templates/common/`:
 

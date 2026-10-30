@@ -7,18 +7,18 @@
 /**
  * Supported AI coding tools
  */
-export type AITool = "claude-code" | "star";
+export type AITool = "claude-code" | "codex";
 
 /**
  * Template directory categories
  */
-export type TemplateDir = "common" | "claude" | "star";
+export type TemplateDir = "common" | "claude" | "codex";
 
 /**
- * CLI flag names for platform selection (e.g., --claude, --star)
+ * CLI flag names for platform selection (e.g., --claude, --codex)
  * Must match keys in InitOptions (src/commands/init.ts)
  */
-export type CliFlag = "claude" | "star";
+export type CliFlag = "claude" | "codex";
 
 /**
  * Template context for placeholder resolution.
@@ -52,7 +52,7 @@ export interface TemplateContext {
   /** Platform has hook system (SessionStart, PreToolUse) */
   hasHooks: boolean;
   /**
-   * CLI flag value for this platform (e.g. "claude", "star").
+   * CLI flag value for this platform (e.g. "claude", "codex").
    * Substituted into template commands via {{CLI_FLAG}} so rendered skill /
    * command files can pass `--platform <flag>` to scripts that need to know
    * the invoking platform, removing the need to re-detect at runtime.
@@ -118,40 +118,21 @@ export const AI_TOOLS: Record<AITool, AIToolConfig> = {
       cliFlag: "claude",
     },
   },
-  /**
-   * StarFactory CLI — class-1 platform, verified against star 1.0.49.
-   *
-   * StarFactory is a Claude Code-compatible fork: its hook payloads carry
-   * Claude's `session_id` / `transcript_path` / `hook_event_name` fields, its
-   * settings keys match, and it consumes `.claude-plugin` marketplaces. The
-   * user-level config dir is `~/.starFactory/` (mounted via
-   * `CLAUDE_CONFIG_DIR`), but the **project-level** dir is `.starFactory/`:
-   * a live probe showed `.starFactory/settings.json` SessionStart hooks fire
-   * and `.starFactory/{commands,skills}/` load, while the same files
-   * under `.claude/` are ignored entirely.
-   *
-   * - Skills: `.starFactory/skills/<name>/SKILL.md` (invocable as slash commands)
-   * - Commands: `.starFactory/commands/arbor/*.md` -> `/arbor:<name>`
-   * - Hooks: `.starFactory/hooks/` + `.starFactory/settings.json`
-   *   (SessionStart / UserPromptSubmit / PreToolUse all verified to fire)
-   *
-   * supportsAgentSkills is false: a probe confirmed StarFactory does NOT read
-   * the shared `.agents/skills/` root ("Unknown skill").
-   */
-  star: {
-    name: "StarFactory",
-    templateDirs: ["common", "star"],
-    configDir: ".starFactory",
-    cliFlag: "star",
+  codex: {
+    name: "Codex",
+    templateDirs: ["common", "codex"],
+    configDir: ".codex",
+    supportsAgentSkills: true,
+    cliFlag: "codex",
     defaultChecked: false,
     hasPythonHooks: true,
     templateContext: {
-      cmdRefPrefix: "/arbor:",
-      executorAI: "Bash scripts or Task calls",
-      userActionLabel: "Slash commands",
+      cmdRefPrefix: "$",
+      executorAI: "Bash scripts or tool calls",
+      userActionLabel: "Skills",
       agentCapable: true,
       hasHooks: true,
-      cliFlag: "star",
+      cliFlag: "codex",
     },
   },
 };

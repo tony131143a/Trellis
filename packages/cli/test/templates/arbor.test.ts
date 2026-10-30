@@ -148,23 +148,24 @@ describe("arbor template constants", () => {
     }
   });
 
-  it("workflow.md drops the v1 dispatch machinery and never names an executor", () => {
+  it("workflow.md drops v1 dispatch machinery and describes codeg MCP handoffs", () => {
     for (const gone of [
       "dispatch.py",
-      "delegate_to_agent",
       "Diff:",
       "Target:",
       "Workspace:",
       "prd.md",
       "implement.md",
-      "snapshot",
       "meta.execution",
       "#### 2P.",
       "#### 2F.",
     ]) {
       expect(workflowMdTemplate, `workflow.md must not mention ${gone}`).not.toContain(gone);
     }
-    expect(workflowMdTemplate).not.toMatch(/codeg|\bstar\b|\bpi\b|codex|target|\bmodel\b|trellis/i);
+    expect(workflowMdTemplate).toContain("delegate_to_agent");
+    expect(workflowMdTemplate).toContain("arbor.py collect --request");
+    expect(workflowMdTemplate).toContain("Claude Code and Codex both use this same MCP flow");
+    expect(workflowMdTemplate).not.toContain("codeg-cli run -A");
   });
 
   it("workflow.md ships the reference tables", () => {
@@ -435,7 +436,8 @@ describe("configYamlTemplate: executors and gate", () => {
     expect(parsed.executors).toEqual({
       default: "codeg",
       codeg: {
-        command: "codeg-cli run -A arbor-{role} -w {worktree} --permissions allow --timeout 90m --title arbor-{role}-{task}-{dispatch} -q -p - < {prompt}",
+        type: "codeg-mcp",
+        assistant: "arbor-{role}",
         timeout: "90m",
         max_parallel: "3",
       },
@@ -462,7 +464,7 @@ describe("configYamlTemplate: executors and gate", () => {
   });
 
   it("documents the other executors only as comments", () => {
-    expect(configYamlTemplate).toContain('#     command: "claude -p {prompt}"');
-    expect(configYamlTemplate).toContain('#     command: "codex exec --cd {worktree} {prompt}"');
+    expect(configYamlTemplate).toContain('#     command: "claude -p < {prompt}"');
+    expect(configYamlTemplate).toContain('#     command: "codex exec --cd {worktree} --sandbox workspace-write - < {prompt}"');
   });
 });

@@ -352,7 +352,13 @@ export function assertSafeManagedPath(
  */
 export function buildStructuredFileSpecs(): Map<string, StructuredFileSpec> {
   const specs: StructuredFileSpec[] = [
-    ...([".claude/settings.json", ".starFactory/settings.json"] as const).map(
+    ...(
+      [
+        ".claude/settings.json",
+        ".codex/hooks.json",
+        ".starFactory/settings.json",
+      ] as const
+    ).map(
       (posixPath): StructuredFileSpec => ({
         posixPath,
         reason: "Strip arbor hooks; preserve user fields",

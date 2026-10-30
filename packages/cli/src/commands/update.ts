@@ -1,3 +1,4 @@
+import { RETIRED_PLATFORM_PATHS } from "../utils/retired-platforms.js";
 import fs from "node:fs";
 import path from "node:path";
 import chalk from "chalk";
@@ -910,7 +911,12 @@ function backupFile(
 /**
  * Directories to backup as complete snapshot (derived from platform registry)
  */
-const BACKUP_DIRS = ALL_MANAGED_DIRS;
+const BACKUP_DIRS = [
+  ...new Set([
+    ...ALL_MANAGED_DIRS,
+    ...RETIRED_PLATFORM_PATHS.map((p) => p.split("/")[0] ?? ""),
+  ]),
+];
 
 /** Root-level managed files to include in update backups. */
 const BACKUP_FILES = [FILE_NAMES.AGENTS, FILE_NAMES.CLAUDE] as const;
@@ -2412,7 +2418,6 @@ export async function update(options: UpdateOptions): Promise<void> {
       }
     }
   }
-
 
   // Display breaking change warnings at the very end (so they don't scroll off screen)
   if (cliVsProject > 0 && projectVersion !== "unknown") {

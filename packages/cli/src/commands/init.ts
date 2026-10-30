@@ -865,7 +865,7 @@ async function handleReinit(
       console.log(chalk.gray(`Already initialized with: ${configuredNames}`));
       console.log(
         chalk.gray(
-          "Use platform flags (e.g., --star) or -u <name> to add platforms/developer.",
+          "Use platform flags (e.g., --codex) or -u <name> to add platforms/developer.",
         ),
       );
       return true;
@@ -1071,7 +1071,7 @@ async function maybePromptStatuslineOptIn(
 
 interface InitOptions {
   claude?: boolean;
-  star?: boolean;
+  codex?: boolean;
   yes?: boolean;
   user?: string;
   force?: boolean;
@@ -1160,9 +1160,7 @@ export async function init(options: InitOptions): Promise<void> {
   const banner = figlet.textSync("Arbor", { font: "Rebel" });
   console.log(chalk.cyan(`\n${banner.trimEnd()}`));
   console.log(
-    chalk.gray(
-      "\n   All-in-one AI framework & toolkit for Claude Code & Cursor\n",
-    ),
+    chalk.gray("\n   AI engineering workflows for Claude Code & Codex\n"),
   );
 
   // Set write mode based on options

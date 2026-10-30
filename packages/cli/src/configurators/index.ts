@@ -21,7 +21,7 @@ import { loadHashes } from "../utils/template-hash.js";
 // Platform file sets — each `collect*Templates` is the single description of
 // what its platform installs, and lives next to any residual behavior.
 import { collectClaudeTemplates, configureClaude } from "./claude.js";
-import { collectStarTemplates } from "./star.js";
+import { collectCodexTemplates } from "./codex.js";
 
 // Shared utilities
 import {
@@ -65,7 +65,7 @@ const PLATFORM_FUNCTIONS: Record<AITool, PlatformFunctions> = {
     configure: configureClaude,
     collectTemplates: collectClaudeTemplates,
   },
-  star: fromTemplates(collectStarTemplates),
+  codex: fromTemplates(collectCodexTemplates),
 };
 
 // =============================================================================
