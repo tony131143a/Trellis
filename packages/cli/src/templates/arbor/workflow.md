@@ -116,10 +116,13 @@ Every command takes `--task <dir>` before the command name (default: this sessio
 | `needs` | Meaning | You do |
 |---|---|---|
 | `brief` | a role must run | write the brief for that `role` at `brief_path`, then `arbor.py run` |
-| `run` | GATE: the driver has deterministic work | `arbor.py gate` (`arbor.py run` does the same here) |
+| `run` | the driver has deterministic work: GATE, or merging a finished wave back into the task branch | `arbor.py gate` for GATE (`arbor.py run` does the same there); `arbor.py run` for the wave merge |
+| `wait` | multi-partition wave: every ready partition is running or finished and the wave cannot merge yet | wait for the running `arbor.py run --partition <p>` calls, then `arbor.py next` again |
 | `decide` | a judgment the driver cannot make | `arbor.py decide <choice> --reason "…"` with one of the listed options |
-| `human` | `human.kind` says which: `approve_contract`, `plausible`, `stop` or `merge` | `approve_contract`: before start, finish the contract (research with `arbor.py run --role`, see CONTRACT-phase dispatch), ask for approval, then `task.py start`; after start, the user re-approves the edited `contract.md` and you run `arbor.py resume`. `plausible`: `decide fix\|skip --reason "…"`. `stop`: report, then `resume`, `override` or `abandon` as the user says. `merge`: Phase 3 |
+| `human` | `human.kind` says which: `approve_contract`, `plausible`, `stop`, `merge_conflict` or `merge` | `approve_contract`: before start, finish the contract (research with `arbor.py run --role`, see CONTRACT-phase dispatch), ask for approval, then `task.py start`; after start, the user re-approves the edited `contract.md` and you run `arbor.py resume`. `plausible`: `decide fix\|skip --reason "…"`. `stop`: report, then `resume`, `override` or `abandon` as the user says. `merge_conflict`: merge the named partition branch into the task branch by hand in the task worktree, commit, then `arbor.py resume`. `merge`: Phase 3 |
 | `done` | nothing left | stop |
+
+**Multi-partition waves.** When the contract's current wave names more than one partition, the driver gives each partition its own branch `arbor/<task>--<p>` and worktree `<worktree.root>/<task>-<p>`, and `next --json` carries `partition` plus `partitions_pending` (the other partitions that also need a brief right now). Write each brief at its `brief_path`, then start one `arbor.py run --partition <p>` per partition — they may run at the same time (the driver serialises task.json under `<task>/.lock`; keep to `executors.<name>.max_parallel`). A partition's writer may only touch that partition's paths; the driver prepends the scope line to the brief and rejects anything outside. When every partition is done, `next` says `run` and `arbor.py run` merges the branches back `--no-ff` in wave order; a conflict becomes `human` / `merge_conflict`.
 
 **Dispatch header.** The driver writes it; you never type it. Every role prompt starts with:
 

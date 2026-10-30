@@ -288,8 +288,8 @@ def guard_contract(ctx: Ctx) -> None:
 
 def next_dispatch_id(data: dict, task_dir: Path | None = None) -> str:
     """One past the highest id in task.json ``dispatches``, the ids already
-    assigned to partitions, and ``reports/`` (``task.py start`` resets
-    ``dispatches``; the CONTRACT-phase reports stay)."""
+    assigned to partitions, and ``reports/`` (a report whose record was lost
+    still reserves its id)."""
     ids = [str(d.get("id", "")) for d in data.get("dispatches") or [] if isinstance(d, dict)]
     ids += [str(r.get("next_dispatch") or "") for r in (data.get("partitions") or {}).values()]
     if task_dir is not None and (task_dir / "reports").is_dir():
