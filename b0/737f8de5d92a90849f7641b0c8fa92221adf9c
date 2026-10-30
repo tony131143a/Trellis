@@ -1,0 +1,31 @@
+packages/cli/src/templates/arbor/scripts/common/dispatch_context.py
+  s_f5a35762a9935e::t_009b3bef2eae25 217
+packages/cli/src/templates/arbor/scripts/common/task_store.py
+  s_f5a35762a9935e::t_458b5db5a7b50f 545-546
+packages/cli/src/templates/arbor/scripts/hooks/linear_sync.py
+  s_f5a35762a9935e::t_2f2b0903956b7d 181,188-195,198,200
+packages/cli/src/templates/common/bundled-skills/arbor-spec-bootstrap/SKILL.md
+  s_f5a35762a9935e::t_929b07e4de4a96 8,31
+packages/cli/src/templates/common/bundled-skills/arbor-spec-bootstrap/references/mcp-setup.md
+  s_f5a35762a9935e::t_c3c93354febcf4 3
+packages/cli/src/templates/common/bundled-skills/arbor-spec-bootstrap/references/spec-task-planning.md
+  s_f5a35762a9935e::t_1ab3a38ab54938 53
+packages/cli/src/templates/markdown/spec/guides/cross-layer-thinking-guide.md.txt
+  s_f5a35762a9935e::t_ed97dc7fcd7a78 181
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "b0737f8de5d92a90849f7641b0c8fa92221adf9c",
+  "prompts": {},
+  "sessions": {
+    "s_f5a35762a9935e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5eec63a6-1b3a-4083-ba18-e451eb5d3978",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
