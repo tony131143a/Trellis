@@ -1,0 +1,53 @@
+packages/cli/src/templates/arbor/scripts/common/paths.py
+  s_549f0b3ecf8d50::t_755bed3cacd4bd 283-284,344-348
+packages/cli/src/templates/arbor/scripts/common/active_task.py
+  s_725277e758c5c7::t_52b1b24166db08 105-106,151-153,158-179,498-501
+packages/cli/src/templates/arbor/scripts/common/task_store.py
+  s_9941d6e3cf8204::t_b8b4539e2b4888 34,538-541,649-652,660-661,1242-1289,1299-1306,1363,1366,1482-1484
+packages/cli/src/templates/arbor/scripts/common/types.py
+  s_725277e758c5c7::t_585d47d2bf914f 57-66
+packages/cli/src/templates/arbor/scripts/task.py
+  s_9941d6e3cf8204::t_e523425551f5a8 12,32,49,54-56,62,93-99,237-422,424,427,433-437,452-458,487-489,812-813,815,829-836,998-1007
+packages/cli/test/regression.test.ts
+  s_725277e758c5c7::t_ba1942d83098b9 1547,1574,1636,1650,5664,6506,6534,6555,8573
+packages/cli/test/scripts/symlinked-workflow-dir.integration.test.ts
+  s_725277e758c5c7::t_0ff9fbc6bafb09 113,119
+packages/cli/test/scripts/task-tier.integration.test.ts
+  s_725277e758c5c7::t_5ed8d088ebff3f 236-238,300,490
+packages/cli/test/scripts/v2-invariants.integration.test.ts
+  s_725277e758c5c7::t_55b4dbde1ff3cd 1-298
+packages/cli/test/scripts/v2-start-worktree.integration.test.ts
+  s_725277e758c5c7::t_7f748be62e0438 1-305
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "0658d65b5bf0ab596a0de2a3b6998962a9880c47",
+  "prompts": {},
+  "sessions": {
+    "s_549f0b3ecf8d50": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e9697b74-2b5e-4dd1-8029-c6d1a4eba9cd",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_725277e758c5c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-awave1-git-02f84c5adffccda3",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_9941d6e3cf8204": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-awave1-contract-258334908e09a08e",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
