@@ -1,0 +1,23 @@
+packages/cli/src/templates/arbor/scripts/arbor.py
+  s_29ddf67fa6b5ae::t_04d2b314df7407 238-239
+packages/cli/src/templates/arbor/scripts/common/dispatch_context.py
+  s_29ddf67fa6b5ae::t_9a22badeb49c04 8-9,28-30,45,90,94,787,843-844
+packages/cli/test/scripts/v2-contract.integration.test.ts
+  s_29ddf67fa6b5ae::t_e12bc31bc53e6c 9,511,513,516,520-522,529-531,614,616
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "c99e01ce803c3efaa4fd9a56d828be4b5e5587d0",
+  "prompts": {},
+  "sessions": {
+    "s_29ddf67fa6b5ae": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-awave3-cleanup-5d1d06a655396494",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
