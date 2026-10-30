@@ -93,9 +93,6 @@ describe.skipIf(!hasPython())("task.py start in a worktree (v2)", () => {
     );
     if (contract) {
       writeFile(repo, `${rel}/contract.md`, "# Foo\n\n## Goal\n\nDo foo.\n");
-      // The light-tier gate (common/tasks.py) still names prd.md until the
-      // contract partition renames its artifacts.
-      writeFile(repo, `${rel}/prd.md`, "# Foo\n");
     }
     writeFile(repo, `${rel}/implement.jsonl`, CURATED_ROW);
     writeFile(repo, `${rel}/check.jsonl`, CURATED_ROW);
@@ -124,7 +121,7 @@ describe.skipIf(!hasPython())("task.py start in a worktree (v2)", () => {
     expect(git(wt, "rev-list", "--count", `${base}..HEAD`)).toBe("1");
     expect(git(wt, "log", "-1", "--format=%B")).toBe(`contract(${TASK}): approve contract`);
     expect(git(wt, "show", "--name-only", "--format=", "HEAD").split("\n").sort()).toEqual(
-      ["check.jsonl", "contract.md", "implement.jsonl", "prd.md", "task.json"].map(
+      ["check.jsonl", "contract.md", "implement.jsonl", "task.json"].map(
         (f) => `.arbor/tasks/${TASK}/${f}`,
       ),
     );

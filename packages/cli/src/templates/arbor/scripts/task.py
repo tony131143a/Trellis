@@ -208,6 +208,10 @@ def _tier_gate(task_dir: Path, task_input: str) -> bool:
     set_meta = f"python3 ./.arbor/scripts/task.py set-meta {task_input}"
 
     missing = missing_tier_artifacts(task_dir, tier)
+    # contract.md is what create writes now; it satisfies a gate that still
+    # names the legacy prd.md. A no-op once the tier table names contract.md.
+    if "prd.md" in missing and find_contract(task_dir) is not None:
+        missing = [name for name in missing if name != "prd.md"]
     if missing:
         others = "|".join(t for t in TIERS if t != tier)
         print(colored(

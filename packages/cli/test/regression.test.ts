@@ -2863,7 +2863,7 @@ describe("regression: current-task path normalization", () => {
     const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
 
     const output = execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} start ${JSON.stringify(".arbor\\\\tasks\\\\issue-106")}`,
+      `${pythonCmd} ${JSON.stringify(taskScriptPath)} start ${JSON.stringify(".arbor\\\\tasks\\\\issue-106")} --no-worktree`,
       {
         cwd: tmpDir,
         encoding: "utf-8",
@@ -2915,7 +2915,7 @@ describe("regression: current-task path normalization", () => {
 
     const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     const output = execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} start ${JSON.stringify(".arbor\\\\tasks\\\\issue-106")}`,
+      `${pythonCmd} ${JSON.stringify(taskScriptPath)} start ${JSON.stringify(".arbor\\\\tasks\\\\issue-106")} --no-worktree`,
       { cwd: tmpDir, encoding: "utf-8", env: sessionEnv() },
     );
 
@@ -2929,7 +2929,7 @@ describe("regression: current-task path normalization", () => {
     const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
 
     const output = execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} start ${JSON.stringify(".arbor\\\\tasks\\\\issue-106")}`,
+      `${pythonCmd} ${JSON.stringify(taskScriptPath)} start ${JSON.stringify(".arbor\\\\tasks\\\\issue-106")} --no-worktree`,
       {
         cwd: tmpDir,
         encoding: "utf-8",
@@ -2967,7 +2967,7 @@ describe("regression: current-task path normalization", () => {
     );
 
     execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} start ${JSON.stringify(".arbor/tasks/issue-106")}`,
+      `${pythonCmd} ${JSON.stringify(taskScriptPath)} start ${JSON.stringify(".arbor/tasks/issue-106")} --no-worktree`,
       {
         cwd: tmpDir,
         encoding: "utf-8",
@@ -3215,7 +3215,7 @@ describe("regression: current-task path normalization", () => {
     let startOutput = "";
     try {
       startOutput = execSync(
-        `${pythonCmd} ${JSON.stringify(taskScriptPath)} start ${JSON.stringify(relTaskDir)} --allow-empty-context`,
+        `${pythonCmd} ${JSON.stringify(taskScriptPath)} start ${JSON.stringify(relTaskDir)} --no-worktree --allow-empty-context`,
         {
           cwd: tmpDir,
           encoding: "utf-8",
@@ -3612,7 +3612,7 @@ describe("regression: current-task path normalization", () => {
     const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
 
     const output = execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} start ${JSON.stringify(".arbor/tasks/issue-106")}`,
+      `${pythonCmd} ${JSON.stringify(taskScriptPath)} start ${JSON.stringify(".arbor/tasks/issue-106")} --no-worktree`,
       {
         cwd: tmpDir,
         encoding: "utf-8",
@@ -4374,7 +4374,7 @@ describe("regression: current-task path normalization", () => {
         );
 
         const sessionId = `e2e-${platform}`;
-        const command = `${pythonCmd} ./.arbor/scripts/task.py start .arbor/tasks/issue-106`;
+        const command = `${pythonCmd} ./.arbor/scripts/task.py start .arbor/tasks/issue-106 --no-worktree`;
         const payload = isShellExecutionEvent
           ? { session_id: sessionId, cwd: tmpDir, command }
           : {
@@ -4416,7 +4416,7 @@ describe("regression: current-task path normalization", () => {
         expect(ticket.context_key).toBeTruthy();
 
         const startOutput = execSync(
-          `${pythonCmd} ${JSON.stringify(path.join(tmpDir, ".arbor", "scripts", "task.py"))} start ${JSON.stringify(".arbor/tasks/issue-106")}`,
+          `${pythonCmd} ${JSON.stringify(path.join(tmpDir, ".arbor", "scripts", "task.py"))} start ${JSON.stringify(".arbor/tasks/issue-106")} --no-worktree`,
           { cwd: tmpDir, encoding: "utf-8", env: hookEnv() },
         );
         expect(startOutput).toContain(`Source: session:${ticket.context_key}`);
@@ -4475,7 +4475,7 @@ describe("regression: current-task path normalization", () => {
       const files = templatesFor(platform);
       const hookPath = requireInstallPath(files, SHELL_HOOK, platform);
       writeSharedHook(hookPath, SHELL_HOOK);
-      const command = `${pythonCmd} ./.arbor/scripts/task.py start .arbor/tasks/issue-106`;
+      const command = `${pythonCmd} ./.arbor/scripts/task.py start .arbor/tasks/issue-106 --no-worktree`;
 
       // Two windows, same repo, same subcommand, both tickets fresh.
       for (const sessionId of ["window-a", "window-b"]) {
@@ -4501,7 +4501,7 @@ describe("regression: current-task path normalization", () => {
       ).toHaveLength(2);
 
       const startOutput = execSync(
-        `${pythonCmd} ${JSON.stringify(path.join(tmpDir, ".arbor", "scripts", "task.py"))} start ${JSON.stringify(".arbor/tasks/issue-106")}`,
+        `${pythonCmd} ${JSON.stringify(path.join(tmpDir, ".arbor", "scripts", "task.py"))} start ${JSON.stringify(".arbor/tasks/issue-106")} --no-worktree`,
         { cwd: tmpDir, encoding: "utf-8", env: hookEnv() },
       );
       // Degraded, never a guess: two candidate keys means neither wins.
@@ -6226,7 +6226,7 @@ print(len(entries))
     const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
 
     execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} start ${JSON.stringify(".arbor/tasks/issue-106")}`,
+      `${pythonCmd} ${JSON.stringify(taskScriptPath)} start ${JSON.stringify(".arbor/tasks/issue-106")} --no-worktree`,
       {
         cwd: tmpDir,
         encoding: "utf-8",
