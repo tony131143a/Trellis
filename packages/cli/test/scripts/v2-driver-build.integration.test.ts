@@ -9,7 +9,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 
 import {
-  FEATURE, RED_TEST, SESSION, TASK, dispatch, git, hasPython, setupFixture, writeFile,
+  FEATURE, RED_TEST, TASK, dispatch, git, hasPython, setupFixture, writeFile,
   type Fixture,
 } from "./v2-driver-helpers";
 

@@ -102,17 +102,21 @@ Add the feature file.
 export const RED_TEST = { path: "tests/ac1.sh", content: "test -f src/feature.txt\n" };
 export const FEATURE = { path: "src/feature.txt", content: "feature\n" };
 
+/** Loose JSON view for assertions on task.json, `next --json` and results rows. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type Json = Record<string, any>;
+
 export interface Fixture {
   tmp: string;
   repo: string;
   wt: string;
   taskDir: string;
   run: (...args: string[]) => { status: number | null; stdout: string; stderr: string };
-  next: () => Record<string, any>;
-  taskJson: () => Record<string, any>;
+  next: () => Json;
+  taskJson: () => Json;
   plan: (spec: Record<string, unknown>) => void;
   brief: (dispatch: string, text?: string) => void;
-  results: () => Record<string, any>[];
+  results: () => Json[];
   cleanup: () => void;
 }
 
@@ -125,6 +129,9 @@ export function setupFixture(opts: { tier?: string; gate?: string[]; executor?: 
   git(repo, "init", "-q", "-b", "main");
   git(repo, "config", "user.email", "t@example.com");
   git(repo, "config", "user.name", "tester");
+  // No detached auto-gc / maintenance writing into the tmp dir while it is removed.
+  git(repo, "config", "gc.auto", "0");
+  git(repo, "config", "maintenance.auto", "false");
   writeFile(repo, "README.md", "hi\n");
   git(repo, "add", "README.md");
   git(repo, "commit", "-q", "-m", "init");
@@ -181,7 +188,7 @@ export function setupFixture(opts: { tier?: string; gate?: string[]; executor?: 
     results: () =>
       fs.readFileSync(path.join(repo, ".arbor/.runtime/results.jsonl"), "utf-8")
         .trim().split("\n").map((l) => JSON.parse(l)),
-    cleanup: () => fs.rmSync(tmp, { recursive: true, force: true }),
+    cleanup: () => fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }),
   };
 }
 
