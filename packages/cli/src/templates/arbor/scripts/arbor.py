@@ -5,11 +5,11 @@ arbor: the task driver. It owns the state table, the counters and the
 validators; models write briefs and answer the decisions it asks for.
 
 Usage (from the main checkout or any worktree of the repo):
-    python3 ./.arbor/scripts/arbor.py next [--json]
-    python3 ./.arbor/scripts/arbor.py run [--dispatch d-NNN]
+    python3 ./.arbor/scripts/arbor.py next [--json] [--partition P]
+    python3 ./.arbor/scripts/arbor.py run [--partition P] [--dispatch d-NNN]
     python3 ./.arbor/scripts/arbor.py run --role explore|architect|review [--mode plan] [--dispatch d-NNN]
     python3 ./.arbor/scripts/arbor.py gate
-    python3 ./.arbor/scripts/arbor.py decide <impl|tests|contract|fix|skip> --reason "..."
+    python3 ./.arbor/scripts/arbor.py decide <impl|tests|contract|fix|skip> --reason "..." [--partition P]
     python3 ./.arbor/scripts/arbor.py canary [--role explore|review|verify]
     python3 ./.arbor/scripts/arbor.py override --reason "..." (--role R [--mode M] | --to STATE[/step])
     python3 ./.arbor/scripts/arbor.py status | resume | abandon [--reason "..."]
@@ -21,6 +21,14 @@ Every command takes ``--task <dir>``; the default is the session's active task.
 dispatch in the main checkout, recorded in task.json and results.jsonl,
 never committed and outside the state table. Without any task, ``--role
 explore`` reads its brief from stdin and prints the reply.
+
+A wave of named partitions runs each partition in its own worktree
+(``<root>/<task>-<p>`` on ``arbor/<task>--<p>``): ``run`` creates them, each
+partition then takes its own ``test`` / ``implement`` dispatches (``next``
+lists the others that are ready in ``partitions_pending``; run them in
+parallel with ``run --partition P``), and once all are done ``run`` merges
+them back with ``--no-ff``. A conflict waits for a hand merge in the task
+worktree and ``resume``. Parallel runs share task.json under ``<task>/.lock``.
 
 Files:
     <task>/briefs/d-NNN.md      the brief the main agent writes before `run`
@@ -37,12 +45,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import re
 import sys
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterator
 
 from common.active_task import resolve_active_task, resolve_task_ref
-from common.arbor_config import get_gate_commands, get_test_paths, read_arbor_config
+from common.arbor_config import get_executors_config, get_gate_commands, get_test_paths, read_arbor_config
 from common.contract import (
     ContractError,
     contract_hash,
@@ -59,17 +71,19 @@ from common.dispatch_context import (
     DispatchRequest,
     build_dispatch_prompt,
 )
+from common.driver import partitions as pt
 from common.driver import state as sm
 from common.driver import validate as rv
 from common.driver.executor import ExecResult, ExecutorError, resolve_executor, run_executor, utc_now
-from common.driver.gate import format_checks, run_gate, run_red_check
+from common.driver.gate import RedResult, format_checks, run_gate, run_red_check
+from common.driver.lock import LockTimeout, pid_alive, task_lock
 from common.git import run_git
 from common.invariants import WRITER_ROLES, _dirty_paths, check_after_dispatch, snapshot_refs
 from common.io import read_json_checked, write_json
 from common.log import Colors, colored
 from common.paths import DIR_TASKS, DIR_WORKFLOW, FILE_TASK_JSON
 from common.tasks import resolve_tier
-from common.worktree import main_checkout
+from common.worktree import WorktreeError, is_ancestor, main_checkout
 
 RUNTIME = f"{DIR_WORKFLOW}/.runtime"
 CANARY_ROLES = ("explore", "review", "verify")
@@ -105,6 +119,24 @@ class Ctx:
     @property
     def tier(self) -> str:
         return resolve_tier(self.task_dir, self.data)
+
+    def unit(self, partition: str | None) -> "Unit":
+        """Where a step of ``partition`` runs (None/default: the task worktree)."""
+        rec = (self.data.get("partitions") or {}).get(partition) if partition else None
+        if rec is None:
+            return Unit(None, self.worktree, self.branch)
+        return Unit(partition, Path(rec["worktree"]), rec["branch"])
+
+
+@dataclass(frozen=True)
+class Unit:
+    partition: str | None  # None: the task branch itself
+    worktree: Path
+    branch: str
+
+    @property
+    def label(self) -> str:
+        return self.partition or "default"
 
 
 # =============================================================================
@@ -160,19 +192,57 @@ def require_started(ctx: Ctx | None) -> Ctx:
 
 
 def save(ctx: Ctx) -> None:
+    """Write task.json; partitions entering a brief step get their dispatch id
+    here (callers hold the task lock)."""
+    for name in sm.unassigned_partitions(ctx.data):
+        ctx.data["partitions"][name]["next_dispatch"] = next_dispatch_id(ctx.data, ctx.task_dir)
     if not write_json(ctx.task_dir / FILE_TASK_JSON, ctx.data):
         raise DriverError(f"failed to write {ctx.task_dir / FILE_TASK_JSON}")
 
 
-def git(ctx: Ctx, *args: str) -> str:
-    rc, out, err = run_git(list(args), cwd=ctx.worktree)
+def reload(ctx: Ctx) -> None:
+    data, reason = read_json_checked(ctx.task_dir / FILE_TASK_JSON)
+    if data is None:
+        raise DriverError(f"cannot read {ctx.task_dir / FILE_TASK_JSON}: {reason}")
+    ctx.data = sm.ensure_fields(data) if ctx.started else data
+
+
+@contextmanager
+def editing(ctx: Ctx) -> Iterator[Ctx]:
+    """Hold the task lock and work on a fresh task.json (runs whose process
+    died are marked aborted)."""
+    try:
+        with task_lock(ctx.task_dir):
+            reload(ctx)
+            sm.reap_stale(ctx.data, pid_alive)
+            yield ctx
+    except LockTimeout as e:
+        raise DriverError(str(e)) from None
+
+
+def git(ctx: Ctx, *args: str, cwd: Path | None = None) -> str:
+    rc, out, err = run_git(list(args), cwd=cwd or ctx.worktree)
     if rc != 0:
         raise DriverError(f"git {' '.join(args)} failed: {err.strip()}")
     return out.strip()
 
 
-def head(ctx: Ctx) -> str:
-    return git(ctx, "rev-parse", "HEAD")
+def head(ctx: Ctx, worktree: Path | None = None) -> str:
+    return git(ctx, "rev-parse", "HEAD", cwd=worktree)
+
+
+def waves_of(ctx: Ctx) -> tuple[tuple[str, ...], ...] | None:
+    path = find_contract(ctx.task_dir)
+    if path is None:
+        return None
+    try:
+        return load_contract(path).waves
+    except ContractError:
+        return None
+
+
+def plan_for(ctx: Ctx, partition: str | None = None) -> sm.Step:
+    return sm.plan(ctx.data, ctx.tier, waves_of(ctx), partition)
 
 
 def commit_task_dir(ctx: Ctx, message: str) -> bool:
@@ -185,8 +255,8 @@ def commit_task_dir(ctx: Ctx, message: str) -> bool:
     return True
 
 
-def touched_files(ctx: Ctx) -> list[str]:
-    rc, out, _ = run_git(["diff", "--name-only", f"{ctx.data['base']}..HEAD"], cwd=ctx.worktree)
+def touched_files(ctx: Ctx, worktree: Path | None = None) -> list[str]:
+    rc, out, _ = run_git(["diff", "--name-only", f"{ctx.data['base']}..HEAD"], cwd=worktree or ctx.worktree)
     if rc != 0:
         return []
     return [p for p in out.splitlines() if p.strip() and not p.startswith(f"{DIR_WORKFLOW}/")]
@@ -201,16 +271,19 @@ def contract_changed(ctx: Ctx) -> bool:
 def guard_contract(ctx: Ctx) -> None:
     """STOP(HUMAN) when contract.md changed since approval."""
     if ctx.data.get("state") not in ("STOP", "CONTRACT") and contract_changed(ctx):
-        sm.stop(ctx.data, "HUMAN", "contract.md changed since approval; re-approve it with `arbor resume`",
-                contract=True)
-        save(ctx)
+        with editing(ctx):
+            sm.stop(ctx.data, "HUMAN", "contract.md changed since approval; re-approve it with `arbor resume`",
+                    contract=True)
+            save(ctx)
         raise DriverError(ctx.data["stop"]["detail"])
 
 
 def next_dispatch_id(data: dict, task_dir: Path | None = None) -> str:
-    """One past the highest id in task.json ``dispatches`` and in ``reports/``
-    (``task.py start`` resets ``dispatches``; the CONTRACT-phase reports stay)."""
+    """One past the highest id in task.json ``dispatches``, the ids already
+    assigned to partitions, and ``reports/`` (``task.py start`` resets
+    ``dispatches``; the CONTRACT-phase reports stay)."""
     ids = [str(d.get("id", "")) for d in data.get("dispatches") or [] if isinstance(d, dict)]
+    ids += [str(r.get("next_dispatch") or "") for r in (data.get("partitions") or {}).values()]
     if task_dir is not None and (task_dir / "reports").is_dir():
         ids += [p.stem for p in (task_dir / "reports").glob("d-*.md")]
     numbers = [int(i[2:]) for i in ids if i.startswith("d-") and i[2:].isdigit()]
@@ -248,7 +321,14 @@ def build_prompt(worktree: Path, task_dir: Path | None, role: str, mode: str | N
 # =============================================================================
 
 
-def next_payload(ctx: Ctx | None) -> dict:
+def _max_parallel(config: dict) -> int | None:
+    section = get_executors_config(config)
+    spec = section.get(str(section.get("default") or ""))
+    value = spec.get("max_parallel") if isinstance(spec, dict) else None
+    return int(value) if isinstance(value, int) or (isinstance(value, str) and value.isdigit()) else None
+
+
+def next_payload(ctx: Ctx | None, partition: str | None = None) -> dict:
     if ctx is None:
         return {"task": None, "state": "INTAKE", "needs": "human",
                 "summary": "No active task: agree a tier, write contract.md, then `task.py start`"}
@@ -261,33 +341,40 @@ def next_payload(ctx: Ctx | None) -> dict:
                            "explore|architect|review [--mode plan]` after writing the brief); after human "
                            "approval run `task.py start`"}
     data = ctx.data
+    sm.reap_stale(data, pid_alive)  # in memory only; the next locked write persists it
     if data.get("state") not in ("STOP", "CONTRACT") and contract_changed(ctx):
         step = sm.Step("human", f"{data['state']}: contract.md changed since approval; "
                        "a human re-approves it with `arbor resume`",
                        human={"kind": "approve_contract"})
     else:
-        step = sm.plan(data, ctx.tier)
+        step = plan_for(ctx, partition)
+    unit = ctx.unit(step.partition)
     out: dict = {"task": ctx.name, "state": data["state"], "tier": ctx.tier, "wave": data.get("wave", 1),
-                 "partition": "default", "needs": step.needs}
+                 "partition": unit.label, "partitions_pending": list(step.pending), "needs": step.needs}
     if step.role:
-        dispatch = next_dispatch_id(data, ctx.task_dir)
+        dispatch = step.dispatch or next_dispatch_id(data, ctx.task_dir)
         out["role"] = step.role
         out["mode"] = step.mode
         if step.role in RANGE_ROLES and step.range_from:
-            out["range"] = f"{step.range_from}..{head(ctx)}"
+            out["range"] = f"{step.range_from}..{head(ctx, unit.worktree)}"
         out["dispatch"] = dispatch
         out["brief_path"] = str(brief_path(ctx, dispatch))
     if step.decision:
         out["decision"] = step.decision
     if step.human:
         out["human"] = step.human
-    out["touched_files"] = touched_files(ctx)
-    out["summary"] = step.summary
+    out["touched_files"] = touched_files(ctx, unit.worktree)
+    summary = step.summary
+    if step.pending:
+        limit = _max_parallel(ctx.config)
+        summary += (f"; also ready: {', '.join(step.pending)} (brief each from `next --partition P`, then "
+                    f"`arbor run --partition P` in parallel{f', at most {limit} at once' if limit else ''})")
+    out["summary"] = summary
     return out
 
 
 def cmd_next(args: argparse.Namespace) -> int:
-    payload = next_payload(load_ctx(args.task))
+    payload = next_payload(load_ctx(args.task), args.partition)
     if args.json:
         print(json.dumps(payload, ensure_ascii=False))
         return 0
@@ -295,6 +382,8 @@ def cmd_next(args: argparse.Namespace) -> int:
     for key in ("role", "mode", "range", "dispatch", "brief_path"):
         if payload.get(key):
             print(f"  {key}: {payload[key]}")
+    if payload.get("partition") not in (None, "default"):
+        print(f"  partition: {payload['partition']}")
     if payload.get("decision"):
         print(f"  decision: {json.dumps(payload['decision'])}")
     if payload.get("touched_files"):
@@ -310,9 +399,20 @@ def cmd_status(args: argparse.Namespace) -> int:
     print(f"  counters: {json.dumps(d['counters'])}")
     if d.get("stop"):
         print(colored(f"  stop: {d['stop'].get('reason')}: {d['stop'].get('detail')}", Colors.RED))
+    if d.get("partitions"):
+        print(f"  wave {d.get('wave', 1)}:")
+        for name, rec in d["partitions"].items():
+            running = (rec.get("running") or {}).get("dispatch")
+            what = f"running {running}" if running else (f"merged {rec['merged'][:12]}" if rec.get("merged")
+                                                         else rec.get("step"))
+            print(f"    {name:<12} {what:<20} {rec.get('branch')}  {rec.get('worktree')}")
+    if d.get("merge_conflict"):
+        c = d["merge_conflict"]
+        print(colored(f"  merge conflict: {c.get('partition')} ({', '.join(c.get('files') or [])})", Colors.RED))
     for entry in d["dispatches"][-5:]:
-        print(f"  {entry.get('id')} {entry.get('role'):<9} {entry.get('status'):<9} {entry.get('commit') or ''}")
-    print(f"  next: {sm.plan(ctx.data, ctx.tier).summary}")
+        part = f" [{entry['partition']}]" if entry.get("partition") else ""
+        print(f"  {entry.get('id')} {entry.get('role'):<9} {entry.get('status'):<9} {entry.get('commit') or ''}{part}")
+    print(f"  next: {plan_for(ctx).summary}")
     return 0
 
 
@@ -334,24 +434,71 @@ class Outcome:
     head_after: str
 
 
-def _restore(ctx: Ctx, before) -> None:
-    """Put the task branch back where it was before the dispatch."""
-    after = snapshot_refs(ctx.worktree)
+@dataclass
+class Job:
+    """One dispatch between its locked start and its locked finish."""
+    dispatch: str
+    role: str
+    mode: str | None
+    state: str
+    step: str
+    range_from: str | None
+    unit: Unit
+    brief: str
+    override: dict | None
+
+
+def _restore(ctx: Ctx, unit: Unit, before) -> None:
+    """Put the unit's branch back where it was before the dispatch."""
+    after = snapshot_refs(unit.worktree)
     if after.head_ref != before.head_ref:
-        run_git(["checkout", "-q", "-f", ctx.branch], cwd=ctx.worktree)
-    run_git(["reset", "-q", "--hard", before.head], cwd=ctx.worktree)
+        run_git(["checkout", "-q", "-f", unit.branch], cwd=unit.worktree)
+    run_git(["reset", "-q", "--hard", before.head], cwd=unit.worktree)
     stray = sorted(
-        p for p in snapshot_refs(ctx.worktree).dirty - before.dirty
+        p for p in snapshot_refs(unit.worktree).dirty - before.dirty
         if not p.startswith(f"{ctx.task_rel}/")
     )
     if stray:
-        run_git(["clean", "-fdq", "--", *stray], cwd=ctx.worktree)
+        run_git(["clean", "-fdq", "--", *stray], cwd=unit.worktree)
 
 
-def dispatch_once(ctx: Ctx, role: str, mode: str | None, range_from: str | None, dispatch: str,
+_MOVED_RE = re.compile(r"^branch (\S+) moved [0-9a-f]+ -> [0-9a-f]+$")
+
+
+def _driver_only(ctx: Ctx, old: str, new: str) -> bool:
+    """Commits ``old..new`` on the task branch are the driver's task-dir commits."""
+    rc, subjects, _ = run_git(["log", "--format=%s", f"{old}..{new}"], cwd=ctx.worktree)
+    rc2, files, _ = run_git(["diff", "--name-only", f"{old}..{new}"], cwd=ctx.worktree)
+    return (rc == 0 and rc2 == 0
+            and all(line.startswith(f"arbor({ctx.name}): ") for line in subjects.splitlines() if line.strip())
+            and all(f.startswith(f"{ctx.task_rel}/") for f in files.splitlines() if f.strip()))
+
+
+def _concurrent_moves(ctx: Ctx, unit: Unit, before, violations: list[str]) -> list[str]:
+    """A partition dispatch runs next to its siblings: their branches move,
+    and the task branch takes the driver's task-dir commits. Drop exactly
+    those moves from the violations."""
+    data, _ = read_json_checked(ctx.task_dir / FILE_TASK_JSON)
+    siblings = {rec.get("branch") for name, rec in ((data or {}).get("partitions") or {}).items()
+                if name != unit.partition}
+    kept: list[str] = []
+    for v in violations:
+        match = _MOVED_RE.match(v)
+        ref = match.group(1) if match else None
+        if ref in siblings:
+            continue
+        if ref == ctx.branch:
+            rc, now, _ = run_git(["rev-parse", ctx.branch], cwd=ctx.worktree)
+            if rc == 0 and _driver_only(ctx, before.branches[ref], now.strip()):
+                continue
+        kept.append(v)
+    return kept
+
+
+def dispatch_once(ctx: Ctx, unit: Unit, role: str, mode: str | None, range_from: str | None, dispatch: str,
                   brief: str) -> Outcome:
-    commit_task_dir(ctx, f"arbor({ctx.name}): {dispatch} {role} brief")
-    head_before = head(ctx)
+    """Run one dispatch in ``unit``'s worktree and check it; no task.json writes."""
+    head_before = head(ctx, unit.worktree)
     range_spec = f"{range_from}..{head_before}" if range_from and role in RANGE_ROLES else None
     prompt = build_prompt(ctx.worktree, ctx.task_dir, role, mode, range_spec, dispatch, brief)
     prompt_file = runtime_dir(ctx.main, "prompts", ctx.name) / f"{dispatch}.md"
@@ -362,20 +509,22 @@ def dispatch_once(ctx: Ctx, role: str, mode: str | None, range_from: str | None,
     test_paths = (
         effective_test_paths(contract, get_test_paths(ctx.config)) if contract else get_test_paths(ctx.config)
     )
-    before = snapshot_refs(ctx.worktree)
+    before = snapshot_refs(unit.worktree)
     try:
         executor = resolve_executor(ctx.config)
     except ExecutorError as e:
         empty = rv.ReplyCheck(False, str(e))
         return Outcome("fail", "", empty, None, [], str(e), range_spec, head_before, head_before)
-    result = run_executor(executor, role=role, prompt_path=prompt_file, worktree=ctx.worktree,
+    result = run_executor(executor, role=role, prompt_path=prompt_file, worktree=unit.worktree,
                           task=ctx.name, dispatch=dispatch)
     reply = result.stdout
-    violations = check_after_dispatch(role, before, ctx.worktree, own_branch=ctx.branch, test_paths=test_paths,
+    violations = check_after_dispatch(role, before, unit.worktree, own_branch=unit.branch, test_paths=test_paths,
                                       task_rel_dir=ctx.task_rel, dispatch_id=dispatch)
+    if unit.partition:
+        violations = _concurrent_moves(ctx, unit, before, violations)
     if role in WRITER_ROLES:
         leftover = sorted(
-            p for p in _dirty_paths(ctx.worktree) - before.dirty
+            p for p in _dirty_paths(unit.worktree) - before.dirty
             if not p.startswith(f"{ctx.task_rel}/")
         )
         if leftover:
@@ -394,20 +543,39 @@ def dispatch_once(ctx: Ctx, role: str, mode: str | None, range_from: str | None,
     else:
         status, problem = "ok", check.problem
     if status != "ok":
-        _restore(ctx, before)
-    return Outcome(status, reply, check, result, violations, problem, range_spec, head_before, head(ctx))
+        _restore(ctx, unit, before)
+    return Outcome(status, reply, check, result, violations, problem, range_spec, head_before,
+                   head(ctx, unit.worktree))
+
+
+def _red_notes(red: RedResult) -> list[str]:
+    notes = ["### Red check", format_checks(red.checks) or "- no auto checks"]
+    if not red.valid:
+        notes.append(f"Not a valid red: passing {red.passing or '-'}, collection errors {red.errored or '-'}")
+    return notes
+
+
+def _prefilter_report(ctx: Ctx, findings: list[dict], range_spec: str, rel: str) -> tuple[list[dict], int]:
+    """Prefilter ``findings`` over ``range_spec`` and write ``<task>/<rel>``;
+    returns the kept findings and the number dropped."""
+    kept, dropped = rv.prefilter(rv.dedup(findings), ctx.worktree, range_spec)
+    (ctx.task_dir / "reports").mkdir(exist_ok=True)
+    (ctx.task_dir / rel).write_text(json.dumps({
+        "range": range_spec,
+        "kept": [{"id": rv.finding_id(f), **f} for f in kept],
+        "dropped": [{"id": rv.finding_id(f), "reason": why, **f} for f, why in dropped],
+    }, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return kept, len(dropped)
 
 
 def _advance(ctx: Ctx, state: str, step: str, role: str, dispatch: str, out: Outcome) -> list[str]:
-    """Apply the state table after an ok dispatch; returns extra report lines."""
+    """Apply the state table after an ok dispatch on the task branch; returns extra report lines."""
     data, notes = ctx.data, []
     if (state, step) == ("BUILD", "test"):
         contract = load_contract(find_contract(ctx.task_dir))
         red = run_red_check(contract, ctx.worktree)
         sm.on_red_check(data, red.passing, red.errored)
-        notes += ["### Red check", format_checks(red.checks) or "- no auto checks"]
-        if not red.valid:
-            notes.append(f"Not a valid red: passing {red.passing or '-'}, collection errors {red.errored or '-'}")
+        notes += _red_notes(red)
     elif (state, step) == ("REVIEW", "review"):
         ids = [rv.finding_id(f) for f in out.check.findings
                if str(f.get("verdict", "")).upper() in ("CONFIRMED", "PLAUSIBLE")]
@@ -416,30 +584,42 @@ def _advance(ctx: Ctx, state: str, step: str, role: str, dispatch: str, out: Out
         polish = data.setdefault("polish", {})
         polish.setdefault("candidate_findings", []).extend(out.check.findings)
         if sm.on_candidate(data, ctx.tier, dispatch, out.head_before):
-            findings = rv.dedup(polish.pop("candidate_findings", []))
-            range_spec = f"{polish.get('range_from')}..{out.head_before}"
-            kept, dropped = rv.prefilter(findings, ctx.worktree, range_spec)
             number = data["counters"].get("polish", 0) + 1
             rel = f"reports/candidates-r{number}.json"
-            (ctx.task_dir / "reports").mkdir(exist_ok=True)
-            (ctx.task_dir / rel).write_text(json.dumps({
-                "range": range_spec,
-                "kept": [{"id": rv.finding_id(f), **f} for f in kept],
-                "dropped": [{"id": rv.finding_id(f), "reason": why, **f} for f, why in dropped],
-            }, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-            sm.on_candidates_filtered(data, [rv.finding_id(f) for f in kept], f"{ctx.task_rel}/{rel}")
-            notes.append(f"### Prefilter\n- kept {len(kept)}, dropped {len(dropped)} -> {rel}")
+            findings = polish.pop("candidate_findings", [])
+            kept, dropped = _prefilter_report(ctx, findings, f"{polish.get('range_from')}..{out.head_before}", rel)
+            sm.on_candidates_filtered(data, [rv.finding_id(f) for f in kept], f"{ctx.task_rel}/{rel}", ctx.tier)
+            notes.append(f"### Prefilter\n- kept {len(kept)}, dropped {dropped} -> {rel}")
+    elif (state, step) == ("POLISH", "sweep"):
+        rel = "reports/sweep.json"
+        range_from = (data.get("polish") or {}).get("range_from") or data.get("base")
+        kept, dropped = _prefilter_report(ctx, out.check.findings, f"{range_from}..{out.head_before}", rel)
+        sm.on_sweep_filtered(data, [rv.finding_id(f) for f in kept], f"{ctx.task_rel}/{rel}", out.head_before)
+        notes.append(f"### Prefilter\n- kept {len(kept)}, dropped {dropped} -> {rel}")
     elif (state, step) == ("POLISH", "verify"):
         by = lambda v: [rv.finding_id(f) for f in out.check.findings if str(f.get("verdict", "")).upper() == v]
-        sm.on_verify(data, by("CONFIRMED"), by("PLAUSIBLE"))
+        sm.on_verify(data, by("CONFIRMED"), by("PLAUSIBLE"), ctx.tier)
     elif role in WRITER_ROLES:
         sm.on_writer_done(data, state, step, out.head_after != out.head_before)
     return notes
 
 
-def _write_report(ctx: Ctx, dispatch: str, role: str, out: Outcome, notes: list[str]) -> None:
+def _advance_partition(ctx: Ctx, job: Job, out: Outcome, red: RedResult | None) -> list[str]:
+    name = job.unit.partition
+    if job.role == "test":
+        assert red is not None
+        sm.on_partition_red_check(ctx.data, name, red.passing, red.errored)
+        return _red_notes(red)
+    sm.on_partition_implemented(ctx.data, name)
+    return []
+
+
+def _write_report(ctx: Ctx, dispatch: str, role: str, out: Outcome, notes: list[str],
+                  partition: str | None = None) -> None:
     lines = [out.reply.rstrip(), "", "---", "", f"## Driver: {dispatch} {role} {out.status}", ""]
     res = out.exec_result
+    if partition:
+        lines.append(f"- partition: {partition}")
     if res is not None:
         lines.append(f"- executor: {res.executor} (exit {res.exit_code}, {res.duration_s}s)")
     lines += [f"- range: {out.range_spec or '-'}", f"- confidence: {out.check.confidence}"]
@@ -457,70 +637,190 @@ def _write_report(ctx: Ctx, dispatch: str, role: str, out: Outcome, notes: list[
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def cmd_run(args: argparse.Namespace) -> int:
-    if args.role:
-        return cmd_run_contract(args)
-    if args.mode:
-        raise DriverError("--mode goes with --role review")
-    ctx = require_started(load_ctx(args.task))
+def _begin(ctx: Ctx, step: sm.Step, requested: str | None) -> Job:
+    """Locked: pick the dispatch id, check the brief and the worktree, mark a
+    partition running, commit the brief."""
     data = ctx.data
-    guard_contract(ctx)
-    step = sm.plan(data, ctx.tier)
-    if step.needs == "run":
-        return cmd_gate(args, ctx)
-    if step.needs != "brief":
-        print(colored(step.summary, Colors.YELLOW))
-        return 1
-    dispatch = next_dispatch_id(data, ctx.task_dir)
-    if args.dispatch and args.dispatch != dispatch:
-        raise DriverError(f"the next dispatch is {dispatch}, not {args.dispatch}")
+    dispatch = step.dispatch or next_dispatch_id(data, ctx.task_dir)
+    if requested and requested != dispatch:
+        raise DriverError(f"the next dispatch{' of ' + step.partition if step.partition else ''} is "
+                          f"{dispatch}, not {requested}")
     brief_file = brief_path(ctx, dispatch)
     brief = brief_file.read_text(encoding="utf-8") if brief_file.is_file() else ""
     if not brief.strip():
         raise DriverError(f"write the brief first: {brief_file}")
+    unit = ctx.unit(step.partition)
     rc, dirty, _ = run_git(["diff", "--name-only", "HEAD", "--", ".", f":(exclude){ctx.task_rel}"],
-                           cwd=ctx.worktree)
+                           cwd=unit.worktree)
     if rc == 0 and dirty.strip():
-        raise DriverError(f"uncommitted changes in {ctx.worktree}: {', '.join(dirty.split())}; commit or discard them")
+        raise DriverError(f"uncommitted changes in {unit.worktree}: {', '.join(dirty.split())}; commit or discard them")
 
-    state, step_name, role, mode = data["state"], sm.step_of(data), step.role, step.mode
-    override = data.pop("override_role", None)
-    print(colored(f"{dispatch}: {role}{' (' + mode + ')' if mode else ''} in {ctx.worktree}", Colors.BLUE))
-    out = dispatch_once(ctx, role, mode, step.range_from, dispatch, brief)
+    if unit.partition:
+        state, step_name = "BUILD", data["partitions"][unit.partition]["step"]
+        sm.on_partition_dispatch(data, unit.partition, dispatch, os.getpid())
+        data["dispatches"].append({
+            "id": dispatch, "role": step.role, "mode": step.mode, "partition": unit.partition, "commit": None,
+            "status": "running", "started": utc_now(), "ended": None, "range": None, "confidence": None,
+        })
+        save(ctx)
+    else:
+        state, step_name = data["state"], sm.step_of(data)
+    commit_task_dir(ctx, f"arbor({ctx.name}): {dispatch} {step.role} brief")
+    return Job(dispatch, step.role, step.mode, state, step_name, step.range_from, unit, brief,
+               data.get("override_role") if not unit.partition else None)
 
+
+def _finish(ctx: Ctx, job: Job, out: Outcome, red: RedResult | None) -> None:
+    """Locked, on a fresh task.json: apply the outcome, record, commit."""
+    data, role, dispatch, name = ctx.data, job.role, job.dispatch, job.unit.partition
     notes: list[str] = []
+    if name:
+        sm.on_partition_finished(data, name)
+    if job.override:
+        data.pop("override_role", None)
     if out.status == "violation":
         sm.on_violation(data, role, dispatch, out.violations)
     elif out.status == "fail":
-        sm.on_dispatch_failed(data, role)
-    elif not override:
-        notes = _advance(ctx, state, step_name, role, dispatch, out)
+        if name:
+            sm.on_partition_failed(data, name, role)
+        else:
+            sm.on_dispatch_failed(data, role)
+    elif name:
+        notes = _advance_partition(ctx, job, out, red)
+    elif not job.override:
+        notes = _advance(ctx, job.state, job.step, role, dispatch, out)
 
     res = out.exec_result
     commit = out.head_after if out.status == "ok" and out.head_after != out.head_before else None
-    data["dispatches"].append({
-        "id": dispatch, "role": role, "mode": mode, "commit": commit, "status": out.status,
+    entry = {
+        "id": dispatch, "role": role, "mode": job.mode, "commit": commit, "status": out.status,
         "started": res.started if res else utc_now(), "ended": res.ended if res else utc_now(),
         "range": out.range_spec, "confidence": out.check.confidence,
-        **({"override": True} if override else {}),
-    })
-    _write_report(ctx, dispatch, role, out, notes)
+        **({"partition": name} if name else {}),
+        **({"override": True} if job.override else {}),
+    }
+    slot = next((i for i, d in enumerate(data["dispatches"]) if d.get("id") == dispatch), None)
+    if slot is None:
+        data["dispatches"].append(entry)
+    else:
+        data["dispatches"][slot] = entry
+    _write_report(ctx, dispatch, role, out, notes, name)
     save(ctx)
     commit_task_dir(ctx, f"arbor({ctx.name}): {dispatch} {role} {out.status}")
     append_result(ctx.main, {
-        "ts": utc_now(), "task": ctx.name, "dispatch": dispatch, "role": role, "mode": mode,
-        "state": state, "wave": data.get("wave", 1), "partition": "default",
+        "ts": utc_now(), "task": ctx.name, "dispatch": dispatch, "role": role, "mode": job.mode,
+        "state": job.state, "wave": data.get("wave", 1), "partition": job.unit.label,
         "executor": res.executor if res else None,
         "started": res.started if res else None, "ended": res.ended if res else None,
         "duration_s": res.duration_s if res else 0, "exit_code": res.exit_code if res else None,
         "status": out.status, "commit": commit, "violations": out.violations,
     })
 
+
+def cmd_run(args: argparse.Namespace) -> int:
+    if args.role:
+        return cmd_run_contract(args)
+    if args.mode:
+        raise DriverError("--mode goes with --role review")
+    ctx = require_started(load_ctx(args.task))
+    guard_contract(ctx)
+    with editing(ctx):
+        step = plan_for(ctx, args.partition)
+        if step.action == "start_wave":
+            return start_wave(ctx)
+        if step.action == "merge":
+            return merge_wave(ctx)
+        job = _begin(ctx, step, args.dispatch) if step.needs == "brief" else None
+    if step.action == "gate":
+        return cmd_gate(args, ctx)
+    if job is None:
+        print(colored(step.summary, Colors.YELLOW))
+        return 1
+
+    where = f" [{job.unit.partition}]" if job.unit.partition else ""
+    print(colored(f"{job.dispatch}: {job.role}{' (' + job.mode + ')' if job.mode else ''}{where} in "
+                  f"{job.unit.worktree}", Colors.BLUE))
+    out = dispatch_once(ctx, job.unit, job.role, job.mode, job.range_from, job.dispatch, job.brief)
+    red = None
+    if job.unit.partition and job.role == "test" and out.status == "ok":
+        contract = load_contract(find_contract(ctx.task_dir))
+        spec = contract.partition(job.unit.partition)
+        red = run_red_check(contract, job.unit.worktree, spec.paths if spec else ())
+    with editing(ctx):
+        _finish(ctx, job, out, red)
+
     color = Colors.GREEN if out.status == "ok" else Colors.RED
-    print(colored(f"{dispatch} {role}: {out.status}" + (f" ({out.problem})" if out.problem else ""), color))
-    print(f"  report: {ctx.task_dir / 'reports' / (dispatch + '.md')}")
-    print(f"  next: {sm.plan(data, ctx.tier).summary}")
+    print(colored(f"{job.dispatch} {job.role}: {out.status}" + (f" ({out.problem})" if out.problem else ""), color))
+    print(f"  report: {ctx.task_dir / 'reports' / (job.dispatch + '.md')}")
+    print(f"  next: {plan_for(ctx, job.unit.partition if ctx.data.get('state') == 'BUILD' else None).summary}")
     return 0 if out.status == "ok" else 1
+
+
+# =============================================================================
+# waves: partition worktrees and merge-back
+# =============================================================================
+
+
+def start_wave(ctx: Ctx) -> int:
+    """Locked: create the wave's partition branches and worktrees from the task HEAD."""
+    data = ctx.data
+    contract = load_contract(find_contract(ctx.task_dir))
+    wave = data.get("wave", 1)
+    parts = sm.wave_partitions(contract.waves, wave)
+    start = head(ctx)
+    records: dict[str, dict] = {}
+    for name in parts:
+        try:
+            rec = pt.create_partition(ctx.main, ctx.config, ctx.name, name, start)
+        except WorktreeError as e:
+            raise DriverError(f"wave {wave}: {e}") from None
+        rec["step"] = pt.first_step(contract, name)
+        records[name] = rec
+        print(colored(f"  {name}: {rec['worktree']} ({rec['branch']}), first step {rec['step']}", Colors.GREEN))
+    sm.on_wave_started(data, records)
+    save(ctx)
+    commit_task_dir(ctx, f"arbor({ctx.name}): start wave {wave} ({', '.join(parts)})")
+    step = plan_for(ctx)
+    print(colored(f"wave {wave} started", Colors.GREEN))
+    print(f"  next: {step.summary}" + (f" (also ready: {', '.join(step.pending)})" if step.pending else ""))
+    return 0
+
+
+def _merge_remaining(ctx: Ctx) -> int:
+    """Locked: merge the wave's unmerged partitions in wave order; on success
+    remove the partition worktrees and move to the next wave or GATE."""
+    data = ctx.data
+    wave = data.get("wave", 1)
+    waves = waves_of(ctx) or ((sm.DEFAULT_PARTITION,),)
+    order = [p for p in sm.wave_partitions(waves, wave) if p in data["partitions"]]
+    rc, dirty, _ = run_git(["status", "--porcelain", "--", ".", f":(exclude){ctx.task_rel}"], cwd=ctx.worktree)
+    if rc == 0 and dirty.strip():
+        raise DriverError(f"uncommitted changes in {ctx.worktree}; commit or discard them before the merge")
+    result = pt.merge_partitions(ctx.worktree, ctx.name, wave, order, data["partitions"])
+    for name, sha in result.merged:
+        sm.on_partition_merged(data, name, sha)
+        print(colored(f"  merged {name} ({sha[:12]})", Colors.GREEN))
+    if result.conflict:
+        sm.on_merge_conflict(data, result.conflict)
+        save(ctx)
+        commit_task_dir(ctx, f"arbor({ctx.name}): wave {wave} merge conflict in {result.conflict['partition']}")
+        print(colored(plan_for(ctx).summary, Colors.RED))
+        return 1
+    warnings = pt.remove_partitions(ctx.main, data["partitions"])
+    for warning in warnings:
+        print(colored(f"  warning: {warning}", Colors.YELLOW))
+    if warnings:
+        data.setdefault("leftovers", []).extend(warnings)
+    sm.on_wave_merged(data, len(waves))
+    save(ctx)
+    commit_task_dir(ctx, f"arbor({ctx.name}): wave {wave} merged")
+    print(colored(f"wave {wave} merged: {plan_for(ctx).summary}", Colors.GREEN))
+    return 0
+
+
+def merge_wave(ctx: Ctx) -> int:
+    commit_task_dir(ctx, f"arbor({ctx.name}): wave {ctx.data.get('wave', 1)} done")
+    return _merge_remaining(ctx)
 
 
 def _contract_restore(main: Path, paths: list[str]) -> None:
@@ -653,9 +953,11 @@ def cmd_gate(args: argparse.Namespace, ctx: Ctx | None = None) -> int:
     else:
         print(colored("gate green", Colors.GREEN))
 
-    data = ctx.data
-    if data["state"] == "GATE" and sm.step_of(data) == "gate":
-        sm.on_gate(data, result.failing)
+    with editing(ctx):
+        data = ctx.data
+        if data["state"] != "GATE" or sm.step_of(data) != "gate":
+            return 1 if result.failing else 0
+        sm.on_gate(data, result.failing, ctx.tier)
         number = data["counters"]["gate"]
         report = ctx.task_dir / "reports" / f"gate-{number}.md"
         report.parent.mkdir(exist_ok=True)
@@ -665,24 +967,31 @@ def cmd_gate(args: argparse.Namespace, ctx: Ctx | None = None) -> int:
             encoding="utf-8",
         )
         save(ctx)
-        print(f"  next: {sm.plan(ctx.data, ctx.tier).summary}")
+    print(f"  next: {plan_for(ctx).summary}")
     return 1 if result.failing else 0
 
 
 def cmd_decide(args: argparse.Namespace) -> int:
     ctx = require_started(load_ctx(args.task))
-    decision = sm.decide(ctx.data, args.choice)
-    ctx.data.setdefault("decisions", []).append({
-        "ts": utc_now(), "kind": decision.get("kind"), "choice": args.choice, "reason": args.reason,
-        "failing": decision.get("failing"),
-    })
-    save(ctx)
-    print(colored(f"decided {args.choice}: {sm.plan(ctx.data, ctx.tier).summary}", Colors.GREEN))
+    with editing(ctx):
+        decision = sm.decide(ctx.data, args.choice, ctx.tier, args.partition)
+        ctx.data.setdefault("decisions", []).append({
+            "ts": utc_now(), "kind": decision.get("kind"), "choice": args.choice, "reason": args.reason,
+            "failing": decision.get("failing"),
+            **({"partition": decision["partition"]} if decision.get("partition") else {}),
+        })
+        save(ctx)
+    print(colored(f"decided {args.choice}: {plan_for(ctx).summary}", Colors.GREEN))
     return 0
 
 
 def cmd_override(args: argparse.Namespace) -> int:
     ctx = require_started(load_ctx(args.task))
+    with editing(ctx):
+        return _override(ctx, args)
+
+
+def _override(ctx: Ctx, args: argparse.Namespace) -> int:
     data = ctx.data
     record = {"ts": utc_now(), "reason": args.reason, "from": {"state": data["state"], "step": sm.step_of(data)}}
     if args.to:
@@ -704,12 +1013,33 @@ def cmd_override(args: argparse.Namespace) -> int:
         raise DriverError("override needs --to STATE[/step] or --role ROLE")
     data.setdefault("overrides", []).append(record)
     save(ctx)
-    print(colored(f"override recorded: {sm.plan(ctx.data, ctx.tier).summary}", Colors.YELLOW))
+    print(colored(f"override recorded: {plan_for(ctx).summary}", Colors.YELLOW))
     return 0
 
 
 def cmd_resume(args: argparse.Namespace) -> int:
     ctx = require_started(load_ctx(args.task))
+    with editing(ctx):
+        if ctx.data.get("merge_conflict") and ctx.data.get("state") == "BUILD":
+            return _resume_merge(ctx)
+        return _resume(ctx)
+
+
+def _resume_merge(ctx: Ctx) -> int:
+    """The human merged the conflicting partition by hand: check it, go on merging."""
+    conflict = ctx.data["merge_conflict"]
+    rc, _, _ = run_git(["rev-parse", "-q", "--verify", "MERGE_HEAD"], cwd=ctx.worktree)
+    if rc == 0:
+        raise DriverError(f"a merge is still in progress in {ctx.worktree}; finish it with `git commit` first")
+    if not is_ancestor(ctx.worktree, conflict["branch"]):
+        raise DriverError(f"{conflict['branch']} is not merged into {conflict.get('into')} yet: run "
+                          f"`git merge --no-ff {conflict['branch']}` in {ctx.worktree}, resolve, commit")
+    name = sm.on_conflict_resolved(ctx.data, head(ctx))
+    print(colored(f"  {name}: merged by hand", Colors.GREEN))
+    return _merge_remaining(ctx)
+
+
+def _resume(ctx: Ctx) -> int:
     data = ctx.data
     reapprove = data.get("state") == "CONTRACT" or (data.get("stop") or {}).get("contract")
     if reapprove:
@@ -729,14 +1059,15 @@ def cmd_resume(args: argparse.Namespace) -> int:
     save(ctx)
     if reapprove:
         commit_task_dir(ctx, f"contract({ctx.name}): re-approve contract")
-    print(colored(f"{message}: {sm.plan(ctx.data, ctx.tier).summary}", Colors.GREEN))
+    print(colored(f"{message}: {plan_for(ctx).summary}", Colors.GREEN))
     return 0
 
 
 def cmd_abandon(args: argparse.Namespace) -> int:
     ctx = require_started(load_ctx(args.task))
-    sm.stop(ctx.data, "HUMAN", f"abandoned{': ' + args.reason if args.reason else ''}")
-    save(ctx)
+    with editing(ctx):
+        sm.stop(ctx.data, "HUMAN", f"abandoned{': ' + args.reason if args.reason else ''}")
+        save(ctx)
     print(colored(f"{ctx.name}: STOP (HUMAN, abandoned)", Colors.YELLOW))
     return 0
 
@@ -760,14 +1091,12 @@ def cmd_prompt(args: argparse.Namespace) -> int:
         role, mode, range_spec = entry["role"], entry.get("mode"), None
     elif entry is not None:
         role, mode, range_spec = entry["role"], entry.get("mode"), entry.get("range")
-    elif args.dispatch == next_dispatch_id(ctx.data, ctx.task_dir):
-        step = sm.plan(ctx.data, ctx.tier)
-        if step.needs != "brief":
-            raise DriverError(f"{args.dispatch} is not a dispatch step: {step.summary}")
-        role, mode = step.role, step.mode
-        range_spec = f"{step.range_from}..{head(ctx)}" if step.range_from and role in RANGE_ROLES else None
     else:
-        raise DriverError(f"unknown dispatch {args.dispatch}")
+        step = _step_of_dispatch(ctx, args.dispatch)
+        role, mode = step.role, step.mode
+        worktree = ctx.unit(step.partition).worktree
+        range_spec = (f"{step.range_from}..{head(ctx, worktree)}"
+                      if step.range_from and role in RANGE_ROLES else None)
     text = build_prompt(ctx.worktree if ctx.started else ctx.main, ctx.task_dir, role, mode, range_spec, args.dispatch,
                         brief_file.read_text(encoding="utf-8"))
     if args.print:
@@ -775,6 +1104,19 @@ def cmd_prompt(args: argparse.Namespace) -> int:
     else:
         print(f"{args.dispatch}: {role} {mode or ''} {range_spec or ''} ({len(text.encode('utf-8'))} bytes)")
     return 0
+
+
+def _step_of_dispatch(ctx: Ctx, dispatch: str) -> sm.Step:
+    """The pending step that ``dispatch`` (not yet run) belongs to."""
+    for name, rec in (ctx.data.get("partitions") or {}).items():
+        if rec.get("next_dispatch") == dispatch:
+            return plan_for(ctx, name)
+    if dispatch != next_dispatch_id(ctx.data, ctx.task_dir):
+        raise DriverError(f"unknown dispatch {dispatch}")
+    step = plan_for(ctx)
+    if step.needs != "brief" or step.partition:
+        raise DriverError(f"{dispatch} is not a dispatch step: {step.summary}")
+    return step
 
 
 CANARY_BRIEFS = {
@@ -853,16 +1195,19 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("next", help="print the single next step")
     p.add_argument("--json", action="store_true")
+    p.add_argument("--partition", help="the step of this partition (multi-partition waves)")
     p.set_defaults(func=cmd_next)
     p = sub.add_parser("run", help="dispatch briefs/<id>.md, validate, advance")
     p.add_argument("--dispatch")
     p.add_argument("--role", choices=CONTRACT_ROLES, help="CONTRACT phase only: dispatch before task.py start")
     p.add_argument("--mode", choices=("plan",), help="with --role review")
+    p.add_argument("--partition", help="run this partition's step (multi-partition waves)")
     p.set_defaults(func=cmd_run)
     sub.add_parser("gate", help="run level 0: gate commands + contract auto checks").set_defaults(func=cmd_gate)
     p = sub.add_parser("decide", help="answer a decision the state table asked for")
     p.add_argument("choice", choices=(*sm.DECIDE_CHOICES, *sm.PLAUSIBLE_CHOICES))
     p.add_argument("--reason", required=True)
+    p.add_argument("--partition", help="the partition whose red-check decision this answers")
     p.set_defaults(func=cmd_decide)
     p = sub.add_parser("canary", help="read-only dispatch that checks the executor")
     p.add_argument("--role", choices=CANARY_ROLES, default="explore")
@@ -886,7 +1231,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return args.func(args)
-    except (DriverError, sm.StateError, ExecutorError, ContractError) as e:
+    except (DriverError, sm.StateError, ExecutorError, ContractError, WorktreeError) as e:
         print(colored(f"Error: {e}", Colors.RED), file=sys.stderr)
         return 1
 
