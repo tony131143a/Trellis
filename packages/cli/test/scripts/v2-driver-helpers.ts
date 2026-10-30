@@ -120,11 +120,15 @@ export interface Fixture {
   cleanup: () => void;
 }
 
-export function setupFixture(opts: { tier?: string; gate?: string[]; executor?: string } = {}): Fixture {
+/** `start: false` leaves the task in planning, in the main checkout (CONTRACT phase). */
+export function setupFixture(
+  opts: { tier?: string; gate?: string[]; executor?: string; start?: boolean } = {},
+): Fixture {
   const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "arbor-v2-driver-")));
   const repo = path.join(tmp, "proj");
   const wt = path.join(tmp, "proj-wt", TASK);
-  const taskDir = path.join(wt, ".arbor", "tasks", TASK);
+  const started = opts.start ?? true;
+  const taskDir = started ? path.join(wt, ".arbor", "tasks", TASK) : path.join(repo, ".arbor", "tasks", TASK);
   fs.mkdirSync(repo, { recursive: true });
   git(repo, "init", "-q", "-b", "main");
   git(repo, "config", "user.email", "t@example.com");
@@ -165,8 +169,10 @@ export function setupFixture(opts: { tier?: string; gate?: string[]; executor?: 
   const env = { ...process.env, ...SESSION };
   let r = spawnSync("python3", [".arbor/scripts/init_developer.py", "tester"], { cwd: repo, encoding: "utf-8" });
   if (r.status !== 0) throw new Error(`init_developer failed: ${r.stderr}`);
-  r = spawnSync("python3", [".arbor/scripts/task.py", "start", TASK], { cwd: repo, encoding: "utf-8", env });
-  if (r.status !== 0) throw new Error(`start failed: ${r.stdout}${r.stderr}`);
+  if (started) {
+    r = spawnSync("python3", [".arbor/scripts/task.py", "start", TASK], { cwd: repo, encoding: "utf-8", env });
+    if (r.status !== 0) throw new Error(`start failed: ${r.stdout}${r.stderr}`);
+  }
 
   const run = (...args: string[]) => {
     const res = spawnSync("python3", [path.join(repo, ".arbor/scripts/arbor.py"), ...args], {

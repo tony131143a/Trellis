@@ -7,6 +7,7 @@ validators; models write briefs and answer the decisions it asks for.
 Usage (from the main checkout or any worktree of the repo):
     python3 ./.arbor/scripts/arbor.py next [--json]
     python3 ./.arbor/scripts/arbor.py run [--dispatch d-NNN]
+    python3 ./.arbor/scripts/arbor.py run --role explore|architect|review [--mode plan] [--dispatch d-NNN]
     python3 ./.arbor/scripts/arbor.py gate
     python3 ./.arbor/scripts/arbor.py decide <impl|tests|contract|fix|skip> --reason "..."
     python3 ./.arbor/scripts/arbor.py canary [--role explore|review|verify]
@@ -15,6 +16,11 @@ Usage (from the main checkout or any worktree of the repo):
     python3 ./.arbor/scripts/arbor.py prompt --dispatch d-NNN --print
 
 Every command takes ``--task <dir>``; the default is the session's active task.
+
+``run --role`` is the CONTRACT phase (task not started yet): a read-only
+dispatch in the main checkout, recorded in task.json and results.jsonl,
+never committed and outside the state table. Without any task, ``--role
+explore`` reads its brief from stdin and prints the reply.
 
 Files:
     <task>/briefs/d-NNN.md      the brief the main agent writes before `run`
@@ -67,6 +73,7 @@ from common.worktree import main_checkout
 
 RUNTIME = f"{DIR_WORKFLOW}/.runtime"
 CANARY_ROLES = ("explore", "review", "verify")
+CONTRACT_ROLES = ("explore", "architect", "review")
 STDERR_TAIL_LINES = 40
 
 
@@ -200,11 +207,13 @@ def guard_contract(ctx: Ctx) -> None:
         raise DriverError(ctx.data["stop"]["detail"])
 
 
-def next_dispatch_id(data: dict) -> str:
-    numbers = [
-        int(d["id"][2:]) for d in data.get("dispatches", [])
-        if isinstance(d, dict) and str(d.get("id", "")).startswith("d-") and str(d["id"])[2:].isdigit()
-    ]
+def next_dispatch_id(data: dict, task_dir: Path | None = None) -> str:
+    """One past the highest id in task.json ``dispatches`` and in ``reports/``
+    (``task.py start`` resets ``dispatches``; the CONTRACT-phase reports stay)."""
+    ids = [str(d.get("id", "")) for d in data.get("dispatches") or [] if isinstance(d, dict)]
+    if task_dir is not None and (task_dir / "reports").is_dir():
+        ids += [p.stem for p in (task_dir / "reports").glob("d-*.md")]
+    numbers = [int(i[2:]) for i in ids if i.startswith("d-") and i[2:].isdigit()]
     return f"d-{max(numbers, default=0) + 1:03d}"
 
 
@@ -244,8 +253,13 @@ def next_payload(ctx: Ctx | None) -> dict:
         return {"task": None, "state": "INTAKE", "needs": "human",
                 "summary": "No active task: agree a tier, write contract.md, then `task.py start`"}
     if not ctx.started:
-        return {"task": ctx.name, "state": "CONTRACT", "needs": "human", "human": {"kind": "approve_contract"},
-                "summary": f"CONTRACT: finish {ctx.name}/contract.md; after human approval run `task.py start`"}
+        dispatch = next_dispatch_id(ctx.data, ctx.task_dir)
+        return {"task": ctx.name, "state": "CONTRACT", "needs": "human", "dispatch": dispatch,
+                "brief_path": str(brief_path(ctx, dispatch)), "human": {"kind": "approve_contract"},
+                "contract_roles": list(CONTRACT_ROLES),
+                "summary": f"CONTRACT: finish {ctx.name}/contract.md (research with `arbor run --role "
+                           "explore|architect|review [--mode plan]` after writing the brief); after human "
+                           "approval run `task.py start`"}
     data = ctx.data
     if data.get("state") not in ("STOP", "CONTRACT") and contract_changed(ctx):
         step = sm.Step("human", f"{data['state']}: contract.md changed since approval; "
@@ -256,7 +270,7 @@ def next_payload(ctx: Ctx | None) -> dict:
     out: dict = {"task": ctx.name, "state": data["state"], "tier": ctx.tier, "wave": data.get("wave", 1),
                  "partition": "default", "needs": step.needs}
     if step.role:
-        dispatch = next_dispatch_id(data)
+        dispatch = next_dispatch_id(data, ctx.task_dir)
         out["role"] = step.role
         out["mode"] = step.mode
         if step.role in RANGE_ROLES and step.range_from:
@@ -444,6 +458,10 @@ def _write_report(ctx: Ctx, dispatch: str, role: str, out: Outcome, notes: list[
 
 
 def cmd_run(args: argparse.Namespace) -> int:
+    if args.role:
+        return cmd_run_contract(args)
+    if args.mode:
+        raise DriverError("--mode goes with --role review")
     ctx = require_started(load_ctx(args.task))
     data = ctx.data
     guard_contract(ctx)
@@ -453,7 +471,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     if step.needs != "brief":
         print(colored(step.summary, Colors.YELLOW))
         return 1
-    dispatch = next_dispatch_id(data)
+    dispatch = next_dispatch_id(data, ctx.task_dir)
     if args.dispatch and args.dispatch != dispatch:
         raise DriverError(f"the next dispatch is {dispatch}, not {args.dispatch}")
     brief_file = brief_path(ctx, dispatch)
@@ -503,6 +521,118 @@ def cmd_run(args: argparse.Namespace) -> int:
     print(f"  report: {ctx.task_dir / 'reports' / (dispatch + '.md')}")
     print(f"  next: {sm.plan(data, ctx.tier).summary}")
     return 0 if out.status == "ok" else 1
+
+
+def _contract_restore(main: Path, paths: list[str]) -> None:
+    """Undo new dirty paths in the main checkout without moving HEAD."""
+    rc, out, _ = run_git(["ls-files", "--", *paths], cwd=main)
+    tracked = set(out.splitlines()) if rc == 0 else set()
+    if tracked:
+        run_git(["checkout", "-q", "--", *sorted(tracked)], cwd=main)
+    untracked = [p for p in paths if p not in tracked]
+    if untracked:
+        run_git(["clean", "-fq", "--", *untracked], cwd=main)
+
+
+def cmd_run_contract(args: argparse.Namespace) -> int:
+    """CONTRACT phase: explore / architect / review (plan) before `task.py start`."""
+    role = args.role
+    mode = args.mode or ("plan" if role == "review" else None)
+    if args.mode and role != "review":
+        raise DriverError("--mode goes with --role review")
+    ctx = load_ctx(args.task)
+    if ctx is not None and ctx.started:
+        raise DriverError(f"{ctx.name} is started; use `arbor override --role {role}` for an extra dispatch")
+    main = ctx.main if ctx else _main()
+    config = ctx.config if ctx else read_arbor_config(main)
+
+    if ctx is None:
+        if role != "explore":
+            raise DriverError(f"role {role} needs a task (no active task; pass --task)")
+        if args.dispatch:
+            raise DriverError("--dispatch needs a task")
+        dispatch, brief = "intake", sys.stdin.read()
+        if not brief.strip():
+            raise DriverError("no active task: pipe the explore brief on stdin")
+        task_dir = task_rel = None
+    else:
+        dispatch = next_dispatch_id(ctx.data, ctx.task_dir)
+        if args.dispatch and args.dispatch != dispatch:
+            raise DriverError(f"the next dispatch is {dispatch}, not {args.dispatch}")
+        brief_file = brief_path(ctx, dispatch)
+        brief = brief_file.read_text(encoding="utf-8") if brief_file.is_file() else ""
+        if not brief.strip():
+            raise DriverError(f"write the brief first: {brief_file}")
+        task_dir = ctx.task_dir
+        try:
+            task_rel = task_dir.relative_to(main).as_posix()
+        except ValueError:
+            task_rel = f"{DIR_WORKFLOW}/{DIR_TASKS}/{ctx.name}"
+
+    before = snapshot_refs(main)
+    if before.head_ref is None or not before.head_ref.startswith("refs/heads/"):
+        raise DriverError(f"{main} is on a detached HEAD; check out a branch first")
+    branch = before.head_ref[len("refs/heads/"):]
+    prompt = build_prompt(main, task_dir, role, mode, None, None if ctx is None else dispatch, brief)
+    stamp = utc_now().replace(":", "").replace("-", "")
+    prompt_file = (runtime_dir(main, "prompts", ctx.name) / f"{dispatch}.md" if ctx
+                   else runtime_dir(main, "prompts") / f"intake-{stamp}.md")
+    prompt_file.write_text(prompt, encoding="utf-8")
+    before = snapshot_refs(main)  # the prompt file is not the dispatch's doing
+
+    executor = resolve_executor(config)
+    print(colored(f"{dispatch}: {role}{' (' + mode + ')' if mode else ''} in {main}", Colors.BLUE))
+    result = run_executor(executor, role=role, prompt_path=prompt_file, worktree=main,
+                          task=ctx.name if ctx else "", dispatch=dispatch)
+    violations = check_after_dispatch(
+        role, before, main, own_branch=branch, test_paths=get_test_paths(config),
+        task_rel_dir=task_rel or f"{DIR_WORKFLOW}/{DIR_TASKS}/-", dispatch_id=None,
+    )
+    after = snapshot_refs(main)
+    if after.head != before.head:
+        violations.append(f"HEAD of {branch} moved {str(before.head)[:12]} -> {str(after.head)[:12]}; "
+                          "the driver never resets the main checkout: undo it by hand")
+    check = rv.check_reply(role, result.stdout)
+    if violations:
+        status, problem = "violation", "; ".join(violations)
+        stray = sorted(p for p in after.dirty - before.dirty
+                       if task_rel is None or not p.startswith(f"{task_rel}/"))
+        if stray:
+            _contract_restore(main, stray)
+    elif not result.ok:
+        status, problem = "fail", result.error
+    elif not check.ok:
+        status, problem = "fail", check.problem
+    else:
+        status, problem = "ok", check.problem
+
+    append_result(main, {
+        "ts": utc_now(), "task": ctx.name if ctx else None, "dispatch": dispatch, "role": role, "mode": mode,
+        "state": "CONTRACT" if ctx else "INTAKE", "wave": None, "partition": None,
+        "executor": result.executor, "started": result.started, "ended": result.ended,
+        "duration_s": result.duration_s, "exit_code": result.exit_code, "status": status, "commit": None,
+        "violations": violations,
+    })
+    color = Colors.GREEN if status == "ok" else Colors.RED
+    if ctx is None:
+        sys.stdout.write(result.stdout)
+        print(colored(f"{role}: {status}" + (f" ({problem})" if problem else ""), color), file=sys.stderr)
+        return 0 if status == "ok" else 1
+
+    out = Outcome(status, result.stdout, check, result, violations, problem, None, before.head, after.head)
+    _write_report(ctx, dispatch, role, out, [])
+    if not isinstance(ctx.data.get("dispatches"), list):
+        ctx.data["dispatches"] = []
+    ctx.data["dispatches"].append({
+        "id": dispatch, "role": role, "mode": mode, "commit": None, "status": status,
+        "started": result.started, "ended": result.ended, "range": None,
+        "confidence": check.confidence, "phase": "CONTRACT",
+        **({"verdict": check.verdict, "findings": len(check.findings)} if role == "review" else {}),
+    })
+    save(ctx)
+    print(colored(f"{dispatch} {role}: {status}" + (f" ({problem})" if problem else ""), color))
+    print(f"  report: {ctx.task_dir / 'reports' / (dispatch + '.md')}")
+    return 0 if status == "ok" else 1
 
 
 # =============================================================================
@@ -617,14 +747,20 @@ def cmd_abandon(args: argparse.Namespace) -> int:
 
 
 def cmd_prompt(args: argparse.Namespace) -> int:
-    ctx = require_started(load_ctx(args.task))
-    entry = next((d for d in ctx.data["dispatches"] if d.get("id") == args.dispatch), None)
+    ctx = load_ctx(args.task)
+    if ctx is None:
+        raise DriverError("no active task (pass --task)")
+    entry = next((d for d in ctx.data.get("dispatches") or [] if d.get("id") == args.dispatch), None)
     brief_file = brief_path(ctx, args.dispatch)
     if not brief_file.is_file():
         raise DriverError(f"no brief at {brief_file}")
-    if entry is not None:
+    if not ctx.started:
+        if entry is None:
+            raise DriverError(f"unknown dispatch {args.dispatch} (before start only recorded dispatches rebuild)")
+        role, mode, range_spec = entry["role"], entry.get("mode"), None
+    elif entry is not None:
         role, mode, range_spec = entry["role"], entry.get("mode"), entry.get("range")
-    elif args.dispatch == next_dispatch_id(ctx.data):
+    elif args.dispatch == next_dispatch_id(ctx.data, ctx.task_dir):
         step = sm.plan(ctx.data, ctx.tier)
         if step.needs != "brief":
             raise DriverError(f"{args.dispatch} is not a dispatch step: {step.summary}")
@@ -632,7 +768,7 @@ def cmd_prompt(args: argparse.Namespace) -> int:
         range_spec = f"{step.range_from}..{head(ctx)}" if step.range_from and role in RANGE_ROLES else None
     else:
         raise DriverError(f"unknown dispatch {args.dispatch}")
-    text = build_prompt(ctx.worktree, ctx.task_dir, role, mode, range_spec, args.dispatch,
+    text = build_prompt(ctx.worktree if ctx.started else ctx.main, ctx.task_dir, role, mode, range_spec, args.dispatch,
                         brief_file.read_text(encoding="utf-8"))
     if args.print:
         sys.stdout.write(text)
@@ -720,6 +856,8 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(func=cmd_next)
     p = sub.add_parser("run", help="dispatch briefs/<id>.md, validate, advance")
     p.add_argument("--dispatch")
+    p.add_argument("--role", choices=CONTRACT_ROLES, help="CONTRACT phase only: dispatch before task.py start")
+    p.add_argument("--mode", choices=("plan",), help="with --role review")
     p.set_defaults(func=cmd_run)
     sub.add_parser("gate", help="run level 0: gate commands + contract auto checks").set_defaults(func=cmd_gate)
     p = sub.add_parser("decide", help="answer a decision the state table asked for")
