@@ -356,11 +356,11 @@ def next_payload(ctx: Ctx | None, partition: str | None = None) -> dict:
         if pending:
             return {"task": pending[0], "state": "FINISH", "needs": "run",
                     "summary": f"FINISH: cleanup of {', '.join(pending)} is incomplete: `arbor finish`"}
-        return {"task": None, "state": "INTAKE", "needs": "human",
+        return {"task": None, "state": "INTAKE", "needs": "human", "started": False,
                 "summary": "No active task: agree a tier, write contract.md, then `task.py start`"}
     if not ctx.started:
         dispatch = next_dispatch_id(ctx.data, ctx.task_dir)
-        return {"task": ctx.name, "state": "CONTRACT", "needs": "human", "dispatch": dispatch,
+        return {"task": ctx.name, "state": "CONTRACT", "needs": "human", "started": False, "dispatch": dispatch,
                 "brief_path": str(brief_path(ctx, dispatch)), "human": {"kind": "approve_contract"},
                 "contract_roles": list(CONTRACT_ROLES),
                 "summary": f"CONTRACT: finish {ctx.name}/contract.md (research with `arbor run --role "

@@ -200,6 +200,15 @@ describe.skipIf(!hasPython())("hooks read `arbor.py next --json`", () => {
     expect(ctx).not.toContain("Next (needs=");
   });
 
+  it("falls back to the workflow.md block for a task the driver reports as not started", () => {
+    activate();
+    writeJsonStub({ task: TASK, state: "CONTRACT", needs: "human", started: false, summary: SUMMARY });
+    const ctx = breadcrumb();
+    expect(ctx).toContain("FALLBACK_BODY");
+    expect(ctx).not.toContain("Next (needs=");
+    expect(fs.existsSync(marker)).toBe(true);
+  });
+
   it("falls back silently when the driver exits non-zero", () => {
     activate();
     writeStub('print(json.dumps({"task": "x", "state": "BUILD", "needs": "brief", "summary": "s"}))\nsys.exit(1)');

@@ -527,6 +527,10 @@ def _arbor_next(repo_root: Path, context_key: str | None) -> dict | None:
         return None
     if not isinstance(data, dict):
         return None
+    if data.get("started") is False:
+        # Not started yet: the workflow.md planning breadcrumb says more than
+        # the driver's "approve the contract" line.
+        return None
     summary = data.get("summary")
     needs = data.get("needs")
     if not isinstance(summary, str) or not summary.strip():

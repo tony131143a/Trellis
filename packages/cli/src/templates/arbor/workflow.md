@@ -127,14 +127,14 @@ Every command takes `--task <dir>` before the command name (default: this sessio
 **Dispatch header.** The driver writes it; you never type it. Every role prompt starts with:
 
 ```
-Active task: <absolute path of .arbor/tasks/<task> inside the task worktree; the main checkout before start>
+Active task: <absolute path of .arbor/tasks/<task> inside the task worktree>
 Role: explore | architect | test | implement | review | verify | fix | simplify
 Mode: self-check | candidates | sweep | plan        (review only)
 Range: <base>..<head>                               (roles that read or write a diff)
 Dispatch: d-NNN
 ```
 
-Then the injected context (the role's manifest — `implement.jsonl` for architect / test / implement, `check.jsonl` for review / verify / fix / simplify — then `contract.md`, `design.md`, `waves.md`, and `git diff <Range>`), then your brief. Your brief is committed as `briefs/d-NNN.md` on the task branch, and the reply plus the driver's verdict as `reports/d-NNN.md`; the assembled prompt is kept at `.arbor/.runtime/prompts/<task>/d-NNN.md` in the main checkout (`arbor.py prompt --dispatch d-NNN --print` rebuilds it).
+Before `task.py start` the task directory still sits in the main checkout, so `Active task:` points there. Then the injected context (the role's manifest — `implement.jsonl` for architect / test / implement, `check.jsonl` for review / verify / fix / simplify — then `contract.md`, `design.md`, `waves.md`, and `git diff <Range>`), then your brief. Your brief is committed as `briefs/d-NNN.md` on the task branch, and the reply plus the driver's verdict as `reports/d-NNN.md`; the assembled prompt is kept at `.arbor/.runtime/prompts/<task>/d-NNN.md` in the main checkout (`arbor.py prompt --dispatch d-NNN --print` rebuilds it).
 
 **CONTRACT-phase dispatch.** Before `task.py start` the state table does not run yet, but you can still dispatch `explore`, `architect` and `review` (`Mode: plan`, the default for review):
 
@@ -278,6 +278,15 @@ Nothing else waits for the human unless the driver STOPs.
 - Anything larger: in one message propose a tier (light / standard / full) with a one-line reason and ask whether to create a task. The user answers ok / light / standard / full / no. `/arbor:workflow <request>` already counts as consent to the task, not to the tier.
 - Consent to create a task is not approval of the contract. Contract approval (1.7) is the only start gate.
 - If the user declines a task for non-simple work, do not implement broadly inline: explain, clarify scope, or suggest a smaller split. Plain questions need no task.
+
+### Active Task Routing
+
+When a user request matches one of these intents inside an active task, route first, then load the detailed phase step if needed.
+
+- Planning or unclear requirements -> `arbor-brainstorm`.
+- Questions about existing code or external libraries -> read the files yourself, or write a brief and run `arbor.py run --role explore` (before start) / the explore the driver schedules.
+- A started task, whatever its state -> `arbor.py next` and do the one thing it names; never perform a role in this session.
+- Repeated debugging -> `arbor-break-loop`; spec updates -> `arbor-update-spec`.
 
 ### Task Artifacts
 
