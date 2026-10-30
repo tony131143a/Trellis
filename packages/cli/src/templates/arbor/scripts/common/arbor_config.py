@@ -280,3 +280,12 @@ def get_executors_config(config: dict) -> dict:
         key: dict(value) if isinstance(value, dict) else value
         for key, value in DEFAULT_EXECUTORS_CONFIG.items()
     }
+
+
+def get_gate_commands(config: dict) -> list[str]:
+    """``gate.commands``: the project's level-0 checks, or [] when absent."""
+    section = config.get("gate") if isinstance(config, dict) else None
+    value = section.get("commands") if isinstance(section, dict) else None
+    if not isinstance(value, list):
+        return []
+    return [c.strip() for c in value if isinstance(c, str) and c.strip()]

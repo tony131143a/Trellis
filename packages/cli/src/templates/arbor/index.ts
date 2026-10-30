@@ -71,6 +71,15 @@ export const commonDispatchContext = readTemplate(
 export const commonContract = readTemplate("scripts/common/contract.py");
 export const commonWorktree = readTemplate("scripts/common/worktree.py");
 export const commonInvariants = readTemplate("scripts/common/invariants.py");
+export const commonDriverInit = readTemplate("scripts/common/driver/__init__.py");
+export const commonDriverState = readTemplate("scripts/common/driver/state.py");
+export const commonDriverExecutor = readTemplate(
+  "scripts/common/driver/executor.py",
+);
+export const commonDriverValidate = readTemplate(
+  "scripts/common/driver/validate.py",
+);
+export const commonDriverGate = readTemplate("scripts/common/driver/gate.py");
 
 // Python scripts - main
 export const getDeveloperScript = readTemplate("scripts/get_developer.py");
@@ -80,6 +89,7 @@ export const getContextScript = readTemplate("scripts/get_context.py");
 export const addSessionScript = readTemplate("scripts/add_session.py");
 export const specScript = readTemplate("scripts/spec.py");
 export const dispatchScript = readTemplate("scripts/dispatch.py");
+export const arborScript = readTemplate("scripts/arbor.py");
 
 // Configuration files
 export const workflowMdTemplate = readTemplate("workflow.md");
@@ -140,6 +150,11 @@ export function getAllScripts(): Map<string, string> {
   scripts.set("common/contract.py", commonContract);
   scripts.set("common/worktree.py", commonWorktree);
   scripts.set("common/invariants.py", commonInvariants);
+  scripts.set("common/driver/__init__.py", commonDriverInit);
+  scripts.set("common/driver/state.py", commonDriverState);
+  scripts.set("common/driver/executor.py", commonDriverExecutor);
+  scripts.set("common/driver/validate.py", commonDriverValidate);
+  scripts.set("common/driver/gate.py", commonDriverGate);
 
   // Main
   scripts.set("get_developer.py", getDeveloperScript);
@@ -149,6 +164,7 @@ export function getAllScripts(): Map<string, string> {
   scripts.set("add_session.py", addSessionScript);
   scripts.set("spec.py", specScript);
   scripts.set("dispatch.py", dispatchScript);
+  scripts.set("arbor.py", arborScript);
 
   return scripts;
 }
