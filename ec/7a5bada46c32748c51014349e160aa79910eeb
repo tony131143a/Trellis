@@ -1,0 +1,35 @@
+packages/cli/src/templates/arbor/workflow.md
+  s_6b4251199dccd7::t_dae92aa3987033 43,102-103,107-108,112-114,119,121,127,134-142,302,345,417,436-437,451,461,516
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/local-architecture/dispatch.md
+  s_6b4251199dccd7::t_3505c6e0383503 9-10,14-16,19-21,27-39,45,52,67,82,96
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/local-architecture/task-system.md
+  s_6b4251199dccd7::t_05cb14c7cc9ff4 18,33-34
+packages/cli/src/templates/common/commands/continue.md
+  s_6b4251199dccd7::t_71a3421b65ff2a 33,38
+packages/cli/src/templates/common/commands/start.md
+  s_6b4251199dccd7::t_20e14a0c451161 39
+packages/cli/src/templates/common/commands/workflow.md
+  s_6b4251199dccd7::t_9333d942311bde 32-41,51,53,56
+packages/cli/src/templates/common/skills/brainstorm.md
+  s_6b4251199dccd7::t_8dbce095e783cd 46,54-55
+packages/cli/src/templates/markdown/agents.md
+  s_6b4251199dccd7::t_62fece628618df 8
+packages/cli/src/templates/markdown/claude.md
+  s_6b4251199dccd7::t_bff36c991942cb 9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "ec7a5bada46c32748c51014349e160aa79910eeb",
+  "prompts": {},
+  "sessions": {
+    "s_6b4251199dccd7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-awave2-docs-a8fee38f2e99e237",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
