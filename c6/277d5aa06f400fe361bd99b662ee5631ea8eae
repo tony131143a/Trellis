@@ -1,0 +1,21 @@
+packages/cli/src/templates/arbor/scripts/common/invariants.py
+  s_29ddf67fa6b5ae::t_c77023d42275fd 19-25,47-48,194-202,210-211,244-247
+packages/cli/test/scripts/v2-invariants.integration.test.ts
+  s_29ddf67fa6b5ae::t_f9d2893a475161 224-233
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "c6277d5aa06f400fe361bd99b662ee5631ea8eae",
+  "prompts": {},
+  "sessions": {
+    "s_29ddf67fa6b5ae": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-awave3-cleanup-5d1d06a655396494",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
