@@ -17,10 +17,10 @@ Context loading determines when AI reads workflow, task, spec, research, workspa
 | Source | Purpose |
 | --- | --- |
 | `.arbor/workflow.md` | Workflow and next-action hints. |
-| `.arbor/tasks/<task>/prd.md` | Current task requirements. |
+| `.arbor/tasks/<task>/contract.md` | The approved contract: goal, scope, acceptance criteria, Verification map, Interface pins. |
 | `.arbor/tasks/<task>/design.md` | Technical design for standard and full tasks. |
-| `.arbor/tasks/<task>/implement.md` | Execution plan for full tasks. |
-| `.arbor/tasks/<task>/implement.jsonl` | Spec/research for the `architect` and `implement` roles. |
+| `.arbor/tasks/<task>/waves.md` | Partitions and wave order for full tasks. |
+| `.arbor/tasks/<task>/implement.jsonl` | Spec/research for the `architect`, `test` and `implement` roles. |
 | `.arbor/tasks/<task>/check.jsonl` | Spec/research for the `review`, `verify`, `fix`, and `simplify` roles. |
 | `.arbor/spec/` | Project specs. |
 | `.arbor/workspace/` | Session records. |
@@ -31,8 +31,8 @@ Context loading determines when AI reads workflow, task, spec, research, workspa
 | Need | Edit point |
 | --- | --- |
 | Inject more/less information in new sessions | `session_context.py` or the `session-start.py` hook. |
-| Change hints on each user input | `[workflow-state:STATUS]` block in `.arbor/workflow.md`. The `inject-workflow-state` hook is parser-only and reads the block verbatim. |
-| Agent did not read specs | Task JSONL, `.arbor/agents/<role>.md`, `inject-delegation-context.py` hook, and the dispatch header (`dispatch.md`). |
+| Change hints on each user input | Started task: the driver's step summaries (`arbor.py next`). Otherwise the `[workflow-state:STATUS]` block in `.arbor/workflow.md`; the `inject-workflow-state` hook reads it verbatim. |
+| Agent did not read specs | Task JSONL, `.arbor/agents/<role>.md`, `.arbor/scripts/common/dispatch_context.py`, and the dispatch header (`dispatch.md`). |
 | Active task is lost | `active_task.py` and session identity propagation. |
 | Change JSONL validation rules | `task_context.py`. |
 
@@ -60,17 +60,18 @@ Context cannot grow without bound. Prefer injecting indexes and paths so the AI 
 
 Two paths feed a dispatched role:
 
-- hook push: edit `inject-delegation-context.py` (and the shared assembler it uses). `dispatch.py` builds the same text.
-- role pull: edit the read steps in `.arbor/agents/<role>.md`, then re-run `dispatch.py codeg-setup`.
+- driver push: edit the assembler `.arbor/scripts/common/dispatch_context.py`, which `arbor.py run` uses to build every role prompt.
+- role pull: edit the read steps in `.arbor/agents/<role>.md`, then refresh the executor's copy of it.
 
 In both modes, make sure the agent ultimately reads:
 
 1. active task
 2. the corresponding JSONL
 3. spec/research referenced by the JSONL
-4. `prd.md`
+4. `contract.md`
 5. `design.md` if present
-6. `implement.md` if present
+6. `waves.md` if present
+7. `git diff <Range>` when the header has one
 
 ## Troubleshooting Order
 
@@ -81,4 +82,4 @@ python3 ./.arbor/scripts/task.py validate <task>
 python3 ./.arbor/scripts/get_context.py --mode packages
 ```
 
-Confirm the task and JSONL are correct before editing hooks or role files. `dispatch.py print-context` shows what a role would receive.
+Confirm the task and JSONL are correct before editing hooks or role files. `arbor.py prompt --dispatch d-NNN --print` shows what a role received.

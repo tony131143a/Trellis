@@ -25,7 +25,7 @@ This page only describes files that are visible and editable inside the user pro
 | --- | --- | --- |
 | `.arbor/workflow.md` | Yes | Local workflow documentation and AI routing rules. |
 | `.arbor/config.yaml` | Yes | Project configuration, hooks, packages, journal line limits, and related settings. |
-| `.arbor/agents/` | Yes | Assistant instruction sources for the seven roles (explore, architect, implement, review, verify, fix, simplify); re-run `dispatch.py codeg-setup` after editing. |
+| `.arbor/agents/` | Yes | Role instruction sources for the eight roles (explore, architect, test, implement, review, verify, fix, simplify); refresh the executor's copy after editing (for example the matching `arbor-<role>` assistant). |
 | `.arbor/spec/` | Yes | Project specs, intended to be updated regularly by users and AI. |
 | `.arbor/tasks/` | Yes | Task material and research artifacts, maintained by the task workflow. |
 | `.arbor/workspace/` | Yes | Session records, usually written by `add_session.py`. |
@@ -40,7 +40,7 @@ This page only describes files that are visible and editable inside the user pro
 | Path | Purpose |
 | --- | --- |
 | `.claude/settings.json`, `.starFactory/settings.json` | Tell the platform when to run hooks. |
-| `.claude/hooks/`, `.starFactory/hooks/` | Session context, workflow-state, dispatch context injection, dispatch guard, shell session bridge. |
+| `.claude/hooks/`, `.starFactory/hooks/` | Session context, workflow-state (the `arbor next` summary), built-in Agent/Task guard, shell session bridge. |
 | `.claude/skills/`, `.starFactory/skills/` | Workflow skills and bundled skills (`arbor-meta`, `arbor-spec-bootstrap`). |
 | `.claude/commands/arbor/`, `.starFactory/commands/arbor/` | `/arbor:*` commands. |
 | `CLAUDE.md`, `AGENTS.md` | Managed Arbor block between `<!-- ARBOR:START -->` and `<!-- ARBOR:END -->`. |

@@ -14,20 +14,20 @@ Platform files do not store business state.
 | Category | Paths | Purpose |
 | --- | --- | --- |
 | settings | `.claude/settings.json`, `.starFactory/settings.json` | Register hooks. Hook commands use the project-relative path of the platform directory. |
-| hooks | `.claude/hooks/`, `.starFactory/hooks/` | Session-start context, per-turn workflow-state, dispatch context injection, dispatch guard, shell session bridge. |
+| hooks | `.claude/hooks/`, `.starFactory/hooks/` | Session-start context, per-turn workflow-state (the `arbor next` summary), built-in Agent/Task guard, shell session bridge. |
 | skills | `.claude/skills/`, `.starFactory/skills/` | Workflow skills (brainstorm, before-dev, check, update-spec, break-loop) plus bundled skills (`arbor-meta`, `arbor-spec-bootstrap`). |
-| commands | `.claude/commands/arbor/`, `.starFactory/commands/arbor/` | Explicit entry points such as `/arbor:continue`, `/arbor:finish-work`, `/arbor:start`, `/arbor:workflow <target>`. |
+| commands | `.claude/commands/arbor/`, `.starFactory/commands/arbor/` | Explicit entry points such as `/arbor:continue`, `/arbor:finish-work`, `/arbor:start`, `/arbor:workflow [request]`. |
 | root files | `CLAUDE.md`, `AGENTS.md` | Managed block between `<!-- ARBOR:START -->` and `<!-- ARBOR:END -->`; content outside the block is user-owned. |
 
-There are no platform-native sub-agent files. The seven roles (explore, architect, implement, review, verify, fix, simplify) are not Claude Code sub-agents; the main agent dispatches them to codeg assistants (see `../local-architecture/dispatch.md`). Their instruction text lives in `.arbor/agents/*.md`.
+There are no platform-native sub-agent files. The eight roles (explore, architect, test, implement, review, verify, fix, simplify) are not Claude Code sub-agents; the driver runs them through its configured executor (see `../local-architecture/dispatch.md`). Their instruction text lives in `.arbor/agents/*.md`.
 
 ## Integration Mode
 
 Both platforms are hook driven:
 
-- SessionStart injects a `.arbor/` overview, including a `<dispatch>` section listing assistant ids.
+- SessionStart injects a `.arbor/` overview, including the driver's next step for a started task.
 - UserPromptSubmit emits the `[workflow-state:STATUS]` breadcrumb for the current task.
-- PreToolUse on the codeg `delegate_to_agent` tool inlines task context into a role dispatch; a guard hook denies the built-in Agent/Task tool for Arbor roles.
+- A PreToolUse guard hook denies the built-in Agent/Task tool for Arbor roles.
 
 To change "when the AI knows what", inspect settings and hooks first.
 
