@@ -1,0 +1,29 @@
+.arbor/config.yaml
+  s_3462210fb7a0fe::t_1698a82bb0d2bc 132
+packages/cli/src/templates/arbor/config.yaml
+  s_3462210fb7a0fe::t_cea9d60c4a4611 126
+packages/cli/src/templates/arbor/scripts/common/arbor_config.py
+  s_3462210fb7a0fe::t_80d9a6eb6c1d23 256
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/local-architecture/dispatch.md
+  s_3462210fb7a0fe::t_df46bfa82791a5 62
+packages/cli/test/scripts/v2-driver-build.integration.test.ts
+  s_3462210fb7a0fe::t_ed31e44ef2c1a3 49
+packages/cli/test/templates/arbor.test.ts
+  s_3462210fb7a0fe::t_ecc6e199e826f3 438
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "24c41b6957953386c78765e23a7f0bb59ae5e95b",
+  "prompts": {},
+  "sessions": {
+    "s_3462210fb7a0fe": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18c43-0a62-7521-8e1b-5b6ce80dd1e5",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
