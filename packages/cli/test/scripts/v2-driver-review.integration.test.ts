@@ -100,7 +100,7 @@ describe.skipIf(!hasPython())("arbor.py validators, REVIEW, POLISH", { timeout: 
     expect(dispatch(f, "d-003").status).toBe(0);
     data = f.taskJson();
     expect(data.state).toBe("FINISH");
-    expect(f.next()).toMatchObject({ state: "FINISH", needs: "human", human: { kind: "merge" } });
+    expect(f.next()).toMatchObject({ state: "FINISH", needs: "run" }); // `arbor finish` writes the scorecard
   });
 
   it("POLISH (standard): simplify No Change -> 2 candidate reviews -> prefilter -> verify PLAUSIBLE -> decide skip -> FINISH", () => {

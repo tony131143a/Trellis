@@ -80,6 +80,10 @@ export const commonDriverValidate = readTemplate(
   "scripts/common/driver/validate.py",
 );
 export const commonDriverGate = readTemplate("scripts/common/driver/gate.py");
+export const commonDriverFinish = readTemplate("scripts/common/driver/finish.py");
+export const commonDriverAutopilot = readTemplate(
+  "scripts/common/driver/autopilot.py",
+);
 
 // Python scripts - main
 export const getDeveloperScript = readTemplate("scripts/get_developer.py");
@@ -154,6 +158,8 @@ export function getAllScripts(): Map<string, string> {
   scripts.set("common/driver/executor.py", commonDriverExecutor);
   scripts.set("common/driver/validate.py", commonDriverValidate);
   scripts.set("common/driver/gate.py", commonDriverGate);
+  scripts.set("common/driver/finish.py", commonDriverFinish);
+  scripts.set("common/driver/autopilot.py", commonDriverAutopilot);
 
   // Main
   scripts.set("get_developer.py", getDeveloperScript);
