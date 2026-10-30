@@ -156,3 +156,24 @@ dispatch:
       verify: arbor-verify-codex
       fix: arbor-fix-codex
       simplify: arbor-simplify-codex
+
+#-------------------------------------------------------------------------------
+# Task worktrees
+#-------------------------------------------------------------------------------
+# `task.py start` creates branch arbor/<task> and its worktree at
+# <root>/<task>, starting from the current HEAD. `root` is resolved relative
+# to the main checkout; {repo} is its directory name. `setup` runs once in
+# every new worktree (e.g. "pnpm install --offline --frozen-lockfile"); a
+# non-zero exit fails the start.
+worktree:
+  root: "../{repo}-wt"
+  setup: ""
+
+#-------------------------------------------------------------------------------
+# Test paths
+#-------------------------------------------------------------------------------
+# Globs (`**` allowed) the `test` role may write and the implementing roles
+# may not. A contract's own `## Test paths` section takes precedence.
+test_paths:
+  - "packages/*/test/**"
+  - "**/*.test.ts"

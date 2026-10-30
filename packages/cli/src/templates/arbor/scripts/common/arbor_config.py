@@ -237,3 +237,46 @@ def read_arbor_config(repo_root: Optional[Path] = None) -> dict:
     except Exception:
         return {}
     return parsed if isinstance(parsed, dict) else {}
+
+
+# Defaults for the v2 sections. Every value is a string, as the parser returns.
+DEFAULT_WORKTREE_CONFIG: dict = {"root": "../{repo}-wt", "setup": ""}
+DEFAULT_TEST_PATHS: tuple[str, ...] = ("packages/*/test/**", "**/*.test.ts")
+DEFAULT_EXECUTORS_CONFIG: dict = {
+    "default": "codeg",
+    "codeg": {
+        "command": "codeg-cli run -A arbor-{role} --prompt-file {prompt} --cwd {worktree}",
+        "timeout": "90m",
+        "max_parallel": "3",
+    },
+}
+
+
+def get_worktree_config(config: dict) -> dict:
+    """``worktree:`` section over its defaults (``root``, ``setup``)."""
+    section = config.get("worktree") if isinstance(config, dict) else None
+    merged = dict(DEFAULT_WORKTREE_CONFIG)
+    if isinstance(section, dict):
+        merged.update({k: v for k, v in section.items() if isinstance(v, str)})
+    return merged
+
+
+def get_test_paths(config: dict) -> list[str]:
+    """``test_paths:`` globs, or the defaults when the list is absent/empty."""
+    value = config.get("test_paths") if isinstance(config, dict) else None
+    if isinstance(value, list):
+        paths = [p.strip() for p in value if isinstance(p, str) and p.strip()]
+        if paths:
+            return paths
+    return list(DEFAULT_TEST_PATHS)
+
+
+def get_executors_config(config: dict) -> dict:
+    """``executors:`` section, or the defaults when it is absent/empty."""
+    section = config.get("executors") if isinstance(config, dict) else None
+    if isinstance(section, dict) and section:
+        return section
+    return {
+        key: dict(value) if isinstance(value, dict) else value
+        for key, value in DEFAULT_EXECUTORS_CONFIG.items()
+    }
