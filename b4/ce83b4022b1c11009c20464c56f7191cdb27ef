@@ -1,0 +1,21 @@
+packages/cli/src/templates/arbor/scripts/arbor.py
+  s_f5a35762a9935e::t_dbfa90c468db8d 291-292
+packages/cli/src/templates/arbor/workflow.md
+  s_f5a35762a9935e::t_d8424ff90546df 119-120,122,125-126
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "b4ce83b4022b1c11009c20464c56f7191cdb27ef",
+  "prompts": {},
+  "sessions": {
+    "s_f5a35762a9935e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5eec63a6-1b3a-4083-ba18-e451eb5d3978",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
