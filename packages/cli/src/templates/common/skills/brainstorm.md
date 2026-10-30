@@ -6,7 +6,7 @@ A request to build, implement, fix, refactor, or "go ahead" is not approval to l
 
 For every non-trivial task, the user must respond at least once after the initial request before implementation begins. If no clarification is needed, that response must approve the final planning summary described below.
 
-While any user-owned product, scope, UX, compatibility, risk, or acceptance decision remains unresolved, end the turn with the open user-owned questions as ONE numbered list (each with the decision, why it matters, your recommendation, and the trade-off). Do not edit product code, dispatch implementation, or run `task.py start`.
+While any user-owned product, scope, UX, compatibility, risk, or acceptance decision remains unresolved, end the turn with the open user-owned questions as ONE numbered list (each with the decision, why it matters, your recommendation, and the trade-off). Do not edit product code, run any build role, or run `task.py start`.
 
 ## Non-Negotiable Evidence Rule
 
@@ -20,7 +20,7 @@ Repository evidence establishes current behavior and technical constraints. The 
 
 ---
 
-Use this skill during Phase 1 planning to turn the user's request into clear requirements and planning artifacts.
+Use this skill during Phase 1 (CONTRACT) to turn the user's request into an approved `contract.md` and the tier's other artifacts.
 
 ## Preconditions
 
@@ -34,27 +34,27 @@ TASK_DIR=$({{PYTHON_CMD}} ./.arbor/scripts/task.py create "<short task title>" -
 
 `--tier` is the tier the user agreed to (light / standard / full; see the Tiers table in `.arbor/workflow.md`); omit it to let the tier follow the artifacts. Use a concise title from the user's request. Both the title and `--description` must be non-empty — `create` rejects blanks, and a record with either one empty is refused at archive. Use a slug without a date prefix. `task.py create` adds the `MM-DD-` directory prefix automatically.
 
-`task.py create` creates the default `prd.md`. Update that file with the current understanding before asking follow-up questions.
+`task.py create` writes a `contract.md` skeleton. Fill it with the current understanding before asking follow-up questions.
 
 ## Planning Flow
 
-1. Capture the user's request and initial known facts in `prd.md`.
+1. Capture the user's request and initial known facts in `contract.md` (Goal, Scope).
 2. Inspect available evidence before asking questions:
    - code, tests, fixtures, and configs
    - README files, docs, existing specs, and domain notes
    - related Arbor tasks, research files, and session history when present
-   - when a few files you read yourself do not answer it, dispatch `explore` roles (workflow step 1.2), one aspect each, in parallel; afterwards read only the 2-3 files you need for the next brief
+   - when a few files you read yourself do not answer it, run `explore` roles through the driver (workflow step 1.1; soft cap light 1 / standard 3 / full 5), one aspect each; afterwards read only the 2-3 files you need for the next brief
 3. Separate what you found into:
    - confirmed facts
    - product intent still needed from the user
    - scope or risk decisions still needed from the user
    - likely out-of-scope items
 4. If user-owned decisions remain, ask all of them as ONE numbered list, each with your recommendation and trade-off, then stop. Do not perform implementation work in the same turn.
-5. After the user's answers, update `prd.md` and ask again only about decisions the answers raised; recompute the decision inventory and repeat from step 2.
-6. When no user-owned decision remains: light needs only `prd.md`. Standard: write `design.md` yourself (one `architect` with `Perspective: pragmatic` only if unfamiliar or asked). Full: dispatch 3 `architect` roles (workflow step 1.2), present their trade-offs with your recommendation, and write `design.md` + `implement.md` only after the user picks a design.
-7. Light: check that the acceptance criteria are testable. Standard / full: Run the requirement convergence gate, then the PRD convergence pass.
+5. After the user's answers, update `contract.md` and ask again only about decisions the answers raised; recompute the decision inventory and repeat from step 2.
+6. When no user-owned decision remains: write the acceptance criteria, the Verification map, the Interface pins and the Test paths. Light needs only `contract.md`. Standard: write `design.md` yourself (one `architect` with `Perspective: pragmatic` only if unfamiliar or asked). Full: run 3 `architect` roles (workflow step 1.4), present their trade-offs with your recommendation, and after the user picks a design write `design.md`, the contract's Partitions / Waves, and `waves.md`.
+7. Light: check that every acceptance criterion is testable and mapped. Standard / full: run the requirement convergence gate, then the contract convergence pass, then one review `Mode: plan` (workflow step 1.6).
 8. Present the final planning summary and stop. Do not run `task.py start` or edit product code in the same turn.
-9. Only a subsequent user message that explicitly approves the latest planning summary authorizes `task.py start` and implementation. If the artifacts change materially after approval, repeat the final review.
+9. Only a subsequent user message that explicitly approves the latest contract authorizes `task.py start`. If the contract changes materially after approval, repeat the final review.
 
 Do not invent a project-specific product/spec hierarchy. If the repository already has product, domain, or spec docs, use them. If it does not, proceed with the evidence that exists.
 
@@ -131,20 +131,23 @@ Before final review, verify all of the following:
 - blocking open questions are empty
 - technical unknowns are researched or explicitly deferred without changing MVP behavior
 
-Light tasks skip `design.md`, `implement.md`, the first-principles analysis and the PRD convergence pass; they may not skip evidence inspection, testable acceptance criteria, the final planning summary, or fresh implementation approval.
+Light tasks skip `design.md`, `waves.md`, the first-principles analysis and the contract convergence pass; they may not skip evidence inspection, testable and mapped acceptance criteria, the final planning summary, or a fresh contract approval.
 
-The final planning summary must show Goal, In Scope, Out of Scope, Acceptance Criteria, Key Decisions, relevant Risks or Deferred Items, and artifact status.
+The final planning summary must show Goal, In Scope, Out of Scope, Acceptance Criteria with their checks, Key Decisions, relevant Risks or Deferred Items, and artifact status.
 
 ## Artifact Rules
 
-`prd.md` records requirements and acceptance:
+`contract.md` records what done looks like and how it is checked (the driver parses these headings):
 
-- goal and user value
-- confirmed facts
-- requirements
-- acceptance criteria
-- out of scope
-- open questions that still block planning
+- `## Goal` — one paragraph: the user outcome and its value
+- `## Scope` — in / out
+- `## Acceptance criteria` — `AC-n: Given <precondition> When <action> Then <observable result>`
+- `## Verification map` — one row per criterion: `id | kind | check | file`; `auto` rows carry a command that fails before the change and passes after
+- `## Interface pins` — the signatures, paths and CLI / HTTP shapes the tests will call ("existing interfaces" is fine for light)
+- `## Test paths` — optional; the globs the `test` role owns
+- `## Partitions` / `## Waves` — optional; full tasks that split the work
+
+Open questions do not belong in the contract; ask them and fold the answers in.
 
 `design.md` records technical design for standard and full tasks:
 
@@ -154,43 +157,38 @@ The final planning summary must show Goal, In Scope, Out of Scope, Acceptance Cr
 - important trade-offs
 - operational or rollback considerations
 
-`implement.md` records execution planning for full tasks:
+`waves.md` records, for full tasks, the chosen architect design's partitions and wave order with the reasoning (the contract's `## Partitions` / `## Waves` are the machine-readable part).
 
-- ordered implementation checklist
-- validation commands
-- risky files or rollback points
-- follow-up checks before `task.py start`
+Light tasks have only `contract.md`. Standard tasks add `design.md`; full tasks add `waves.md`. `task.py start` checks this.
 
-Light tasks have only `prd.md`. Standard tasks add `design.md`; full tasks add `implement.md`. `task.py start` checks this.
+The roles receive only what the driver injects: the manifest entries (`implement.jsonl` feeds `architect`, `test` and `implement`; `check.jsonl` feeds `review`, `verify`, `fix`, and `simplify`), the contract, the design and the diff, so `implement.jsonl` and `check.jsonl` must each contain at least one real spec/research entry before `task.py start`; an empty manifest, or one holding only a legacy `_example` placeholder row, does not count. Fill them with `task.py seed-context <task> [--package <pkg> ...]` (spec layer index files, the guides index, and the task's research files; idempotent), then add or drop entries per side.
 
-`implement.md` is not a replacement for `implement.jsonl`. The dispatched roles run as codeg assistants that receive only what the manifests list (`implement.jsonl` feeds `architect` and `implement`; `check.jsonl` feeds `review`, `verify`, `fix`, and `simplify`), so `implement.jsonl` and `check.jsonl` must each contain at least one real spec/research entry before `task.py start`; an empty manifest, or one holding only a legacy `_example` placeholder row, does not count. Fill them with `task.py seed-context <task> [--package <pkg> ...]` (spec layer index files, the guides index, and the task's research files; idempotent), then add or drop entries per side.
+## Contract Convergence Pass (standard / full)
 
-## PRD Convergence Pass (standard / full)
-
-Before declaring planning ready or running `task.py start`, rewrite `prd.md` once against the final structure described in the artifact rules above. This is not optional cleanup; it is the final planning gate.
+Before declaring planning ready or running `task.py start`, rewrite `contract.md` once against the final structure described in the artifact rules above. This is not optional cleanup; it is the final planning gate.
 
 The pass must be lossless:
 
 - Collapse repeated facts into one authoritative section.
-- Fold temporary brainstorm sections such as `What I already know`, `Assumptions`, and resolved `Open Questions` into Goal, Background, Requirements, Technical Notes, or Acceptance Criteria.
+- Fold temporary brainstorm notes such as `What I already know`, `Assumptions`, and resolved questions into Goal, Scope, Acceptance criteria or Interface pins; technical detail goes to `design.md`.
 - Remove resolved open questions instead of leaving empty or already-answered sections.
 - Merge parallel bug and requirement lists when they describe the same work; keep each defect's severity, evidence, and file:line anchors on the owning requirement.
-- Preserve every file:line anchor, decision, constraint, requirement ID, and acceptance-criteria mapping.
+- Preserve every file:line anchor, decision, constraint, AC id, and Verification map row.
 - Do not proceed to final review while any blocking open question remains.
 
-After the pass, read `prd.md` top to bottom and verify that no fact is repeated across sections unless the repetition adds new information.
+After the pass, read `contract.md` top to bottom and verify that no fact is repeated across sections unless the repetition adds new information.
 
 ## Quality Bar
 
 Before declaring planning ready:
 
-- `prd.md` contains testable acceptance criteria.
-- `prd.md` has passed the PRD convergence pass: no unresolved temporary brainstorm sections, no duplicate facts across sections, and no lost anchors, decisions, or acceptance mappings.
+- `contract.md` has testable acceptance criteria, each with a Verification map row, and non-empty Interface pins.
+- Standard / full: `contract.md` has passed the contract convergence pass and a review `Mode: plan`: no temporary brainstorm notes, no duplicate facts across sections, and no lost anchors, decisions, or map rows.
 - Repository-answerable questions have already been answered through inspection.
 - Blocking open questions are empty.
-- Standard tasks have `design.md`; full tasks have `design.md` and `implement.md`.
-- Both `implement.jsonl` and `check.jsonl` have real curated entries (for a parallel parent task, every child too); manifests holding only a legacy `_example` row are not ready.
+- Standard tasks have `design.md`; full tasks have `design.md` and `waves.md`.
+- Both `implement.jsonl` and `check.jsonl` have real curated entries; manifests holding only a legacy `_example` row are not ready.
 - The latest final planning summary has been presented to the user.
-- In a subsequent message, the user explicitly approved that summary for implementation.
+- In a subsequent message, the user explicitly approved that contract.
 
-Do not start implementation merely because the user originally asked for implementation.
+Do not run `task.py start` merely because the user originally asked for implementation.

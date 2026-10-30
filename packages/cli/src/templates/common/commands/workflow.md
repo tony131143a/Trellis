@@ -1,46 +1,48 @@
-# Workflow on One Target
+# Arbor Workflow
 
-Run the Arbor workflow with every dispatched role (explore / architect / implement / review / verify / fix / simplify) on one dispatch target for this session, then continue the current task. The choice is sticky and per session: all later dispatches in this session use that target until `/arbor:workflow <other>` or `{{PYTHON_CMD}} ./.arbor/scripts/dispatch.py target clear`. Other sessions on the same checkout keep their own target (`target set --repo <target>` sets the checkout-wide fallback they share).
+Start an Arbor task from a request, or continue the current one. Every role (explore / architect / test / implement / review / verify / fix / simplify) runs through the driver, `{{PYTHON_CMD}} ./.arbor/scripts/arbor.py`, and the executor configured under `executors:` in `.arbor/config.yaml`.
 
-Arguments: `<target> [--tier light|standard|full] [request]`
+Arguments: `[--tier light|standard|full] [request]`
 
-- `<target>` (required): a name under `dispatch.targets` in `.arbor/config.yaml`. Shipped targets: `star` (Claude Code fork, same model class as the main agent), `pi` (pi agent with DeepSeek, cheaper and faster), `codex` (Codex CLI in full-access mode).
-- `[--tier light|standard|full]` (optional): the tier for the task created from `[request]` (see the Tiers table in `.arbor/workflow.md`). Omit it to use your own classification.
-- `[request]` (optional): a requirement or task description. If given and there is no active task, it counts as consent to create a task: create it with `--tier` (or your own classification; a quick-looking request still gets a light task here, because the user explicitly asked for the workflow) and go to 1.1 brainstorm.
-
-If no target was given, run `{{PYTHON_CMD}} ./.arbor/scripts/dispatch.py target get`, report the current target and ask the user which one to use. Do not guess.
+- `[--tier light|standard|full]` (optional): the tier for the task created from `[request]` (see the Tiers table in `.arbor/workflow.md`). Omit it to propose one yourself.
+- `[request]` (optional): a requirement or task description. With no active task it counts as consent to create one; the tier still needs the user's agreement unless `--tier` was given.
 
 ---
 
-## Step 1: Switch the target
-
-```bash
-{{PYTHON_CMD}} ./.arbor/scripts/dispatch.py target set <target>
-```
-
-Exit code 2 with `unknown dispatch target` means the name is not configured; the message lists the known targets. Show them to the user and stop. A stderr line about missing session identity means the target was written checkout-wide instead; tell the user in one line.
-
-## Step 2: Confirm the assistants
-
-```bash
-for role in explore architect implement review verify fix simplify; do
-  {{PYTHON_CMD}} ./.arbor/scripts/dispatch.py resolve --role $role --json
-done
-```
-
-Each of the seven lines must show `"target": "<target>"` and a numeric `assistant_id`. If any `assistant_id` is `null`, run `{{PYTHON_CMD}} ./.arbor/scripts/dispatch.py codeg-setup` once (it reads the ids from codeg) and resolve again. Tell the user in one line which assistants will be used, e.g. `review → arbor-review-<target> (id N)`.
-
-## Step 3: Continue the workflow
+## Step 1: Load the state
 
 ```bash
 {{PYTHON_CMD}} ./.arbor/scripts/get_context.py
 {{PYTHON_CMD}} ./.arbor/scripts/get_context.py --mode phase
 ```
 
-Route exactly as `/arbor:continue` does, by the active task's `status` and tier:
+## Step 2: Intake (no active task)
 
-- no active task → create one (`task.py create "<title>" --description "<summary>" --slug <name> --tier <tier>`, step 1.0), then Phase 1.1 (`arbor-brainstorm`), using the request as the requirement
-- `planning` → the artifacts for the tier (light `prd.md`; standard + `design.md`; full + `implement.md`; 1.2 explore & design dispatches `explore` / `architect` as needed), then the context manifests via `task.py seed-context` (adjust the entries), then the final planning summary and `task.py start` after the user approves
-- `in_progress` → Phase 2 (`implement`, then one gate review `Mode: self-check` ⇄ `fix`), then Phase 2F for standard / full (`simplify`, final `review`, `verify`, `fix`) or Phase 2P for full with `meta.execution=parallel`, then Phase 3
+1. Propose a tier (light / standard / full) with a one-line reason, unless `--tier` was given, and wait for the user's answer. A request that looks simple still gets a light task here, because the user explicitly asked for the workflow.
+2. Create the task (step 1.0):
+   ```bash
+   {{PYTHON_CMD}} ./.arbor/scripts/task.py create "<title>" --description "<summary>" --slug <name> --tier <tier>
+   ```
+3. Continue with Step 3.
 
-From here on every dispatch in this session resolves to the `<target>` assistants (the delegation hook also swaps an `assistant_id` from another target to the matching `<target>` assistant); do not add a conflicting `Target:` header line. Everything else in `.arbor/workflow.md` is unchanged: the task text still starts with `Active task:` + `Role:` (plus `Mode:` / `Diff:` where the role takes them), roles never run through the built-in Agent/Task tool, and only you commit.
+## Step 3: Contract (status `planning`)
+
+Phase 1 of `.arbor/workflow.md`: explore (soft cap light 1 / standard 3 / full 5) → one numbered question list → `contract.md` (+ `design.md`; full: 3 architect perspectives → the user picks → `waves.md`) → `task.py seed-context <task>` → structural validation → standard / full: one review `Mode: plan` → planning summary → the user approves the contract → `task.py start <task>`.
+
+## Step 4: Drive (status `in_progress`)
+
+```bash
+{{PYTHON_CMD}} ./.arbor/scripts/arbor.py next
+```
+
+Do the one thing it names, then run `next` again:
+
+- `needs=brief` → write the brief for the named role at `brief_path`, then `{{PYTHON_CMD}} ./.arbor/scripts/arbor.py run`
+- `needs=run` → `{{PYTHON_CMD}} ./.arbor/scripts/arbor.py run`
+- `needs=decide` → `{{PYTHON_CMD}} ./.arbor/scripts/arbor.py decide <choice> --reason "<evidence>"`
+- `needs=human` → ask the user (contract re-approval, PLAUSIBLE findings, merge) and record the answer
+- `done` → Phase 3 (`{{CMD_REF:finish-work}}`)
+
+On STOP, report the reason and the last evidence; the user decides between `arbor.py resume`, `arbor.py override --reason "…"` and `arbor.py abandon`.
+
+Never perform a role in this session and never use the built-in Agent/Task tool for one. The driver writes the dispatch header and injects the contract, design and diff; your brief carries only what those do not say.

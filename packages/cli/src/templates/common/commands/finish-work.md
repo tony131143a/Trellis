@@ -1,20 +1,22 @@
 # Finish Work
 
-Wrap up the current session: archive the active task (and any other completed-but-unarchived tasks the user wants to clean up) and record the session journal. Code commits are NOT done here — those happen in workflow Phase 3.4 before you invoke this command.
+Wrap up the current session: check where the task stands with the driver, make sure nothing of this task is left uncommitted, archive tasks that are merged, and record the session journal. Code is committed by the roles on the task branch and merged by the user; nothing is committed to the main branch here except archive and journal bookkeeping.
 
 ## Step 1: Survey current state
 
 ```bash
 {{PYTHON_CMD}} ./.arbor/scripts/get_context.py --mode record
+{{PYTHON_CMD}} ./.arbor/scripts/arbor.py status
 ```
 
 This prints:
 
-- **My active tasks** — review whether any besides the current one are actually done (code merged, AC met) and should be archived this round.
+- **My active tasks** — review whether any besides the current one are actually done (PR merged, AC met) and should be archived this round.
 - **Git status** — quick visual on what's dirty.
 - **Recent commits** — you'll need their hashes in Step 4 for `--commit`.
+- **Driver state** of the current task (`BUILD` … `FINISH`, `DONE`, `STOP`) and what it waits for.
 
-If `--mode record` surfaces other completed tasks not tied to the current session, surface them to the user with a one-shot confirmation: "These N tasks look done — archive them too in this round? [y/N]". Default is no; the current active task is always archived in Step 3 regardless.
+If `--mode record` surfaces other completed tasks not tied to the current session, surface them to the user with a one-shot confirmation: "These N tasks look done — archive them too in this round? [y/N]". Default is no.
 
 Then run the spec freshness lint:
 
@@ -24,45 +26,36 @@ Then run the spec freshness lint:
 
 This is advisory: report its findings to the user in one line (stale, broken, or unlisted spec docs) and continue — it never blocks this command.
 
-## Step 2: Sanity check — classify dirty paths
+## Step 2: Sanity check — uncommitted task work
 
-Run:
+Check both the task worktree (its path is `worktree_path` in `task.json`) and this checkout:
 
 ```bash
+git -C <task worktree> status --porcelain
 git status --porcelain
 ```
 
-Filter out paths under `.arbor/workspace/` and `.arbor/tasks/` — those are managed by `add_session.py` and `task.py archive` auto-commits and will appear dirty as part of this skill's own work.
+Ignore paths under `.arbor/workspace/` in this checkout; `add_session.py` and `task.py archive` manage them.
 
-For each remaining dirty path, decide whether it belongs to **the current task** or to **other parallel work** (e.g., another terminal window editing the same repo). Heuristics:
-
-- Paths referenced in the current task's `prd.md` / `implement.jsonl` / `check.jsonl` → current task
-- Paths in code areas matching the task's stated scope, or that you remember editing this session → current task
-- Paths in unrelated areas you have no recollection of touching this session → other parallel work
-
-Then route:
-
-- **Any remaining path looks like current-task work** — bail out with:
-  > "Working tree has uncommitted code changes from this task: `<list>`. Return to workflow Phase 3.4 to commit them before running `{{CMD_REF:finish-work}}`."
-
-  Do NOT run `git commit` here. Do NOT prompt the user to commit. The user goes back to Phase 3.4 and the AI drives the batched commit there.
-- **All remaining paths look unrelated** (other parallel-window work) — report them once and continue to Step 3:
-  > "FYI, dirty files outside this task's scope — leaving them for the other window: `<list>`."
-- **Genuinely unsure** — ask the user once: "Are `<list>` this task's work I forgot to commit, or another window's? (commit / ignore)" — then route per their answer.
+- **Dirty paths in the task worktree** — they are this task's work (for example spec updates from step 3.1). Bail out with:
+  > "The task worktree has uncommitted changes: `<list>`. Return to workflow step 3.1 to commit them on the task branch before running `{{CMD_REF:finish-work}}`."
+- **Dirty paths in this checkout** that look like this task's work — the task's code belongs on its branch, not here; tell the user and stop.
+- **Unrelated dirty paths** (another window's work) — report them once and continue.
+- **Genuinely unsure** — ask the user once, then route per their answer.
 
 ## Step 3: Archive task(s)
 
-```bash
-{{PYTHON_CMD}} ./.arbor/scripts/task.py archive <task-name>
-```
-
-At minimum: the current active task (if any). Plus any extra tasks the user confirmed in Step 1. Each archive produces a `chore(task): archive ...` commit via the script's auto-commit.
-
-For a parallel task (`meta.execution=parallel`), archive the child tasks as well as the parent, children first. First confirm `git worktree list` shows no leftover `-wt` worktrees for this task (workflow step 2P.5); remove them before archiving.
-
-If there is no active task and the user did not confirm any cleanup archives, skip this step.
+- Driver state `DONE` (the user merged the PR): the driver has already removed the worktree, archived the task and written its journal entry. Nothing to archive.
+- Driver state before `DONE`: do not archive. Tell the user what the task waits for (`arbor.py next` names it; usually the PR merge) and skip to Step 4.
+- Tasks started with `task.py start --no-worktree`, or extra tasks the user confirmed in Step 1:
+  ```bash
+  {{PYTHON_CMD}} ./.arbor/scripts/task.py archive <task-name>
+  ```
+  Each archive produces a `chore(task): archive ...` commit via the script's auto-commit. For a parent task, archive the children first.
 
 ## Step 4: Record session journal
+
+Skip when the driver already wrote the journal entry for this task's merge and the session did nothing else. Otherwise:
 
 ```bash
 {{PYTHON_CMD}} ./.arbor/scripts/add_session.py \
@@ -71,6 +64,4 @@ If there is no active task and the user did not confirm any cleanup archives, sk
   --summary "Brief summary"
 ```
 
-Use the work-commit hashes produced in Phase 3.4 (visible in Step 1's `Recent commits` list, or via `git log --oneline`) for `--commit`. Do not include the archive commit hashes from Step 3. This produces a `chore: record journal` commit.
-
-Final git log order: `<work commits from 3.4>` → `chore(task): archive ...` (one or more) → `chore: record journal`.
+Use the task's work-commit hashes (`git log --oneline <base>..<task branch>`, or the merge commit) for `--commit`. Do not include archive commit hashes. This produces a `chore: record journal` commit.
