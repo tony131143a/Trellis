@@ -1,0 +1,61 @@
+packages/cli/package.json
+  s_f5a35762a9935e::t_90c4e301431aab 3
+packages/cli/src/commands/init.ts
+  s_f5a35762a9935e::t_05c2a33a10cc30 281,290,302-306,316,358-409,418-430,442-445,451-457,536-537,546-548,551-553,622,651-656,688,691-694,709-723,734-737,752-761,794-795,833-834
+packages/cli/src/constants/paths.ts
+  s_f5a35762a9935e::t_4e7bdd17626603 38,40-41
+packages/cli/src/migrations/manifests/0.2.0.json
+  s_f5a35762a9935e::t_d9d824999cc3b2 1-80
+packages/cli/src/templates/arbor/scripts/arbor.py
+  s_f5a35762a9935e::t_9eb4a27d39abf8 319-320
+packages/cli/src/templates/arbor/scripts/common/dispatch_context.py
+  s_f5a35762a9935e::t_bde5ba918982a7 8-9,28-30,45,90,94,217,787,843-844
+packages/cli/src/templates/arbor/scripts/common/invariants.py
+  s_f5a35762a9935e::t_b6ab84173cab87 19-25,47-48,194-202,210-211,244-247
+packages/cli/src/templates/arbor/scripts/common/task_store.py
+  s_f5a35762a9935e::t_63cf73dc8fed28 545-546
+packages/cli/src/templates/arbor/scripts/hooks/linear_sync.py
+  s_f5a35762a9935e::t_364222a7f064b1 181,188-195,198,200
+packages/cli/src/templates/common/bundled-skills/arbor-spec-bootstrap/SKILL.md
+  s_f5a35762a9935e::t_64616c2f5be138 8,31
+packages/cli/src/templates/common/bundled-skills/arbor-spec-bootstrap/references/mcp-setup.md
+  s_f5a35762a9935e::t_ffc8b2f23b1072 3
+packages/cli/src/templates/common/bundled-skills/arbor-spec-bootstrap/references/spec-task-planning.md
+  s_f5a35762a9935e::t_b131cda2f96d49 53
+packages/cli/src/templates/markdown/spec/guides/cross-layer-thinking-guide.md.txt
+  s_f5a35762a9935e::t_587ebacb81bb1d 181
+packages/cli/test/commands/init-joiner.integration.test.ts
+  s_f5a35762a9935e::t_51e8c417bf69db 131-145
+packages/cli/test/commands/init.integration.test.ts
+  s_f5a35762a9935e::t_1711fa3dacc074 351-386,532,544-548
+packages/cli/test/commands/update.integration.test.ts
+  s_f5a35762a9935e::t_b9a9284338d374 796-821
+packages/cli/test/migrations/index.test.ts
+  s_f5a35762a9935e::t_52dc38b3cfcc3a 6,13-16,218-264
+packages/cli/test/scripts/add-session-worktree-warning.integration.test.ts
+  s_f5a35762a9935e::t_d006d44a61ce3d 100,102
+packages/cli/test/scripts/add-session.integration.test.ts
+  s_f5a35762a9935e::t_866604fe1757d5 225,453,636,727,948,1008,1046
+packages/cli/test/scripts/v2-contract.integration.test.ts
+  s_f5a35762a9935e::t_cd4fe86d46e4a3 9,511,513,516,520-522,529-531,614,616
+packages/cli/test/scripts/v2-invariants.integration.test.ts
+  s_f5a35762a9935e::t_662396fb4dfd9f 224-233
+packages/cli/test/scripts/v2-worktree.integration.test.ts
+  s_f5a35762a9935e::t_706fd081784024 65
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "d787e3e364232c43533cd8aeefd500a1cc281023",
+  "prompts": {},
+  "sessions": {
+    "s_f5a35762a9935e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5eec63a6-1b3a-4083-ba18-e451eb5d3978",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
