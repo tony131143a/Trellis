@@ -174,12 +174,14 @@ describe("init() integration", () => {
     for (const hook of [
       "session-start.py",
       "inject-workflow-state.py",
-      "inject-delegation-context.py",
       "guard-builtin-agent.py",
       "inject-shell-session-context.py",
     ]) {
       expect(fs.existsSync(starFactory(`hooks/${hook}`))).toBe(true);
     }
+    expect(fs.existsSync(starFactory("hooks/inject-delegation-context.py"))).toBe(
+      false,
+    );
     // Native sub-agent definition files are no longer shipped.
     expect(fs.existsSync(starFactory("agents"))).toBe(false);
 

@@ -155,6 +155,14 @@ def _parse_yaml_block(
             value = _strip_inline_comment(value).strip()
             was_quoted = len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'")
 
+            if not was_quoted and value == "[]":
+                # The one flow sequence accepted: an explicitly empty list
+                # (`gate: commands: []`).
+                target[key] = []
+                current_list = None
+                i += 1
+                continue
+
             if not was_quoted:
                 reason = _unsupported_value(key, value)
                 if reason is not None:

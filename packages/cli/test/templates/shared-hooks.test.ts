@@ -15,7 +15,6 @@ const ALL_HOOK_FILES = [
   "session-start.py",
   "inject-shell-session-context.py",
   "inject-workflow-state.py",
-  "inject-delegation-context.py",
   "guard-builtin-agent.py",
 ] as const;
 
@@ -169,8 +168,11 @@ describe("shared-hooks capability table", () => {
     expect(sessionStart, "session-start.py is missing from shared-hooks/").toBeDefined();
     const content = sessionStart ? sessionStart.content : "";
     expect(content).toContain("<arbor-workflow>");
-    expect(content).toContain("Dispatch context order");
-    expect(content).toContain("jsonl entries -> `prd.md`");
+    expect(content).toContain("Roles run only through the driver");
+    expect(content).toContain("jsonl entries -> `contract.md`");
+    expect(content).toContain("arbor.py");
+    expect(content).not.toContain("<dispatch>");
+    expect(content).not.toContain("dispatch.py");
     expect(content).toMatch(/Tier \S+ needs /);
     expect(content).toContain("task.py set-meta <task> tier");
     expect(content).toContain("task.py seed-context");

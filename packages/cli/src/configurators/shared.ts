@@ -177,13 +177,13 @@ const SKILL_DESCRIPTIONS: Record<string, string> = {
   start:
     "Initializes an AI development session by reading workflow guides, developer identity, git status, active tasks, and project guidelines from .arbor/. Classifies incoming tasks and routes to brainstorm, direct edit, or task workflow. Use when beginning a new coding session, resuming work, starting a new task, or re-establishing project context.",
   continue:
-    "Resume work on the current task. Loads the workflow Phase Index, figures out which phase/step to pick up at, then pulls the step-level detail via get_context.py --mode phase. Use when coming back to an in-progress task and you need to know what to do next.",
+    "Resume work on the current task. Asks the driver (`arbor.py next`) for the single next step and acts on it: write a brief, decide a red gate, or wait for the human. Use when coming back to an in-progress task and you need to know what to do next.",
   "finish-work":
-    "Wrap up the current session: verify quality gate passed, remind user to commit, archive completed tasks, and record session progress to the developer journal. Use when done coding and ready to end the session.",
+    "Wrap up the current session: check the task state with the driver, make sure the work is committed on the task branch, archive merged tasks, and record session progress to the developer journal. Use when done coding and ready to end the session.",
   "before-dev":
     "Discovers and injects project-specific coding guidelines from .arbor/spec/ before implementation begins. Reads spec indexes, pre-development checklists, and shared thinking guides for the target package. Use when starting a new coding task, before writing any code, switching to a different package, or needing to refresh project conventions and standards.",
   brainstorm:
-    "Guides collaborative requirements discovery before implementation. Creates task directory, seeds PRD, asks open questions as one batched numbered list, researches technical choices, and converges on MVP scope. Use when requirements are unclear, there are multiple valid approaches, or the user describes a new feature or larger task.",
+    "Guides collaborative requirements discovery before implementation. Creates task directory, drafts the contract, asks open questions as one batched numbered list, researches technical choices, and converges on MVP scope. Use when requirements are unclear, there are multiple valid approaches, or the user describes a new feature or larger task.",
   check:
     "Comprehensive quality verification: spec compliance, lint, type-check, tests, cross-layer data flow, code reuse, and consistency checks. Use when code is written and needs quality verification, before committing changes, or to catch context drift during long sessions.",
   "break-loop":
@@ -219,9 +219,9 @@ const COMMAND_DESCRIPTIONS: Record<string, string> = {
   start: "Initialize a Arbor development session.",
   continue: "Resume work on the current task at the correct phase.",
   "finish-work":
-    "Wrap up the current session: quality gate, commit reminder, archive, journal.",
+    "Wrap up the current session: task state, commits, archive, journal.",
   workflow:
-    "Run the Arbor workflow with all seven roles on one dispatch target (star | pi | codex) and continue the current task.",
+    "Start an Arbor task from a request (propose a tier, write the contract) or continue the current one with `arbor.py next`.",
 };
 
 /** Wrap resolved command content with YAML frontmatter (name + description). */

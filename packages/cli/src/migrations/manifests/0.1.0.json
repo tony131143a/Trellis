@@ -7,8 +7,8 @@
   "configSectionsAdded": [
     {
       "file": ".arbor/config.yaml",
-      "sentinel": "dispatch:",
-      "sectionHeading": "Dispatch (codeg assistants)"
+      "sentinel": "executors:",
+      "sectionHeading": "Executors"
     }
   ]
 }

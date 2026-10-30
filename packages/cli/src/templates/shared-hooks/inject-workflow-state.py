@@ -1,14 +1,21 @@
 #!/usr/bin/env python3
 """Arbor per-turn breadcrumb hook (UserPromptSubmit / BeforeAgent equivalent).
 
-Runs on every user prompt. Resolves the active task through Arbor'
+Runs on every user prompt. Resolves the active task through Arbor's
 session-aware active task resolver and emits a short <workflow-state>
-block reminding the main AI what task is active and its expected flow.
+block reminding the main AI what task is active and what comes next.
+
+With an active task, the body is the driver's own next step: the hook runs
+``.arbor/scripts/arbor.py next --json`` and injects only its one-line
+``summary`` (plus ``needs``). The driver owns the task state, so the
+breadcrumb cannot drift from it. When the driver is missing, fails, times
+out, or prints something unusable, the hook falls back silently to the
+status breadcrumb below.
 
 The emitted ``hookEventName`` is ``UserPromptSubmit`` (Claude Code naming,
 shared by the StarFactory fork).
-Breadcrumb text is pulled exclusively from workflow.md
-[workflow-state:STATUS] tag blocks — workflow.md is the single source of
+Fallback breadcrumb text (and the no-task text) is pulled exclusively from
+workflow.md [workflow-state:STATUS] tag blocks — workflow.md is the single source of
 truth. There are no fallback dicts in this script: when workflow.md is
 missing or a tag is absent, the breadcrumb degrades to a generic
 "Refer to workflow.md for current step." line so users see (and fix)
@@ -32,13 +39,14 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 import sys
 import queue
 import threading
 from pathlib import Path
 
 # Force UTF-8 on stdin/stdout/stderr on Windows. Default codepage there is
-# cp936 / cp1252 / etc. — non-ASCII content (Chinese task names, prd snippets)
+# cp936 / cp1252 / etc. — non-ASCII content (Chinese task names, contract snippets)
 # both in stdin (hook payload from host CLI) and stdout (our emitted blocks)
 # raises UnicodeDecodeError / UnicodeEncodeError. Equivalent to `python -X utf8`
 # but applied per-stream so we don't depend on host CLI's command wiring.
@@ -172,6 +180,79 @@ def get_active_task(
         meta if isinstance(meta, dict) else {},
         _tier_label(task_dir, data),
     )
+
+
+# ---------------------------------------------------------------------------
+# Driver summary: `arbor.py next --json`
+# ---------------------------------------------------------------------------
+
+# Well inside the 15 s hook timeout; `next` only reads task state.
+ARBOR_NEXT_TIMEOUT_S = 8
+
+
+def _context_key(root: Path, input_data: dict) -> str | None:
+    """Session context key for the driver subprocess (``ARBOR_CONTEXT_ID``)."""
+    try:
+        from common.active_task import resolve_context_key  # type: ignore[import-not-found]
+
+        return resolve_context_key(input_data, _detect_platform(input_data))
+    except Exception:
+        return None
+
+
+def arbor_next(root: Path, input_data: dict) -> dict | None:
+    """Parsed ``arbor.py next --json`` output, or None when unavailable.
+
+    The driver resolves the active task the same way ``task.py`` does, so the
+    hook passes this session's context key through ``ARBOR_CONTEXT_ID``.
+    Only ``summary`` and ``needs`` are relied on; anything else is optional.
+    """
+    script = root / ".arbor" / "scripts" / "arbor.py"
+    if not script.is_file():
+        return None
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
+    context_key = _context_key(root, input_data)
+    if context_key:
+        env["ARBOR_CONTEXT_ID"] = context_key
+    try:
+        result = subprocess.run(
+            [sys.executable, "-W", "ignore", str(script), "next", "--json"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=ARBOR_NEXT_TIMEOUT_S,
+            cwd=str(root),
+            env=env,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    try:
+        data = json.loads(result.stdout)
+    except ValueError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    summary = data.get("summary")
+    needs = data.get("needs")
+    if not isinstance(summary, str) or not summary.strip():
+        return None
+    if not isinstance(needs, str) or not needs.strip():
+        return None
+    return data
+
+
+def build_driver_breadcrumb(task_id: str, status: str, tier: str | None, next_step: dict) -> str:
+    """``<workflow-state>`` block carrying the driver's one-line next step."""
+    header = f"Task: {task_id} ({status})"
+    if tier:
+        header += f" · Tier: {tier}"
+    summary = " ".join(str(next_step["summary"]).split())
+    needs = str(next_step["needs"]).strip()
+    return f"<workflow-state>\n{header}\nNext (needs={needs}): {summary}\n</workflow-state>"
 
 
 # ---------------------------------------------------------------------------
@@ -387,14 +468,20 @@ def main() -> int:
         breadcrumb = build_breadcrumb(None, "no_task", templates)
     else:
         task_id, status, source, meta, tier = task
-        breadcrumb = build_breadcrumb(
-            task_id,
-            status,
-            templates,
-            source,
-            resolve_breadcrumb_key(status, meta, templates, tier),
-            tier,
-        )
+        next_step = None
+        if status != "task_error" and not status.startswith("stale_"):
+            next_step = arbor_next(root, data)
+        if next_step is not None:
+            breadcrumb = build_driver_breadcrumb(task_id, status, tier, next_step)
+        else:
+            breadcrumb = build_breadcrumb(
+                task_id,
+                status,
+                templates,
+                source,
+                resolve_breadcrumb_key(status, meta, templates, tier),
+                tier,
+            )
 
     output = {
         "hookSpecificOutput": {

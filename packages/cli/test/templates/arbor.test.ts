@@ -1,3 +1,5 @@
+import { execFileSync, spawnSync } from "node:child_process";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   scriptsInit,
@@ -116,23 +118,13 @@ describe("arbor template constants", () => {
     }
   });
 
-  const IN_PROGRESS_KEYS = [
-    "in_progress",
-    "in_progress-light",
-    "in_progress-standard",
-    "in_progress-full",
-    "in_progress-parallel",
-  ] as const;
-
-  it("workflow.md in_progress breadcrumbs self-exempt dispatched sub-agents", () => {
-    for (const key of IN_PROGRESS_KEYS) {
-      const block = workflowStateBreadcrumb(key);
-      expect(block).toContain("Sub-agent self-exemption");
-      expect(block).toContain("Active task:");
-      expect(block).toContain("dispatched sub-agent");
-      expect(block).not.toMatch(/Task\/Agent tool, NOT Skill/);
-    }
-    expect(inProgressBreadcrumb()).toContain("main session only");
+  it("workflow.md in_progress fallback self-exempts dispatched sub-agents", () => {
+    const block = inProgressBreadcrumb();
+    expect(block).toContain("Sub-agent self-exemption");
+    expect(block).toContain("Active task:");
+    expect(block).toContain("dispatched sub-agent");
+    expect(block).toContain("main session only");
+    expect(block).toContain("arbor.py next");
   });
 
   it("workflow.md has no platform branch blocks or inline breadcrumbs", () => {
@@ -141,79 +133,90 @@ describe("arbor template constants", () => {
     expect(workflowMdTemplate).not.toContain("workflow-state:in_progress-inline");
   });
 
-  it("workflow.md documents Dispatch and the parallel variant", () => {
-    expect(workflowMdTemplate).toContain("### Dispatch");
-    expect(workflowMdTemplate).toContain("delegate_to_agent");
-    expect(workflowMdTemplate).toContain("dispatch.py run --role");
-    for (const n of [0, 1, 2, 3, 4, 5]) {
-      expect(workflowMdTemplate).toContain(`#### 2P.${n} `);
+  it("workflow.md documents the driver, the dispatch header and the roles", () => {
+    expect(workflowMdTemplate).toContain("### Driver");
+    for (const cmd of ["next", "run", "gate", "decide", "canary", "override", "status | resume | abandon"]) {
+      expect(workflowMdTemplate).toContain(`arbor.py ${cmd}`);
     }
-    for (const n of [1, 2, 3, 4, 5]) {
-      expect(workflowMdTemplate).toContain(`#### 2F.${n} `);
+    for (const line of ["Active task:", "Role:", "Mode:", "Range:", "Dispatch: d-NNN"]) {
+      expect(workflowMdTemplate).toContain(line);
     }
-    expect(workflowMdTemplate).toContain("execution parallel");
-    expect(workflowMdTemplate).toContain("dispatch.py snapshot");
-    expect(workflowMdTemplate).not.toContain("check [finish]");
+    expect(workflowMdTemplate).toContain("Arbor-Dispatch: d-NNN");
+    expect(workflowMdTemplate).toContain("<role>(<task-dir-name>): <summary>");
+    for (const role of AGENT_ROLES) {
+      expect(workflowMdTemplate).toContain(`| \`${role}\` |`);
+    }
   });
 
-  const TIERS = ["light", "standard", "full"] as const;
-
-  /** `#### X.Y Title \`[required · once(; scope)]\`` headings with their tier scope. */
-  function requiredOnceSteps(): Array<{ step: string; tiers: string[] }> {
-    const re = /^#### (\S+) [^\n]*`\[required · once(?:; ([^\]`]+))?\]`/gm;
-    const out: Array<{ step: string; tiers: string[] }> = [];
-    for (const m of workflowMdTemplate.matchAll(re)) {
-      const tiers = m[2] ? m[2].split("/").map((t) => t.trim()) : [...TIERS];
-      out.push({ step: m[1], tiers });
+  it("workflow.md drops the v1 dispatch machinery and never names an executor", () => {
+    for (const gone of [
+      "dispatch.py",
+      "delegate_to_agent",
+      "Diff:",
+      "Target:",
+      "Workspace:",
+      "prd.md",
+      "implement.md",
+      "snapshot",
+      "meta.execution",
+      "#### 2P.",
+      "#### 2F.",
+    ]) {
+      expect(workflowMdTemplate, `workflow.md must not mention ${gone}`).not.toContain(gone);
     }
-    return out;
+    expect(workflowMdTemplate).not.toMatch(/codeg|\bstar\b|\bpi\b|codex|target|\bmodel\b|trellis/i);
+  });
+
+  it("workflow.md ships the reference tables", () => {
+    for (const heading of [
+      "### State Machine",
+      "### Tiers",
+      "### Verification Ladder",
+      "### Human Gates",
+      "### Request Triage",
+      "### Task Artifacts",
+      "### Roles",
+    ]) {
+      expect(workflowMdTemplate).toContain(heading);
+    }
+    for (const state of ["INTAKE", "CONTRACT", "BUILD", "GATE", "REVIEW", "POLISH", "FINISH", "STOP"]) {
+      expect(workflowMdTemplate).toContain(`| ${state} |`);
+    }
+    for (const section of [
+      "## Goal",
+      "## Scope",
+      "## Acceptance criteria",
+      "## Verification map",
+      "## Interface pins",
+      "## Test paths",
+      "## Partitions",
+      "## Waves",
+    ]) {
+      expect(workflowMdTemplate).toContain(`\`${section}\``);
+    }
+    expect(workflowMdTemplate).not.toMatch(/\|\s*quick\s*\|/);
+  });
+
+  /** `#### X.Y Title \`[required · once(; scope)]\`` step ids. */
+  function requiredOnceSteps(): string[] {
+    const re = /^#### (\S+) [^\n]*`\[required · once(?:; [^\]`]+)?\]`/gm;
+    return [...workflowMdTemplate.matchAll(re)].map((m) => m[1]);
   }
 
-  it("[required · once] steps appear in every breadcrumb block of their tier scope", () => {
-    // The breadcrumb is the only per-turn channel: a required step that a
-    // tier's block does not mention gets skipped silently in that tier.
+  it("[required · once] planning steps appear in the planning breadcrumb", () => {
     const steps = requiredOnceSteps();
-    expect(steps.map((s) => s.step)).toEqual([
-      "1.0", "1.3", "1.4", "2F.1", "2F.2", "2F.5", "3.3", "3.4",
-    ]);
-    for (const { step, tiers } of steps) {
-      const keys =
-        step === "1.0"
-          ? ["no_task"]
-          : step.startsWith("1.")
-            ? ["planning"]
-            : [
-                ...tiers.map((t) => `in_progress-${t}`),
-                ...(tiers.includes("full") ? ["in_progress-parallel"] : []),
-              ];
-      for (const key of keys) {
-        expect(
-          workflowStateBreadcrumb(key),
-          `${step} must be enforced in [workflow-state:${key}]`,
-        ).toContain(step);
-      }
+    expect(steps).toEqual(["1.0", "1.2", "1.4", "1.5", "1.6", "1.7", "3.1", "3.3", "3.4"]);
+    expect(workflowStateBreadcrumb("no_task")).toContain("1.0");
+    for (const step of steps.filter((s) => s.startsWith("1.") && s !== "1.0")) {
+      expect(
+        workflowStateBreadcrumb("planning"),
+        `${step} must be enforced in the planning block`,
+      ).toContain(step);
     }
     expect(workflowStateBreadcrumb("planning")).toContain("task.py start");
-    for (const key of IN_PROGRESS_KEYS) {
-      expect(workflowStateBreadcrumb(key)).toContain("3.4");
-    }
   });
 
-  it("tier breadcrumbs carry only their own tier's polish steps", () => {
-    const light = workflowStateBreadcrumb("in_progress-light");
-    for (const absent of ["2F.1", "2F.2", "Mode: candidates", "Mode: sweep"]) {
-      expect(light, `light must not mention ${absent}`).not.toContain(absent);
-    }
-    expect(light).toContain("2F.5");
-    const standard = workflowStateBreadcrumb("in_progress-standard");
-    expect(standard).toContain("Mode: candidates");
-    expect(standard).not.toContain("Mode: sweep");
-    expect(workflowStateBreadcrumb("in_progress-full")).toContain("Mode: sweep");
-    expect(workflowStateBreadcrumb("in_progress-parallel")).toContain("sweep");
-    expect(workflowStateBreadcrumb("in_progress-parallel")).toContain("Tier full");
-  });
-
-  it("workflow.md ships exactly the tier block set with no nested or dangling tags", () => {
+  it("workflow.md ships exactly the v2 block set with no nested or dangling tags", () => {
     // Same regex as inject-workflow-state.py (backreference on STATUS).
     const re = /\[workflow-state:([A-Za-z0-9_-]+)\]\s*\n([\s\S]*?)\n\s*\[\/workflow-state:\1\]/g;
     const names: string[] = [];
@@ -227,33 +230,32 @@ describe("arbor template constants", () => {
       "task_error",
       "planning",
       "in_progress",
-      "in_progress-light",
-      "in_progress-standard",
-      "in_progress-full",
-      "in_progress-parallel",
       "completed",
     ]);
-    expect(names.some((n) => n.startsWith("planning-"))).toBe(false);
     // A prose line that ends in a tag token would open a block for the parser.
     expect(workflowMdTemplate).not.toMatch(
-      /^[^\[\n][^\n]*\[\/?workflow-state:[A-Za-z0-9_-]+\]\s*$/m,
+      /^[^[\n][^\n]*\[\/?workflow-state:[A-Za-z0-9_-]+\]\s*$/m,
     );
   });
 
-  it("workflow.md step bodies carry the tier mechanics", () => {
-    expect(workflowMdTemplate).toContain("### Tiers");
-    expect(workflowMdTemplate).not.toContain("300");
-    expect(workflowMdTemplate).not.toMatch(/lightweight|complex task/i);
-    const gate = stepSection("2.2");
-    expect(gate).toContain("--name gate");
-    expect(gate).toContain("Angles: A, B, C, D, E, Conventions, Acceptance, Cleanup-lite");
-    expect(gate).toContain("Angles: A, B, Acceptance");
+  it("workflow.md step bodies carry the v2 mechanics", () => {
     expect(stepSection("1.0")).toContain("--tier");
-    expect(stepSection("1.3")).toContain("task.py seed-context");
-    expect(stepSection("1.4")).toContain("tier is not full");
-    expect(stepSection("2F.1")).toContain("No separate review");
-    expect(stepSection("2F.3")).toContain("PLAUSIBLE");
-    expect(workflowStateBreadcrumb("no_task")).toContain("Quick");
+    expect(stepSection("1.1")).toContain("soft cap");
+    expect(stepSection("1.2")).toContain("one numbered list");
+    expect(stepSection("1.3")).toContain("Verification map");
+    expect(stepSection("1.4")).toContain("waves.md");
+    expect(stepSection("1.5")).toContain("task.py seed-context");
+    expect(stepSection("1.6")).toContain("Mode: plan");
+    expect(stepSection("1.7")).toContain("task.py start");
+    expect(stepSection("2.1")).toContain("arbor.py next");
+    expect(stepSection("2.2")).toContain("brief_path");
+    expect(stepSection("2.2")).toContain("`Angles:`");
+    expect(stepSection("2.2")).toContain("`A, B, Acceptance`");
+    expect(stepSection("2.4")).toContain("decide impl|tests|contract");
+    expect(stepSection("2.6")).toContain("PLAUSIBLE");
+    expect(stepSection("2.6")).toContain("Mode: sweep");
+    expect(stepSection("3.3")).toContain("--no-ff");
+    expect(workflowStateBreadcrumb("no_task")).toContain("Simple");
     expect(workflowStateBreadcrumb("planning")).toContain("set-meta <task> tier");
   });
 
@@ -272,24 +274,11 @@ describe("arbor template constants", () => {
     );
   });
 
-  it("workflow.md step 1.1 includes parent child split guidance", () => {
-    const step = stepSection("1.1");
-    expect(step).toContain("When considering a parent/child split");
-    expect(step).toContain("Parent tasks own source requirements");
-    expect(step).toContain("Child tasks own actual deliverables");
-    expect(step).toContain(
-      "Parent/child structure is not a dependency system",
-    );
-    expect(step).toContain("Do not start the parent unless");
-  });
-
   it("workflow.md planning breadcrumbs mention parent child split guidance", () => {
     const planning = workflowStateBreadcrumb("planning");
-    for (const block of [planning]) {
-      expect(block).toContain("Multi-deliverable scope");
-      expect(block).toContain("parent task plus independently verifiable child tasks");
-      expect(block).toContain("not implied by tree position");
-    }
+    expect(planning).toContain("Multi-deliverable scope");
+    expect(planning).toContain("parent task plus independently verifiable child tasks");
+    expect(planning).toContain("not implied by tree position");
   });
 
   it("workflow.md ships a task_error breadcrumb that repairs the existing task", () => {
@@ -414,5 +403,66 @@ describe("configYamlTemplate: context_injection section", () => {
     for (const line of lines.slice(start, start + 4)) {
       expect(line.trimStart().startsWith("#")).toBe(true);
     }
+  });
+});
+
+// =============================================================================
+// config.yaml — executors / gate sections (v2: replace `dispatch:`)
+// =============================================================================
+
+describe("configYamlTemplate: executors and gate", () => {
+  const scriptsDir = path.resolve(__dirname, "../../src/templates/arbor/scripts");
+
+  function parseTemplate(): Record<string, unknown> {
+    const out = execFileSync(
+      "python3",
+      [
+        "-c",
+        "import json, sys; sys.path.insert(0, sys.argv[1]); " +
+          "from common.arbor_config import parse_simple_yaml; " +
+          "print(json.dumps(parse_simple_yaml(sys.stdin.read())))",
+        scriptsDir,
+      ],
+      { input: configYamlTemplate, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
+    );
+    return JSON.parse(out) as Record<string, unknown>;
+  }
+
+  it("ships executors + gate instead of the dispatch section", () => {
+    expect(configYamlTemplate).not.toMatch(/^dispatch:/m);
+    expect(configYamlTemplate).not.toMatch(/default_target|codeg-setup|ARBOR_DISPATCH_TARGET/);
+    const parsed = parseTemplate();
+    expect(parsed.executors).toEqual({
+      default: "codeg",
+      codeg: {
+        command: "codeg-cli run -A arbor-{role} --prompt-file {prompt} --cwd {worktree}",
+        timeout: "90m",
+        max_parallel: "3",
+      },
+    });
+    expect(parsed.gate).toEqual({ commands: [] });
+    expect(parsed.worktree).toEqual({ root: "../{repo}-wt", setup: "" });
+    expect(parsed.test_paths).toEqual(["packages/*/test/**", "**/*.test.ts"]);
+    expect(parsed).not.toHaveProperty("dispatch");
+  });
+
+  it("parses the template without parser warnings", () => {
+    const r = spawnSync(
+      "python3",
+      [
+        "-c",
+        "import sys; sys.path.insert(0, sys.argv[1]); " +
+          "from common.arbor_config import parse_simple_yaml; parse_simple_yaml(sys.stdin.read())",
+        scriptsDir,
+      ],
+      { input: configYamlTemplate, encoding: "utf-8" },
+    );
+    expect(r.status).toBe(0);
+    expect(r.stderr).toBe("");
+  });
+
+  it("documents the other executors only as comments", () => {
+    expect(configYamlTemplate).toContain('#     command: "claude -p {prompt}"');
+    expect(configYamlTemplate).toContain('#     command: "codex exec --cd {worktree} {prompt}"');
   });
 });

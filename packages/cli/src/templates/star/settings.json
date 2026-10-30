@@ -37,16 +37,6 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "^mcp__codeg[-_]mcp__delegate_to_agent$",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "{{PYTHON_CMD}} .starFactory/hooks/inject-delegation-context.py",
-            "timeout": 30
-          }
-        ]
-      },
-      {
         "matcher": "^(Agent|Task)$",
         "hooks": [
           {

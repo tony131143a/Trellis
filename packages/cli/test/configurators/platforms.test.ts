@@ -352,12 +352,14 @@ describe("configurePlatform", () => {
     for (const hook of [
       "session-start.py",
       "inject-workflow-state.py",
-      "inject-delegation-context.py",
       "guard-builtin-agent.py",
       "inject-shell-session-context.py",
     ]) {
       expect(fs.existsSync(starFactory(`hooks/${hook}`))).toBe(true);
     }
+    expect(fs.existsSync(starFactory("hooks/inject-delegation-context.py"))).toBe(
+      false,
+    );
 
     const settings = JSON.parse(
       fs.readFileSync(starFactory("settings.json"), "utf-8"),
@@ -405,9 +407,12 @@ describe("configurePlatform", () => {
     expect(templates?.has(".starFactory/commands/arbor/start.md")).toBe(
       false,
     );
+    expect(templates?.has(".starFactory/hooks/guard-builtin-agent.py")).toBe(
+      true,
+    );
     expect(
       templates?.has(".starFactory/hooks/inject-delegation-context.py"),
-    ).toBe(true);
+    ).toBe(false);
     // .claude/ belongs to the claude-code platform; star must not write it.
     expect([...(templates?.keys() ?? [])].some((k) => k.startsWith(".claude/"))).toBe(
       false,

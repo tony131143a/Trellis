@@ -7,9 +7,9 @@ Arbor context injection aims to make AI read the right files at the right time i
 | Type | Source | Purpose |
 | --- | --- | --- |
 | session context | `.arbor/scripts/get_context.py` | Current developer, git status, active task, active tasks, journal, packages. |
-| workflow context | `.arbor/workflow.md` | Current Arbor flow and next action. |
+| workflow context | `.arbor/workflow.md`, `arbor.py next` | Current Arbor flow and the driver's next step. |
 | spec context | `.arbor/spec/` + task JSONL | Specs that must be followed during implementation/checking. |
-| task context | `.arbor/tasks/<task>/prd.md`, `design.md`, `implement.md`, `research/` | Current task requirements, design, execution plan, and research. |
+| task context | `.arbor/tasks/<task>/contract.md`, `design.md`, `waves.md`, `research/` | Current task contract, design, partitions / waves, and research. |
 | platform context | `.claude/` or `.starFactory/` hooks and settings | Lets the AI tool read the files above through its hook events. |
 
 ## session-start
@@ -21,24 +21,24 @@ The SessionStart hook injects an Arbor overview when a session starts, clears, o
 - active tasks.
 - spec index paths.
 - developer identity and git status.
-- a `<dispatch>` section with the codeg assistant ids per role.
+- for a started task, the driver's one-line next step (`arbor.py next --json` → `summary` and `needs`).
 
 If the user feels the AI does not know the current task in a new session, first check whether the session-start hook is registered in `settings.json` and running.
 
 ## workflow-state
 
-workflow-state is a short hint injected around each user turn. Based on current task status, it selects a block from `.arbor/workflow.md` by status plus the task's tier: `no_task`, `planning`, `in_progress-light` / `in_progress-standard` / `in_progress-full` (or `in_progress-parallel` for full with `meta.execution=parallel`), or `completed`. Plain `in_progress` is the fallback when no tier block exists.
+workflow-state is a short hint injected around each user turn. With an active task, the hook runs `python3 .arbor/scripts/arbor.py next --json` (with this session's `ARBOR_CONTEXT_ID`) and injects only its one-line `summary` plus `needs`. Without a task, with an unreadable task record, or when the driver is missing, fails or times out, it falls back silently to a block from `.arbor/workflow.md` selected by status: `no_task`, `task_error`, `planning`, `in_progress`, or `completed` (a `<status>-<tier>` block wins when one exists).
 
-If the user wants to change "what the AI should do next in a given state," edit the corresponding state block in `.arbor/workflow.md` first.
+To change "what the AI should do next" for a started task, change the driver's step summaries; for the no-task, planning and fallback text, edit the state block in `.arbor/workflow.md`.
 
 ## dispatched-role context
 
-Dispatched roles (explore, architect, implement, review, verify, fix, simplify) run in separate codeg sessions and need task context. Arbor has two loading modes:
+Dispatched roles (explore, architect, test, implement, review, verify, fix, simplify) run in separate executor sessions and need task context. Arbor has two loading modes:
 
-1. **hook push**: the PreToolUse hook on `delegate_to_agent` inlines jsonl-referenced files (`implement.jsonl` for architect and implement, `check.jsonl` for review, verify, fix, and simplify) plus `prd.md`, `design.md` if present, `implement.md` if present, and the `Diff:` file if given into the `task` text when it starts with the `Active task:` / `Role:` header. The same text is built by `dispatch.py` for the terminal fallback. See `dispatch.md`.
-2. **role pull**: the instructions in `.arbor/agents/<role>.md` tell the role to read the active task, jsonl context, and task artifacts itself when no `<!-- arbor-hook-injected -->` marker is present.
+1. **driver push**: `arbor.py run` assembles the prompt (`common/dispatch_context.py`): the header, then jsonl-referenced files (`implement.jsonl` for architect, test and implement, `check.jsonl` for review, verify, fix, and simplify), `contract.md`, `design.md` if present, `waves.md` if present, and `git diff <Range>`, then the brief. See `dispatch.md`.
+2. **role pull**: the instructions in `.arbor/agents/<role>.md` tell the role to read the jsonl context and task artifacts itself when no `<!-- arbor-hook-injected -->` marker is present.
 
-In both modes, JSONL files in the task directory are the manifest for spec/research context. Task artifacts are read separately in this order: `prd.md` -> `design.md if present` -> `implement.md if present` -> the `Diff:` file when the header has one.
+In both modes, JSONL files in the task directory are the manifest for spec/research context. Task artifacts are read separately in this order: `contract.md` (legacy `prd.md`) -> `design.md if present` -> `waves.md if present` (legacy `implement.md`) -> `git diff <Range>` when the header has one.
 
 ## JSONL Reading Rules
 
@@ -61,8 +61,8 @@ If shell commands cannot see the same context key, `task.py current --source` ma
 | Need | Edit location |
 | --- | --- |
 | Change session-start injected content | `session-start.py` in `.claude/hooks/` / `.starFactory/hooks/`, or `session_context.py`. |
-| Change per-turn workflow-state rules | `[workflow-state:STATUS]` block in `.arbor/workflow.md`. The workflow-state hook parses these blocks verbatim and embeds no fallback text. |
-| Change how dispatched roles get context | The `inject-delegation-context` hook, or `.arbor/agents/<role>.md`. |
+| Change per-turn workflow-state rules | Started task: the driver's step summaries in `.arbor/scripts/common/driver/`. Otherwise the `[workflow-state:STATUS]` block in `.arbor/workflow.md`; the hook parses these blocks verbatim and embeds no fallback text. |
+| Change how dispatched roles get context | `.arbor/scripts/common/dispatch_context.py`, the task's jsonl manifests, or `.arbor/agents/<role>.md`. |
 | Change JSONL validation/display | `.arbor/scripts/common/task_context.py`. |
 | Change active task resolution | `.arbor/scripts/common/active_task.py`. |
 

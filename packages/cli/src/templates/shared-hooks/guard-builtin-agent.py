@@ -4,13 +4,14 @@
 Built-in Agent Guard Hook (Claude Code / StarFactory)
 
 PreToolUse hook on the host's built-in sub-agent tool (matcher
-`^(Agent|Task)$`). Arbor roles (explore / architect / implement / review /
-verify / fix / simplify) run as codeg
-assistants; spawning them through the built-in Agent/Task tool would run
-them without the codeg target, its model, or the injected task context.
+`^(Agent|Task)$`). Arbor roles (explore / architect / test / implement /
+review / verify / fix / simplify) run only through the driver
+(`arbor.py run`) and the executor configured in `executors:`; spawning them
+through the built-in Agent/Task tool would skip the driver's prompt
+assembly, invariant checks, commit validation and state tracking.
 
-Denies the call when `dispatch.guard_builtin_agent` is enabled (default) and
-the call is recognisably an Arbor role dispatch:
+Inside an Arbor project, denies the call when it is recognisably an Arbor
+role dispatch (`ARBOR_HOOKS=0` disables every Arbor hook, this one included):
 - the prompt's first lines carry `Active task:` or `Role: <arbor role>`
 - `subagent_type` starts with `arbor-`
 
@@ -41,18 +42,16 @@ DIR_WORKFLOW = ".arbor"
 GUARDED_TOOLS = ("Agent", "Task")
 ROLE_RE = re.compile(
     r"^\s*(?:Active task:|Role:\s*"
-    r"(?:explore|architect|implement|review|verify|fix|simplify)\b)",
+    r"(?:explore|architect|test|implement|review|verify|fix|simplify)\b)",
     re.IGNORECASE | re.MULTILINE,
 )
 # Only the head of the prompt is the header; a role word deep in the body is
 # ordinary prose.
 HEADER_SCAN_CHARS = 400
 DENY_REASON = (
-    "Arbor roles (explore/architect/implement/review/verify/fix/simplify) "
-    "run as codeg assistants. "
-    "Use the `delegate_to_agent` tool with the role's assistant (see the "
-    "<dispatch> session context), or "
-    "`python3 ./.arbor/scripts/dispatch.py run --role <role>`. "
+    "Arbor roles (explore/architect/test/implement/review/verify/fix/simplify) "
+    "run only through the driver. Run `python3 ./.arbor/scripts/arbor.py next`, "
+    "write the brief it names, then `python3 ./.arbor/scripts/arbor.py run`. "
     "Never the built-in Agent/Task tool."
 )
 
@@ -69,18 +68,6 @@ def _find_root(start: str) -> Path | None:
         if cur == cur.parent:
             return None
         cur = cur.parent
-
-
-def _guard_enabled(root: Path) -> bool:
-    scripts_dir = str(root / DIR_WORKFLOW / "scripts")
-    if scripts_dir not in sys.path:
-        sys.path.insert(0, scripts_dir)
-    try:
-        from common.config import get_dispatch_config  # type: ignore[import-not-found]
-
-        return bool(get_dispatch_config(root).get("guard_builtin_agent", True))
-    except Exception:
-        return True
 
 
 def _subagent_type(tool_input: dict) -> str:
@@ -113,7 +100,7 @@ def main() -> int:
         return 0
 
     root = _find_root(data.get("cwd") or os.getcwd())
-    if root is None or not _guard_enabled(root):
+    if root is None:
         return 0
 
     print(json.dumps({

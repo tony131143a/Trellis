@@ -5,9 +5,9 @@
  * configurable, word-boundary, case-insensitive skip keyword (default
  * "no-arbor") right after resolving `.arbor/config.yaml`, before any
  * task resolution or breadcrumb template loading. On a hit it exits 0 with
- * empty stdout for that turn only. `session-start.py` (SessionStart) and
- * `inject-delegation-context.py` (dispatch context) must ignore the keyword
- * entirely — the escape hatch only mutes the per-turn breadcrumb.
+ * empty stdout for that turn only. `session-start.py` (SessionStart) and the
+ * driver's role prompt assembly (`dispatch_context.py`) must ignore the
+ * keyword entirely — the escape hatch only mutes the per-turn breadcrumb.
  *
  * Scripts are stamped into a fresh temp dir and exercised through the real
  * `python3` interpreter (no mocking of file I/O or config parsing).
@@ -299,11 +299,10 @@ describeFn("no-arbor skip keyword (issue #427)", () => {
     });
 
     it("dispatch context injection has no skip-keyword handling (module source check)", () => {
+      expect(fs.existsSync(path.join(SHARED_HOOKS, "inject-delegation-context.py"))).toBe(
+        false,
+      );
       for (const source of [
-        fs.readFileSync(
-          path.join(SHARED_HOOKS, "inject-delegation-context.py"),
-          "utf-8",
-        ),
         fs.readFileSync(
           path.join(TEMPLATE_SCRIPTS, "common", "dispatch_context.py"),
           "utf-8",

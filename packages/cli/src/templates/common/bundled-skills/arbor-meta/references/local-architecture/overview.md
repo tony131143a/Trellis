@@ -5,7 +5,7 @@
 Therefore, when an AI uses this skill, the default customization target is local files inside the user project:
 
 - `.arbor/`: workflow, tasks, specs, journals, scripts, and runtime state.
-- `.arbor/agents/`: assistant instruction sources for the seven roles (explore, architect, implement, review, verify, fix, simplify).
+- `.arbor/agents/`: role instruction sources for the eight roles (explore, architect, test, implement, review, verify, fix, simplify).
 - Platform directories: `.claude/` (Claude Code) and `.starFactory/` (StarFactory, a Claude Code fork).
 - Root files `CLAUDE.md` and `AGENTS.md`, which contain a managed block between `<!-- ARBOR:START -->` and `<!-- ARBOR:END -->`.
 
@@ -18,7 +18,7 @@ Arbor provides four layers inside a user project:
 1. **Workflow layer**: `.arbor/workflow.md` defines phases, routing, next actions, and prompt blocks.
 2. **Persistence layer**: `.arbor/tasks/`, `.arbor/spec/`, and `.arbor/workspace/` store tasks, specs, and session journals.
 3. **Platform integration layer**: hooks, settings, skills, and commands in `.claude/` and `.starFactory/` connect the Arbor workflow to the AI tool.
-4. **Dispatch layer**: the main agent hands exploration, design, implementation, review, and fix work to codeg assistants running on `star` or `pi` (see `dispatch.md`).
+4. **Driver layer**: `.arbor/scripts/arbor.py` holds the task state machine and runs every role through the executor configured in `.arbor/config.yaml`; the main agent writes the contract and the briefs (see `dispatch.md`).
 
 All four layers live inside the user project, so an AI can read and modify them directly.
 
@@ -29,9 +29,9 @@ All four layers live inside the user project, so an AI can read and modify them 
 | `.arbor/workflow.md` | Workflow phases, skill routing, and workflow-state prompt blocks. |
 | `.arbor/config.yaml` | Project configuration, task lifecycle hooks, monorepo package configuration, and journal configuration. |
 | `.arbor/spec/` | The user's project-specific coding conventions and thinking guides. |
-| `.arbor/tasks/` | Each task's PRD, technical notes, research files, and JSONL context. |
+| `.arbor/tasks/` | Each task's contract, technical notes, research files, briefs, scorecard, and JSONL context. |
 | `.arbor/workspace/` | Per-developer journals. |
-| `.arbor/agents/` | Assistant instruction sources (`explore.md`, `architect.md`, `implement.md`, `review.md`, `verify.md`, `fix.md`, `simplify.md`) installed into codeg assistants. |
+| `.arbor/agents/` | Role instruction sources (`explore.md`, `architect.md`, `test.md`, `implement.md`, `review.md`, `verify.md`, `fix.md`, `simplify.md`) used by the executor. |
 | `.arbor/scripts/` | Local Python runtime used by commands, hooks, and context injection. |
 | `.arbor/.runtime/` | Session-level runtime state, such as the current task pointer. |
 | `.arbor/.template-hashes.json` | Template hashes for Arbor-managed files, used by update to determine whether local files were modified by the user. |
@@ -51,5 +51,5 @@ All four layers live inside the user project, so an AI can read and modify them 
 - To change the task model, JSONL context, or active task behavior, read `task-system.md`.
 - To change coding convention injection, read `spec-system.md`.
 - To understand journals, read `workspace-memory.md`.
-- To understand how roles are dispatched to codeg assistants, read `dispatch.md`.
-- To change hooks or dispatched-role context loading, read `context-injection.md`.
+- To understand how the driver runs roles, read `dispatch.md`.
+- To change hooks or role prompt assembly, read `context-injection.md`.
