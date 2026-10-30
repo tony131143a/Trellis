@@ -3,12 +3,17 @@ import {
   clearManifestCache,
   getAllMigrations,
   getAllMigrationVersions,
+  getConfigSectionsAddedBetween,
   getMigrationMetadata,
   getMigrationsForVersion,
   getMigrationSummary,
   hasPendingMigrations,
 } from "../../src/migrations/index.js";
 import { compareVersions } from "../../src/utils/compare-versions.js";
+import { computeHash } from "../../src/utils/template-hash.js";
+import { extractConfigSection } from "../../src/commands/update.js";
+import { configYamlTemplate } from "../../src/templates/arbor/index.js";
+import { VERSION } from "../../src/constants/version.js";
 
 // Clear manifest cache before each test to ensure clean state
 afterEach(() => {
@@ -208,5 +213,52 @@ describe("clearManifestCache", () => {
     clearManifestCache();
     const v2 = getAllMigrationVersions();
     expect(v1).toEqual(v2);
+  });
+});
+
+// =============================================================================
+// 0.2.0 — v2 driver: v1 dispatch files cleaned up, v2 config sections added
+// =============================================================================
+
+describe("0.2.0 manifest", () => {
+  it("is the package version and is reached from 0.1.0", () => {
+    expect(VERSION).toBe("0.2.0");
+    expect(getAllMigrationVersions()).toContain("0.2.0");
+    const paths = getMigrationsForVersion("0.1.0", "0.2.0").map((m) => m.from);
+    expect(paths).toEqual([
+      ".arbor/scripts/dispatch.py",
+      ".claude/hooks/inject-delegation-context.py",
+      ".starFactory/hooks/inject-delegation-context.py",
+      ".arbor/.runtime/dispatch-target",
+    ]);
+  });
+
+  it("deletes the v1 files only by hash", () => {
+    for (const m of getMigrationsForVersion("0.1.0", "0.2.0")) {
+      expect(m.type).toBe("safe-file-delete");
+      expect(m.allowed_hashes?.length).toBeGreaterThan(0);
+      for (const hash of m.allowed_hashes ?? []) {
+        expect(hash).toMatch(/^[0-9a-f]{64}$/);
+      }
+    }
+    const target = getMigrationsForVersion("0.1.0", "0.2.0").find(
+      (m) => m.from === ".arbor/.runtime/dispatch-target",
+    );
+    expect(target?.allowed_hashes).toContain(computeHash("pi\n"));
+  });
+
+  it("every added config section exists in the bundled config.yaml", () => {
+    const sections = getConfigSectionsAddedBetween("0.1.0", "0.2.0");
+    expect(sections.map((s) => s.sentinel)).toEqual([
+      "executors:",
+      "gate:",
+      "worktree:",
+      "test_paths:",
+    ]);
+    for (const s of sections) {
+      const body = extractConfigSection(configYamlTemplate, s.sectionHeading);
+      expect(body, s.sectionHeading).not.toBeNull();
+      expect(body).toContain(s.sentinel);
+    }
   });
 });

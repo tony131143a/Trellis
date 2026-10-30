@@ -1,0 +1,80 @@
+{
+  "version": "0.2.0",
+  "description": "v2 driver: arbor.py runs every role through config.yaml executors",
+  "breaking": true,
+  "recommendMigrate": false,
+  "changelog": "Roles now run through the arbor.py driver and the executors: section of .arbor/config.yaml. The v1 dispatch machinery (dispatch.py, codeg-setup, dispatch targets star/pi/codex, the delegation-context hook) is removed; the dispatch: section of config.yaml is no longer read. Tasks use contract.md instead of prd.md (older tasks keep working).",
+  "migrations": [
+    {
+      "type": "safe-file-delete",
+      "from": ".arbor/scripts/dispatch.py",
+      "description": "v1 dispatcher, replaced by arbor.py",
+      "allowed_hashes": [
+        "bcd27d759b40baa8dffa3c9ed7e32909409edca215c526ff22d8b1da405a98a8",
+        "8335e8a2cb51d78bde37848a62cb3ae5d9ed017df92cb085bfc865fafa986362",
+        "f4c15620c0faa283652292dc459e393276c5ad3a80163bcd34bb62ab7c5e8721",
+        "f803e5c5e6e54b730c0a5fd4b7196e9518deef9a13efd353448554facef20997",
+        "807f43306686b488e5b4951c5bda1ba54b452b4356cdc18f90ae61aedf861757",
+        "74959a25ebce71222998628c3e561cf1fee71ab7797c870a05385f4d66e987f1",
+        "e864a6936fe90e7aac3e045f30c140214df96266fde7f538d338cafd6fd95c11",
+        "158c783ed67e7bbdbb55c912342feb0ba22efaf64fd319bad3a4019ea270b767",
+        "26f07eef0042a7a3eeb6c62f633d6e7c0ea6a440a18dc180b68740429e590794",
+        "36a2eac0efb61916cb4dc4c68c0fa452875ca486438a4a9f6593e783eea4bbcd",
+        "c87616d6e8ed4ac18f418d5f233edc84ffbcbbc0c5265bb7096ef19256a0410c",
+        "a5519bcb2b07b63d4f1a42d991ac40853bc722e28372487ab99badb4a1bc692d"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".claude/hooks/inject-delegation-context.py",
+      "description": "v1 delegation hook, the driver assembles prompts now",
+      "allowed_hashes": [
+        "856644e307a0f8736cc9b8b5c0f788523b9a0f1eaf00c5fdf3c0209c670d05ba",
+        "a01f013ce2d8441d9d331557840c4fbd0b1463ab8f8c62e9a331d1e36defd760",
+        "029ac2eaea7e3d711d0f60ad82d1c7d6ed435524a36b8aaa49686ff42d7f4dfe"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".starFactory/hooks/inject-delegation-context.py",
+      "description": "v1 delegation hook, the driver assembles prompts now",
+      "allowed_hashes": [
+        "856644e307a0f8736cc9b8b5c0f788523b9a0f1eaf00c5fdf3c0209c670d05ba",
+        "a01f013ce2d8441d9d331557840c4fbd0b1463ab8f8c62e9a331d1e36defd760",
+        "029ac2eaea7e3d711d0f60ad82d1c7d6ed435524a36b8aaa49686ff42d7f4dfe"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".arbor/.runtime/dispatch-target",
+      "description": "v1 checkout-wide dispatch target override",
+      "allowed_hashes": [
+        "685b39f996eaa6f3918c4245da42279cec0d5500a44ceafffa930ee91007e74a",
+        "94e95f0bb38f8e0fb52a6dab21f7708dde104b7edeb2eb5ce6b7e68f1328c295",
+        "243b0dc9b847e66c440dca985e10fe0ce9e29c379b018ddd5747ba8948f84cc8"
+      ]
+    }
+  ],
+  "configSectionsAdded": [
+    {
+      "file": ".arbor/config.yaml",
+      "sentinel": "executors:",
+      "sectionHeading": "Executors"
+    },
+    {
+      "file": ".arbor/config.yaml",
+      "sentinel": "gate:",
+      "sectionHeading": "Gate"
+    },
+    {
+      "file": ".arbor/config.yaml",
+      "sentinel": "worktree:",
+      "sectionHeading": "Task worktrees"
+    },
+    {
+      "file": ".arbor/config.yaml",
+      "sentinel": "test_paths:",
+      "sectionHeading": "Test paths"
+    }
+  ]
+}
