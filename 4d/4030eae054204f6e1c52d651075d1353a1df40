@@ -1,0 +1,43 @@
+packages/cli/src/templates/arbor/agents/architect.md
+  s_9e852bbe5ffc67::t_6b9b2572a4fbe2 3,7,13,17-19,33,40,63-66,78,82-86,104
+packages/cli/src/templates/arbor/agents/explore.md
+  s_9e852bbe5ffc67::t_a26ff4061e3bdc 3,7,13,17-18,56,86-89
+packages/cli/src/templates/arbor/agents/implement.md
+  s_9e852bbe5ffc67::t_acbc839fb43775 3,7,13-17,21,23-24,26-28,32-40,42,44-45,48-66,79,84-86
+packages/cli/src/templates/arbor/agents/review.md
+  s_9e852bbe5ffc67::t_2b3aa1eb2fb3c7 3,7,15-19,23-24,30-34,36,47,76-79,105-106,129
+packages/cli/src/templates/arbor/agents/test.md
+  s_9e852bbe5ffc67::t_16c4a6905acce6 1-77
+packages/cli/src/templates/arbor/agents/verify.md
+  s_9e852bbe5ffc67::t_c37355c3e153d9 3,13-16,20-21,29,46
+packages/cli/src/templates/arbor/agents/fix.md
+  s_9941d6e3cf8204::t_700f6d9dac7cc7 3,7,13-17,21-22,30,35,38-56,59-60,74-79
+packages/cli/src/templates/arbor/agents/simplify.md
+  s_9941d6e3cf8204::t_02bbd7ffcbd5c1 3,9,15-19,23-24,67-86,90-91,104-106
+packages/cli/test/templates/arbor.test.ts
+  s_9941d6e3cf8204::t_9a48afc93bb395 363,370
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "4d4030eae054204f6e1c52d651075d1353a1df40",
+  "prompts": {},
+  "sessions": {
+    "s_9941d6e3cf8204": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-awave1-contract-258334908e09a08e",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_9e852bbe5ffc67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6bea1937-c2c7-4e10-a4a2-a9a0a7796656",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
