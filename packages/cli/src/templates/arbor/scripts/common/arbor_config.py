@@ -253,7 +253,7 @@ DEFAULT_TEST_PATHS: tuple[str, ...] = ("packages/*/test/**", "**/*.test.ts")
 DEFAULT_EXECUTORS_CONFIG: dict = {
     "default": "codeg",
     "codeg": {
-        "command": "codeg-cli run -A arbor-{role} --prompt-file {prompt} --cwd {worktree}",
+        "command": "codeg-cli run -A arbor-{role} -w {worktree} --permissions allow --timeout 90m --title arbor-{role}-{task}-{dispatch} -q -p - < {prompt}",
         "timeout": "90m",
         "max_parallel": "3",
     },
