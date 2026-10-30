@@ -116,15 +116,6 @@ describe("hook-timeouts: default timeouts survive Windows Python cold start (iss
         });
       }
 
-      it("PreToolUse inject-delegation-context timeout >= 30s", () => {
-        const hooks = extractHookEntries(parsed.hooks?.PreToolUse, cfg.schema);
-        const delegation = hooks.filter((hook) =>
-          String(hook.command).includes("inject-delegation-context.py"),
-        );
-        expect(delegation).toHaveLength(1);
-        expect(delegation[0].timeout as number).toBeGreaterThanOrEqual(30);
-      });
-
       if (cfg.userPromptEvent !== null) {
         it(`${cfg.userPromptEvent} (inject-workflow-state) timeout >= ${MIN_USER_PROMPT_S}${cfg.unit}`, () => {
           const min =

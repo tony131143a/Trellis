@@ -2,8 +2,9 @@
  * Integration tests for `shared-hooks/guard-builtin-agent.py`, the PreToolUse
  * guard on the host's built-in `Agent` / `Task` tool.
  *
- * Arbor roles run as codeg assistants; the guard denies a built-in Agent call
- * that is recognisably an Arbor role dispatch and stays silent otherwise.
+ * Arbor roles run only through the driver (`arbor.py run`); the guard denies a
+ * built-in Agent call that is recognisably an Arbor role dispatch and stays
+ * silent otherwise.
  * Runs under the real `python3` interpreter against a stamped temp project.
  */
 
@@ -86,12 +87,12 @@ describe.skipIf(!hasPython())("guard-builtin-agent.py", () => {
     };
     expect(out.hookSpecificOutput.hookEventName).toBe("PreToolUse");
     expect(out.hookSpecificOutput.permissionDecision).toBe("deny");
-    expect(out.hookSpecificOutput.permissionDecisionReason).toContain(
-      "delegate_to_agent",
-    );
-    expect(out.hookSpecificOutput.permissionDecisionReason).toContain(
-      "dispatch.py run --role",
-    );
+    const reason = out.hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain("arbor.py next");
+    expect(reason).toContain("arbor.py run");
+    expect(reason).not.toContain("delegate_to_agent");
+    expect(reason).not.toContain("dispatch.py");
+    expect(reason).not.toMatch(/codeg|target/i);
   }
 
   it("denies a prompt that starts with `Active task:`", () => {
@@ -107,6 +108,7 @@ describe.skipIf(!hasPython())("guard-builtin-agent.py", () => {
     for (const role of [
       "explore",
       "architect",
+      "test",
       "implement",
       "review",
       "verify",
@@ -149,14 +151,12 @@ describe.skipIf(!hasPython())("guard-builtin-agent.py", () => {
     expect(r.stdout).toBe("");
   });
 
-  it("stays silent when dispatch.guard_builtin_agent is false", () => {
+  it("ignores the retired dispatch.guard_builtin_agent switch", () => {
     fs.writeFileSync(
       path.join(tmp, ".arbor", "config.yaml"),
       ["dispatch:", "  guard_builtin_agent: false"].join("\n") + "\n",
     );
-    const r = runGuard({ prompt: "Role: implement\n\nDo it." });
-    expect(r.status).toBe(0);
-    expect(r.stdout).toBe("");
+    expectDeny(runGuard({ prompt: "Role: implement\n\nDo it." }));
   });
 
   it("stays silent outside an Arbor project and under the kill switch", () => {

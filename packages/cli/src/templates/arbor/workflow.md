@@ -430,7 +430,9 @@ Return here whenever an answer, a design choice or a red gate changes what done 
 python3 ./.arbor/scripts/task.py seed-context "$TASK_DIR" [--package <pkg> ...]
 ```
 
-`seed-context` writes the packages' spec `index.md` files, `.arbor/spec/guides/index.md` and every `research/*.md` into **both** manifests. Then add specific guideline files with `task.py add-context "$TASK_DIR" implement|check "<path>" "<reason>"` and drop lines that do not apply to a side (`implement.jsonl` → architect, test, implement; `check.jsonl` → review, verify, fix, simplify). Never add code files; roles read those themselves. `task.py start` refuses an empty manifest.
+`seed-context` writes the packages' spec `index.md` files, `.arbor/spec/guides/index.md` and every `research/*.md` into **both** manifests. Then add specific guideline files with `task.py add-context "$TASK_DIR" implement|check "<path>" "<reason>"` and drop lines that do not apply to a side (`implement.jsonl` → architect, test, implement; `check.jsonl` → review, verify, fix, simplify). Never add code files; roles read those themselves.
+
+Ready gate: both `implement.jsonl` and `check.jsonl` must contain at least one real `{"file": "...", "reason": "..."}` entry before `task.py start`. The seed `_example` row alone is not ready; `start` refuses it.
 
 #### 1.6 Validate & plan review `[required · once]`
 

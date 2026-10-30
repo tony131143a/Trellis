@@ -43,15 +43,14 @@ describe("star settings.json", () => {
     }
   });
 
-  it("registers the delegation-context hook on the anchored codeg delegate_to_agent matcher", () => {
-    const entry = settings.hooks.PreToolUse.find(
-      (e) => e.matcher === "^mcp__codeg[-_]mcp__delegate_to_agent$",
+  it("registers no delegation-context hook (roles run only through the driver)", () => {
+    const commands = settings.hooks.PreToolUse.flatMap((e) =>
+      e.hooks.map((h) => h.command),
     );
-    expect(entry, "PreToolUse must match codeg delegate_to_agent").toBeDefined();
-    expect(entry?.hooks[0].command).toContain(
-      ".starFactory/hooks/inject-delegation-context.py",
+    expect(commands.join("\n")).not.toContain("inject-delegation-context");
+    expect(settings.hooks.PreToolUse.map((e) => e.matcher)).not.toContain(
+      "^mcp__codeg[-_]mcp__delegate_to_agent$",
     );
-    expect(entry?.hooks[0].timeout).toBe(30);
   });
 
   it("registers the built-in agent guard on the anchored Agent|Task matcher", () => {
@@ -115,12 +114,12 @@ describe("collectStarTemplates", () => {
     for (const hook of [
       "session-start.py",
       "inject-workflow-state.py",
-      "inject-delegation-context.py",
       "guard-builtin-agent.py",
       "inject-shell-session-context.py",
     ]) {
       expect(files.has(`.starFactory/hooks/${hook}`)).toBe(true);
     }
+    expect(files.has(".starFactory/hooks/inject-delegation-context.py")).toBe(false);
   });
 
   it("writes session-boundary commands, filtering out the hook-injected start command", () => {

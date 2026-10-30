@@ -4622,7 +4622,7 @@ describe("regression: current-task path normalization", () => {
     expect(ctx).not.toContain(firstReplyNoticeSentence);
   });
 
-  it("[workflow-v2] shared session-start summarizes in-progress context without auto-dispatch approval", () => {
+  it("[workflow-v2] shared session-start summarizes in-progress context and points at the driver", () => {
     setupTaskRepo();
     writeSessionContext("claude_session-a", ".arbor/tasks/issue-106");
 
@@ -4636,10 +4636,11 @@ describe("regression: current-task path normalization", () => {
       JSON.stringify({ cwd: tmpDir, session_id: "session-a" }),
     );
     expect(rawOutput).toContain("Status: IN_PROGRESS");
-    expect(rawOutput).toContain("Dispatch context order is jsonl entries");
-    expect(rawOutput).toContain("prd.md");
-    expect(rawOutput).toContain("design.md if present");
-    expect(rawOutput).toContain("implement.md if present");
+    // No arbor.py in this repo: the static next action names the driver.
+    expect(rawOutput).toContain("python3 ./.arbor/scripts/arbor.py next");
+    expect(rawOutput).toContain("jsonl entries -> `contract.md`");
+    expect(rawOutput).not.toContain("<dispatch>");
+    expect(rawOutput).not.toContain("dispatch.py");
     expect(rawOutput).not.toContain("if you stay in the main session");
     expect(rawOutput).not.toContain("Next required action: dispatch");
     expect(rawOutput).not.toContain("If there is an active task, ask whether");
@@ -5759,22 +5760,17 @@ print(len(entries))
     return readFileSync(templatePath, "utf-8");
   }
 
-  it("[workflow-state-r1] template workflow.md in_progress blocks mention commit (Phase 3.4)", () => {
+  it("[workflow-state-r1] template workflow.md in_progress fallback routes to the driver", () => {
     const wf = templateWorkflowMd();
-    for (const key of [
-      "in_progress",
-      "in_progress-light",
-      "in_progress-standard",
-      "in_progress-full",
-      "in_progress-parallel",
-    ]) {
-      const match = wf.match(
-        new RegExp(`\\[workflow-state:${key}\\]\\s*\\n([\\s\\S]*?)\\n\\s*\\[\\/workflow-state:${key}\\]`),
-      );
-      expect(match, key).toBeTruthy();
-      const body = match?.[1] ?? "";
-      expect(body, key).toMatch(/commit \(3\.4/i);
-    }
+    const match = wf.match(
+      /\[workflow-state:in_progress\]\s*\n([\s\S]*?)\n\s*\[\/workflow-state:in_progress\]/,
+    );
+    expect(match).toBeTruthy();
+    const body = match?.[1] ?? "";
+    expect(body).toContain("arbor.py next");
+    expect(body).toContain("arbor.py run");
+    expect(body).toContain("arbor.py decide");
+    expect(wf).not.toContain("[workflow-state:in_progress-");
   });
 
   it("[workflow-state-r2] template workflow.md [workflow-state:planning] mentions artifact gates + required jsonl curation", () => {
@@ -5784,11 +5780,12 @@ print(len(entries))
     );
     expect(match).toBeTruthy();
     const body = match?.[1] ?? "";
-    expect(body).toContain("light = `prd.md`");
-    expect(body).toContain("standard = `prd.md` + `design.md`");
-    expect(body).toContain("full = `prd.md` + `design.md` + `implement.md`");
+    expect(body).toContain("write `contract.md`");
+    expect(body).toContain("standard: `design.md`");
+    expect(body).toContain("`design.md` + `waves.md`");
     expect(body).toContain("`task.py seed-context");
-    expect(body).toContain("(1.3, required)");
+    expect(body).toContain("(1.5)");
+    expect(body).toContain("approves the contract");
   });
 
   it("[#292] workflow and brainstorm templates treat seed-only jsonl as not planning-ready", () => {
@@ -5800,13 +5797,7 @@ print(len(entries))
     expect(wf).toContain(
       'Ready gate: both `implement.jsonl` and `check.jsonl` must contain at least one real `{"file": "...", "reason": "..."}` entry before `task.py start`.',
     );
-    expect(wf).toContain(
-      "Runtime consumers tolerate missing or seed-only manifests for compatibility, but that tolerance is not a planning-ready state.",
-    );
-    expect(wf).toContain(
-      "`implement.jsonl` and `check.jsonl` each contain at least one real curated entry (seed row does not count)",
-    );
-    expect(wf).toContain("Runtime consumers tolerate missing or seed-only manifests");
+    expect(wf).toContain("The seed `_example` row alone is not ready");
 
     const templateRoot = path.join(
       path.dirname(fileURLToPath(import.meta.url)),
@@ -5827,7 +5818,7 @@ print(len(entries))
     }
   });
 
-  it("[#320] brainstorm templates require lossless PRD convergence before start", () => {
+  it("[#320] brainstorm templates require lossless contract convergence before start", () => {
     const templateRoot = path.join(
       path.dirname(fileURLToPath(import.meta.url)),
       "..",
@@ -5842,18 +5833,19 @@ print(len(entries))
         "utf-8",
       );
       expect(content, relativePath).toContain(
-        "Run the requirement convergence gate, then the PRD convergence pass.",
+        "run the requirement convergence gate, then the contract convergence pass",
       );
-      expect(content, relativePath).toContain("## PRD Convergence Pass");
+      expect(content, relativePath).toContain("## Contract Convergence Pass");
       expect(content, relativePath).toContain(
-        "Fold temporary brainstorm sections such as `What I already know`, `Assumptions`, and resolved `Open Questions`",
-      );
-      expect(content, relativePath).toContain(
-        "Preserve every file:line anchor, decision, constraint, requirement ID, and acceptance-criteria mapping.",
+        "Fold temporary brainstorm notes such as `What I already know`, `Assumptions`, and resolved questions",
       );
       expect(content, relativePath).toContain(
-        "no unresolved temporary brainstorm sections, no duplicate facts across sections",
+        "Preserve every file:line anchor, decision, constraint, AC id, and Verification map row.",
       );
+      expect(content, relativePath).toContain(
+        "no temporary brainstorm notes, no duplicate facts across sections",
+      );
+      expect(content, relativePath).not.toContain("prd.md");
     }
   });
 
@@ -5941,17 +5933,18 @@ print(len(entries))
     );
 
     expect(output).toContain("## Phase Index");
+    expect(output).toContain("### State Machine");
     expect(output).toContain("### Tiers");
     expect(output).toContain("### Request Triage");
-    expect(output).toContain("### Planning Artifacts");
+    expect(output).toContain("### Task Artifacts");
     expect(output).toContain("### Loading Step Detail");
     expect(output).not.toContain("300");
     expect(output).not.toMatch(/^## Phase 1: Plan/m);
-    expect(output).not.toContain("#### 1.1 Requirement exploration");
-    expect(output).not.toContain("#### 2.1 Implement");
+    expect(output).not.toContain("#### 1.1 Explore");
+    expect(output).not.toContain("#### 2.1 The loop");
   });
 
-  it("[workflow-v2] get_context.py --mode phase --step resolves parallel-variant 2P.x steps", () => {
+  it("[workflow-v2] get_context.py --mode phase --step resolves v2 step ids", () => {
     writeArborScripts();
     writeProjectFile(path.join(".arbor", ".developer"), "name=test\n");
     writeProjectFile(
@@ -5971,24 +5964,20 @@ print(len(entries))
         { cwd: tmpDir, encoding: "utf-8" },
       );
 
-    const parallel = step("2P.1");
-    expect(parallel.status, parallel.stderr).toBe(0);
-    expect(parallel.stdout).toMatch(/^#### 2P\.1 Worktrees/);
-    expect(parallel.stdout).toContain("git worktree add");
-    expect(parallel.stdout).not.toContain("#### 2P.2");
+    const loop = step("2.1");
+    expect(loop.status, loop.stderr).toBe(0);
+    expect(loop.stdout).toMatch(/^#### 2\.1 The loop/);
+    expect(loop.stdout).toContain("arbor.py next");
+    expect(loop.stdout).not.toContain("#### 2.2");
 
-    // The `P` matches case-insensitively.
-    expect(step("2p.1").stdout).toBe(parallel.stdout);
+    const contract = step("1.3");
+    expect(contract.status, contract.stderr).toBe(0);
+    expect(contract.stdout).toMatch(/^#### 1\.3 Write the contract/);
 
-    // Serial ids are unaffected and never resolve to the parallel variant.
-    const serial = step("2.1");
-    expect(serial.status, serial.stderr).toBe(0);
-    expect(serial.stdout).toMatch(/^#### 2\.1 Implement/);
-    expect(serial.stdout).not.toContain("2P.");
-
-    const missing = step("2P.9");
+    // The v1 parallel variant is gone.
+    const missing = step("2P.1");
     expect(missing.status).toBe(2);
-    expect(missing.stderr).toContain("Step not found: 2P.9");
+    expect(missing.stderr).toContain("Step not found: 2P.1");
   });
 
   // ------------------------------------------------------------
@@ -6021,11 +6010,12 @@ print(len(entries))
     const workflowBlock = workflowMatch[1];
 
     expect(workflowBlock).toContain("## Phase Index");
+    expect(workflowBlock).toContain("### State Machine");
     expect(workflowBlock).toContain("### Request Triage");
-    expect(workflowBlock).toContain("### Planning Artifacts");
+    expect(workflowBlock).toContain("### Task Artifacts");
     expect(workflowBlock).toContain("### Loading Step Detail");
     expect(workflowBlock).not.toMatch(/^## Phase 1: Plan/m);
-    expect(workflowBlock).not.toContain("#### 1.1 Requirement exploration");
+    expect(workflowBlock).not.toContain("#### 1.1 Explore");
     // Breadcrumb tag BLOCKS (matched opening + closing pair) excluded — they're
     // consumed by inject-workflow-state.py. Inline `[workflow-state:planning]`
     // mentions in narrative prose are fine; only complete blocks are stripped.
@@ -6069,7 +6059,7 @@ print(len(entries))
       throw new Error("guidelines block not found in payload");
     const guidelinesBlock = guidelinesMatch[1];
 
-    expect(guidelinesBlock).toContain("Dispatch context order");
+    expect(guidelinesBlock).toContain("Roles run only through the driver");
     expect(guidelinesBlock).not.toContain("GUIDES_INLINE_MARKER");
     expect(guidelinesBlock).toContain(".arbor/spec/cli/backend/index.md");
     expect(guidelinesBlock).not.toContain(
@@ -6079,101 +6069,16 @@ print(len(entries))
     expect(guidelinesBlock).toContain("--mode packages");
   });
 
-  // ------------------------------------------------------------
-  // dispatch context injection must not write task state
-  //   Hook must NOT write current_phase back to task.json on dispatch.
-  // ------------------------------------------------------------
-
-  it("[workflow-v2] inject-delegation-context.py does NOT write current_phase when implement is dispatched", () => {
-    const sharedInject = getSharedHookScripts().find(
-      (hook) => hook.name === "inject-delegation-context.py",
-    )?.content;
-
-    writeArborScripts();
-    writeProjectFile(path.join(".arbor", ".developer"), "name=test\n");
-    writeProjectFile(path.join(".arbor", "workflow.md"), "# Minimal\n");
-    // Session active task WITHOUT current_phase field (post-migration state)
-    writeProjectFile(
-      path.join(".arbor", ".runtime", "sessions", "claude_phase-a.json"),
-      JSON.stringify(
-        {
-          current_task: ".arbor/tasks/issue-106",
-          platform: "claude",
-        },
-        null,
-        2,
-      ),
-    );
-    writeProjectFile(
-      path.join(".arbor", "tasks", "issue-106", "task.json"),
-      JSON.stringify(
-        {
-          id: "issue-106",
-          title: "Issue 106",
-          status: "in_progress",
-          package: null,
-        },
-        null,
-        2,
-      ),
-    );
-    writeProjectFile(
-      path.join(".arbor", "tasks", "issue-106", "prd.md"),
-      "# PRD\n",
-    );
-    writeProjectFile(
-      path.join(".arbor", "tasks", "issue-106", "implement.jsonl"),
-      '{"file":"src/example.ts","reason":"spec"}\n',
-    );
-    writeProjectFile(
-      path.join(".claude", "hooks", "inject-delegation-context.py"),
-      expectTemplateContent(sharedInject, "shared inject-delegation-context"),
-    );
-
-    // Simulate a codeg delegate_to_agent call resolved via the session pointer
-    const input = JSON.stringify({
-      tool_name: "mcp__codeg-mcp__delegate_to_agent",
-      tool_input: {
-        assistant_id: 1,
-        task: "Role: implement\n\ndo work",
-      },
-      cwd: tmpDir,
-      session_id: "phase-a",
-    });
-    const output = runPython(
-      path.join(".claude", "hooks", "inject-delegation-context.py"),
-      input,
-      { CLAUDE_PROJECT_DIR: tmpDir },
-    );
-    expect(output).toContain("arbor-hook-injected");
-
-    // Assert task.json is NOT modified with current_phase
-    const taskJson = JSON.parse(
-      fs.readFileSync(
-        path.join(tmpDir, ".arbor", "tasks", "issue-106", "task.json"),
-        "utf-8",
-      ),
-    ) as Record<string, unknown>;
-    expect(taskJson.current_phase).toBeUndefined();
-    expect(taskJson.next_action).toBeUndefined();
-    // Sanity: other fields intact
-    expect(taskJson.status).toBe("in_progress");
-  });
-
   it("[workflow-v2] dispatch context sources do NOT contain update_current_phase function", () => {
-    const sources = [
-      getSharedHookScripts().find(
-        (hook) => hook.name === "inject-delegation-context.py",
-      )?.content,
-      getAllScripts().get("common/dispatch_context.py"),
-    ];
-    for (const source of sources) {
-      expect(source).toBeTruthy();
-      expect(source).not.toContain("def update_current_phase");
-      expect(source).not.toContain("update_current_phase(");
-      // AGENTS_NO_PHASE_UPDATE constant was only used by the removed function
-      expect(source).not.toContain("AGENTS_NO_PHASE_UPDATE");
-    }
+    expect(
+      getSharedHookScripts().find((hook) => hook.name === "inject-delegation-context.py"),
+    ).toBeUndefined();
+    const source = getAllScripts().get("common/dispatch_context.py");
+    expect(source).toBeTruthy();
+    expect(source).not.toContain("def update_current_phase");
+    expect(source).not.toContain("update_current_phase(");
+    // AGENTS_NO_PHASE_UPDATE constant was only used by the removed function
+    expect(source).not.toContain("AGENTS_NO_PHASE_UPDATE");
   });
 
   it("[issue-395] task.py list --json emits a stable machine-readable schema", () => {
@@ -7100,7 +7005,6 @@ describe("regression: hook templates honor the ARBOR_HOOKS kill switch", () => {
     const sharedHookTargets = [
       "session-start.py",
       "inject-workflow-state.py",
-      "inject-delegation-context.py",
       "guard-builtin-agent.py",
       "inject-shell-session-context.py",
     ];
@@ -7201,19 +7105,22 @@ describe("regression: sub-agent context injection fallback (0.5.3)", () => {
   const __dirnameFb = path.dirname(fileURLToPath(import.meta.url));
   const repoRootFb = path.resolve(__dirnameFb, "../../..");
 
-  it("workflow.md dispatch protocol requires the Active task header for every role", () => {
+  it("workflow.md dispatch header carries Active task / Role / Mode / Range / Dispatch", () => {
     const workflowPath = path.join(
       repoRootFb,
       "packages/cli/src/templates/arbor/workflow.md",
     );
     const wf = fs.readFileSync(workflowPath, "utf-8");
-    expect(wf).toContain("**Header protocol.**");
-    expect(wf).toContain("Active task: <absolute path of the task directory in the MAIN checkout>");
+    expect(wf).toContain("**Dispatch header.**");
     expect(wf).toContain(
-      "Role: explore | architect | implement | review | verify | fix | simplify",
+      "Active task: <absolute path of .arbor/tasks/<task> inside the task worktree>",
     );
-    expect(wf).toContain("`arbor-review-star`");
-    expect(wf).toContain("never through the built-in `Agent`/`Task` tool");
+    expect(wf).toContain(
+      "Role: explore | architect | test | implement | review | verify | fix | simplify",
+    );
+    expect(wf).toContain("Range: <base>..<head>");
+    expect(wf).toContain("Dispatch: d-NNN");
+    expect(wf).toContain("never the built-in Agent/Task tool");
   });
 });
 
