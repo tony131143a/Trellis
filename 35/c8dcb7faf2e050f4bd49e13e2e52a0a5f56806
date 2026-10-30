@@ -1,0 +1,45 @@
+packages/cli/src/templates/arbor/scripts/common/session_context.py
+  s_7aa5635238df04::t_486384b2b018ee 26,651-652,654
+packages/cli/src/templates/arbor/scripts/common/tasks.py
+  s_7aa5635238df04::t_a19f8e6632fbef 21,40-41,43-51,55-62,78-80,95
+packages/cli/src/templates/arbor/index.ts
+  s_9941d6e3cf8204::t_2a8525b2a42780 71,95,138
+packages/cli/src/templates/arbor/scripts/common/contract.py
+  s_9941d6e3cf8204::t_8724845b0afd45 22-23,28,30,106-251,257-305,331-420,435-466
+packages/cli/src/templates/arbor/scripts/common/dispatch_context.py
+  s_9941d6e3cf8204::t_50c849b5b35e4b 7-9,15-22,25,27,29-31,52-53,55,58-59,61-67,71,78,93-97,99-103,110,113-114,133-136,166-167,170,182-183,199-201,724,747,754,756-759,761-763,766-767,784,786,802,840-851,864-874,876-888,890-891,893-895,901-904,906,966-969,977-979,981,994-998,1018-1021
+packages/cli/test/scripts/context-injection-limits.integration.test.ts
+  s_9941d6e3cf8204::t_ec6027b26580ed 359
+packages/cli/test/scripts/dispatch-py.integration.test.ts
+  s_9941d6e3cf8204::t_5132a4cdcc5c8b 275,288,382,401,454,471,515
+packages/cli/test/scripts/inject-delegation-context.integration.test.ts
+  s_9941d6e3cf8204::t_9e418efbbe0196 152,299,310-311,409,416
+packages/cli/test/scripts/task-tier.integration.test.ts
+  s_9941d6e3cf8204::t_97491b8534e3ca 203-205,312,349
+packages/cli/test/scripts/v2-contract.integration.test.ts
+  s_9941d6e3cf8204::t_d00ddf575751f8 1-699
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "35c8dcb7faf2e050f4bd49e13e2e52a0a5f56806",
+  "prompts": {},
+  "sessions": {
+    "s_7aa5635238df04": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b75268bf-2901-4d3f-9ee8-83cd75def36f",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_9941d6e3cf8204": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-awave1-contract-258334908e09a08e",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
