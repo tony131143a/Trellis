@@ -1,0 +1,21 @@
+packages/cli/src/templates/arbor/index.ts
+  s_f5a35762a9935e::t_51cd7b5563f38a 83-86,161-162
+packages/cli/src/templates/arbor/scripts/common/driver/state.py
+  s_f5a35762a9935e::t_5e2c93d8a72858 22-24,170-172
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "23016c4a9b6c8b4bfcb92ca568fc25528694446a",
+  "prompts": {},
+  "sessions": {
+    "s_f5a35762a9935e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5eec63a6-1b3a-4083-ba18-e451eb5d3978",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
