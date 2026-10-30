@@ -149,7 +149,7 @@ describe.skipIf(!hasPython())("inject-delegation-context.py", () => {
     const task = out.updatedInput.task;
     expect(
       task.startsWith(
-        `Active task: ${taskDir}\nRole: implement\nTarget: pi\n\n${MARKER}\n# Arbor \`implement\` dispatch`,
+        `Active task: ${taskDir}\nRole: implement\n\n${MARKER}\n# Arbor \`implement\` dispatch`,
       ),
     ).toBe(true);
     expect(task).toContain("Your assistant instructions define your method");
@@ -296,7 +296,7 @@ describe.skipIf(!hasPython())("inject-delegation-context.py", () => {
     expect(task).toContain("PRD FOO CONTENT");
   });
 
-  it("passes Mode: candidates through and inlines the Diff: file", () => {
+  it("passes Mode: candidates through and ignores the deprecated Diff: file", () => {
     const diffDir = path.join(tmp, ".arbor", ".runtime", "dispatch", "diffs");
     fs.mkdirSync(diffDir, { recursive: true });
     const diff = path.join(diffDir, "r1.diff");
@@ -307,9 +307,8 @@ describe.skipIf(!hasPython())("inject-delegation-context.py", () => {
       }),
     );
     const task = out.updatedInput.task;
-    expect(task).toContain(`Mode: candidates\nDiff: ${diff}\n\n${MARKER}`);
-    expect(task).toContain(`=== Diff: ${diff} ===\n\`\`\`diff\n`);
-    expect(task).toContain("+DIFF LINE CONTENT");
+    expect(task).toContain(`Mode: candidates\n\n${MARKER}`);
+    expect(task).not.toContain("+DIFF LINE CONTENT");
     expect(task).toContain("## Mode\n\n`candidates`");
   });
 
@@ -407,14 +406,14 @@ describe.skipIf(!hasPython())("inject-delegation-context.py", () => {
     expect(noId.stderr).toContain("no id known for arbor-implement-codex");
   });
 
-  it("preserves Workspace and Target header lines verbatim", () => {
+  it("drops the deprecated Workspace and Target header lines", () => {
     const out = parse(
       runHook({
         task: `Active task: ${TASK_REL}\nRole: implement\nTarget: star\nWorkspace: /abs/repo-wt/foo-a\n\nGo.`,
       }),
     );
     expect(out.updatedInput.task).toContain(
-      `Active task: ${taskDir}\nRole: implement\nTarget: star\nWorkspace: /abs/repo-wt/foo-a\n\n${MARKER}`,
+      `Active task: ${taskDir}\nRole: implement\n\n${MARKER}`,
     );
   });
 

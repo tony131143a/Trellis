@@ -4,26 +4,31 @@
 Arbor dispatch context assembler.
 
 Single source of truth for the prompt a dispatched Arbor role (explore,
-architect, implement, review, verify, fix, simplify) receives. Both the PreToolUse hook on codeg
-``delegate_to_agent`` (``inject-delegation-context.py``) and the terminal
+architect, test, implement, review, verify, fix, simplify) receives. Both
+the PreToolUse hook on codeg ``delegate_to_agent``
+(``inject-delegation-context.py``) and the terminal
 fallback build the final task text through ``build_dispatch_prompt`` so the
 two paths cannot drift.
 
 Header protocol (written by the main agent at the top of the task text):
 
-    Active task: /abs/repo/.arbor/tasks/10-24-foo
-    Role: review               # one of ROLES
-    Mode: candidates           # review only: self-check | candidates | sweep
-    Diff: /abs/repo/.arbor/.runtime/dispatch/diffs/s0.diff   # optional
-    Target: star               # optional; recorded only
-    Workspace: /abs/repo-wt/foo-a   # optional; parallel variant
+    Active task: /abs/repo-wt/10-24-foo/.arbor/tasks/10-24-foo
+    Role: review               # one of PROMPT_ROLES
+    Mode: candidates           # review only: self-check | candidates | sweep | plan
+    Range: <base>..<head>      # optional; not for explore / architect
+    Dispatch: d-003            # optional; the id writers put in their commit trailer
+
+``Diff:``, ``Target:`` and ``Workspace:`` are still parsed (listed in
+``DispatchHeader.deprecated``) but no longer inlined or re-emitted.
 
 Context sources per role:
-- explore: spec directory overview; with a task, prd.md + research file list
+- explore: spec directory overview; with a task, contract.md + research file list
 - architect: implement.jsonl entries -> task artifacts -> research/*.md
-- implement: implement.jsonl entries -> prd.md -> design.md -> implement.md
+- test / implement: implement.jsonl entries -> contract.md -> design.md -> waves.md
 - review / verify / fix / simplify: check.jsonl entries -> the same task
-  artifacts -> the ``Diff:`` file
+  artifacts
+- every role given ``Range:``: ``git diff <range>`` run in the worktree that
+  holds the task directory
 
 The role's method, limits and report format live in its codeg assistant
 instructions (``.arbor/agents/<role>.md``); the dispatch prompt only carries
@@ -44,21 +49,33 @@ from typing import Any
 
 from .active_task import resolve_active_task
 from .config import get_context_injection_limits, get_dispatch_config, resolve_dispatch_target
+from .contract import CONTRACT_FILE, find_contract
+from .git import run_git
 from .paths import DIR_SPEC, DIR_WORKFLOW, get_tasks_dir, resolve_task_ref
+from .tasks import WAVES_FILE, find_artifact
 
 
+# Roles with a codeg assistant per target (dispatch.py codeg-setup, the
+# delegation hook). `test` is v2-only and has no assistant there.
 ROLES = ("explore", "architect", "implement", "review", "verify", "fix", "simplify")
-ROLES_REQUIRE_TASK = tuple(role for role in ROLES if role != "explore")
+# Every role a dispatch prompt can be built for.
+PROMPT_ROLES = (
+    "explore", "architect", "test", "implement", "review", "verify", "fix", "simplify",
+)
+ROLES_REQUIRE_TASK = tuple(role for role in PROMPT_ROLES if role != "explore")
+# Roles that take a ``Range:`` header (everything that writes or reads a diff).
+RANGE_ROLES = tuple(role for role in ROLES_REQUIRE_TASK if role != "architect")
 # Which task manifest feeds each task-bound role.
 ROLE_MANIFEST = {
     "architect": "implement",
+    "test": "implement",
     "implement": "implement",
     "review": "check",
     "verify": "check",
     "fix": "check",
     "simplify": "check",
 }
-REVIEW_MODES = ("self-check", "candidates", "sweep")
+REVIEW_MODES = ("self-check", "candidates", "sweep", "plan")
 DEFAULT_REVIEW_MODE = "self-check"
 REVIEW_MODE_NOTES = {
     "self-check": (
@@ -73,17 +90,28 @@ REVIEW_MODE_NOTES = {
         "the brief carries an already-verified list; report only defects that "
         "are not on it (up to 8), or an empty list."
     ),
+    "plan": (
+        "review the planning artifacts, not code: work backward from the goal "
+        "to what must be true, which criterion covers it, and whether it is "
+        "wired; report gaps as findings against contract.md / design.md."
+    ),
 }
-HEADER_KEYS = ("active task", "role", "mode", "diff", "target", "workspace")
+HEADER_KEYS = (
+    "active task", "role", "mode", "range", "dispatch", "diff", "target", "workspace",
+)
+# Parsed for compatibility with v1 dispatch texts, never used for inlining.
+DEPRECATED_HEADER_KEYS = {"diff": "Diff", "target": "Target", "workspace": "Workspace"}
 MARKER = "<!-- arbor-hook-injected -->"
 
 # Written by codeg setup; maps codeg assistant ids to Arbor roles.
 CODEG_ASSISTANTS_FILE = ".runtime/codeg-assistants.json"
 
 _HEADER_RE = re.compile(
-    r"^\s*(active task|role|mode|diff|target|workspace)\s*:\s*(.*?)\s*$",
+    r"^\s*(active task|role|mode|range|dispatch|diff|target|workspace)\s*:\s*(.*?)\s*$",
     re.IGNORECASE,
 )
+# ``<base>..<head>`` / ``<base>...<head>``; no leading dash, so never a git option.
+_RANGE_RE = re.compile(r"^[^\s-]\S*\.\.\S*$")
 
 
 # =============================================================================
@@ -102,6 +130,10 @@ class DispatchHeader:
     target: str | None
     workspace: str | None
     body: str
+    range: str | None = None
+    dispatch: str | None = None
+    deprecated: tuple[str, ...] = ()
+    """``Diff`` / ``Target`` / ``Workspace`` when present, in header order."""
 
 
 @dataclass(frozen=True)
@@ -131,8 +163,11 @@ def parse_dispatch_header(text: str) -> DispatchHeader:
     Scans leading non-empty lines matching ``Key: value`` (keys in
     HEADER_KEYS, case-insensitive) and stops at the first other line.
     Role and mode are lower-cased; the first word of ``Role:`` is the role.
+    Deprecated keys are still parsed into their fields and listed in
+    ``deprecated``.
     """
     values: dict[str, str] = {}
+    deprecated: list[str] = []
     lines = text.splitlines()
     index = 0
     while index < len(lines) and not lines[index].strip():
@@ -144,6 +179,8 @@ def parse_dispatch_header(text: str) -> DispatchHeader:
         key = match.group(1).lower()
         if key not in values:
             values[key] = match.group(2)
+            if key in DEPRECATED_HEADER_KEYS:
+                deprecated.append(DEPRECATED_HEADER_KEYS[key])
         index += 1
 
     body = "\n".join(lines[index:]).strip() if values else text.strip()
@@ -159,6 +196,9 @@ def parse_dispatch_header(text: str) -> DispatchHeader:
         target=values.get("target") or None,
         workspace=values.get("workspace") or None,
         body=body,
+        range=values.get("range") or None,
+        dispatch=values.get("dispatch") or None,
+        deprecated=tuple(deprecated),
     )
 
 
@@ -681,7 +721,7 @@ def _materialize_artifact(
     limits: dict[str, int],
     budget: _Budget,
 ) -> str | None:
-    """Read a task artifact (prd/design/implement.md), apply the per-artifact
+    """Read a task artifact (contract/design/waves.md), apply the per-artifact
     cap, then budget it."""
     data = _read_file_bytes(base_path, file_path)
     if data is None:
@@ -704,23 +744,27 @@ def _task_context(
     limits: dict[str, int],
     budget: _Budget,
 ) -> str:
-    """Manifest entries followed by prd.md / design.md / implement.md."""
+    """Manifest entries followed by contract.md / design.md / waves.md."""
     context_parts = []
 
     base_context = get_agent_context(repo_root, task_dir, manifest, limits, budget)
     if base_context:
         context_parts.append(base_context)
 
+    task_path = Path(repo_root) / task_dir
     artifacts = (
-        ("prd.md", "Requirements", "Requirements document"),
-        ("design.md", "Technical Design", "Technical design document"),
-        ("implement.md", "Execution Plan", "Execution plan document"),
+        (find_contract(task_path), CONTRACT_FILE, "Contract", "Acceptance contract"),
+        (find_artifact(task_path, "design.md"), "design.md", "Technical Design",
+         "Technical design document"),
+        (find_artifact(task_path, WAVES_FILE), WAVES_FILE, "Waves", "Execution plan document"),
     )
-    for filename, label, reason in artifacts:
+    for found, name, label, reason in artifacts:
+        if found is None:
+            continue
         block = _materialize_artifact(
             repo_root,
-            f"{task_dir}/{filename}",
-            f"{task_dir}/{filename} ({label})",
+            f"{task_dir}/{found.name}",
+            f"{task_dir}/{name} ({label})",
             reason,
             limits,
             budget,
@@ -737,9 +781,9 @@ def get_implement_context(repo_root: str, task_dir: str) -> str:
 
     Read order:
     1. All files in implement.jsonl (spec/research manifests)
-    2. prd.md (requirements)
+    2. contract.md (legacy prd.md)
     3. design.md if present (technical design)
-    4. implement.md if present (execution plan)
+    4. waves.md (legacy implement.md) if present (execution plan)
     """
     limits = _get_limits(repo_root)
     return _task_context(
@@ -755,7 +799,7 @@ def get_explore_context(
 ) -> str:
     """
     Context for the explore role: the spec directory overview, plus, with a
-    task, its prd.md and the names of research files already written.
+    task, its contract.md and the names of research files already written.
     """
     context_parts = []
 
@@ -793,16 +837,18 @@ To get structured package info, run: `python3 ./{DIR_WORKFLOW}/scripts/get_conte
             limits = _get_limits(repo_root)
         if budget is None:
             budget = _Budget(limits["max_total_bytes"])
-        block = _materialize_artifact(
-            repo_root,
-            f"{task_dir}/prd.md",
-            f"{task_dir}/prd.md (Requirements)",
-            "Requirements document",
-            limits,
-            budget,
-        )
-        if block:
-            context_parts.append(block)
+        contract = find_contract(Path(repo_root) / task_dir)
+        if contract is not None:
+            block = _materialize_artifact(
+                repo_root,
+                f"{task_dir}/{contract.name}",
+                f"{task_dir}/{CONTRACT_FILE} (Contract)",
+                "Acceptance contract",
+                limits,
+                budget,
+            )
+            if block:
+                context_parts.append(block)
         research_dir = Path(repo_root) / task_dir / "research"
         names = (
             sorted(f.name for f in research_dir.iterdir() if f.suffix == ".md")
@@ -815,25 +861,49 @@ To get structured package info, run: `python3 ./{DIR_WORKFLOW}/scripts/get_conte
     return "\n\n".join(context_parts)
 
 
-def _diff_block(
-    repo_root: str, diff_path: str, limits: dict[str, int], budget: _Budget
+def _task_worktree(task_dir: Path, fallback: Path) -> Path:
+    """The checkout holding ``<checkout>/.arbor/tasks/.../<task>``: the parent of
+    the nearest ``.arbor`` ancestor, else ``fallback``."""
+    for parent in task_dir.parents:
+        if parent.name == DIR_WORKFLOW:
+            return parent.parent
+    return fallback
+
+
+def _range_diff_block(
+    worktree: Path, range_spec: str, limits: dict[str, int], budget: _Budget
 ) -> str | None:
-    """Inline the file named by the ``Diff:`` header (per-artifact cap)."""
-    data = _read_file_bytes(repo_root, diff_path)
-    if data is None:
+    """Inline ``git diff <range>`` from ``worktree`` (per-artifact cap).
+
+    ``.arbor/`` is left out: task artifacts are inlined separately, and the
+    committed ``briefs/`` would otherwise carry earlier diffs into this one.
+    """
+    command = f"git diff {range_spec}"
+    rc, out, err = run_git(
+        ["diff", "--no-color", "--no-ext-diff", range_spec,
+         "--", ".", f":(exclude){DIR_WORKFLOW}"],
+        cwd=worktree,
+    )
+    if rc != 0:
+        reason = (err.strip().splitlines() or [f"exit {rc}"])[0]
         return (
-            f"[Arbor: diff not inlined — {diff_path} is missing or outside the "
-            "repository; read it yourself or compute the scope as your "
-            "instructions describe]"
+            f"[Arbor: diff not inlined — `{command}` failed in {worktree}: {reason}; "
+            "compute the scope yourself]"
         )
+    if not out.strip():
+        return f"[Arbor: `{command}` is empty in {worktree}]"
+    data = out.encode("utf-8")
     size = len(data)
     cap = limits["max_artifact_bytes"]
     truncated_bytes = truncate_utf8(data, cap)
     content = truncated_bytes.decode("utf-8", errors="replace")
     if len(truncated_bytes) < size:
-        content += _truncate_notice(diff_path, cap)
+        content += (
+            f"\n[Arbor: truncated at {cap} bytes — run `{command}` in {worktree} "
+            "for the full diff]"
+        )
     return _budgeted_block(
-        budget, f"Diff: {diff_path}", diff_path, f"```diff\n{content}\n```", "Review scope", size
+        budget, command, command, f"```diff\n{content}\n```", "Review scope", size
     )
 
 
@@ -893,12 +963,10 @@ def _header_block(req: DispatchRequest, mode: str | None) -> str:
     lines.append(f"Role: {req.role}")
     if mode:
         lines.append(f"Mode: {mode}")
-    if req.header.diff:
-        lines.append(f"Diff: {req.header.diff}")
-    if req.header.target:
-        lines.append(f"Target: {req.header.target}")
-    if req.header.workspace:
-        lines.append(f"Workspace: {req.header.workspace}")
+    if req.header.range:
+        lines.append(f"Range: {req.header.range}")
+    if req.header.dispatch:
+        lines.append(f"Dispatch: {req.header.dispatch}")
     return "\n".join(lines)
 
 
@@ -906,11 +974,11 @@ def build_dispatch_prompt(req: DispatchRequest) -> DispatchPrompt:
     """Assemble the final task text for one dispatched role.
 
     text = normalised header block (``Active task:`` always the absolute task
-    directory; ``Mode:`` resolved for review; Diff / Target / Workspace kept
-    as given) + blank line + role template (starts with MARKER, carries the
-    injected context and ``## Your Task`` = header body).
+    directory; ``Mode:`` resolved for review; Range / Dispatch kept as given;
+    deprecated keys dropped) + blank line + role template (starts with MARKER,
+    carries the injected context and ``## Your Task`` = header body).
     """
-    if req.role not in ROLES:
+    if req.role not in PROMPT_ROLES:
         raise ValueError(f"unknown dispatch role: {req.role!r}")
     if req.role in ROLES_REQUIRE_TASK and req.task_dir is None:
         raise ValueError(f"role {req.role!r} requires a task directory")
@@ -923,8 +991,11 @@ def build_dispatch_prompt(req: DispatchRequest) -> DispatchPrompt:
             )
     elif mode:
         raise ValueError(f"Mode: only applies to role 'review', not {req.role!r}")
-    if req.header.diff and req.role not in ("review", "verify", "fix", "simplify"):
-        raise ValueError(f"Diff: does not apply to role {req.role!r}")
+    range_spec = req.header.range
+    if range_spec and req.role not in RANGE_ROLES:
+        raise ValueError(f"Range: does not apply to role {req.role!r}")
+    if range_spec and not _RANGE_RE.match(range_spec):
+        raise ValueError(f"Range: expected <base>..<head>, got {range_spec!r}")
 
     repo_root = Path(req.repo_root)
     root_str = str(repo_root)
@@ -944,8 +1015,10 @@ def build_dispatch_prompt(req: DispatchRequest) -> DispatchPrompt:
             extra = _materialize_directory(
                 root_str, f"{task_rel}/research", "Task research", limits, budget
             )
-        if req.header.diff:
-            diff_block = _diff_block(root_str, req.header.diff, limits, budget)
+        if range_spec:
+            assert req.task_dir is not None
+            worktree = _task_worktree(Path(req.task_dir), repo_root)
+            diff_block = _range_diff_block(worktree, range_spec, limits, budget)
             if diff_block:
                 extra.append(diff_block)
         if extra:

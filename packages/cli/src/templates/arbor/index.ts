@@ -68,6 +68,7 @@ export const commonSpecTrace = readTemplate("scripts/common/spec_trace.py");
 export const commonDispatchContext = readTemplate(
   "scripts/common/dispatch_context.py",
 );
+export const commonContract = readTemplate("scripts/common/contract.py");
 
 // Python scripts - main
 export const getDeveloperScript = readTemplate("scripts/get_developer.py");
@@ -91,6 +92,7 @@ export const gitattributesTemplate = readTemplate("gitattributes.txt");
 export const AGENT_ROLES = [
   "explore",
   "architect",
+  "test",
   "implement",
   "review",
   "verify",
@@ -133,6 +135,7 @@ export function getAllScripts(): Map<string, string> {
   scripts.set("common/spec_lint.py", commonSpecLint);
   scripts.set("common/spec_trace.py", commonSpecTrace);
   scripts.set("common/dispatch_context.py", commonDispatchContext);
+  scripts.set("common/contract.py", commonContract);
 
   // Main
   scripts.set("get_developer.py", getDeveloperScript);

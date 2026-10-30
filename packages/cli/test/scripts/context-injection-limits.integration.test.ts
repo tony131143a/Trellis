@@ -356,7 +356,7 @@ print("all-valid")
         );
         expect(out).toContain("=== small.md ===\nsmall spec content");
         expect(out).toContain(
-          `=== ${relTask}/prd.md (Requirements) ===\nprd body`,
+          `=== ${relTask}/contract.md (Contract) ===\nprd body`,
         );
         expect(out).not.toContain("[Arbor: truncated");
         expect(out).not.toContain("[Arbor: not inlined");
