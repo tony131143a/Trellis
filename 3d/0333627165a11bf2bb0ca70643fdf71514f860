@@ -1,0 +1,31 @@
+.arbor/tasks/10-30-claude-codex-codeg/briefs/d-001.md
+  s_d6f132b76ff5ad::t_9e3f739a7f7c48 1-10
+.arbor/tasks/10-30-claude-codex-codeg/check.jsonl
+  s_d6f132b76ff5ad::t_00c8c0a0efbc60 1-7
+.arbor/tasks/10-30-claude-codex-codeg/contract.md
+  s_d6f132b76ff5ad::t_8ae71a7544ef88 1-47
+.arbor/tasks/10-30-claude-codex-codeg/design.md
+  s_d6f132b76ff5ad::t_c664d6c5dd36d1 1-35
+.arbor/tasks/10-30-claude-codex-codeg/implement.jsonl
+  s_d6f132b76ff5ad::t_0a9e04322a255b 1-7
+.arbor/tasks/10-30-claude-codex-codeg/reports/d-001.md
+  s_d6f132b76ff5ad::t_83949f43ab1f32 1-46
+.arbor/tasks/10-30-claude-codex-codeg/task.json
+  s_d6f132b76ff5ad::t_b6dbb20e4fdfc8 1-54
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "3d0333627165a11bf2bb0ca70643fdf71514f860",
+  "prompts": {},
+  "sessions": {
+    "s_d6f132b76ff5ad": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18d44-0b4a-70d0-8420-ef548d7a2743",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Mr tang <mytortoise18@sina.com~>"
+    }
+  }
+}
