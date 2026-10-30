@@ -10,7 +10,7 @@ This directory is for local AI working in a user project where Arbor was install
 | "Change task creation, status, archive, or hooks" | `change-task-lifecycle.md` |
 | "AI did not read context / change injected content" | `change-context-loading.md` |
 | "A hook is not behaving as expected" | `change-hooks.md` |
-| "Change a role's behavior or dispatch (explore / architect / implement / review / verify / fix / simplify)" | `change-agents.md`, `../local-architecture/dispatch.md` |
+| "Change a role's behavior or how roles run (explore / architect / test / implement / review / verify / fix / simplify)" | `change-agents.md`, `../local-architecture/dispatch.md` |
 | "Add a skill or command" | `change-skills-or-commands.md` |
 | "Adjust the project spec structure" | `change-spec-structure.md` |
 | "Add team conventions and local notes" | `add-project-local-conventions.md` |

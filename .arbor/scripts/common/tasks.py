@@ -18,6 +18,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+from .contract import CONTRACT_FILE, LEGACY_CONTRACT_FILE
 from .io import describe_json_read_failure, read_json_checked
 from .paths import FILE_TASK_JSON
 from .types import TaskInfo
@@ -36,11 +37,27 @@ from .types import TaskInfo
 
 TIERS: tuple[str, ...] = ("light", "standard", "full")
 
+WAVES_FILE = "waves.md"
+
 TIER_ARTIFACTS: dict[str, tuple[str, ...]] = {
-    "light": ("prd.md",),
-    "standard": ("prd.md", "design.md"),
-    "full": ("prd.md", "design.md", "implement.md"),
+    "light": (CONTRACT_FILE,),
+    "standard": (CONTRACT_FILE, "design.md"),
+    "full": (CONTRACT_FILE, "design.md", WAVES_FILE),
 }
+
+# v1 names still accepted for a planning artifact.
+LEGACY_ARTIFACTS: dict[str, str] = {
+    CONTRACT_FILE: LEGACY_CONTRACT_FILE,
+    WAVES_FILE: "implement.md",
+}
+
+
+def find_artifact(task_dir: Path, name: str) -> Path | None:
+    """``task_dir/name``, else its legacy v1 file, else None."""
+    for candidate in (name, LEGACY_ARTIFACTS.get(name)):
+        if candidate and (task_dir / candidate).is_file():
+            return task_dir / candidate
+    return None
 
 
 def explicit_tier(task_data: Any) -> str | None:
@@ -58,8 +75,9 @@ def explicit_tier(task_data: Any) -> str | None:
 
 
 def infer_tier(task_dir: Path) -> str:
-    """Tier implied by the artifacts on disk: implement.md → full, design.md → standard, else light."""
-    if (task_dir / "implement.md").is_file():
+    """Tier implied by the artifacts on disk: waves.md (or legacy implement.md) → full,
+    design.md → standard, else light."""
+    if find_artifact(task_dir, WAVES_FILE):
         return "full"
     if (task_dir / "design.md").is_file():
         return "standard"
@@ -74,7 +92,7 @@ def resolve_tier(task_dir: Path, task_data: Any) -> str:
 def missing_tier_artifacts(task_dir: Path, tier: str) -> list[str]:
     """Planning artifacts the tier requires that do not exist yet."""
     required = TIER_ARTIFACTS.get(tier, TIER_ARTIFACTS["light"])
-    return [name for name in required if not (task_dir / name).is_file()]
+    return [name for name in required if find_artifact(task_dir, name) is None]
 
 
 def load_task(task_dir: Path) -> TaskInfo | None:

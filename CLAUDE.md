@@ -67,23 +67,24 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 <!-- ARBOR:START -->
 # Arbor Instructions (main agent)
 
-This project is managed by Arbor. You are the **main agent**: plan, curate context, dispatch, verify, commit.
+This project is managed by Arbor. You are the **main agent**: propose the tier, write the contract, curate context, write briefs, make the judgment calls the driver asks for.
 
-- Follow `.arbor/workflow.md` (Plan, Execute, Polish, Finish). Phase steps marked `[required]` are mandatory.
+- Follow `.arbor/workflow.md` (Plan, Drive, Finish). Phase steps marked `[required]` are mandatory.
 - Guidelines live in `.arbor/spec/`; tasks in `.arbor/tasks/`; journals in `.arbor/workspace/`.
-- The explore / architect / implement / review / verify / fix / simplify roles run as **codeg assistants on other models**, never in this session and never through the built-in `Agent`/`Task` tool, inside an Arbor task; the no-task quick path (at most 2 files, cause known, no design choice) is the only exception, there you edit directly.
-  - If `mcp__codeg-mcp__delegate_to_agent` is in your tool list: call it with the `assistant_id` for the role and target shown in the `<dispatch>` session context (or from `python3 ./.arbor/scripts/dispatch.py resolve --role <role>`), `working_dir` = repo root (or the worktree for parallel work), and `task` = the header block below followed by a self-contained brief. Collect results with `get_delegation_status(task_ids, wait_ms=60000)`.
-  - Otherwise: `python3 ./.arbor/scripts/dispatch.py run --role <role> [--mode M] [--diff F] [--target star|pi|codex] --wait` with the brief on stdin.
-- Tiers: quick (no task) / light / standard / full decide which roles take part and how long the review chain is; stored in `task.json.meta.tier` (`task.py create --tier`), inferred from artifacts when absent; see the Tiers table in `.arbor/workflow.md`.
-- Every dispatch `task` MUST start with:
+- Simple changes (at most 2 files, cause known, no design choice) do not use Arbor: edit directly. Anything larger: `/arbor:workflow <request>` → propose a tier (light / standard / full) with a one-line reason → the user agrees → `task.py create --tier <t>`.
+- Contract first: explore → one question list → `contract.md` (+ `design.md`; full: 3 architect perspectives → `waves.md`) → `task.py seed-context` → structural validation → standard / full: one review `Mode: plan` → the user approves the contract → `task.py start <task>` (freezes it, creates the task worktree and branch). Before start, explore / architect / review run as `arbor.py run --role <role> [--mode plan]` once the brief sits at the `brief_path` from `arbor.py next --json`: in the main checkout, read-only except `research/`, no commit.
+- Then loop on `python3 ./.arbor/scripts/arbor.py next`: `needs=brief` → write the brief at the path it names for the role it names, then `arbor.py run`; `needs=decide` → `arbor.py decide <choice> --reason "…"`; `needs=human` → ask the user (contract re-approval, PLAUSIBLE findings, merge); `done` → finish. The driver owns state, counters, the gate and validation.
+- Only the driver runs roles (explore / architect / test / implement / review / verify / fix / simplify), through the executor configured in `.arbor/config.yaml`. Never perform a role in this session and never use the built-in `Agent`/`Task` tool for one.
+- The driver starts every role prompt with this header; you never type it:
   ```
-  Active task: <absolute path of the task directory in this checkout>
-  Role: explore | architect | implement | review | verify | fix | simplify
+  Active task: <absolute path of .arbor/tasks/<task> inside the task worktree>
+  Role: explore | architect | test | implement | review | verify | fix | simplify
+  Mode: self-check | candidates | sweep | plan   (review only)
+  Range: <base>..<head>
+  Dispatch: d-NNN
   ```
-  Optional header lines: `Mode: self-check|candidates|sweep` (review only), `Diff: <absolute .diff path>` (review/verify/fix/simplify; make one with `dispatch.py snapshot` / `dispatch.py diff`), `Target: star|pi|codex`, `Workspace: <worktree>`. A project hook inlines the role's manifest (`implement.jsonl` for architect/implement, `check.jsonl` for review/verify/fix/simplify), `prd.md`/`design.md`/`implement.md`, and the `Diff:` file for you.
-- Run the whole workflow on one target with `/arbor:workflow <target>` (`star` | `pi` | `codex`); the choice is per session, so parallel sessions on this checkout can use different targets. Override a single call with `Target: <t>` in the header or `--target`.
-- Only you commit (Phase 3.4). Sub-agents never commit, push, merge, or run `task.py start/current`.
-- If your own first prompt starts with `Active task:` + `Role:`, you are a dispatched sub-agent: do that role directly and ignore the dispatch rules above.
+- Writers commit on the task branch as `<role>(<task>): <summary>` with trailer `Arbor-Dispatch: d-NNN`; nobody pushes; the user merges the PR with `--no-ff`.
+- If your own first prompt starts with `Active task:` + `Role:`, you are a dispatched sub-agent: do that role directly and ignore the rules above.
 
 Managed by Arbor. Edits outside this block are preserved; edits inside may be overwritten by `arbor update`.
 <!-- ARBOR:END -->

@@ -20,9 +20,9 @@ git status
 
 Read the current task artifacts in order:
 
-- `prd.md`
+- `contract.md` (older tasks: `prd.md`)
 - `design.md` if present
-- `implement.md` if present
+- `waves.md` if present
 
 ```bash
 python3 ./.arbor/scripts/get_context.py --mode packages

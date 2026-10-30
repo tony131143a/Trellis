@@ -31,6 +31,7 @@ from .config import (
     resolve_package,
     validate_package,
 )
+from .contract import CONTRACT_FILE, default_contract_content, find_contract
 from .git import (
     INDEX_LOCK_RETRY_ATTEMPTS,
     branch_exists_locally,
@@ -258,33 +259,6 @@ def _parse_meta_pairs(pairs: list[str] | None) -> dict[str, str] | None:
             return None
         meta[key] = value
     return meta
-
-
-def _default_prd_content(title: str, description: str | None = None) -> str:
-    """Return the default PRD skeleton created with every task."""
-    goal = (description or "").strip() or "TBD."
-    heading = title.strip() or "Untitled task"
-    return f"""# {heading}
-
-## Goal
-
-{goal}
-
-## Requirements
-
-- TBD
-
-## Acceptance Criteria
-
-- [ ] TBD
-
-## Notes
-
-- Keep `prd.md` focused on requirements, constraints, and acceptance criteria.
-- Tier light: `prd.md` is the only planning artifact.
-- Tier standard: also add `design.md` (technical design) before `task.py start`.
-- Tier full: also add `design.md` and `implement.md` (execution plan) before `task.py start`.
-"""
 
 
 # =============================================================================
@@ -561,15 +535,15 @@ def cmd_create(args: argparse.Namespace) -> int:
                 )
         return 1
 
-    prd_path = task_dir / "prd.md"
-    if not prd_path.exists():
-        prd_path.write_text(
-            _default_prd_content(args.title, description),
+    contract_path = task_dir / CONTRACT_FILE
+    if not contract_path.exists() and find_contract(task_dir) is None:
+        contract_path.write_text(
+            default_contract_content(args.title, description),
             encoding="utf-8",
         )
 
-    # Create empty implement.jsonl / check.jsonl. Every Arbor project
-    # dispatches its roles through codeg, and the dispatch context
+    # Create empty implement.jsonl / check.jsonl. The driver dispatches every
+    # role through the configured executor, and the dispatch context
     # assembler reads these manifests. They stay empty until the agent curates
     # real entries during planning — a placeholder row would read as
     # unresolved scaffolding to `task.py validate` and to PR preflight, so the
@@ -672,7 +646,10 @@ def cmd_create(args: argparse.Namespace) -> int:
     print(colored(f"Created task: {dir_name}", Colors.GREEN), file=sys.stderr)
     print("", file=sys.stderr)
     print(colored("Next steps:", Colors.BLUE), file=sys.stderr)
-    print("  - Fill prd.md with requirements and acceptance criteria", file=sys.stderr)
+    print(
+        "  - Fill contract.md: acceptance criteria, verification map, interface pins",
+        file=sys.stderr,
+    )
     tier_label = (
         f"{meta['tier']} (meta.tier)"
         if "tier" in meta
@@ -680,8 +657,8 @@ def cmd_create(args: argparse.Namespace) -> int:
     )
     print(f"  - Tier: {tier_label}", file=sys.stderr)
     print(
-        "      light = prd.md; standard = prd.md + design.md; "
-        "full = prd.md + design.md + implement.md (task.py start checks them)",
+        "      light = contract.md; standard = contract.md + design.md; "
+        "full = contract.md + design.md + waves.md (task.py start checks them)",
         file=sys.stderr,
     )
     print(
@@ -1262,6 +1239,54 @@ def _validate_branch_metadata(
     return True
 
 
+def _worktree_holding_task(task_name: str, repo_root: Path) -> Path | None:
+    """Root of the task worktree that holds a started task, or None.
+
+    `task.py start` moves the task dir into its own worktree, so before the
+    task branch is merged the main checkout has no copy. Only consulted when
+    the main checkout has no match: an absolute path inside a registered
+    worktree's tasks dir, or a dir name present in one.
+    """
+    from .worktree import list_worktrees
+
+    root = repo_root.resolve()
+    candidate = Path(task_name)
+    resolved = candidate
+    if candidate.is_absolute():
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            return None
+        if resolved == root or root in resolved.parents:
+            return None
+    elif (get_tasks_dir(repo_root) / task_name).is_dir() or "/" in task_name:
+        return None
+
+    for worktree in list_worktrees(repo_root):
+        if worktree == root:
+            continue
+        tasks_real = get_tasks_dir(worktree).resolve()
+        if candidate.is_absolute():
+            if tasks_real in resolved.parents:
+                return worktree
+        elif (tasks_real / task_name).is_dir():
+            return worktree
+    return None
+
+
+def _clear_worktree_pointers(data: dict, dir_name: str, main_root: Path) -> None:
+    """Drop session pointers at the worktree copy of a task (recorded in
+    `worktree_path`), which outlives an archive of the merged copy."""
+    worktree_path = data.get("worktree_path")
+    if not isinstance(worktree_path, str) or not worktree_path.strip():
+        return
+    from .active_task import clear_task_from_sessions
+
+    clear_task_from_sessions(
+        str(get_tasks_dir(Path(worktree_path)) / dir_name), main_root
+    )
+
+
 def cmd_archive(args: argparse.Namespace) -> int:
     """Archive completed task."""
     repo_root = get_repo_root()
@@ -1270,6 +1295,14 @@ def cmd_archive(args: argparse.Namespace) -> int:
     if not task_name:
         print(colored("Error: Task name is required", Colors.RED), file=sys.stderr)
         return 1
+
+    # Session pointers live in the checkout the command runs from; the task
+    # itself may live in its worktree, in which case archive runs there (the
+    # move and its commit land on the task branch).
+    main_root = repo_root
+    holding = _worktree_holding_task(task_name, repo_root)
+    if holding is not None:
+        repo_root = holding
 
     tasks_dir = get_tasks_dir(repo_root)
 
@@ -1327,8 +1360,10 @@ def cmd_archive(args: argparse.Namespace) -> int:
     # Names of child task dirs whose task.json gets modified below; passed
     # into safe_archive_paths_to_add so they're staged in this commit.
     modified_children: list[str] = []
+    task_data_for_pointers: dict | None = None
     if task_json_path.is_file():
         data, read_reason = read_json_checked(task_json_path)
+        task_data_for_pointers = data
         if data is None:
             # Archiving is still the right outcome for a task whose task.json
             # is broken — but say so, or the missing "completed" status looks
@@ -1444,7 +1479,9 @@ def cmd_archive(args: argparse.Namespace) -> int:
 
     # Clear any session that still points at this task before the path moves.
     from .active_task import clear_task_from_sessions
-    clear_task_from_sessions(str(task_dir), repo_root)
+    clear_task_from_sessions(str(task_dir), main_root)
+    if task_data_for_pointers is not None:
+        _clear_worktree_pointers(task_data_for_pointers, dir_name, main_root)
 
     # Archive
     result = archive_task_complete(task_dir, repo_root)

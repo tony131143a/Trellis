@@ -9,7 +9,7 @@ Usage:
     python3 task.py seed-context <dir> [--package <pkg> ...]  # Seed both jsonl files (spec indexes, guides, research)
     python3 task.py validate <dir>              # Validate jsonl files
     python3 task.py list-context <dir>          # List jsonl entries
-    python3 task.py start <dir>                 # Set active task, record current branch (planning: checks the tier's files)
+    python3 task.py start <dir> [--no-worktree] [--force-move]  # Approve contract: worktree + branch arbor/<dir>, set active task
     python3 task.py current [--source] [--json] # Show active task
     python3 task.py finish                      # Clear active task
     python3 task.py set-branch <dir> <branch>   # Set git branch
@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import sys
 from pathlib import Path
 
@@ -45,16 +46,20 @@ from common.paths import (
 )
 from common.active_task import (
     clear_active_task,
+    in_registered_worktree,
     resolve_active_task,
     resolve_context_key,
     set_active_task,
 )
-from common.git import current_branch_name
+from common.arbor_config import get_worktree_config, read_arbor_config
+from common.contract import contract_hash, find_contract
+from common.git import current_branch_name, run_git, run_git_retry_index_lock
 from common.io import (
     describe_json_read_failure,
     read_json_checked,
     write_json,
 )
+from common.safe_commit import print_gitignore_warning, safe_git_add
 from common.task_utils import resolve_task_dir, run_task_hooks
 from common.tasks import (
     TIERS,
@@ -84,6 +89,13 @@ from common.task_context import (
     cmd_validate,
     cmd_list_context,
     curated_entry_count,
+)
+from common.worktree import (
+    TaskWorktree,
+    WorktreeError,
+    create_task_worktree,
+    main_checkout,
+    run_setup,
 )
 
 
@@ -214,7 +226,7 @@ def _tier_gate(task_dir: Path, task_input: str) -> bool:
             Colors.RED,
         ))
         print(
-            f"Either: {set_meta} tier full (and add design.md + implement.md with waves), "
+            f"Either: {set_meta} tier full (and add design.md + waves.md), "
             f"or: {set_meta} execution serial"
         )
         return False
@@ -222,14 +234,206 @@ def _tier_gate(task_dir: Path, task_input: str) -> bool:
     return True
 
 
+NEW_COUNTERS = {"gate": 0, "review": 0, "polish": 0, "no_progress": 0}
+
+
+def _started_task_in_worktree(task_input: str, repo_root: Path) -> Path | None:
+    """An absolute task dir inside a registered worktree of this repo (a task
+    already started there), or None. Re-starting it only re-points the
+    session; the worktree, branch and task.json are left alone."""
+    candidate = Path(task_input)
+    if not candidate.is_absolute():
+        return None
+    try:
+        resolved = candidate.resolve()
+        root = repo_root.resolve()
+    except OSError:
+        return None
+    if resolved == root or root in resolved.parents:
+        return None
+    if not (resolved / FILE_TASK_JSON).is_file():
+        return None
+    if resolved.parent.name != DIR_TASKS or resolved.parent.parent.name != DIR_WORKFLOW:
+        return None
+    return resolved if in_registered_worktree(resolved, repo_root) else None
+
+
+def _point_session_at(task_dir: Path, repo_root: Path) -> int:
+    """Set the session pointer to an absolute task dir.
+
+    Returns 1 only when a session identity exists and the write failed; no
+    identity is the usual degraded mode and not an error.
+    """
+    if not resolve_context_key():
+        print(colored(
+            "ℹ Session identity not available; active-task pointer not persisted "
+            "this session (degraded mode). AI continues based on conversation context.",
+            Colors.YELLOW,
+        ))
+        return 0
+    active = set_active_task(str(task_dir), repo_root)
+    if not active:
+        print(colored("Error: Failed to set current task", Colors.RED))
+        return 1
+    print(colored(f"✓ Current task set to: {active.task_path}", Colors.GREEN))
+    print(f"Source: {active.source}")
+    return 0
+
+
+def _rollback_start(
+    main: Path,
+    wt: TaskWorktree,
+    moved: tuple[Path, Path] | None,
+    original_json: bytes | None,
+) -> None:
+    """Undo a failed worktree start: the task dir goes back where it was, with
+    its original task.json, and the fresh worktree and branch are removed."""
+    if moved is not None:
+        source, dest = moved
+        if dest.is_dir():
+            if original_json is not None:
+                (dest / FILE_TASK_JSON).write_bytes(original_json)
+            shutil.move(str(dest), str(source))
+    # Forced: the worktree is the one this command just made, and setup output
+    # or a half-staged commit must not keep it alive.
+    rc, _, err = run_git(["worktree", "remove", "--force", str(wt.path)], cwd=main)
+    if rc == 0:
+        rc, _, err = run_git(["branch", "-D", wt.branch], cwd=main)
+    if rc != 0:
+        print(colored(f"Warning: cleanup incomplete: {err.strip()}", Colors.YELLOW), file=sys.stderr)
+        print(f"  git worktree remove --force {wt.path}", file=sys.stderr)
+        print(f"  git branch -D {wt.branch}", file=sys.stderr)
+
+
+def _start_in_worktree(args: argparse.Namespace, task_dir: Path, repo_root: Path) -> int:
+    """v2 start: freeze the contract and move the task into its own worktree.
+
+    Creates branch ``arbor/<task>`` + its worktree from HEAD, runs
+    ``worktree.setup``, moves the (untracked) task dir into the worktree,
+    writes the BUILD-state fields and commits the task dir there as
+    ``contract(<task>): approve contract``. Any failure rolls all of it back.
+    """
+    name = task_dir.name
+    task_rel = f"{DIR_WORKFLOW}/{DIR_TASKS}/{name}"
+    main = main_checkout(repo_root)
+
+    if task_dir.parent.resolve() != get_tasks_dir(repo_root).resolve():
+        print(colored(
+            f"Error: only a task directly under {DIR_WORKFLOW}/{DIR_TASKS}/ can be "
+            "started in a worktree",
+            Colors.RED,
+        ))
+        return 1
+
+    task_json_path = task_dir / FILE_TASK_JSON
+    data, reason = read_json_checked(task_json_path)
+    if data is None:
+        problem, hint = describe_json_read_failure(task_json_path, reason)
+        print(colored(f"Error: {problem}", Colors.RED))
+        print(hint)
+        return 1
+    original_json = task_json_path.read_bytes()
+
+    rc, tracked, _ = run_git(["ls-files", "--", task_rel], cwd=repo_root)
+    tracked_files = [line for line in tracked.splitlines() if line.strip()] if rc == 0 else []
+    if tracked_files and not getattr(args, "force_move", False):
+        print(colored(
+            f"Error: {len(tracked_files)} file(s) under {task_rel} are tracked in this "
+            "checkout; start moves the task dir into its worktree",
+            Colors.RED,
+        ))
+        print("  The task branch would then carry it twice (committed here, moved there).")
+        print("  Untrack it first (git rm -r --cached), or re-run start with --force-move")
+        return 1
+
+    config = read_arbor_config(main)
+    try:
+        wt = create_task_worktree(repo_root, task_dir, config)
+    except WorktreeError as e:
+        print(colored(f"Error: {e}", Colors.RED))
+        return 1
+    print(colored(f"✓ Worktree: {wt.path} (branch {wt.branch}, base {wt.base_sha[:12]})", Colors.GREEN))
+
+    if run_setup(wt.path, get_worktree_config(config).get("setup")) != 0:
+        print(colored("Error: worktree.setup failed; start rolled back", Colors.RED))
+        _rollback_start(main, wt, None, None)
+        return 1
+
+    dest = wt.path / DIR_WORKFLOW / DIR_TASKS / name
+    if dest.exists():
+        # Only with --force-move: the tracked copy came along with the checkout;
+        # the working copy from this checkout replaces it.
+        shutil.rmtree(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(task_dir), str(dest))
+    moved = (task_dir, dest)
+
+    contract_path = find_contract(dest)
+    data.update({
+        "status": "in_progress",
+        "state": "BUILD",
+        "wave": 1,
+        "base": wt.base_sha,
+        "branch": wt.branch,
+        "worktree_path": str(wt.path),
+        "contract_hash": contract_hash(contract_path) if contract_path else None,
+        "counters": dict(NEW_COUNTERS),
+        "dispatches": data.get("dispatches") or [],  # CONTRACT-phase dispatches stay
+    })
+    if not data.get("base_branch"):
+        base_branch = current_branch_name(repo_root)
+        if base_branch:
+            data["base_branch"] = base_branch
+    if not write_json(dest / FILE_TASK_JSON, data):
+        print(colored(f"Error: Failed to write {dest / FILE_TASK_JSON}; start rolled back", Colors.RED))
+        _rollback_start(main, wt, moved, original_json)
+        return 1
+
+    commit_msg = f"contract({name}): approve contract"
+    ok, _, err = safe_git_add([task_rel], wt.path)
+    if not ok:
+        if err and "ignored by" in err.lower():
+            print_gitignore_warning([task_rel])
+        print(colored(f"Error: git add failed: {err.strip()}; start rolled back", Colors.RED))
+        _rollback_start(main, wt, moved, original_json)
+        return 1
+    rc, _, err = run_git_retry_index_lock(
+        ["commit", "-q", "-m", commit_msg, "--", task_rel], cwd=wt.path
+    )
+    if rc != 0:
+        print(colored(f"Error: git commit failed: {err.strip()}; start rolled back", Colors.RED))
+        _rollback_start(main, wt, moved, original_json)
+        return 1
+
+    print(colored(f"✓ Moved task to: {dest}", Colors.GREEN))
+    print(colored(f"✓ Committed on {wt.branch}: {commit_msg}", Colors.GREEN))
+    print(colored("✓ Status: in_progress, state BUILD, wave 1", Colors.GREEN))
+    if tracked_files:
+        print(colored(
+            f"Note: {task_rel} was tracked here; this checkout now shows it as "
+            "deleted. Commit that removal when convenient.",
+            Colors.YELLOW,
+        ))
+
+    rc = _point_session_at(dest, repo_root)
+    run_task_hooks("after_start", dest / FILE_TASK_JSON, repo_root)
+    return rc
+
+
 def cmd_start(args: argparse.Namespace) -> int:
-    """Set active task."""
+    """Set active task (v2: in its own worktree, unless --no-worktree)."""
     repo_root = get_repo_root()
     task_input = args.dir
+    use_worktree = not getattr(args, "no_worktree", False)
 
     if not task_input:
         print(colored("Error: task directory or name required", Colors.RED))
         return 1
+
+    if use_worktree:
+        started = _started_task_in_worktree(task_input, repo_root)
+        if started is not None:
+            return _point_session_at(started, repo_root)
 
     # Resolve task directory (supports task name, relative path, or absolute path)
     full_path = resolve_task_dir(task_input, repo_root)
@@ -243,6 +447,13 @@ def cmd_start(args: argparse.Namespace) -> int:
     if not full_path.is_dir():
         print(colored(f"Error: Task not found: {task_input}", Colors.RED))
         print("Hint: Use task name (e.g., 'my-task') or full path (e.g., '.arbor/tasks/01-31-my-task')")
+        return 1
+
+    # The contract is what start approves and freezes; without one there is
+    # nothing to build against.
+    if use_worktree and find_contract(full_path) is None:
+        print(colored(f"Error: {task_input} has no contract.md; write it before start", Colors.RED))
+        print("Start without a worktree (v1 behaviour): re-run with --no-worktree")
         return 1
 
     # Tier gate: a planning task needs its tier's planning artifacts, and a
@@ -272,6 +483,9 @@ def cmd_start(args: argparse.Namespace) -> int:
             print(f"  Verify:  python3 .arbor/scripts/task.py validate {task_input}")
             print("  Intentionally empty? Re-run start with --allow-empty-context")
             return 1
+
+    if use_worktree:
+        return _start_in_worktree(args, full_path, repo_root)
 
     # Convert to relative path for storage. repo_root is resolved because
     # full_path already is (resolve_task_dir only returns paths inside the
@@ -595,8 +809,10 @@ Usage:
   python3 task.py seed-context <dir> [--package <pkg>]  Seed implement.jsonl + check.jsonl (spec indexes, guides, research/*.md)
   python3 task.py validate <dir>                     Validate jsonl files
   python3 task.py list-context <dir>                 List jsonl entries
-  python3 task.py start <dir>                        Set active task; records the checked-out branch when unset.
+  python3 task.py start <dir>                        Approve the contract: create branch arbor/<dir> + its worktree,
+                                                     move the task dir there, commit it, set the active task.
                                                      A planning task must have its tier's files first
+  python3 task.py start <dir> --no-worktree          Set active task in this checkout; records the checked-out branch
   python3 task.py current [--source]                 Show active task
   python3 task.py finish                             Clear active task
   python3 task.py set-branch <dir> <branch>          Set git branch
@@ -610,10 +826,14 @@ Usage:
   python3 task.py list [--mine] [--status <status>] [--json]  List tasks
   python3 task.py list-archive [YYYY-MM]             List archived tasks
 
-Tiers (task.json meta.tier; without it: implement.md → full, design.md → standard, else light):
-  light       prd.md
-  standard    prd.md + design.md
-  full        prd.md + design.md + implement.md (required for meta.execution=parallel)
+Tiers (task.json meta.tier; without it: waves.md → full, design.md → standard, else light):
+  light       contract.md
+  standard    contract.md + design.md
+  full        contract.md + design.md + waves.md (required for meta.execution=parallel)
+
+Start options:
+  --no-worktree        Stay in this checkout (no worktree, branch, move or commit)
+  --force-move         Move the task dir even when files in it are tracked here
 
 Monorepo options:
   --package <pkg>      Package name (validated against config.yaml packages)
@@ -687,7 +907,7 @@ def main() -> int:
         )
         print("See .arbor/workflow.md planning artifact guidance or run:", file=sys.stderr)
         print(
-            "  python3 ./.arbor/scripts/get_context.py --mode phase --step 1",
+            "  python3 ./.arbor/scripts/get_context.py --mode phase --step 1.5",
             file=sys.stderr,
         )
         print(
@@ -774,6 +994,16 @@ def main() -> int:
         "--allow-empty-context",
         action="store_true",
         help="Start even when implement.jsonl / check.jsonl have no curated entries",
+    )
+    p_start.add_argument(
+        "--no-worktree",
+        action="store_true",
+        help="Start in this checkout (v1): no worktree, branch, move or commit",
+    )
+    p_start.add_argument(
+        "--force-move",
+        action="store_true",
+        help="Move the task dir into its worktree even when files in it are tracked",
     )
 
     # current

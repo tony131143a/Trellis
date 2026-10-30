@@ -1,40 +1,39 @@
-# Change Local Agents (Assistant Instructions)
+# Change Local Agents (Role Instructions)
 
-When the user wants to change the behavior of one of the seven roles (`explore`, `architect`, `implement`, `review`, `verify`, `fix`, `simplify`), edit the assistant instruction sources in `.arbor/agents/`. These roles run as codeg assistants, not as platform sub-agents, so there are no `.claude/agents/` or `.starFactory/agents/` files to edit.
+When the user wants to change the behavior of one of the eight roles (`explore`, `architect`, `test`, `implement`, `review`, `verify`, `fix`, `simplify`), edit the role instruction sources in `.arbor/agents/`. These roles run through the driver and its executor, not as platform sub-agents, so there are no `.claude/agents/` or `.starFactory/agents/` files to edit.
 
 ## Read These Files First
 
 1. `.arbor/agents/<role>.md` for the role in question (plain markdown, no frontmatter)
-2. `.arbor/workflow.md` Dispatch section, step 1.2 (explore & design), Phase 2 (review loop), and Phase 2F (polish)
-3. `.arbor/config.yaml` `dispatch:` section
-4. Current task `prd.md`, `implement.jsonl` (feeds architect and implement) / `check.jsonl` (feeds review, verify, fix, simplify)
+2. `.arbor/workflow.md` Driver and Roles sections, Phase 1 (contract), and Phase 2 (BUILD, GATE, REVIEW, POLISH)
+3. `.arbor/config.yaml` `executors:` section
+4. Current task `contract.md`, `implement.jsonl` (feeds architect, test and implement) / `check.jsonl` (feeds review, verify, fix, simplify)
 5. `../local-architecture/dispatch.md`
 
-## Edit And Re-Install
+## Edit And Refresh
 
 1. Edit the relevant `.arbor/agents/<role>.md`.
-2. Run `python3 ./.arbor/scripts/dispatch.py codeg-setup` to re-render `.arbor/.runtime/codeg-assistants/<target>-<role>.md` for every target (`star`, `pi`).
-3. Paste the rendered text into the matching codeg assistants following the printed UI steps, or run `codeg-setup --install` (macOS only) to upsert the codeg database rows.
-
-An installed assistant keeps its old text until step 3 is done. Editing `.arbor/agents/` alone changes nothing at runtime.
+2. If the executor keeps its own copy of the instructions (the default codeg executor uses one `arbor-<role>` assistant per role), update that copy.
+3. Run `python3 ./.arbor/scripts/arbor.py canary --role <role>` to check that the executor still answers in the expected format.
 
 ## Common Needs
 
 | Need | Which file to edit |
 | --- | --- |
 | Explore or architect must write files, not only reply in chat | `explore.md` / `architect.md` |
-| Certain local specs must be read before implementation | `implement.jsonl` of the task, or spec rules; `implement.md` only for the read-order rule |
+| Certain local specs must be read before implementation | `implement.jsonl` of the task, or spec rules |
+| Tests must use a fixture style or naming | `test.md`, or `.arbor/spec/` |
 | Review must apply extra angles or severity rules | `review.md` |
 | Verify or fix must follow stricter rules | `verify.md` / `fix.md` |
-| Specific commands must run during checking | The brief in `workflow.md` 2F.5 (Quality Check commands run by the main agent) and `.arbor/spec/`; roles do not own them |
-| Role must not modify certain directories | The write-boundary section of that role file |
+| Specific commands must run at the gate | `gate.commands` in `.arbor/config.yaml`, or the contract's Verification map; roles do not own them |
+| Role must not modify certain directories | The write-boundary section of that role file (the driver enforces test paths and `.arbor/` itself) |
 | Role output format must be fixed | The report section of that role file |
-| Change which assistant a role uses | `dispatch:` in `.arbor/config.yaml`, then `codeg-setup` |
+| Run roles on a different tool or model | `executors:` in `.arbor/config.yaml`, or the executor's own per-role configuration |
 
 ## Modification Principles
 
-1. Preserve role boundaries: explore investigates and persists; architect designs; implement writes code; review finds, verify filters, fix applies, simplify cleans up. Only `explore` and `architect` write files other than code, and only under `<task>/research/`.
+1. Preserve role boundaries: explore investigates and persists; architect designs; test writes failing tests; implement makes them pass; review finds, verify filters, fix applies, simplify cleans up. Only `explore` and `architect` write under `<task>/research/`; only writers commit.
 2. Do not hard-code project specs into role files; long-term rules belong in `.arbor/spec/`.
-3. Keep the read order explicit: injected payload (or active task JSONL) then `prd.md`, `design.md`, `implement.md`.
-4. Keep the hard limits: no commit, merge, or stash; stay inside the working directory; never write under `.arbor/` (except `explore` / `architect` into `<task>/research/`); never dispatch.
-5. Keep the pull-based context steps; the hook only injects when the dispatch header is present.
+3. Keep the read order explicit: injected payload (or task JSONL) then `contract.md`, `design.md`, `waves.md`, `git diff <Range>`.
+4. Keep the hard limits: no push, merge, rebase or branch switch; never write under `.arbor/` outside the task directory; never dispatch.
+5. Keep the pull-based context steps for prompts without the injected marker.

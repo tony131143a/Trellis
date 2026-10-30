@@ -16,8 +16,7 @@ Hooks are the automation layer that connects Claude Code or StarFactory to Arbor
 | --- | --- |
 | session-start | Injects a Arbor overview when a session starts, clears, or compacts. |
 | workflow-state | Injects a state hint on each user input. |
-| dispatch context | PreToolUse on codeg `delegate_to_agent`: inlines PRD/spec/research into the dispatched task. |
-| dispatch guard | Denies the built-in Agent/Task tool for Arbor roles. |
+| dispatch guard | PreToolUse on `Agent\|Task`: denies the built-in tool for Arbor roles; roles run only through `arbor.py run`. |
 | shell session bridge | Lets `task.py` commands in shell see the same session identity. |
 
 ## Modification Steps
@@ -48,7 +47,7 @@ python3 ./.arbor/scripts/task.py current --source
 python3 ./.arbor/scripts/task.py validate <task>
 ```
 
-If the task and JSONL are correct, check that the dispatched `task` began with the `Active task:` / `Role:` header (see `../local-architecture/dispatch.md`) and run `dispatch.py print-context`. Then edit `inject-delegation-context.py` or `.arbor/agents/<role>.md`.
+If the task and JSONL are correct, inspect the assembled prompt with `arbor.py prompt --dispatch d-NNN --print` (see `../local-architecture/dispatch.md`). Then edit `.arbor/scripts/common/dispatch_context.py` or `.arbor/agents/<role>.md`.
 
 ## Notes
 

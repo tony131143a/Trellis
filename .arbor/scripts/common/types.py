@@ -54,6 +54,31 @@ class TaskData(TypedDict, total=False):
     # as [] / "none".
     spec_changes: list[str]
     spec_changes_source: str
+    # v2 driver state, written by `task.py start` (worktree mode) and the
+    # driver; absent on tasks started without a worktree.
+    state: str  # CONTRACT|BUILD|GATE|REVIEW|POLISH|FINISH|DONE|STOP
+    base: str  # sha the task branch started from
+    contract_hash: str  # sha256 hex of contract.md at approval
+    wave: int
+    last_reviewed: str | None
+    counters: dict  # {"gate", "review", "polish", "no_progress"} -> int
+    dispatches: list[dict]  # {"id", "role", "mode", "commit", "status", "started", "ended"}
+    stop: dict  # {"reason": NO_PROGRESS|BUDGET|VIOLATION|HUMAN, "detail"}
+    # Driver bookkeeping (scripts/arbor.py; see common/driver/state.py).
+    step: str  # sub-step within state, e.g. BUILD test|implement|decide
+    decision: dict  # pending {"kind", "options", "failing"}
+    after_gate: dict  # {"state", "step"} a green gate moves to
+    gate_failing: list[str]  # failing ids of the last gate round
+    gate_reds: int  # consecutive red gate rounds
+    review_ids: list[str]  # finding ids of the last REVIEW round
+    review_from: str  # range start of the review a fix answers
+    polish: dict  # current POLISH round
+    polish_ids: list[str]  # kept candidate ids of the last POLISH round
+    override_role: dict  # one-shot {"role", "mode"} from `arbor override --role`
+    overrides: list[dict]  # {"ts", "reason", "from", "to"|"role"}
+    decisions: list[dict]  # {"ts", "kind", "choice", "reason", "failing"}
+    resume_to: dict  # {"state", "step"} after a contract re-approval
+    caps_extra: dict  # counter -> extra rounds granted by `arbor resume`
 
 
 # =============================================================================

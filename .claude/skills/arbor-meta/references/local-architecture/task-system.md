@@ -8,25 +8,33 @@ The Arbor task system is stored entirely under `.arbor/tasks/` in the user proje
 .arbor/tasks/
 ├── 04-28-example-task/
 │   ├── task.json
-│   ├── prd.md
+│   ├── contract.md
 │   ├── design.md
-│   ├── implement.md
+│   ├── waves.md
 │   ├── implement.jsonl
 │   ├── check.jsonl
-│   └── research/
+│   ├── research/
+│   ├── briefs/
+│   ├── reports/
+│   └── scorecard.md
 └── archive/
     └── 2026-04/
 ```
 
 | File | Purpose |
 | --- | --- |
-| `task.json` | Task metadata: status, assignee, priority, branch, parent/child tasks, and similar fields. |
-| `prd.md` | Requirements, constraints, and acceptance criteria. Every tier; light tasks have only this. |
+| `task.json` | Task metadata: status, assignee, priority, branch, parent/child tasks; after `task.py start` also the driver's `state`, `base`, `contract_hash`, `worktree_path`, `wave`, `last_reviewed`, `counters`, `dispatches`. |
+| `contract.md` | Goal, scope, acceptance criteria (Given / When / Then), Verification map, Interface pins, Test paths, optional Partitions / Waves. Every tier; light tasks have only this. Approved by the human and frozen by `contract_hash`. Older tasks may have `prd.md` instead. |
 | `design.md` | Technical design for standard and full tasks: boundaries, contracts, data flow, compatibility, tradeoffs. |
-| `implement.md` | Execution plan for full tasks: ordered checklist, validation commands, review gates, rollback points. |
-| `implement.jsonl` | List of spec/research files the `architect` and `implement` roles must read first. |
+| `waves.md` | Full tasks: the chosen architect design's partitions and wave order with the reasoning (legacy name `implement.md`). |
+| `implement.jsonl` | List of spec/research files the `architect`, `test` and `implement` roles must read first. |
 | `check.jsonl` | List of spec/research files the `review`, `verify`, `fix`, and `simplify` roles must read first. |
 | `research/` | Research artifacts (`explore` findings, `architect` blueprints `design-<perspective>.md`, or the main agent's notes). Larger findings should not live only in chat. |
+| `briefs/` | `d-NNN.md`: the brief the main agent wrote for each dispatch (body only; the driver adds header and context). |
+| `reports/` | `d-NNN.md`: the role's reply plus the driver's verdict; `gate-N.md`: output of the N-th gate round; `candidates-rN.json`: POLISH round N after the prefilter. Committed by the driver; CONTRACT-phase files are committed by `task.py start`. The assembled prompts stay uncommitted in `.arbor/.runtime/prompts/<task>/` of the main checkout. |
+| `scorecard.md` | Written at FINISH: dispatches per role, rounds, findings per rung, AC automation rate, overrides, violations. |
+
+`task.py start` moves the whole directory into the task worktree (`<worktree.root>/<task>`, branch `arbor/<task>`) and commits it there; from then on the task's artifacts travel with its code into the PR.
 
 ## `task.json`
 
@@ -54,7 +62,7 @@ Use a parent task when a request has multiple independently verifiable deliverab
 - The map of child tasks and their responsibility boundaries.
 - Cross-child acceptance criteria and final integration review.
 
-Use child tasks for deliverables that can move through planning, implementation, review, and archive independently. If one child depends on another, write that dependency in the child `prd.md` / `implement.md`; do not rely on tree position to imply ordering.
+Use child tasks for deliverables that can move through planning, implementation, review, and archive independently. If one child depends on another, write that dependency in the child's `contract.md`; do not rely on tree position to imply ordering.
 
 Create new children with:
 
@@ -71,7 +79,7 @@ python3 ./.arbor/scripts/task.py remove-subtask <parent-dir> <child-dir>
 
 `children` on the parent is a historical list. When a child is archived, Arbor keeps that child name in the parent so progress like `[2/3 done]` remains meaningful after completed children move to `archive/`.
 
-The AI should not treat phase numbers as task status. Task progress is mainly determined by `status`, artifact presence (`meta.tier`, else the artifacts: `prd.md`, `design.md` for standard, `implement.md` for full), whether JSONL context is configured for dispatched roles, and the phase descriptions in `workflow.md`.
+The AI should not treat phase numbers as task status. Before `task.py start`, progress is determined by `status`, artifact presence (`meta.tier`, else the artifacts: `contract.md`, `design.md` for standard, `waves.md` for full), and whether JSONL context is configured. After it, `arbor.py next` is the source of truth.
 
 ## Active Task
 
@@ -81,13 +89,13 @@ The user sees a "current task," but Arbor stores active task state per session.
 .arbor/.runtime/sessions/<context-key>.json
 ```
 
-`task.py start` writes the task path into the runtime session file for the current session. `task.py current --source` shows the current task and where it came from. Different AI windows can point to different tasks without overwriting each other.
+`task.py start` writes the task path (the absolute path inside the task worktree) into the runtime session file for the current session; runtime state stays in the main checkout. `task.py current --source` shows the current task and where it came from. Different AI windows can point to different tasks without overwriting each other.
 
 If the platform or shell environment has no stable session identity, `task.py start` may be unable to set the active task. The AI should read the error, inspect the platform hook/session environment, and not fall back to a shared global pointer.
 
 ## JSONL Context
 
-`implement.jsonl` and `check.jsonl` are context manifests for dispatched roles to read first. They do not replace `implement.md`; `implement.md` is the human-readable execution plan.
+`implement.jsonl` and `check.jsonl` are context manifests the driver inlines into role prompts. They hold spec and research files only, never code.
 
 `task.py seed-context <task> [--package <pkg> ...]` fills both manifests with the package's spec layer index files, the guides index, and the task's research files (idempotent); the main agent then adds or drops entries per side. `task.py create --tier <light|standard|full>` sets the tier at creation, and `task.py start` refuses a planning task whose tier artifacts are missing.
 
