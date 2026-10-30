@@ -1,0 +1,41 @@
+packages/cli/src/migrations/manifests/0.1.0.json
+  s_6b4251199dccd7::t_89e509d6dab974 10-11
+packages/cli/src/templates/arbor/workflow.md
+  s_6b4251199dccd7::t_fbfc8cc401c365 433-435
+packages/cli/test/commands/init.integration.test.ts
+  s_6b4251199dccd7::t_2cea062dcb4fac 182-184
+packages/cli/test/configurators/platforms.test.ts
+  s_6b4251199dccd7::t_d2717753fa1557 360-362,410-412,415
+packages/cli/test/regression.test.ts
+  s_6b4251199dccd7::t_e41d451e83d388 4625,4639-4643,5763,5765-5773,5783-5785,5787-5788,5800,5821,5836,5838,5840,5843,5846,5848,5936,5939,5943-5944,5947,5967-5971,5973-5975,5977-5978,5980,6013,6015,6018,6062,6073-6081,7108,7114-7117,7119,7121-7123
+packages/cli/test/scripts/guard-builtin-agent.integration.test.ts
+  s_6b4251199dccd7::t_19623a891b36ad 5-7,90-95,111,154,159
+packages/cli/test/scripts/inject-workflow-state-driver.integration.test.ts
+  s_6b4251199dccd7::t_1dd41e0c7e4359 1-245
+packages/cli/test/scripts/prompt-injection-skip-keyword.integration.test.ts
+  s_6b4251199dccd7::t_fb658032ea136b 8-10,302-304
+packages/cli/test/templates/arbor.test.ts
+  s_6b4251199dccd7::t_4e29260e088fc1 1-2,121-127,136-142,144-147,151-165,167-168,170-180,182-183,185-197,200-214,216,219,237,241,243-258,279-281,408-468
+packages/cli/test/templates/claude.test.ts
+  s_6b4251199dccd7::t_3931eba2ed25b9 69,79-81
+packages/cli/test/templates/shared-hooks.test.ts
+  s_6b4251199dccd7::t_cdee48a3838d4d 171-175
+packages/cli/test/templates/star.test.ts
+  s_6b4251199dccd7::t_13fbffb1dff635 46-48,50-52,122
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "b87b906e2e156ab7517ac72c25ce25c62b44328d",
+  "prompts": {},
+  "sessions": {
+    "s_6b4251199dccd7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-awave2-docs-a8fee38f2e99e237",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
