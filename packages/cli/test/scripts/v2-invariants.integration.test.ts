@@ -221,6 +221,16 @@ print(json.dumps({"head": s.head, "head_ref": s.head_ref, "branches": sorted(s.b
       expect(v[0]).toMatch(/^branch main moved [0-9a-f]{12} -> [0-9a-f]{12}$/);
     });
 
+    it("sibling arbor/* branches may move or appear during a dispatch, but not be deleted", () => {
+      git(wt, "branch", "arbor/other");
+      git(wt, "branch", "arbor/gone");
+      const v = check(
+        "implement",
+        `echo b > src/a.ts && git add src/a.ts && ${commit(`implement(${TASK}): x`)} && git branch -f arbor/other HEAD && git branch arbor/new && git branch -D -q arbor/gone`,
+      );
+      expect(v).toEqual(["branch arbor/gone was deleted"]);
+    });
+
     it("creating a branch, switching HEAD and moving a remote ref are violations", () => {
       git(wt, "update-ref", "refs/remotes/origin/main", "HEAD");
       const v = check(

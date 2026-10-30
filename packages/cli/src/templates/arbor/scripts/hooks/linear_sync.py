@@ -178,23 +178,26 @@ def cmd_archive() -> None:
 
 
 def cmd_sync() -> None:
-    """Sync prd.md content to Linear issue description."""
+    """Sync contract.md (older tasks: prd.md) to the Linear issue description."""
     task, _ = _read_task()
     issue = _get_linear_issue(task)
     if not issue:
         print("No linear_issue in meta, run create first", file=sys.stderr)
         sys.exit(1)
 
-    # Find prd.md next to task.json
-    task_json_path = os.environ.get("TASK_JSON_PATH", "")
-    prd_path = Path(task_json_path).parent / "prd.md"
-    if not prd_path.is_file():
-        print(f"No prd.md found at {prd_path}", file=sys.stderr)
+    # Find contract.md (or a legacy prd.md) next to task.json
+    task_dir = Path(os.environ.get("TASK_JSON_PATH", "")).parent
+    contract_path = next(
+        (task_dir / name for name in ("contract.md", "prd.md") if (task_dir / name).is_file()),
+        None,
+    )
+    if contract_path is None:
+        print(f"No contract.md found in {task_dir}", file=sys.stderr)
         sys.exit(1)
 
-    description = prd_path.read_text(encoding="utf-8").strip()
+    description = contract_path.read_text(encoding="utf-8").strip()
     _linearis("issues", "update", issue, "-d", description)
-    print(f"Synced prd.md to {issue} description")
+    print(f"Synced {contract_path.name} to {issue} description")
 
 
 # ─── Parent Issue Resolution ─────────────────────────────────────────────────

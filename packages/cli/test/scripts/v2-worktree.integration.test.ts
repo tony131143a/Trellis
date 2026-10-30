@@ -62,7 +62,7 @@ describe.skipIf(!hasPython())("common/worktree.py", () => {
   });
 
   afterEach(() => {
-    fs.rmSync(tmp, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
   it("names branches arbor/<task> and arbor/<task>--<partition>; root defaults to ../<repo>-wt", () => {

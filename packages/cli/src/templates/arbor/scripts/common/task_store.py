@@ -542,8 +542,8 @@ def cmd_create(args: argparse.Namespace) -> int:
             encoding="utf-8",
         )
 
-    # Create empty implement.jsonl / check.jsonl. Every Arbor project
-    # dispatches its roles through codeg, and the dispatch context
+    # Create empty implement.jsonl / check.jsonl. The driver dispatches every
+    # role through the configured executor, and the dispatch context
     # assembler reads these manifests. They stay empty until the agent curates
     # real entries during planning — a placeholder row would read as
     # unresolved scaffolding to `task.py validate` and to PR preflight, so the

@@ -35,8 +35,10 @@ export const FILE_NAMES = {
   CURRENT_TASK: ".current-task",
   /** Task metadata */
   TASK_JSON: "task.json",
-  /** Requirements document */
+  /** Legacy (v1) requirements document; older tasks only */
   PRD: "prd.md",
+  /** Task acceptance contract */
+  CONTRACT: "contract.md",
   /** Workflow guide */
   WORKFLOW_GUIDE: "workflow.md",
   /** Journal file prefix */

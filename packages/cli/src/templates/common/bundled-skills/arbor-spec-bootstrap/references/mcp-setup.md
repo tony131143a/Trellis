@@ -1,6 +1,6 @@
 # MCP Setup
 
-GitNexus and ABCoder are recommended when bootstrapping Arbor specs because they expose architecture and AST context to the agent. They are optional tool choices. In Claude Code (and StarFactory) register MCP servers with `claude mcp add <name> -- <command>` (project scope writes `.mcp.json`), or add them to the MCP settings the CLI reads. MCP servers configured in the main agent are not automatically available to dispatched codeg assistants; configure them in the assistant too if a role needs them.
+GitNexus and ABCoder are recommended when bootstrapping Arbor specs because they expose architecture and AST context to the agent. They are optional tool choices. In Claude Code (and StarFactory) register MCP servers with `claude mcp add <name> -- <command>` (project scope writes `.mcp.json`), or add them to the MCP settings the CLI reads. MCP servers configured in the main agent are not automatically available to roles the driver dispatches; configure them in the executor (see `executors:` in `.arbor/config.yaml`) too if a role needs them.
 
 ## GitNexus
 

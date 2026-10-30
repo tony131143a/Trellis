@@ -793,6 +793,32 @@ describe("update() integration", () => {
     ).toBe(false);
   });
 
+  it("#v2-0.2.0 removes v1 dispatch leftovers by hash and appends the v2 config sections", async () => {
+    await setupProject();
+    fs.writeFileSync(versionFilePath(), "0.1.0");
+    // v1 runtime override with a shipped target name: removed by hash.
+    writeProjectFile(".arbor/.runtime/dispatch-target", "star\n");
+    // A dispatch.py whose content matches no shipped version: kept.
+    writeProjectFile(".arbor/scripts/dispatch.py", "# locally edited\n");
+    // A pre-v2 config.yaml without the gate / worktree / test_paths sections.
+    const configPath = ".arbor/config.yaml";
+    const config = readProjectFile(configPath);
+    const cut = config.indexOf("#-------------------------------------------------------------------------------\n# Gate\n");
+    expect(cut).toBeGreaterThan(0);
+    writeProjectFile(configPath, config.slice(0, cut));
+
+    await update({});
+
+    expect(fs.existsSync(projectFile(".arbor/.runtime/dispatch-target"))).toBe(false);
+    expect(readProjectFile(".arbor/scripts/dispatch.py")).toBe("# locally edited\n");
+    const updated = readProjectFile(configPath);
+    for (const key of ["gate:", "worktree:", "test_paths:"]) {
+      expect(updated).toContain(`\n${key}\n`);
+    }
+    expect(updated.match(/^executors:$/gm)).toHaveLength(1);
+    expect(fs.readFileSync(versionFilePath(), "utf-8")).toBe(VERSION);
+  });
+
   it("#workflow-md-r4 updates workflow.md as one runtime template when hash-tracked", async () => {
     await setupProject();
 

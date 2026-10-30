@@ -1,6 +1,6 @@
 {
   "name": "@tony131143a/arbor",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Arbor: a spec-driven AI engineering workflow for Claude Code that dispatches sub-agents through codeg assistants",
   "type": "module",
   "main": "./dist/index.js",

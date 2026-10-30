@@ -348,6 +348,42 @@ describe("init() integration", () => {
     expect(Object.keys(hashes).length).toBeGreaterThan(0);
   });
 
+  it("#9b bootstrap task writes a v2 contract.md, not prd.md", async () => {
+    await init({ yes: true, user: "dev" });
+
+    const taskDir = path.join(tmpDir, PATHS.TASKS, "00-bootstrap-guidelines");
+    expect(fs.existsSync(path.join(taskDir, FILE_NAMES.TASK_JSON))).toBe(true);
+    expect(fs.existsSync(path.join(taskDir, FILE_NAMES.PRD))).toBe(false);
+    const contract = fs.readFileSync(
+      path.join(taskDir, FILE_NAMES.CONTRACT),
+      "utf-8",
+    );
+    // Mirrors CONTRACT_TEMPLATE in common/contract.py.
+    for (const heading of [
+      "## Goal",
+      "## Scope",
+      "## Acceptance criteria",
+      "## Verification map",
+      "## Interface pins",
+    ]) {
+      expect(contract).toContain(`\n${heading}\n`);
+    }
+    expect(contract).toContain("- in: ");
+    expect(contract).toContain("- out: ");
+    expect(contract).toMatch(/^- AC-1: Given .+ When .+ Then .+$/m);
+    expect(contract).toContain("| id | kind | check | file |");
+    expect(contract).toContain("| AC-1 | manual |");
+    expect(contract).toContain("- existing interfaces");
+    // Fullstack default: one criterion per checklist item.
+    expect(contract).toContain("- [ ] Fill backend guidelines");
+    expect(contract).toContain("| AC-3 | manual |");
+    // No v1 runtime wording.
+    expect(contract).not.toMatch(
+      /prd\.md|sub-agent|arbor-implement|arbor-check|platform hook/,
+    );
+    expect(contract).toContain("executors:");
+  });
+
   it("#10 creates spec templates for backend, frontend, and guides", async () => {
     await init({ yes: true });
 
@@ -493,7 +529,7 @@ describe("init() integration", () => {
     );
 
     // task.json.subtasks is canonical string[] (child task dir names);
-    // per-package checklist items now live in prd.md as markdown checkboxes.
+    // per-package checklist items now live in contract.md as markdown checkboxes.
     expect(Array.isArray(taskJson.subtasks)).toBe(true);
     expect(taskJson.subtasks).toEqual([]);
 
@@ -505,8 +541,11 @@ describe("init() integration", () => {
     expect(taskJson.relatedFiles).toContain(".arbor/spec/core/");
     expect(taskJson.relatedFiles).toContain(".arbor/spec/ui/");
 
-    // prd.md mentions packages + renders per-package checklist items
-    const prd = fs.readFileSync(path.join(taskDir, "prd.md"), "utf-8");
+    // contract.md mentions packages + renders per-package checklist items
+    // and one acceptance criterion per item
+    const prd = fs.readFileSync(path.join(taskDir, FILE_NAMES.CONTRACT), "utf-8");
+    expect(prd).toMatch(/^- AC-1: Given the existing code When the guidelines for core are written Then /m);
+    expect(prd).toContain("| AC-3 | manual |");
     const expectedPythonCmd =
       process.platform === "win32" ? "python" : "python3";
     expect(prd).toContain("core");
