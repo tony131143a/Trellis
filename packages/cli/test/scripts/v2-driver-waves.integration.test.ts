@@ -120,6 +120,9 @@ describe.skipIf(!hasPython())("arbor.py waves and partitions", { timeout: 90_000
     expect(fs.existsSync(path.join(f.wt, IMPL_TEST.path))).toBe(false);
     const received = fs.readFileSync(path.join(f.tmp, "received/d-001.md"), "utf-8");
     expect(received.startsWith(`Active task: ${f.taskDir}\nRole: test\n`)).toBe(true);
+    expect(received).toContain(
+      `Work only in ${partitionWt(f, "impl")} (branch arbor/${TASK}--impl, paths: src/**); commit there and nowhere else.\n\nBrief for d-001.`,
+    );
 
     expect(f.next()).toMatchObject({ partition: "impl", role: "implement", dispatch: "d-003", partitions_pending: ["tests"] });
     expect(dispatch(f, "d-003").status).toBe(0); // no --partition: the first partition that needs a run
@@ -149,26 +152,47 @@ describe.skipIf(!hasPython())("arbor.py waves and partitions", { timeout: 90_000
       ["d-001", "impl", 1], ["d-002", "tests", 1], ["d-003", "impl", 1], ["d-004", "tests", 1],
     ]);
 
+    // the prompt still rebuilds byte for byte after the partition worktree is gone
+    expect(f.run("prompt", "--dispatch", "d-001", "--print").stdout).toBe(received);
+
     const gate = f.run("gate");
     expect(gate.status, gate.stdout).toBe(0);
     expect(f.taskJson().state).toBe("REVIEW");
     expect(git(f.wt, "status", "--porcelain", "--", "src", "tests")).toBe("");
   });
 
-  it("a merge conflict waits for a hand merge in the task worktree; resume checks it and finishes the wave", () => {
+  it("a partition writer outside its paths is a violation; a merge conflict waits for a hand merge and resume", () => {
     const map = "| AC-1 | auto | `test -f a/x.txt` | tests/ac1.sh |\n| AC-2 | manual | read b/y.txt | |";
     f = setupFixture({ contract: contract("- a: a/**\n- b: b/**", "- 1: [a, b]", map, "- tests/**") });
     ok(f.run("run"));
     // no auto check file inside a/ or b/: both skip `test`
     expect(f.taskJson().partitions.a.step).toBe("implement");
     f.plan({
-      "d-001": { write: [{ path: "a/x.txt", content: "a\n" }, { path: "shared.txt", content: "A\n" }] },
-      "d-002": { write: [{ path: "b/y.txt", content: "b\n" }, { path: "shared.txt", content: "B\n" }] },
+      "d-001": { write: [{ path: "a/x.txt", content: "a\n" }, { path: "b/stray.txt", content: "s\n" }] },
+      "d-002": { write: [{ path: "b/y.txt", content: "b\n" }] },
+      "d-003": { write: [{ path: "a/x.txt", content: "a\n" }] },
     });
+    const aHead = git(partitionWt(f, "a"), "rev-parse", "HEAD");
     f.brief("d-001");
+    const stray = f.run("run", "--partition", "a");
+    expect(stray.status).toBe(1);
+    expect(fs.readFileSync(path.join(f.taskDir, "reports/d-001.md"), "utf-8"))
+      .toContain("implement touched files outside partition a: b/stray.txt");
+    expect(git(partitionWt(f, "a"), "rev-parse", "HEAD")).toBe(aHead);
+    expect(f.taskJson()).toMatchObject({ state: "STOP", stop: { reason: "VIOLATION" } });
+    ok(f.run("resume"));
+    expect(f.next()).toMatchObject({ partition: "a", role: "implement", dispatch: "d-003" });
+
     f.brief("d-002");
+    f.brief("d-003");
     ok(f.run("run", "--partition", "a"));
     ok(f.run("run", "--partition", "b"));
+    // a conflict no writer may cause: the same new file committed by hand on both partition branches
+    for (const [p, content] of [["a", "A\n"], ["b", "B\n"]]) {
+      writeFile(partitionWt(f, p), "shared.txt", content);
+      git(partitionWt(f, p), "add", "shared.txt");
+      git(partitionWt(f, p), "commit", "-q", "-m", "shared");
+    }
     const merge = f.run("run");
     expect(merge.status).toBe(1);
     const next = f.next();

@@ -19,8 +19,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..arbor_config import get_worktree_config
-from ..contract import Contract
+from ..contract import Contract, path_matches
 from ..git import run_git
+from ..invariants import changed_files
 from ..worktree import (
     WorktreeError,
     _worktree_branch,
@@ -47,6 +48,22 @@ def first_step(contract: Contract, partition: str) -> str:
     if spec is None:
         return "implement"
     return "test" if auto_checks(contract, spec.paths) else "implement"
+
+
+def scope_line(worktree: Path, branch: str, paths) -> str:
+    """The line the driver puts first in a partition dispatch's brief."""
+    return (f"Work only in {worktree} (branch {branch}, paths: {', '.join(paths)}); "
+            "commit there and nowhere else.")
+
+
+def outside_paths(worktree: Path, head_before: str, new_dirty, paths, task_rel: str) -> list[str]:
+    """Files a partition dispatch committed (``head_before..HEAD``) or left
+    dirty that its partition's ``paths`` do not cover (the task dir aside)."""
+    touched = set(new_dirty)
+    rc, head_now, _ = run_git(["rev-parse", "HEAD"], cwd=worktree)
+    if rc == 0 and head_now.strip() != head_before:
+        touched |= set(changed_files(worktree, f"{head_before}..{head_now.strip()}"))
+    return sorted(p for p in touched if not p.startswith(f"{task_rel}/") and not path_matches(p, paths))
 
 
 def _rev(worktree: Path, ref: str) -> str:

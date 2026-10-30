@@ -84,7 +84,7 @@ from common.io import read_json_checked, write_json
 from common.log import Colors, colored
 from common.paths import DIR_TASKS, DIR_WORKFLOW, FILE_TASK_JSON
 from common.tasks import resolve_tier
-from common.worktree import WorktreeError, is_ancestor, main_checkout
+from common.worktree import WorktreeError, is_ancestor, main_checkout, partition_branch, partition_worktree_path
 
 RUNTIME = f"{DIR_WORKFLOW}/.runtime"
 CANARY_ROLES = ("explore", "review", "verify")
@@ -508,12 +508,15 @@ def dispatch_once(ctx: Ctx, unit: Unit, role: str, mode: str | None, range_from:
     """Run one dispatch in ``unit``'s worktree and check it; no task.json writes."""
     head_before = head(ctx, unit.worktree)
     range_spec = f"{range_from}..{head_before}" if range_from and role in RANGE_ROLES else None
+    contract_path = find_contract(ctx.task_dir)
+    contract = load_contract(contract_path) if contract_path else None
+    paths = _partition_paths(contract, unit.partition)
+    if unit.partition:
+        brief = pt.scope_line(unit.worktree, unit.branch, paths) + "\n\n" + brief.strip()
     prompt = build_prompt(ctx.worktree, ctx.task_dir, role, mode, range_spec, dispatch, brief)
     prompt_file = runtime_dir(ctx.main, "prompts", ctx.name) / f"{dispatch}.md"
     prompt_file.write_text(prompt, encoding="utf-8")
 
-    contract_path = find_contract(ctx.task_dir)
-    contract = load_contract(contract_path) if contract_path else None
     test_paths = (
         effective_test_paths(contract, get_test_paths(ctx.config)) if contract else get_test_paths(ctx.config)
     )
@@ -530,6 +533,10 @@ def dispatch_once(ctx: Ctx, unit: Unit, role: str, mode: str | None, range_from:
                                       task_rel_dir=ctx.task_rel, dispatch_id=dispatch)
     if unit.partition:
         violations = _concurrent_moves(ctx, unit, before, violations)
+        new_dirty = _dirty_paths(unit.worktree) - before.dirty
+        outside = pt.outside_paths(unit.worktree, head_before, new_dirty, paths, ctx.task_rel)
+        if outside and role in WRITER_ROLES:
+            violations.append(f"{role} touched files outside partition {unit.partition}: {', '.join(outside)}")
     if role in WRITER_ROLES:
         leftover = sorted(
             p for p in _dirty_paths(unit.worktree) - before.dirty
@@ -554,6 +561,23 @@ def dispatch_once(ctx: Ctx, unit: Unit, role: str, mode: str | None, range_from:
         _restore(ctx, unit, before)
     return Outcome(status, reply, check, result, violations, problem, range_spec, head_before,
                    head(ctx, unit.worktree))
+
+
+def _partition_paths(contract: Contract | None, partition: str | None) -> tuple[str, ...]:
+    spec = contract.partition(partition) if contract and partition else None
+    return spec.paths if spec else ()
+
+
+def _partition_brief(ctx: Ctx, partition: str | None, brief: str) -> str:
+    """``brief`` as a partition dispatch receives it (``prompt --print`` rebuilds it
+    after the partition worktree is gone: the names are deterministic)."""
+    if not partition:
+        return brief
+    contract_path = find_contract(ctx.task_dir)
+    paths = _partition_paths(load_contract(contract_path) if contract_path else None, partition)
+    worktree = partition_worktree_path(ctx.main, ctx.config, ctx.name, partition)
+    line = pt.scope_line(worktree.resolve(), partition_branch(ctx.name, partition), paths)
+    return line + "\n\n" + brief.strip()
 
 
 def _red_notes(red: RedResult) -> list[str]:
@@ -1095,20 +1119,26 @@ def cmd_prompt(args: argparse.Namespace) -> int:
     brief_file = brief_path(ctx, args.dispatch)
     if not brief_file.is_file():
         raise DriverError(f"no brief at {brief_file}")
+    partition: str | None = None
     if not ctx.started:
         if entry is None:
             raise DriverError(f"unknown dispatch {args.dispatch} (before start only recorded dispatches rebuild)")
         role, mode, range_spec = entry["role"], entry.get("mode"), None
     elif entry is not None:
         role, mode, range_spec = entry["role"], entry.get("mode"), entry.get("range")
+        partition = entry.get("partition")
     else:
         step = _step_of_dispatch(ctx, args.dispatch)
         role, mode = step.role, step.mode
         worktree = ctx.unit(step.partition).worktree
         range_spec = (f"{step.range_from}..{head(ctx, worktree)}"
                       if step.range_from and role in RANGE_ROLES else None)
+        partition = step.partition
+    brief = brief_file.read_text(encoding="utf-8")
+    if ctx.started:
+        brief = _partition_brief(ctx, partition, brief)
     text = build_prompt(ctx.worktree if ctx.started else ctx.main, ctx.task_dir, role, mode, range_spec, args.dispatch,
-                        brief_file.read_text(encoding="utf-8"))
+                        brief)
     if args.print:
         sys.stdout.write(text)
     else:
