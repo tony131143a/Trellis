@@ -22,7 +22,9 @@ nothing else (no git, no subprocesses), so ``arbor next`` stays cheap.
     POLISH    sweep       brief    full only, once: review sweep base..HEAD ->
                                    prefilter -> verify -> fix -> GATE -> FINISH
     CONTRACT  approve     human    edit contract.md; ``arbor resume`` re-approves
-    FINISH    finish      human    wave-3 finish (scorecard, PR, merge)
+    FINISH    finish      run      ``arbor finish``: scorecard, then PR or merge command
+                          human    a person merges the task branch (``--no-ff``)
+                          run      merged: ``arbor finish`` cleans up -> DONE
     STOP      -           human    ``arbor resume`` / ``override`` / ``abandon``
 
 Progress (only the driver changes ``counters``): a GATE round progresses when
@@ -201,7 +203,9 @@ def plan(data: dict, tier: str, waves=None, partition: str | None = None) -> Ste
         return Step("human", "CONTRACT: revise contract.md; a human approves it with `arbor resume`",
                     human={"kind": "approve_contract"})
     if state == "FINISH":
-        return Step("human", "FINISH: ready for wave-3 finish (scorecard, PR, merge)", human={"kind": "merge"})
+        # The driver refines this with git (scorecard present? branch merged?).
+        return Step("human", "FINISH: `arbor finish` (scorecard, then a PR or the merge command)",
+                    human={"kind": "merge"})
     if state == "DONE":
         return Step("done", "DONE")
 

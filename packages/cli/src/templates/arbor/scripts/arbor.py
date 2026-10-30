@@ -8,6 +8,8 @@ Usage (from the main checkout or any worktree of the repo):
     python3 ./.arbor/scripts/arbor.py next [--json] [--partition P]
     python3 ./.arbor/scripts/arbor.py run [--partition P] [--dispatch d-NNN]
     python3 ./.arbor/scripts/arbor.py run --role explore|architect|review [--mode plan] [--dispatch d-NNN]
+    python3 ./.arbor/scripts/arbor.py run --autopilot
+    python3 ./.arbor/scripts/arbor.py finish [--pr]
     python3 ./.arbor/scripts/arbor.py gate
     python3 ./.arbor/scripts/arbor.py decide <impl|tests|contract|fix|skip> --reason "..." [--partition P]
     python3 ./.arbor/scripts/arbor.py canary [--role explore|review|verify]
@@ -16,6 +18,15 @@ Usage (from the main checkout or any worktree of the repo):
     python3 ./.arbor/scripts/arbor.py prompt --dispatch d-NNN --print
 
 Every command takes ``--task <dir>``; the default is the session's active task.
+
+``run --autopilot`` keeps taking the next step (gate, dispatch with
+``briefs/<id>.md`` or ``briefs/default-<role>.md``, finish) until a decision,
+a human gate, STOP, a red gate or a failed dispatch.
+
+``finish`` in FINISH: before the merge it writes and commits scorecard.md,
+then opens a PR (``--pr`` with gh) or prints the ``merge --no-ff`` command;
+after the merge it removes the worktree, archives the task and writes the
+journal entry (DONE). Re-running continues at the first missing step.
 
 ``run --role`` is the CONTRACT phase (task not started yet): a read-only
 dispatch in the main checkout, recorded in task.json and results.jsonl,
@@ -35,6 +46,7 @@ Files:
     <task>/reports/d-NNN.md     the reply plus the driver's verdict
     <task>/reports/gate-N.md    output of the N-th gate round
     <task>/reports/candidates-rN.json   POLISH round N after the prefilter
+    <task>/scorecard.md         FINISH: the task's measurements
     .arbor/.runtime/prompts/<task>/d-NNN.md   the full prompt sent (main checkout)
     .arbor/.runtime/results.jsonl             one row per dispatch (main checkout)
 
@@ -73,6 +85,8 @@ from common.dispatch_context import (
     build_dispatch_prompt,
 )
 from common.driver import partitions as pt
+from common.driver import autopilot
+from common.driver import finish as fin
 from common.driver import state as sm
 from common.driver import validate as rv
 from common.driver.executor import ExecResult, ExecutorError, resolve_executor, run_executor, utc_now
@@ -338,6 +352,10 @@ def _max_parallel(config: dict) -> int | None:
 
 def next_payload(ctx: Ctx | None, partition: str | None = None) -> dict:
     if ctx is None:
+        pending = fin.pending_records(_main())
+        if pending:
+            return {"task": pending[0], "state": "FINISH", "needs": "run",
+                    "summary": f"FINISH: cleanup of {', '.join(pending)} is incomplete: `arbor finish`"}
         return {"task": None, "state": "INTAKE", "needs": "human",
                 "summary": "No active task: agree a tier, write contract.md, then `task.py start`"}
     if not ctx.started:
@@ -354,6 +372,8 @@ def next_payload(ctx: Ctx | None, partition: str | None = None) -> dict:
         step = sm.Step("human", f"{data['state']}: contract.md changed since approval; "
                        "a human re-approves it with `arbor resume`",
                        human={"kind": "approve_contract"})
+    elif data.get("state") == "FINISH" and not data.get("override_role"):
+        step = fin.plan_finish(ctx.main, ctx.task_dir, data)
     else:
         step = plan_for(ctx, partition)
     unit = ctx.unit(step.partition)
@@ -417,6 +437,8 @@ def cmd_status(args: argparse.Namespace) -> int:
     if d.get("merge_conflict"):
         c = d["merge_conflict"]
         print(colored(f"  merge conflict: {c.get('partition')} ({', '.join(c.get('files') or [])})", Colors.RED))
+    if d["state"] == "FINISH":
+        print(f"  finish: {fin.finish_stage(ctx.main, ctx.task_dir, d)}")
     for entry in d["dispatches"][-5:]:
         part = f" [{entry['partition']}]" if entry.get("partition") else ""
         print(f"  {entry.get('id')} {entry.get('role'):<9} {entry.get('status'):<9} {entry.get('commit') or ''}{part}")
@@ -752,6 +774,8 @@ def _finish(ctx: Ctx, job: Job, out: Outcome, red: RedResult | None) -> None:
 
 
 def cmd_run(args: argparse.Namespace) -> int:
+    if getattr(args, "autopilot", False):
+        return cmd_autopilot(args)
     if args.role:
         return cmd_run_contract(args)
     if args.mode:
@@ -790,8 +814,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0 if out.status == "ok" else 1
 
 
-# =============================================================================
-# waves: partition worktrees and merge-back
+# ======================================================================# waves: partition worktrees and merge-back
 # =============================================================================
 
 
@@ -855,6 +878,19 @@ def _merge_remaining(ctx: Ctx) -> int:
 def merge_wave(ctx: Ctx) -> int:
     commit_task_dir(ctx, f"arbor({ctx.name}): wave {ctx.data.get('wave', 1)} done")
     return _merge_remaining(ctx)
+
+
+def cmd_autopilot(args: argparse.Namespace) -> int:
+    if args.role or args.mode or args.dispatch:
+        raise DriverError("--autopilot takes no --role / --mode / --dispatch")
+    require_started(load_ctx(args.task))
+    step_args = argparse.Namespace(task=args.task, dispatch=None, role=None, mode=None, partition=None, autopilot=False)
+    return autopilot.run(
+        next_payload=lambda: next_payload(load_ctx(args.task)),
+        run_step=lambda: cmd_run(step_args),
+        finish=lambda: cmd_finish(argparse.Namespace(task=args.task, pr=False)),
+        task_dir=lambda: require_started(load_ctx(args.task)).task_dir,
+    )
 
 
 def _contract_restore(main: Path, paths: list[str]) -> None:
@@ -1107,6 +1143,39 @@ def cmd_abandon(args: argparse.Namespace) -> int:
 
 
 # =============================================================================
+# finish
+# =============================================================================
+
+
+def cmd_finish(args: argparse.Namespace) -> int:
+    """The next FINISH action: scorecard + PR / merge command, or cleanup after the merge."""
+    main = _main()
+    name = Path(args.task).name if args.task else None
+    if name and fin.load_record(main, name):
+        return fin.cleanup(main, fin.load_record(main, name))
+    ctx = load_ctx(args.task)
+    if ctx is None:  # the worktree (and the session's pointer into it) may already be gone
+        pending = fin.pending_records(main)
+        if len(pending) > 1:
+            raise DriverError(f"cleanup pending for {', '.join(pending)}; pass --task")
+        if pending:
+            return fin.cleanup(main, fin.load_record(main, pending[0]))
+    ctx = require_started(ctx)
+    record = fin.load_record(ctx.main, ctx.name)
+    if record:
+        return fin.cleanup(ctx.main, record)
+    if ctx.data.get("state") != "FINISH":
+        raise DriverError(f"{ctx.name} is in {ctx.data.get('state')}, not FINISH: {plan_for(ctx).summary}")
+    guard_contract(ctx)
+    step = fin.plan_finish(ctx.main, ctx.task_dir, ctx.data)
+    if step.needs == "run" and (ctx.task_dir / fin.SCORECARD).is_file():
+        print(colored(f"{ctx.branch} is merged: cleaning up", Colors.BLUE))
+        return fin.cleanup(ctx.main, fin.start_cleanup(ctx.main, ctx.task_dir, ctx.data))
+    return fin.finish_before_merge(ctx.main, ctx.worktree, ctx.task_dir, ctx.task_rel, ctx.data, ctx.tier,
+                                   want_pr=args.pr, save=lambda: save(ctx))
+
+
+# =============================================================================
 # prompt / canary
 # =============================================================================
 
@@ -1242,7 +1311,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--role", choices=CONTRACT_ROLES, help="CONTRACT phase only: dispatch before task.py start")
     p.add_argument("--mode", choices=("plan",), help="with --role review")
     p.add_argument("--partition", help="run this partition's step (multi-partition waves)")
+    p.add_argument("--autopilot", action="store_true",
+                   help="keep going until a decision, a human gate, STOP, red or a failed dispatch")
     p.set_defaults(func=cmd_run)
+    p = sub.add_parser("finish", help="FINISH: scorecard + PR / merge command; cleanup after the merge")
+    p.add_argument("--pr", action="store_true", help="push the task branch and open a PR with gh")
+    p.set_defaults(func=cmd_finish)
     sub.add_parser("gate", help="run level 0: gate commands + contract auto checks").set_defaults(func=cmd_gate)
     p = sub.add_parser("decide", help="answer a decision the state table asked for")
     p.add_argument("choice", choices=(*sm.DECIDE_CHOICES, *sm.PLAUSIBLE_CHOICES))
@@ -1271,7 +1345,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return args.func(args)
-    except (DriverError, sm.StateError, ExecutorError, ContractError, WorktreeError) as e:
+    except (DriverError, sm.StateError, ExecutorError, ContractError, WorktreeError, fin.FinishError) as e:
         print(colored(f"Error: {e}", Colors.RED), file=sys.stderr)
         return 1
 
