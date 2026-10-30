@@ -1,0 +1,33 @@
+packages/cli/test/migrations/index.test.ts
+  s_f5a35762a9935e::t_e5414e7bf0095e 6,13-16,218-264
+packages/cli/package.json
+  s_29ddf67fa6b5ae::t_f52d057d944226 3
+packages/cli/src/migrations/manifests/0.2.0.json
+  s_29ddf67fa6b5ae::t_4673b3e69fe8c2 1-80
+packages/cli/test/commands/update.integration.test.ts
+  s_29ddf67fa6b5ae::t_ada03f97c054ea 796-821
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "00ba8ecb8f9d586b0a67fab9e0ce38ba668ae3e6",
+  "prompts": {},
+  "sessions": {
+    "s_29ddf67fa6b5ae": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-awave3-cleanup-5d1d06a655396494",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_f5a35762a9935e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5eec63a6-1b3a-4083-ba18-e451eb5d3978",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
