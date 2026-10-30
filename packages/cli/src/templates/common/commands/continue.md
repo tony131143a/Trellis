@@ -30,11 +30,12 @@ Shows the Phase Index (Plan / Drive / Finish), the state machine, tiers and huma
   - `implement.jsonl` / `check.jsonl` empty → **1.5** (`task.py seed-context <task>`, then adjust)
   - contract not validated, or standard / full without a plan review → **1.6**
   - everything present → **1.7** (planning summary, wait for the user's approval, then `task.py start`)
+  - explore / architect / review in this phase: write the brief at the `brief_path` from `arbor.py next --json`, then `arbor.py run --role <role> [--mode plan]` (main checkout, no commit)
 - `status=in_progress` (Phase 2, driven) → run the driver and do the one thing it names:
   ```bash
   {{PYTHON_CMD}} ./.arbor/scripts/arbor.py next
   ```
-  `needs=brief` → write the brief at `brief_path`, then `arbor.py run`; `needs=run` → `arbor.py run`; `needs=decide` → `arbor.py decide <choice> --reason "…"`; `needs=human` → ask the user; `done` → Phase 3. A `STOP` state: report it; the user chooses `resume`, `override --reason` or `abandon`.
+  `needs=brief` → write the brief at `brief_path`, then `arbor.py run`; `needs=run` → `arbor.py gate`; `needs=decide` → `arbor.py decide <choice> --reason "…"`; `needs=human` → ask the user (`human.kind`: `approve_contract` → re-approval, then `arbor.py resume`; `plausible` → `arbor.py decide fix|skip --reason "…"`; `merge` → Phase 3); `done` → Phase 3. A `STOP` state: report it; the user chooses `resume`, `override --reason "…" (--to STATE[/step] | --role <role>)` or `abandon [--reason "…"]`.
 - `status=completed` (rare; usually archived immediately) → `{{CMD_REF:finish-work}}`
 
 Roles are never performed in this session and never through the built-in `Agent`/`Task` tool; only `arbor.py run` executes them.

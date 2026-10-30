@@ -40,7 +40,7 @@ python3 ./.arbor/scripts/get_context.py --mode packages   # list packages / laye
 
 ### Task System
 
-Every task has its own directory `.arbor/tasks/{MM-DD-name}/` holding `task.json`, `contract.md`, optional `design.md` and `waves.md`, optional `research/`, `briefs/`, and the context manifests `implement.jsonl` / `check.jsonl`.
+Every task has its own directory `.arbor/tasks/{MM-DD-name}/` holding `task.json`, `contract.md`, optional `design.md` and `waves.md`, optional `research/`, `briefs/`, `reports/`, and the context manifests `implement.jsonl` / `check.jsonl`.
 
 ```bash
 # Task lifecycle
@@ -99,36 +99,47 @@ python3 ./.arbor/scripts/get_context.py --mode phase --step <X.Y>  # detailed gu
 
 ```bash
 python3 ./.arbor/scripts/arbor.py next [--json]               # the single next step
-python3 ./.arbor/scripts/arbor.py run                         # execute the dispatch whose brief you just wrote
+python3 ./.arbor/scripts/arbor.py run [--dispatch d-NNN]      # execute the dispatch whose brief you just wrote
+python3 ./.arbor/scripts/arbor.py run --role explore|architect|review [--mode plan] [--dispatch d-NNN]   # CONTRACT phase only, before task.py start
 python3 ./.arbor/scripts/arbor.py gate                        # run GATE level 0; prints the failing AC ids
 python3 ./.arbor/scripts/arbor.py decide <choice> --reason "…"   # impl | tests | contract (red gate) · fix | skip (PLAUSIBLE)
 python3 ./.arbor/scripts/arbor.py canary [--role <role>]      # small read-only dispatch: is the executor reachable, is the reply well-formed
-python3 ./.arbor/scripts/arbor.py override --reason "…"       # leave the state table for one step; recorded in the scorecard
-python3 ./.arbor/scripts/arbor.py status | resume | abandon
+python3 ./.arbor/scripts/arbor.py override --reason "…" (--to STATE[/step] | --role <role> [--mode M])   # one step off the state table; recorded in the scorecard
+python3 ./.arbor/scripts/arbor.py status | resume | abandon [--reason "…"]
 python3 ./.arbor/scripts/arbor.py prompt --dispatch d-NNN --print   # the assembled prompt of a dispatch
 ```
 
-`arbor.py next --json` always carries `task`, `state`, `needs` and `summary`; depending on `needs` it adds `role`, `mode`, `range`, `dispatch`, `brief_path`, `decision`, `human` and `touched_files`.
+Every command takes `--task <dir>` before the command name (default: this session's active task). Exit codes: 0 ok, 1 refused / failed dispatch / red gate, 2 usage error.
+
+`arbor.py next --json` always carries `task`, `state`, `needs` and `summary`; depending on `needs` it adds `role`, `mode`, `range`, `dispatch`, `brief_path`, `decision`, `human` and `touched_files`. Before `task.py start` it answers `state: CONTRACT`, `needs: human` with `human.kind: approve_contract`, plus the next `dispatch` id, its `brief_path` and `contract_roles` (explore, architect, review).
 
 | `needs` | Meaning | You do |
 |---|---|---|
 | `brief` | a role must run | write the brief for that `role` at `brief_path`, then `arbor.py run` |
-| `run` | the driver has deterministic work (the gate) | `arbor.py run` (or `arbor.py gate`) |
+| `run` | GATE: the driver has deterministic work | `arbor.py gate` (`arbor.py run` does the same here) |
 | `decide` | a judgment the driver cannot make | `arbor.py decide <choice> --reason "…"` with one of the listed options |
-| `human` | contract re-approval, PLAUSIBLE findings, or the merge | ask the user; record the answer with `decide` / `resume` |
+| `human` | `human.kind` says which: `approve_contract`, `plausible`, `stop` or `merge` | `approve_contract`: before start, finish the contract (research with `arbor.py run --role`, see CONTRACT-phase dispatch), ask for approval, then `task.py start`; after start, the user re-approves the edited `contract.md` and you run `arbor.py resume`. `plausible`: `decide fix\|skip --reason "…"`. `stop`: report, then `resume`, `override` or `abandon` as the user says. `merge`: Phase 3 |
 | `done` | nothing left | stop |
 
 **Dispatch header.** The driver writes it; you never type it. Every role prompt starts with:
 
 ```
-Active task: <absolute path of .arbor/tasks/<task> inside the task worktree>
+Active task: <absolute path of .arbor/tasks/<task> inside the task worktree; the main checkout before start>
 Role: explore | architect | test | implement | review | verify | fix | simplify
 Mode: self-check | candidates | sweep | plan        (review only)
 Range: <base>..<head>                               (roles that read or write a diff)
 Dispatch: d-NNN
 ```
 
-Then the injected context (the role's manifest — `implement.jsonl` for architect / test / implement, `check.jsonl` for review / verify / fix / simplify — then `contract.md`, `design.md`, `waves.md`, and `git diff <Range>`), then your brief. Your brief is committed as `briefs/d-NNN.md` on the task branch; the assembled prompt is kept at `.arbor/.runtime/prompts/<task>/d-NNN.md` in the main checkout (`arbor.py prompt --dispatch d-NNN --print` rebuilds it).
+Then the injected context (the role's manifest — `implement.jsonl` for architect / test / implement, `check.jsonl` for review / verify / fix / simplify — then `contract.md`, `design.md`, `waves.md`, and `git diff <Range>`), then your brief. Your brief is committed as `briefs/d-NNN.md` on the task branch, and the reply plus the driver's verdict as `reports/d-NNN.md`; the assembled prompt is kept at `.arbor/.runtime/prompts/<task>/d-NNN.md` in the main checkout (`arbor.py prompt --dispatch d-NNN --print` rebuilds it).
+
+**CONTRACT-phase dispatch.** Before `task.py start` the state table does not run yet, but you can still dispatch `explore`, `architect` and `review` (`Mode: plan`, the default for review):
+
+1. `arbor.py next --json` names the next `dispatch` id and its `brief_path` (`<task>/briefs/d-NNN.md`).
+2. Write the brief there (body only; the driver adds the header and context).
+3. `arbor.py run --role explore|architect|review [--mode plan] [--dispatch d-NNN]`.
+
+It runs in the main checkout with no `Range:` and commits nothing. `explore` and `architect` may write only `<task>/research/`; `review` writes nothing. Anything else they touch is a violation: the driver restores the stray paths (never resets the branch) and reports a moved HEAD for you to undo by hand. Each run is recorded in `task.json` (`dispatches`, `phase: CONTRACT`), in `reports/d-NNN.md` and in `results.jsonl`; `task.py start` later commits the task directory with the briefs, reports and research. Dispatch ids continue after start: with d-001 and d-002 used here, the first BUILD dispatch is d-003. After start, `run --role` is refused; an extra role then goes through `override --role`. With no task at all only `run --role explore` works: pipe the brief on stdin; the reply comes back on stdout and nothing is recorded in a task.
 
 **Briefs.** The role cannot see your conversation. A brief carries what the artifacts do not: the essential files to read first, decisions already made, known pitfalls, files to stay out of, and for review the `Angles:` line; for verify and fix, the findings JSON. Do not paste the contract or the diff; the driver injects them.
 
@@ -288,7 +299,7 @@ Other artifacts:
 - `waves.md` — full: the chosen architect's partitions and wave order with the reasoning.
 - `research/` — explore findings (`<topic>.md`) and architect blueprints (`design-<perspective>.md`).
 - `implement.jsonl` / `check.jsonl` — spec and research manifests the driver inlines into role prompts.
-- `briefs/d-NNN.md` — the brief you wrote for every dispatch (committed); `reports/d-NNN.md` — the reply plus the driver's verdict (committed).
+- `briefs/d-NNN.md` — the brief you wrote for every dispatch; `reports/d-NNN.md` — the reply plus the driver's verdict. Both are committed by the driver, or by `task.py start` for CONTRACT-phase dispatches. The assembled prompt is not committed: it stays at `.arbor/.runtime/prompts/<task>/d-NNN.md` in the main checkout.
 - `scorecard.md` — written at FINISH: dispatches per role, GATE / REVIEW / POLISH rounds, findings per rung, AC automation rate, overrides, violations.
 
 ### Parent / Child Task Trees
@@ -331,6 +342,7 @@ Preserve existing task fields and artifacts. If the correct status cannot be det
 [workflow-state:planning]
 Phase 1, CONTRACT. The tier is in the header; change it with `task.py set-meta <task> tier <tier>`.
 Explore (1.1, soft cap light 1 / standard 3 / full 5) → ask every open question as ONE numbered list and wait (1.2) → write `contract.md`: Goal, Scope, Acceptance criteria (Given/When/Then), Verification map, Interface pins, Test paths (1.3) → standard: `design.md`; full: 3 architect perspectives → user picks → `design.md` + `waves.md` (1.4) → `task.py seed-context <task>` (1.5) → structural validation; standard / full: one review `Mode: plan` (1.6).
+Roles here: write the brief at the `brief_path` from `arbor.py next --json`, then `arbor.py run --role explore|architect|review [--mode plan]`; it runs in the main checkout and commits nothing.
 Multi-deliverable scope: consider a parent task plus independently verifiable child tasks (`task.py create --parent`); dependencies must be written in child contracts, not implied by tree position.
 Approve (1.7): end the planning summary with the approval question; run `task.py start <task>` only after a later user message approves the contract.
 [/workflow-state:planning]
@@ -402,7 +414,7 @@ Run only `create` here. Skip when `task.py current --source` already points to a
 
 #### 1.1 Explore `[repeatable]`
 
-Facts first. Answer small questions by reading a few files yourself. Otherwise run `explore` roles through the driver, one aspect each (soft cap: light 1, standard 3, full 5; say why when you exceed it). Each writes `research/<topic>.md` and returns 5–10 essential files. Read only the 2–3 files you need for the next step; the research files are injected into later roles.
+Facts first. Answer small questions by reading a few files yourself. Otherwise run `explore` roles, one aspect each, as CONTRACT-phase dispatches (write the brief at the `brief_path` from `arbor.py next --json`, then `arbor.py run --role explore`) (soft cap: light 1, standard 3, full 5; say why when you exceed it). Each writes `research/<topic>.md` and returns 5–10 essential files. Read only the 2–3 files you need for the next step; the research files are injected into later roles.
 
 #### 1.2 Questions `[required · once]`
 
@@ -421,8 +433,8 @@ Return here whenever an answer, a design choice or a red gate changes what done 
 
 #### 1.4 Design `[required · once; standard / full]`
 
-- **Standard**: write `design.md` yourself (boundaries, contracts, data flow, trade-offs, rollback). Run one `architect` (`Perspective: pragmatic`) only when the area is unfamiliar or the user asks.
-- **Full**: run 3 `architect` roles in parallel (`Perspective: minimal-change` / `clean-architecture` / `pragmatic`). Present each design, the trade-offs, your recommendation and the proposed partitions / waves. After the user picks, write `design.md`, add `## Partitions` / `## Waves` to the contract, and record the reasoning in `waves.md`.
+- **Standard**: write `design.md` yourself (boundaries, contracts, data flow, trade-offs, rollback). Run one `architect` (`arbor.py run --role architect`, brief with `Perspective: pragmatic`) only when the area is unfamiliar or the user asks.
+- **Full**: run 3 `architect` roles (`arbor.py run --role architect`, one brief each with `Perspective: minimal-change` / `clean-architecture` / `pragmatic`). Present each design, the trade-offs, your recommendation and the proposed partitions / waves. After the user picks, write `design.md`, add `## Partitions` / `## Waves` to the contract, and record the reasoning in `waves.md`.
 
 #### 1.5 Configure context `[required · once]`
 
@@ -436,7 +448,7 @@ Ready gate: both `implement.jsonl` and `check.jsonl` must contain at least one r
 
 #### 1.6 Validate & plan review `[required · once]`
 
-Structural validation runs on the contract (see Task Artifacts); fix every error it reports. Standard / full: run one `review` with `Mode: plan` (goal-backward: what must be true for the goal, which criterion covers it, is it wired, does it fit the context budget) and revise the contract with its findings.
+Structural validation runs on the contract (see Task Artifacts); fix every error it reports. Standard / full: run one `review` with `Mode: plan` (`arbor.py run --role review --mode plan`; goal-backward: what must be true for the goal, which criterion covers it, is it wired, does it fit the context budget) and revise the contract with its findings.
 
 #### 1.7 Approve & start `[required · once]`
 
@@ -446,7 +458,7 @@ End the planning summary (goal, scope, criteria with their checks, key decisions
 python3 ./.arbor/scripts/task.py start <task-dir>
 ```
 
-`start` checks the tier's artifacts (light `contract.md`; standard + `design.md`; full + `waves.md`) and the manifests, freezes `contract_hash`, creates the task worktree and branch, commits the task directory, and sets `state=BUILD`. From here on `arbor.py next` leads. Before BUILD, consider continuing in a fresh session: all state is on disk.
+`start` checks the tier's artifacts (light `contract.md`; standard + `design.md`; full + `waves.md`) and the manifests, freezes `contract_hash`, creates the task worktree and branch, commits the task directory (with the CONTRACT-phase briefs, reports and research), and sets `state=BUILD`. From here on `arbor.py next` leads. Before BUILD, consider continuing in a fresh session: all state is on disk.
 
 If `start` reports a session-identity problem, follow its hint and retry.
 
@@ -501,7 +513,7 @@ Standard / full only. `simplify` → GATE → N reviews `Mode: candidates` (stan
 
 #### 2.7 STOP, resume, override `[on demand]`
 
-The driver STOPs on a round cap (BUDGET), two rounds without progress (NO_PROGRESS), or an invariant violation. Report the state, the reason and the last evidence to the user. `arbor.py resume` continues; `arbor.py override --reason "…"` allows one step off the state table and is recorded in the scorecard; `arbor.py abandon` ends the task. A dispatch that failed or broke an invariant has already been reset; tighten the brief rather than doing the role's work here.
+The driver STOPs on a round cap (BUDGET), two rounds without progress (NO_PROGRESS), or an invariant violation. Report the state, the reason and the last evidence to the user. `arbor.py resume` continues; `arbor.py override --reason "…" --to STATE[/step]` jumps to a state, `override --reason "…" --role <role> [--mode M]` runs one extra role without advancing; both are recorded in the scorecard. `arbor.py abandon [--reason "…"]` ends the task. A dispatch that failed or broke an invariant has already been reset; tighten the brief rather than doing the role's work here.
 
 ---
 

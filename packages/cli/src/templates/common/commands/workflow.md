@@ -29,6 +29,16 @@ Arguments: `[--tier light|standard|full] [request]`
 
 Phase 1 of `.arbor/workflow.md`: explore (soft cap light 1 / standard 3 / full 5) → one numbered question list → `contract.md` (+ `design.md`; full: 3 architect perspectives → the user picks → `waves.md`) → `task.py seed-context <task>` → structural validation → standard / full: one review `Mode: plan` → planning summary → the user approves the contract → `task.py start <task>`.
 
+Roles in this phase (explore, architect, review `Mode: plan`) run before `task.py start`:
+
+```bash
+{{PYTHON_CMD}} ./.arbor/scripts/arbor.py next --json   # gives the next `dispatch` id and its `brief_path`
+# write the brief at brief_path, then:
+{{PYTHON_CMD}} ./.arbor/scripts/arbor.py run --role explore|architect|review [--mode plan]
+```
+
+They run in the main checkout and commit nothing; explore and architect may write only the task's `research/`. Read the reply in `reports/<id>.md`. `task.py start` commits the task directory later.
+
 ## Step 4: Drive (status `in_progress`)
 
 ```bash
@@ -38,11 +48,11 @@ Phase 1 of `.arbor/workflow.md`: explore (soft cap light 1 / standard 3 / full 5
 Do the one thing it names, then run `next` again:
 
 - `needs=brief` → write the brief for the named role at `brief_path`, then `{{PYTHON_CMD}} ./.arbor/scripts/arbor.py run`
-- `needs=run` → `{{PYTHON_CMD}} ./.arbor/scripts/arbor.py run`
+- `needs=run` (GATE) → `{{PYTHON_CMD}} ./.arbor/scripts/arbor.py gate`
 - `needs=decide` → `{{PYTHON_CMD}} ./.arbor/scripts/arbor.py decide <choice> --reason "<evidence>"`
-- `needs=human` → ask the user (contract re-approval, PLAUSIBLE findings, merge) and record the answer
+- `needs=human` → ask the user, by `human.kind`: `approve_contract` (they re-approve the edited contract, then `arbor.py resume`), `plausible` (`arbor.py decide fix|skip --reason "…"`), `stop` (see below), `merge` (Phase 3)
 - `done` → Phase 3 (`{{CMD_REF:finish-work}}`)
 
-On STOP, report the reason and the last evidence; the user decides between `arbor.py resume`, `arbor.py override --reason "…"` and `arbor.py abandon`.
+On STOP, report the reason and the last evidence; the user decides between `arbor.py resume`, `arbor.py override --reason "…" (--to STATE[/step] | --role <role>)` and `arbor.py abandon [--reason "…"]`.
 
 Never perform a role in this session and never use the built-in Agent/Task tool for one. The driver writes the dispatch header and injects the contract, design and diff; your brief carries only what those do not say.

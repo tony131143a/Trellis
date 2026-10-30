@@ -36,7 +36,7 @@ Index files list the specific guideline docs to read when you actually start cod
 ## Step 4: Decide next action
 From Step 1 you know the current task and status:
 
-- **Active task status `planning`** → Phase 1 (CONTRACT). No `contract.md` or no acceptance criteria yet → load `arbor-brainstorm`. Otherwise continue with the first missing Phase 1 step (design, context, validation, approval); load its detail before `task.py start`.
+- **Active task status `planning`** → Phase 1 (CONTRACT). No `contract.md` or no acceptance criteria yet → load `arbor-brainstorm`. Otherwise continue with the first missing Phase 1 step (design, context, validation, approval); load its detail before `task.py start`. Roles in this phase run as `arbor.py run --role explore|architect|review [--mode plan]` after you write the brief at the `brief_path` from `arbor.py next --json`.
 - **Active task status `in_progress`** → Phase 2. Ask the driver for the one next step and do it:
   ```bash
   {{PYTHON_CMD}} ./.arbor/scripts/arbor.py next

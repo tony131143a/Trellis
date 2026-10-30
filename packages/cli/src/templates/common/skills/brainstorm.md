@@ -43,7 +43,7 @@ TASK_DIR=$({{PYTHON_CMD}} ./.arbor/scripts/task.py create "<short task title>" -
    - code, tests, fixtures, and configs
    - README files, docs, existing specs, and domain notes
    - related Arbor tasks, research files, and session history when present
-   - when a few files you read yourself do not answer it, run `explore` roles through the driver (workflow step 1.1; soft cap light 1 / standard 3 / full 5), one aspect each; afterwards read only the 2-3 files you need for the next brief
+   - when a few files you read yourself do not answer it, run `explore` roles with `arbor.py run --role explore` after writing each brief at the `brief_path` from `arbor.py next --json` (workflow step 1.1; soft cap light 1 / standard 3 / full 5), one aspect each; afterwards read only the 2-3 files you need for the next brief
 3. Separate what you found into:
    - confirmed facts
    - product intent still needed from the user
@@ -51,8 +51,8 @@ TASK_DIR=$({{PYTHON_CMD}} ./.arbor/scripts/task.py create "<short task title>" -
    - likely out-of-scope items
 4. If user-owned decisions remain, ask all of them as ONE numbered list, each with your recommendation and trade-off, then stop. Do not perform implementation work in the same turn.
 5. After the user's answers, update `contract.md` and ask again only about decisions the answers raised; recompute the decision inventory and repeat from step 2.
-6. When no user-owned decision remains: write the acceptance criteria, the Verification map, the Interface pins and the Test paths. Light needs only `contract.md`. Standard: write `design.md` yourself (one `architect` with `Perspective: pragmatic` only if unfamiliar or asked). Full: run 3 `architect` roles (workflow step 1.4), present their trade-offs with your recommendation, and after the user picks a design write `design.md`, the contract's Partitions / Waves, and `waves.md`.
-7. Light: check that every acceptance criterion is testable and mapped. Standard / full: run the requirement convergence gate, then the contract convergence pass, then one review `Mode: plan` (workflow step 1.6).
+6. When no user-owned decision remains: write the acceptance criteria, the Verification map, the Interface pins and the Test paths. Light needs only `contract.md`. Standard: write `design.md` yourself (one `architect` with `Perspective: pragmatic` only if unfamiliar or asked). Full: run 3 `architect` roles, one `arbor.py run --role architect` each (workflow step 1.4), present their trade-offs with your recommendation, and after the user picks a design write `design.md`, the contract's Partitions / Waves, and `waves.md`.
+7. Light: check that every acceptance criterion is testable and mapped. Standard / full: run the requirement convergence gate, then the contract convergence pass, then one review `Mode: plan` with `arbor.py run --role review --mode plan` (workflow step 1.6). These CONTRACT-phase dispatches run in the main checkout and commit nothing; read each reply in `reports/<id>.md`.
 8. Present the final planning summary and stop. Do not run `task.py start` or edit product code in the same turn.
 9. Only a subsequent user message that explicitly approves the latest contract authorizes `task.py start`. If the contract changes materially after approval, repeat the final review.
 
