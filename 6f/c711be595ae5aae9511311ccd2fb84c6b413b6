@@ -1,0 +1,35 @@
+.arbor/.template-hashes.json
+  s_f3feb1ad4bd47d::t_33986f09e8e778 28,99,103
+packages/cli/test/scripts/v2-polyrepo.integration.test.ts
+  s_f3feb1ad4bd47d::t_ef904bd9a2a931 61-100
+packages/cli/src/templates/arbor/scripts/arbor.py
+  s_f3feb1ad4bd47d::t_4eb515d21d0eef 649-652,655-661,684-685,702-703,1598-1599
+  s_f3feb1ad4bd47d::t_021990b5962f43 1600
+.arbor/scripts/arbor.py
+  s_f3feb1ad4bd47d::t_557df374ad3fbd 649-652,655-661,684-685,702-703,1598-1599
+  s_f3feb1ad4bd47d::t_1b8898e5eb680c 1600
+.arbor/scripts/common/execution.py
+  s_f3feb1ad4bd47d::t_557df374ad3fbd 11,161-183
+packages/cli/src/templates/arbor/workflow.md
+  s_f3feb1ad4bd47d::t_cd429690be9096 161-162
+.arbor/workflow.md
+  s_f3feb1ad4bd47d::t_cd429690be9096 161-162
+packages/cli/src/templates/arbor/scripts/common/execution.py
+  s_f3feb1ad4bd47d::t_4eb515d21d0eef 11,161-183
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "6fc711be595ae5aae9511311ccd2fb84c6b413b6",
+  "prompts": {},
+  "sessions": {
+    "s_f3feb1ad4bd47d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18f9f-5cf3-7b71-b867-31398ef7f748",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Mr tang <mytortoise18@sina.com~>"
+    }
+  }
+}
