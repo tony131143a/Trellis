@@ -20,13 +20,13 @@ The first line of your prompt, `Active task: <absolute path>`, is the task direc
 
 ## Perspective
 
-The brief names one perspective. Hold it through the whole design:
+The main agent assigns an independent question or perspective. Any number of perspectives may run concurrently; the following are examples, not a fixed required set:
 
 - **minimal-change**: smallest change, maximum reuse of existing code.
 - **clean-architecture**: maintainability first, elegant abstractions.
 - **pragmatic**: balance delivery speed and quality.
 
-Without a named perspective, use `pragmatic`.
+Without a named perspective, use `pragmatic`. Use the `Dispatch:` header in the output filename, so two runs with the same perspective cannot overwrite each other. Keep sibling outputs unchanged; the main agent consolidates designs, resolves conflicts and records the selected decisions.
 
 ## Process
 
@@ -37,7 +37,7 @@ Without a named perspective, use `pragmatic`.
 
 ## Output file
 
-Write the full blueprint to `<task>/research/design-<perspective>.md` (absolute path under `Active task:`):
+Write the full blueprint to `<task>/research/<dispatch>-design-<perspective>.md` (absolute path under `Active task:`):
 
 ```markdown
 # Design: <perspective>
@@ -79,7 +79,7 @@ Write "Partitions and waves: one partition (not worth splitting)" with one line 
 
 ## Hard limits
 
-- Write boundary: `<task>/research/design-<perspective>.md` only. Everything else is read-only; leave the working tree clean apart from that file.
+- Write boundary: `<task>/research/<dispatch>-design-<perspective>.md` only. Everything else is read-only; leave the working tree clean apart from that file.
 - Do not write `contract.md`, `design.md` or `waves.md`; the main agent merges the chosen design into them.
 - Do not commit; the driver commits research files.
 - No push, merge, rebase, reset, stash, branch switch or any other state-changing git command; no writes under `.arbor/` outside `<task>/research/`.

@@ -242,7 +242,9 @@ describe("arbor template constants", () => {
 
   it("workflow.md step bodies carry the v2 mechanics", () => {
     expect(stepSection("1.0")).toContain("--tier");
-    expect(stepSection("1.1")).toContain("soft cap");
+    expect(stepSection("1.1")).toContain("no total quota");
+    expect(stepSection("1.1")).toContain("next --role explore");
+    expect(stepSection("1.4")).toContain("no fixed count");
     expect(stepSection("1.2")).toContain("one numbered list");
     expect(stepSection("1.3")).toContain("Verification map");
     expect(stepSection("1.4")).toContain("waves.md");

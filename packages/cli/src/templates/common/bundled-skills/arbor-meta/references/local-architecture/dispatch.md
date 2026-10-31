@@ -28,13 +28,13 @@ Every command takes `--task <dir>` before the command name (default: the session
 
 Before `task.py start` there is no state table, worktree or Range, but the contract still needs research and a plan review. `arbor.py run --role explore|architect|review [--mode plan] [--dispatch d-NNN]` covers that:
 
-- The main agent writes the brief body at `<task>/briefs/<id>.md`, where `<id>` and the path come from `next --json` (`dispatch`, `brief_path`). `--dispatch` must match that id when given. A missing or empty brief is refused.
+- The main agent writes the brief body at `<task>/briefs/<id>.md`, where `<id>` and the path come from `next --json` (`dispatch`, `brief_path`). Use an explicit new `--dispatch` id for concurrent research; retrying a pending id returns its original request. A missing or empty brief is refused.
 - `--mode plan` goes with `review` only and is its default.
 - The role runs in the main checkout, with header `Active task`, `Role`, `Mode` (review) and `Dispatch`, and no `Range:`. Nothing is committed.
 - Write boundary: `explore` and `architect` may write only `<task>/research/`; `review` writes nothing. Unexpected changes are observations for the main agent. The driver preserves the files and HEAD, without reset, checkout or clean.
 - Each run is recorded in `task.json` `dispatches` (`phase: "CONTRACT"`; review adds `verdict` and `findings`), in `<task>/reports/<id>.md`, and as a `results.jsonl` row with state `CONTRACT`.
 - `task.py start` keeps those records and commits the task directory, briefs, reports and research included. Dispatch ids continue: after pre-start d-001 and d-002, the first BUILD dispatch is d-003.
-- On a started task `run --role` is refused; an extra role goes through `override --role`.
+- On a started task in CONTRACT, `run --role` also supports concurrent replanning; outside CONTRACT an extra role goes through `override --role`.
 - With no task at all (INTAKE) only `--role explore` works: the brief comes on stdin, the reply goes to stdout, and no task directory is touched; the prompt is kept as `.arbor/.runtime/prompts/intake-<timestamp>.md`.
 
 ## Header Protocol
@@ -113,3 +113,5 @@ Every dispatch appends one line to `.arbor/.runtime/results.jsonl` (`task`, `dis
 - `arbor.py canary --role review`: is the executor reachable and is the reply shaped right.
 - `.arbor/.runtime/results.jsonl`: per-dispatch exit code, status and violations.
 - Observed boundary changes: inspect the retained files and raw report in context; no branch reset has occurred. Use the ordinary next step or a reasoned override. Legacy STOP records require explicit resume/override after inspecting evidence.
+
+Independent CONTRACT explore/architect roles may run concurrently without a total role quota. Use `next --role explore|architect --json` to prepare another angle, then `run --role <role> --dispatch <id>`. Research/design readers have no simultaneous cap and do not consult `max_parallel`; the main agent chooses the fan-out. Results can be collected out of order; each owns `research/<dispatch>-*.md`. Plan review/start/resume wait for all readers, and the main agent consolidates the evidence.

@@ -20,6 +20,10 @@ python3 ./.arbor/scripts/get_context.py --mode phase
 
 Shows the Phase Index (Plan / Drive / Finish), the state machine, tiers and human gates.
 
+## Parallel planning readers
+
+`next --json` lists `pending_delegations`. Resume/poll every existing bound task; do not relaunch it. For another independent explore/architect angle in CONTRACT, use `next --role <role> --json`, write its brief and `run --role <role> --dispatch <id>`. The main agent chooses the scopes and number of perspectives without a total quota, collects results in any order, then consolidates the plan. There is no total or simultaneous reader-count limit; final plan review and start/resume wait for collection.
+
 ## Step 3: Decide Where You Are
 
 `get_context.py` shows the active task's `status` and `Tier:` line. This command does not itself approve anything.

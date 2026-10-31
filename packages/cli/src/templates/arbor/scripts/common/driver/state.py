@@ -632,6 +632,10 @@ def reap_stale(data: dict, alive) -> list[str]:
     """Clear ``running`` markers whose run process is gone (``alive(pid)`` is
     False); their dispatch entries become ``aborted``. Returns their ids."""
     reaped: list[str] = []
+    for entry in data.get("dispatches") or []:
+        if (entry.get("phase") == "CONTRACT" and entry.get("status") == "running"
+                and entry.get("pid") and not alive(int(entry["pid"]))):
+            reaped.append(str(entry["id"]))
     for rec in (data.get("partitions") or {}).values():
         running = rec.get("running")
         if isinstance(running, dict) and not running.get("external") and not alive(int(running.get("pid") or 0)):

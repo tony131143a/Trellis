@@ -6,8 +6,8 @@ Arbor has eight roles: `explore`, `architect`, `test`, `implement`, `review`, `v
 
 | File | Role |
 | --- | --- |
-| `.arbor/agents/explore.md` | Trace code or fetch external docs for one aspect; write `research/<topic>.md` and return 5-10 essential files. |
-| `.arbor/agents/architect.md` | Produce one design blueprint from an assigned perspective into `research/design-<perspective>.md`, with a partition / wave suggestion. |
+| `.arbor/agents/explore.md` | Trace code or fetch external docs for one aspect; write `research/<dispatch>-<topic>.md` and return 5-10 essential files. |
+| `.arbor/agents/architect.md` | Produce one design blueprint from an assigned perspective into `research/<dispatch>-design-<perspective>.md`, with a partition / wave suggestion. |
 | `.arbor/agents/test.md` | Commit failing tests for the contract's acceptance criteria, only inside the test paths; report the criterion → test map and the red run. |
 | `.arbor/agents/implement.md` | Make the committed tests pass against `contract.md`, optional `design.md` / `waves.md`, `implement.jsonl`, and referenced spec/research; commit; never touch test paths. |
 | `.arbor/agents/review.md` | Review a commit `Range:` for correctness bugs (`Mode: self-check`, `candidates`, `sweep`, or `plan`); report `PASS`/`FAIL` with JSON findings; never edits code. |

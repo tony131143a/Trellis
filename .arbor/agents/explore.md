@@ -53,7 +53,7 @@ Classify the question first:
 
 ## Output file (with a task)
 
-Write one file per topic at `<task>/research/<topic>.md` (absolute path under `Active task:`):
+Write one file per topic at `<task>/research/<dispatch>-<topic>.md` (absolute path under `Active task:`):
 
 ```markdown
 # <Topic>
@@ -79,11 +79,13 @@ Write one file per topic at `<task>/research/<topic>.md` (absolute path under `A
 ## What this does NOT answer
 ```
 
+Use the `Dispatch:` header (for example `d-003`) in every output filename. Independent angles may run concurrently; never edit another dispatch's output. The main agent chooses the number of angles and combines findings.
+
 Do not edit `implement.jsonl` or `check.jsonl`; the main agent curates them. Suggest entries in your report instead.
 
 ## Hard limits
 
-- Write boundary: `<task>/research/*.md` and your own `/tmp/research-<topic>/` scratch directory. Everything else is read-only; leave the working tree clean apart from your research files.
+- Write boundary: `<task>/research/<dispatch>-*.md` and your own `/tmp/research-<dispatch>-<topic>/` scratch directory. Everything else is read-only; leave the working tree clean apart from your research files.
 - Do not commit; the driver commits research files.
 - No push, merge, rebase, reset, stash, branch switch or any other state-changing git command; no writes under `.arbor/` outside `<task>/research/`.
 - No source edits, no package installs, no builds or tests.

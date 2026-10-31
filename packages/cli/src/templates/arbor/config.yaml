@@ -112,7 +112,9 @@ max_journal_lines: 2000
 # task_id, then collect the terminal MCP report for validation. No CLI child.
 # Model, effort and permissions belong to the executor, not to Arbor: with
 # codeg, configure one `arbor-<role>` assistant per role. `timeout` bounds one
-# dispatch (the host cancels overdue MCP tasks); max_parallel is the fan-out limit.
+# dispatch (the host cancels overdue MCP tasks); max_parallel bounds simultaneous
+# BUILD partition workers only. CONTRACT explore/architect readers have no total
+# or simultaneous cap; the main agent chooses their scopes, angles and fan-out.
 # Optional assistant_ids maps role names to codeg assistant ids. Without it,
 # the host resolves `assistant` from the MCP tool's assistant roster.
 #

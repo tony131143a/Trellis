@@ -27,7 +27,7 @@ Arguments: `[--tier light|standard|full] [request]`
 
 ## Step 3: Contract (status `planning`)
 
-Phase 1 of `.arbor/workflow.md`: explore (soft cap light 1 / standard 3 / full 5) → one numbered question list → `contract.md` (+ `design.md`; full: 3 architect perspectives → the user picks → `waves.md`) → `task.py seed-context <task>` → structural validation → standard / full: one review `Mode: plan` → planning summary → the user approves the contract → `task.py start <task>`.
+Phase 1 of `.arbor/workflow.md`: explore (main agent chooses independent angles; no total quota) → one numbered question list → `contract.md` (+ `design.md`; full: main-agent-selected architecture perspectives → consolidated → `waves.md`) → `task.py seed-context <task>` → structural validation → standard / full: one review `Mode: plan` → planning summary → the user approves the contract → `task.py start <task>`.
 
 Roles in this phase (explore, architect, review `Mode: plan`) run before `task.py start`:
 
@@ -36,6 +36,8 @@ Roles in this phase (explore, architect, review `Mode: plan`) run before `task.p
 # write the brief at brief_path, then:
 {{PYTHON_CMD}} ./.arbor/scripts/arbor.py run --role explore|architect|review [--mode plan]
 ```
+
+For multiple independent research or architecture angles, use `next --role explore|architect --json`, write each named brief, then `run --role <role> --dispatch <id>`. Delegate and bind every returned request; their execution overlaps with no Arbor reader-count limit; the main agent chooses how many to dispatch. `next --json` lists all pending delegations; collect in any completion order. Each reader writes `research/<dispatch>-*.md`. No tier imposes a total role count or a fixed three-perspective design set. The main agent consolidates evidence before plan review/start. Started tasks in CONTRACT support the same replanning path.
 
 They run in the main checkout and commit nothing; explore and architect may write only the task's `research/`. Read the reply in `reports/<id>.md`. `task.py start` commits the task directory later.
 

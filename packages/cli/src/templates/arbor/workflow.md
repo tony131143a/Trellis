@@ -115,7 +115,7 @@ is rejected with `GATE-EMPTY`; add executable verification before advancing. Exe
 merge target and package policy are frozen in `task.json.execution_binding`;
 changing that binding or the package policy after start is refused.
 
-Product dispatches are serialized, including within a multi-partition wave. MCP
+Product execution dispatches are serialized, including within a multi-partition wave. CONTRACT research/design readers can run concurrently in the control worktree. MCP
 uses the normal prepare/bind/collect protocol. Control and main-checkout snapshots
 record drift as observations for the main agent, not proof that the child wrote
 those files. Collection preserves files and commits; repository identity and
@@ -220,7 +220,7 @@ Range: <base>..<head>                               (roles that read or write a 
 Dispatch: d-NNN
 ```
 
-Before `task.py start` the task directory still sits in the main checkout, so `Active task:` points there. Then the injected context (the role's manifest — `implement.jsonl` for architect / test / implement, `check.jsonl` for review / verify / fix / simplify — then `contract.md`, `design.md`, `waves.md`, and `git diff <Range>`), then your brief. Your brief is committed as `briefs/d-NNN.md` on the task branch, and the reply plus the driver's verdict as `reports/d-NNN.md`; the assembled prompt is kept at `.arbor/.runtime/prompts/<task>/d-NNN.md` in the main checkout (`arbor.py prompt --dispatch d-NNN --print` rebuilds it).
+Before `task.py start` the task directory still sits in the main checkout, so `Active task:` points there. Started CONTRACT replanning uses the existing control worktree. Then the injected context (the role's manifest — `implement.jsonl` for architect / test / implement, `check.jsonl` for review / verify / fix / simplify — then `contract.md`, `design.md`, `waves.md`, and `git diff <Range>`), then your brief. Your brief is committed as `briefs/d-NNN.md` on the task branch, and the reply plus the driver's verdict as `reports/d-NNN.md`; the assembled prompt is kept at `.arbor/.runtime/prompts/<task>/d-NNN.md` in the main checkout (`arbor.py prompt --dispatch d-NNN --print` rebuilds it).
 
 **CONTRACT-phase dispatch.** Before `task.py start` the state table does not run yet, but you can still dispatch `explore`, `architect` and `review` (`Mode: plan`, the default for review):
 
@@ -228,7 +228,41 @@ Before `task.py start` the task directory still sits in the main checkout, so `A
 2. Write the brief there (body only; the driver adds the header and context).
 3. `arbor.py run --role explore|architect|review [--mode plan] [--dispatch d-NNN]`.
 
-It runs in the main checkout with no `Range:` and commits nothing. `explore` and `architect` may write only `<task>/research/`; `review` writes nothing. Other observed changes are reported to the main agent for contextual judgment. The driver retains files and commits for inspection and reports a moved HEAD for you to undo by hand; it never resets the main checkout. Each run is recorded in `task.json` (`dispatches`, `phase: CONTRACT`), in `reports/d-NNN.md` and in `results.jsonl`; `task.py start` later commits the task directory with the briefs, reports and research. Dispatch ids continue after start: with d-001 and d-002 used here, the first BUILD dispatch is d-003. After start, `run --role` is refused; an extra role then goes through `override --role`. With no task at all only `run --role explore` works: pipe the brief on stdin; the reply comes back on stdout and nothing is recorded in a task.
+It runs in the main checkout with no `Range:` and commits nothing. `explore` and `architect` may write only `<task>/research/`; `review` writes nothing. Other observed changes are reported to the main agent for contextual judgment. The driver retains files and commits for inspection and reports a moved HEAD for you to undo by hand; it never resets the main checkout. Each run is recorded in `task.json` (`dispatches`, `phase: CONTRACT`), in `reports/d-NNN.md` and in `results.jsonl`; `task.py start` later commits the task directory with the briefs, reports and research. Dispatch ids continue after start: with d-001 and d-002 used here, the first BUILD dispatch is d-003. Started tasks in CONTRACT can also use `run --role` for parallel replanning; outside CONTRACT, extra roles use `override --role`. With no task at all only `run --role explore` works: pipe the brief on stdin; the reply comes back on stdout and nothing is recorded in a task.
+
+**Parallel research and design.** The main agent splits questions, source scopes and
+architecture perspectives. There is no total or simultaneous explore/architect
+quota at any tier. The main agent decides how many independent angles to dispatch;
+these roles do not consult `executors.<name>.max_parallel`. Independent explore and architect roles
+may overlap; dependent questions wait for their prerequisite results. A final
+plan review and task start/resume wait until all pending readers are collected.
+
+For each additional angle, including while earlier readers are running:
+
+```bash
+python3 .arbor/scripts/arbor.py --task <task> next --role explore --json
+# Write the brief at brief_path; use the returned id, for example d-002:
+python3 .arbor/scripts/arbor.py --task <task> run --role explore --dispatch d-002
+# For a design perspective use --role architect in both commands.
+```
+
+Prepare requests one by one, then delegate/bind each immediately; child execution
+is concurrent. `next --json` lists `pending_delegations` so interrupted sessions
+can resume every bound reader. Repeating an explicit pending id returns the same
+request; a completed id cannot be reused. Calling `run --role` without a new id
+resumes the existing reader rather than accidentally launching a duplicate.
+The main agent can add independent angles while earlier readers are running.
+Results can be collected in any order. Command executors also reserve ids
+under the task lock and run outside it; dead command readers can be retried under
+new ids. MCP readers keep their bound task ids and are polled/resumed.
+
+Each reader owns `research/<dispatch>-*.md`; brief, prompt and report paths also
+use that dispatch id. Automatic architecture context excludes uncollected or
+failed sibling outputs. The main agent reviews completed evidence, resolves
+contradictions and consolidates `design.md`, `contract.md`, `waves.md` and manifests.
+Context byte/file budgets still apply; use curated manifests and summaries for
+large studies. Research/architecture parallelism does not enable parallel product
+writers or parallel final plan reviews.
 
 **Briefs.** The role cannot see your conversation. A brief carries what the artifacts do not: the essential files to read first, decisions already made, known pitfalls, files to stay out of, and for review the `Angles:` line; for verify and fix, the findings JSON. Do not paste the contract or the diff; the driver injects them.
 
@@ -318,7 +352,7 @@ Phase 3: Finish  → scorecard, spec update, PR, human `--no-ff` merge, cleanup
 | State | Entered when | Who | What happens | Leaves to |
 |---|---|---|---|---|
 | INTAKE | `/arbor:workflow <request>` | you → human | propose a tier with a one-line reason; the human answers ok / light / standard / full | consent → `task.py create` → CONTRACT |
-| CONTRACT | task directory exists | you + explore / architect + human | explore → one question list → `contract.md` (+ `design.md`; full: 3 architect perspectives → chosen → `waves.md`) → `seed-context` → structural validation → standard / full: review `Mode: plan` → human approves | `task.py start` → BUILD |
+| CONTRACT | task directory exists | you + explore / architect + human | explore → one question list → `contract.md` (+ `design.md`; full: main-agent-selected architecture perspectives → consolidated → `waves.md`) → `seed-context` → structural validation → standard / full: review `Mode: plan` → human approves | `task.py start` → BUILD |
 | BUILD | a wave is pending | driver + writers | `test` commits failing tests (the driver checks they fail for the right reason) → `implement` makes them pass | GATE |
 | GATE | the task branch has new commits | driver → you | level 0: `gate.commands` + every `auto` row of the Verification map. Green → next wave or REVIEW. Red → you classify: impl (`fix`, tests frozen) / tests (`test` again) / contract (edit it, the human re-approves) | `counters.gate++`; main agent decides retries |
 | REVIEW | GATE green, all waves done | review + fix | one review `Mode: self-check` over `base..HEAD`; findings → `fix` → GATE → re-review only `last_reviewed..HEAD`; caps: light 2 rounds, standard / full 1 | PASS → light: FINISH; standard / full: POLISH |
@@ -335,8 +369,8 @@ The tier decides how much contract work happens and how high the verification la
 | | light | standard | full |
 |---|---|---|---|
 | Fits | one deliverable, a few files, existing patterns suffice | a feature or refactor across files or layers that needs a written design | several deliverables, contested design, risky migration |
-| Contract artifacts | `contract.md` | + `design.md` + review `Mode: plan` | + 3 architect perspectives + `waves.md` |
-| Explore (soft cap; say why when exceeded) | 1 | 3 | 5 |
+| Contract artifacts | `contract.md` | + `design.md` + review `Mode: plan` | + architecture perspectives as needed + `waves.md` |
+| Explore / architect angles | Main agent chooses; no total quota | Main agent chooses; no total quota | Main agent chooses; no total quota |
 | BUILD | one partition, serial | partitions per the contract | partitions + waves |
 | Ladder climbs to | rung 2 | rung 3 (2 candidate readers) | rung 4 (3 candidate readers + sweep) |
 | Human gates | tier · contract · merge | + PLAUSIBLE | + PLAUSIBLE |
@@ -399,7 +433,7 @@ Other artifacts:
 
 - `design.md` — standard / full: boundaries, contracts, data flow, trade-offs, rollback.
 - `waves.md` — full: the chosen architect's partitions and wave order with the reasoning.
-- `research/` — explore findings (`<topic>.md`) and architect blueprints (`design-<perspective>.md`).
+- `research/` — explore findings (`<dispatch>-<topic>.md`) and architect blueprints (`<dispatch>-design-<perspective>.md`).
 - `implement.jsonl` / `check.jsonl` — spec and research manifests the driver inlines into role prompts.
 - `briefs/d-NNN.md` — the brief you wrote for every dispatch; `reports/d-NNN.md` — the reply plus the driver's verdict. Both are committed by the driver, or by `task.py start` for CONTRACT-phase dispatches. The assembled prompt is not committed: it stays at `.arbor/.runtime/prompts/<task>/d-NNN.md` in the main checkout.
 - `scorecard.md` — written at FINISH: dispatches per role, GATE / REVIEW / POLISH rounds, findings per rung, AC automation rate, overrides, violations.
@@ -431,10 +465,10 @@ Preserve existing task fields and artifacts. If the correct status cannot be det
 
 ### Phase 1: Plan
 - 1.0 Intake & create task `[required · once]` (tier proposal → consent → `task.py create --tier`)
-- 1.1 Explore `[repeatable]` (soft cap light 1 / standard 3 / full 5)
+- 1.1 Explore `[repeatable]`
 - 1.2 Questions `[required · once]` (one numbered list, then wait)
 - 1.3 Write the contract `[required · repeatable]` (`contract.md`)
-- 1.4 Design `[required · once; standard / full]` (standard: `design.md`; full: 3 architect perspectives → chosen → `design.md` + `waves.md`)
+- 1.4 Design `[required · once; standard / full]` (standard: `design.md`; full: main-agent-selected architecture perspectives → consolidated → `design.md` + `waves.md`)
 - 1.5 Configure context `[required · once]` (`task.py seed-context`, then adjust the manifests)
 - 1.6 Validate & plan review `[required · once]` (structural validation; standard / full: review `Mode: plan`)
 - 1.7 Approve & start `[required · once]` (planning summary → human approves the contract → `task.py start`)
@@ -443,7 +477,7 @@ Preserve existing task fields and artifacts. If the correct status cannot be det
 
 [workflow-state:planning]
 Phase 1, CONTRACT. The tier is in the header; change it with `task.py set-meta <task> tier <tier>`.
-Explore (1.1, soft cap light 1 / standard 3 / full 5) → ask every open question as ONE numbered list and wait (1.2) → write `contract.md`: Goal, Scope, Acceptance criteria (Given/When/Then), Verification map, Interface pins, Test paths (1.3) → standard: `design.md`; full: 3 architect perspectives → user picks → `design.md` + `waves.md` (1.4) → `task.py seed-context <task>` (1.5) → structural validation; standard / full: one review `Mode: plan` (1.6).
+Explore (1.1) → ask every open question as ONE numbered list and wait (1.2) → write `contract.md`: Goal, Scope, Acceptance criteria (Given/When/Then), Verification map, Interface pins, Test paths (1.3) → standard: `design.md`; full: main-agent-selected architecture perspectives → consolidated → `design.md` + `waves.md` (1.4) → `task.py seed-context <task>` (1.5) → structural validation; standard / full: one review `Mode: plan` (1.6).
 Roles here: write the brief at the `brief_path` from `arbor.py next --json`, then `arbor.py run --role explore|architect|review [--mode plan]`; it runs in the main checkout and commits nothing.
 Multi-deliverable scope: consider a parent task plus independently verifiable child tasks (`task.py create --parent`); dependencies must be written in child contracts, not implied by tree position.
 Approve (1.7): end the planning summary with the approval question; run `task.py start <task>` only after a later user message approves the contract.
@@ -516,7 +550,7 @@ Run only `create` here. Skip when `task.py current --source` already points to a
 
 #### 1.1 Explore `[repeatable]`
 
-Facts first. Answer small questions by reading a few files yourself. Otherwise run `explore` roles, one aspect each, as CONTRACT-phase dispatches (write the brief at the `brief_path` from `arbor.py next --json`, then `arbor.py run --role explore`) (soft cap: light 1, standard 3, full 5; say why when you exceed it). Each writes `research/<topic>.md` and returns 5–10 essential files. Read only the 2–3 files you need for the next step; the research files are injected into later roles.
+Facts first. Answer small questions by reading a few files yourself. Otherwise run `explore` roles, one aspect each, as CONTRACT-phase dispatches (write the brief at the `brief_path` from `arbor.py next --role explore --json`, then `arbor.py run --role explore --dispatch <id>`). The main agent chooses the scopes and angles with no total quota; independent readers can execute concurrently. Each writes `research/<dispatch>-<topic>.md` and returns 5–10 essential files. Read only the 2–3 files you need for the next step; the research files are injected into later roles.
 
 #### 1.2 Questions `[required · once]`
 
@@ -535,8 +569,8 @@ Return here whenever an answer, a design choice or a red gate changes what done 
 
 #### 1.4 Design `[required · once; standard / full]`
 
-- **Standard**: write `design.md` yourself (boundaries, contracts, data flow, trade-offs, rollback). Run one `architect` (`arbor.py run --role architect`, brief with `Perspective: pragmatic`) only when the area is unfamiliar or the user asks.
-- **Full**: run 3 `architect` roles (`arbor.py run --role architect`, one brief each with `Perspective: minimal-change` / `clean-architecture` / `pragmatic`). Present each design, the trade-offs, your recommendation and the proposed partitions / waves. After the user picks, write `design.md`, add `## Partitions` / `## Waves` to the contract, and record the reasoning in `waves.md`.
+- **Standard**: write `design.md` yourself (boundaries, contracts, data flow, trade-offs, rollback). Choose architecture questions and perspectives based on uncertainty; independent `architect` angles can run in parallel with no fixed count.
+- **Full**: choose independent `architect` roles as needed, with no fixed count or mandatory three-perspective set. Run independent questions concurrently; sequence questions that depend on earlier evidence. Consolidate the designs, conflicts, trade-offs and proposed partitions / waves. After the necessary user decisions, write `design.md`, add `## Partitions` / `## Waves` to the contract, and record the reasoning in `waves.md`.
 
 #### 1.5 Configure context `[required · once]`
 

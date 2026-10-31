@@ -48,7 +48,7 @@ TASK_DIR=$(python3 ./.arbor/scripts/task.py create "<short task title>" --descri
    - code, tests, fixtures, and configs
    - README files, docs, existing specs, and domain notes
    - related Arbor tasks, research files, and session history when present
-   - when a few files you read yourself do not answer it, run `explore` roles with `arbor.py run --role explore` after writing each brief at the `brief_path` from `arbor.py next --json` (workflow step 1.1; soft cap light 1 / standard 3 / full 5), one aspect each; afterwards read only the 2-3 files you need for the next brief
+   - when a few files you read yourself do not answer it, run `explore` roles with `arbor.py run --role explore` with an explicit `--dispatch <id>` after writing each brief at the `brief_path` from `arbor.py next --role explore --json` (workflow step 1.1; no total quota), one aspect each; afterwards read only the 2-3 files you need for the next brief
 3. Separate what you found into:
    - confirmed facts
    - product intent still needed from the user
@@ -197,3 +197,5 @@ Before declaring planning ready:
 - In a subsequent message, the user explicitly approved that contract.
 
 Do not run `task.py start` merely because the user originally asked for implementation.
+
+Independent explore and architect questions can run concurrently in CONTRACT. The main agent chooses angles, uses dispatch-prefixed research files, collects all relevant results and consolidates the plan. Architecture perspectives are not limited to a fixed set or count.

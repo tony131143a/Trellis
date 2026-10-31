@@ -482,6 +482,12 @@ def cmd_start(args: argparse.Namespace) -> int:
         return 1
 
     pending_data, _ = read_json_checked(full_path / FILE_TASK_JSON)
+    from common.driver.lock import pid_alive
+    if pending_data and any(d.get("phase") == "CONTRACT" and d.get("status") == "running"
+                            and d.get("pid") and pid_alive(int(d["pid"]))
+                            for d in pending_data.get("dispatches") or []):
+        print(colored("Error: finish running planning commands before starting this task", Colors.RED))
+        return 1
     if pending_data and pending_data.get("mcp_pending"):
         print(colored("Error: collect pending MCP delegations before starting this task", Colors.RED))
         return 1

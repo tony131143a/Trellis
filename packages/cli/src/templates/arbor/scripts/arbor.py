@@ -99,7 +99,7 @@ from common.driver.gate import CheckResult, RedResult, format_checks, run_gate, 
 from common.driver.lock import LockTimeout, pid_alive, task_lock
 from common.git import run_git
 from common.invariants import WRITER_ROLES, _dirty_paths, check_after_dispatch, snapshot_refs
-from common.io import read_json_checked, write_json
+from common.io import read_json_checked, write_json, write_text_atomic
 from common.log import Colors, colored
 from common.paths import DIR_TASKS, DIR_WORKFLOW, FILE_TASK_JSON
 from common.tasks import resolve_tier
@@ -108,6 +108,7 @@ from common.worktree import WorktreeError, is_ancestor, main_checkout, partition
 RUNTIME = f"{DIR_WORKFLOW}/.runtime"
 CANARY_ROLES = ("explore", "review", "verify")
 CONTRACT_ROLES = ("explore", "architect", "review")
+PARALLEL_RESEARCH_ROLES = ("explore", "architect")
 STDERR_TAIL_LINES = 40
 
 
@@ -398,7 +399,49 @@ def _max_parallel(config: dict) -> int | None:
     return int(value) if isinstance(value, int) or (isinstance(value, str) and value.isdigit()) else None
 
 
-def next_payload(ctx: Ctx | None, partition: str | None = None) -> dict:
+def planning_runs(ctx: Ctx) -> list[dict]:
+    """Uncollected MCP requests and live command planning dispatches."""
+    runs = []
+    for path in (ctx.data.get("mcp_pending") or {}).values():
+        _, record = mcp.load(ctx.main, path)
+        runs.append({"dispatch": record["dispatch"], "role": record["role"],
+                     "kind": record["kind"], "request_path": str(path),
+                     "task_id": record.get("task_id"), "started": record["started"]})
+    for entry in ctx.data.get("dispatches") or []:
+        if (entry.get("phase") == "CONTRACT" and entry.get("status") == "running"
+                and entry.get("pid") and pid_alive(int(entry["pid"]))):
+            runs.append({"dispatch": entry["id"], "role": entry["role"], "kind": "contract",
+                         "pid": entry["pid"], "started": entry["started"]})
+    return sorted(runs, key=lambda r: r["dispatch"])
+
+
+def planning_blocker(role: str, runs: list[dict]) -> str | None:
+    if runs and (role not in PARALLEL_RESEARCH_ROLES or any(
+            r["kind"] != "contract" or r["role"] not in PARALLEL_RESEARCH_ROLES for r in runs)):
+        return "collect pending delegations before a plan review or another kind of dispatch"
+    return None
+
+
+def planning_next(ctx: Ctx, role: str) -> dict:
+    if ctx.started and ctx.data.get("state") != "CONTRACT":
+        raise DriverError("next --role is for CONTRACT planning; use an override after start outside CONTRACT")
+    runs = planning_runs(ctx)
+    blocked = planning_blocker(role, runs)
+    dispatch = next_dispatch_id(ctx.data, ctx.task_dir)
+    return {"task": ctx.name, "state": "CONTRACT", "started": ctx.started,
+            "needs": "wait" if blocked else "brief", "role": role,
+            "dispatch": dispatch, "brief_path": str(brief_path(ctx, dispatch)),
+            "pending_delegations": runs,
+            "summary": blocked or f"CONTRACT: write {dispatch}'s brief for {role}; "
+                f"run --role {role} --dispatch {dispatch}. Independent research may run concurrently; "
+                "the main agent chooses the number of angles and consolidates their results."}
+
+
+def next_payload(ctx: Ctx | None, partition: str | None = None, role: str | None = None) -> dict:
+    if role:
+        if ctx is None or partition is not None:
+            raise DriverError("next --role requires a task and cannot be combined with --partition")
+        return planning_next(ctx, role)
     if ctx is None:
         external = mcp.find_pending(_main())
         if external:
@@ -420,9 +463,15 @@ def next_payload(ctx: Ctx | None, partition: str | None = None) -> dict:
                 "dispatch": record["dispatch"], "role": record["role"], "request_path": str(path),
                 "task_id": record.get("task_id"), "started": ctx.started,
                 "delegation_started": record["started"],
+                "pending_delegations": planning_runs(ctx),
                 "summary": f"MCP delegation {record['dispatch']}: " + (
                     f"poll/resume task {record['task_id']}, then arbor collect --request {path} --result <file>"
                     if record.get("task_id") else f"read {path}, call codeg MCP once, then arbor bind")}
+    active_planning = planning_runs(ctx)
+    if active_planning:
+        return {"task": ctx.name, "state": "CONTRACT", "started": ctx.started, "needs": "wait",
+                "pending_delegations": active_planning,
+                "summary": "Planning commands are running; use next --role explore|architect for another angle"}
     if not ctx.started:
         dispatch = next_dispatch_id(ctx.data, ctx.task_dir)
         return {"task": ctx.name, "state": "CONTRACT", "needs": "human", "started": False, "dispatch": dispatch,
@@ -465,7 +514,7 @@ def next_payload(ctx: Ctx | None, partition: str | None = None) -> dict:
 
 
 def cmd_next(args: argparse.Namespace) -> int:
-    payload = next_payload(load_ctx(args.task), args.partition)
+    payload = next_payload(load_ctx(args.task), args.partition, args.role)
     if args.json:
         print(json.dumps(payload, ensure_ascii=False))
         return 0
@@ -556,6 +605,9 @@ def require_report_decision(ctx: Ctx) -> None:
 
 
 def require_collected(ctx: Ctx) -> None:
+    if any(d.get("phase") == "CONTRACT" and d.get("status") == "running"
+           and d.get("pid") and pid_alive(int(d["pid"])) for d in ctx.data.get("dispatches") or []):
+        raise DriverError("planning commands are still running; finish them before advancing")
     if ctx.data.get("mcp_pending"):
         raise DriverError("an MCP dispatch is pending; cancel/finish it and collect its terminal report first")
 
@@ -568,7 +620,11 @@ def prepare_mcp(ctx: Ctx | None, main: Path, executor, role: str, mode: str | No
         if pending:
             print(json.dumps(mcp.envelope(*pending), ensure_ascii=False))
             return 0
-    if ctx and _pending(ctx, None if ctx.data.get("execution_binding") else extra.get("partition")):
+    if ctx and kind == "contract":
+        blocked = planning_blocker(role, planning_runs(ctx))
+        if blocked:
+            raise DriverError(blocked)
+    elif ctx and _pending(ctx, None if ctx.data.get("execution_binding") else extra.get("partition")):
         raise DriverError("an MCP dispatch is already pending; poll/collect it before starting another")
     if ctx is None or kind == "canary":
         dispatch = f"{dispatch}-{uuid4().hex[:8]}"
@@ -697,12 +753,13 @@ def cmd_collect(args: argparse.Namespace) -> int:
             print(f"{dispatch} {role}: {out.status}; report: {ctx.task_dir / 'reports' / (dispatch + '.md')}")
         elif record["kind"] == "contract":
             if ctx:
-                if ctx.started:
+                if ctx.started != bool(record.get("planning_started")):
                     raise DriverError("task was started before its pending CONTRACT dispatch was collected")
+                if ctx.started and ctx.data.get("state") != "CONTRACT":
+                    raise DriverError("task left CONTRACT before its pending research was collected")
                 ctx.data["mcp_pending"].pop(dispatch)
-                ctx.data["dispatches"] = [d for d in ctx.data["dispatches"] if d.get("id") != dispatch]
             rc = finish_contract(ctx, main, read_arbor_config(main), role, mode, dispatch, record["branch"],
-                                 record["task_rel"], before, result)
+                                 record["task_rel"], before, result, Path(record["worktree"]))
         else:
             rc = finish_canary(ctx, main, Path(record["worktree"]), role, before, result)
             if ctx:
@@ -1156,76 +1213,97 @@ def cmd_autopilot(args: argparse.Namespace) -> int:
 
 
 def cmd_run_contract(args: argparse.Namespace) -> int:
-    """CONTRACT phase: explore / architect / review (plan) before `task.py start`."""
+    """Plan readers: independent explore/architect angles share a task safely."""
     role = args.role
     mode = args.mode or ("plan" if role == "review" else None)
     if args.mode and role != "review":
         raise DriverError("--mode goes with --role review")
     ctx = load_ctx(args.task)
-    if ctx is not None and ctx.started:
-        raise DriverError(f"{ctx.name} is started; use `arbor override --role {role}` for an extra dispatch")
     main = ctx.main if ctx else _main()
     config = ctx.config if ctx else read_arbor_config(main)
-    if ctx is not None:
-        with editing(ctx):
-            pending = _pending(ctx)
-            if pending:
-                print(json.dumps(mcp.envelope(*pending), ensure_ascii=False))
+    if ctx is None and (role != "explore" or args.dispatch):
+        raise DriverError(f"role {role} or --dispatch needs a task")
+    # Allocation, replay detection and prompt persistence are one transaction.
+    # The executor runs outside the lock; collection reloads under the same lock.
+    with editing(ctx) if ctx else task_lock(runtime_dir(main, "mcp-intake")):
+        if ctx is not None:
+            if ctx.started and ctx.data.get("state") != "CONTRACT":
+                raise DriverError(f"{ctx.name} is started; use `arbor override --role {role}` outside CONTRACT")
+            runs = planning_runs(ctx)
+            requested = args.dispatch
+            if requested and not re.fullmatch(r"d-\d{3,}", requested):
+                raise DriverError("--dispatch must be d-NNN")
+            # Without an explicit new id, preserve the existing resume behavior.
+            existing = next((r for r in runs if not requested or r["dispatch"] == requested), None)
+            if existing:
+                if existing["role"] != role or existing["kind"] != "contract":
+                    raise DriverError("pending dispatch belongs to another role; use next --role to prepare a new angle")
+                if existing.get("request_path"):
+                    path, record = mcp.load(main, existing["request_path"])
+                    if record["mode"] != mode:
+                        raise DriverError("pending dispatch has a different review mode")
+                    print(json.dumps(mcp.envelope(path, record), ensure_ascii=False))
+                else:
+                    print(json.dumps({"needs": "wait", "task": ctx.name, **existing}, ensure_ascii=False))
                 return 0
-
-    if ctx is None:
-        if role != "explore":
-            raise DriverError(f"role {role} needs a task (no active task; pass --task)")
-        if args.dispatch:
-            raise DriverError("--dispatch needs a task")
-        dispatch, brief = "intake", sys.stdin.read()
-        if not brief.strip():
-            raise DriverError("no active task: pipe the explore brief on stdin")
-        task_dir = task_rel = None
-    else:
-        dispatch = next_dispatch_id(ctx.data, ctx.task_dir)
-        if args.dispatch and args.dispatch != dispatch:
-            raise DriverError(f"the next dispatch is {dispatch}, not {args.dispatch}")
-        brief_file = brief_path(ctx, dispatch)
-        brief = brief_file.read_text(encoding="utf-8") if brief_file.is_file() else ""
-        if not brief.strip():
-            raise DriverError(f"write the brief first: {brief_file}")
-        task_dir = ctx.task_dir
-        try:
-            task_rel = task_dir.relative_to(main).as_posix()
-        except ValueError:
-            task_rel = f"{DIR_WORKFLOW}/{DIR_TASKS}/{ctx.name}"
-
-    before = snapshot_refs(main)
-    if before.head_ref is None or not before.head_ref.startswith("refs/heads/"):
-        raise DriverError(f"{main} is on a detached HEAD; check out a branch first")
-    branch = before.head_ref[len("refs/heads/"):]
-    prompt = build_prompt(main, task_dir, role, mode, None, None if ctx is None else dispatch, brief)
-    stamp = utc_now().replace(":", "").replace("-", "")
-    prompt_file = (runtime_dir(main, "prompts", ctx.name) / f"{dispatch}.md" if ctx
-                   else runtime_dir(main, "prompts") / f"intake-{stamp}.md")
-    prompt_file.write_text(prompt, encoding="utf-8")
-    before = snapshot_refs(main)  # the prompt file is not the dispatch's doing
-
-    executor = resolve_executor(config)
-    if executor.kind == "codeg-mcp":
-        with editing(ctx) if ctx else task_lock(runtime_dir(main, "mcp-intake")):
-            return prepare_mcp(ctx, main, executor, role, mode, dispatch, "contract", main, branch,
-                               prompt, before, task_rel=task_rel)
-    print(colored(f"{dispatch}: {role}{' (' + mode + ')' if mode else ''} in {main}", Colors.BLUE))
-    result = run_executor(executor, role=role, prompt_path=prompt_file, worktree=main,
+            blocked = planning_blocker(role, runs)
+            if blocked:
+                raise DriverError(blocked)
+            dispatch = requested or next_dispatch_id(ctx.data, ctx.task_dir)
+            used = any(d.get("id") == dispatch for d in ctx.data.get("dispatches") or [])
+            if used or (ctx.task_dir / "reports" / f"{dispatch}.md").exists():
+                raise DriverError(f"dispatch {dispatch} has already been used; obtain a new id with next --role")
+            brief_file = brief_path(ctx, dispatch)
+            brief = brief_file.read_text(encoding="utf-8") if brief_file.is_file() else ""
+            if not brief.strip():
+                raise DriverError(f"write the brief first: {brief_file}")
+            task_dir = ctx.task_dir
+            worktree = ctx.control_worktree if ctx.started else main
+            task_rel = task_dir.relative_to(worktree).as_posix()
+        else:
+            dispatch, brief = "intake", sys.stdin.read()
+            if not brief.strip():
+                raise DriverError("no active task: pipe the explore brief on stdin")
+            task_dir = task_rel = None
+            worktree = main
+        before = snapshot_refs(worktree)
+        if before.head_ref is None or not before.head_ref.startswith("refs/heads/"):
+            raise DriverError(f"{worktree} is on a detached HEAD; check out a branch first")
+        branch = before.head_ref[len("refs/heads/"):]
+        executor = resolve_executor(config)
+        prompt = build_prompt(worktree, task_dir, role, mode, None, dispatch if ctx else None, brief)
+        stamp = utc_now().replace(":", "").replace("-", "")
+        prompt_file = (runtime_dir(main, "prompts", ctx.name) / f"{dispatch}.md" if ctx
+                       else runtime_dir(main, "prompts") / f"intake-{stamp}.md")
+        if not write_text_atomic(prompt_file, prompt):
+            raise DriverError(f"cannot write {prompt_file}")
+        before = snapshot_refs(worktree)
+        if executor.kind == "codeg-mcp":
+            return prepare_mcp(ctx, main, executor, role, mode, dispatch, "contract", worktree, branch,
+                               prompt, before, task_rel=task_rel, planning_started=bool(ctx and ctx.started))
+        if ctx:
+            ctx.data.setdefault("dispatches", []).append({
+                "id": dispatch, "role": role, "mode": mode, "status": "running", "phase": "CONTRACT",
+                "pid": os.getpid(), "started": utc_now(), "ended": None, "commit": None,
+            })
+            save(ctx)
+            before = snapshot_refs(worktree)
+    print(colored(f"{dispatch}: {role}{' (' + mode + ')' if mode else ''} in {worktree}", Colors.BLUE))
+    result = run_executor(executor, role=role, prompt_path=prompt_file, worktree=worktree,
                           task=ctx.name if ctx else "", dispatch=dispatch)
-    return finish_contract(ctx, main, config, role, mode, dispatch, branch, task_rel, before, result)
+    with editing(ctx) if ctx else task_lock(runtime_dir(main, "mcp-intake")):
+        return finish_contract(ctx, main, config, role, mode, dispatch, branch, task_rel, before, result, worktree)
 
 
 def finish_contract(ctx: Ctx | None, main: Path, config: dict, role: str, mode: str | None, dispatch: str,
-                    branch: str, task_rel: str | None, before, result: ExecResult) -> int:
+                    branch: str, task_rel: str | None, before, result: ExecResult, worktree: Path | None = None) -> int:
+    worktree = worktree or main
     violations = check_after_dispatch(
-        role, before, main, own_branch=branch, test_paths=get_test_paths(config),
+        role, before, worktree, own_branch=branch, test_paths=get_test_paths(config),
         task_rel_dir=task_rel or f"{DIR_WORKFLOW}/{DIR_TASKS}/-", dispatch_id=None,
         scope="task" if ctx else "worktree",
     )
-    after = snapshot_refs(main)
+    after = snapshot_refs(worktree)
     if ctx is None and after.head != before.head:
         violations.append(f"HEAD of {branch} moved {str(before.head)[:12]} -> {str(after.head)[:12]}; "
                           "the driver never resets the main checkout: undo it by hand")
@@ -1254,12 +1332,18 @@ def finish_contract(ctx: Ctx | None, main: Path, config: dict, role: str, mode: 
     _write_report(ctx, dispatch, role, out, [])
     if not isinstance(ctx.data.get("dispatches"), list):
         ctx.data["dispatches"] = []
-    ctx.data["dispatches"].append({
+    entry = {
         "id": dispatch, "role": role, "mode": mode, "commit": None, "status": status,
         "started": result.started, "ended": result.ended, "range": None,
         "confidence": check.confidence, "phase": "CONTRACT",
         **({"verdict": check.verdict, "findings": len(check.findings)} if role == "review" else {}),
-    })
+    }
+    entries = ctx.data["dispatches"]
+    slot = next((i for i, old in enumerate(entries) if old.get("id") == dispatch), None)
+    if slot is None:
+        entries.append(entry)
+    else:
+        entries[slot] = entry
     save(ctx)
     print(colored(f"{dispatch} {role}: {status}" + (f" ({problem})" if problem else ""), color))
     print(f"  report: {ctx.task_dir / 'reports' / (dispatch + '.md')}")
@@ -1654,6 +1738,7 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("next", help="print the single next step")
     p.add_argument("--json", action="store_true")
     p.add_argument("--partition", help="the step of this partition (multi-partition waves)")
+    p.add_argument("--role", choices=CONTRACT_ROLES, help="prepare another CONTRACT research/design angle")
     p.set_defaults(func=cmd_next)
     p = sub.add_parser("run", help="dispatch briefs/<id>.md, validate, advance")
     p.add_argument("--dispatch")

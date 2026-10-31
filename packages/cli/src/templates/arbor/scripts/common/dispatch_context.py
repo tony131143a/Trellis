@@ -422,6 +422,17 @@ def _materialize_file(
     return _budgeted_block(budget, file_path, file_path, content, reason, size)
 
 
+def _provisional_research(task_dir: Path) -> tuple[str, ...]:
+    """Uncollected/failed sibling outputs must not become settled design context."""
+    try:
+        data = json.loads((task_dir / "task.json").read_text(encoding="utf-8"))
+        return tuple(f"{d['id']}-" for d in data.get("dispatches", [])
+                     if d.get("role") in ("explore", "architect") and d.get("status") != "ok"
+                     and isinstance(d.get("id"), str))
+    except (OSError, ValueError, AttributeError, TypeError):
+        return ()
+
+
 def _materialize_directory(
     base_path: str,
     dir_path: str,
@@ -429,6 +440,7 @@ def _materialize_directory(
     limits: dict[str, int],
     budget: _Budget,
     max_files: int = 20,
+    exclude_prefixes: tuple[str, ...] = (),
 ) -> list[str]:
     """Read all .md files in a directory, applying the same per-file and
     total caps as a single-file JSONL entry."""
@@ -441,7 +453,8 @@ def _materialize_directory(
         md_files = sorted(
             f
             for f in os.listdir(full_path)
-            if f.endswith(".md") and os.path.isfile(os.path.join(full_path, f))
+            if f.endswith(".md") and not f.startswith(exclude_prefixes)
+            and os.path.isfile(os.path.join(full_path, f))
         )
         for filename in md_files[:max_files]:
             relative_path = os.path.join(dir_path, filename)
@@ -718,8 +731,10 @@ To get structured package info, run: `python3 ./{DIR_WORKFLOW}/scripts/get_conte
             if block:
                 context_parts.append(block)
         research_dir = Path(repo_root) / task_dir / "research"
+        provisional = _provisional_research(research_dir.parent)
         names = (
-            sorted(f.name for f in research_dir.iterdir() if f.suffix == ".md")
+            sorted(f.name for f in research_dir.iterdir() if f.suffix == ".md"
+                   and not f.name.startswith(provisional))
             if research_dir.is_dir()
             else []
         )
@@ -881,7 +896,8 @@ def build_dispatch_prompt(req: DispatchRequest) -> DispatchPrompt:
         extra: list[str] = []
         if req.role == "architect":
             extra = _materialize_directory(
-                root_str, f"{task_rel}/research", "Task research", limits, budget
+                root_str, f"{task_rel}/research", "Task research", limits, budget,
+                exclude_prefixes=_provisional_research(repo_root / task_rel)
             )
         if range_spec:
             assert req.task_dir is not None
@@ -903,6 +919,15 @@ def build_dispatch_prompt(req: DispatchRequest) -> DispatchPrompt:
         )
     body = build_role_prompt(req.role, req.header.body, context, mode)
     body = f"## Role Instructions\n\n{instructions}\n\n{body}"
+    if req.task_dir and req.header.dispatch and req.role in ("explore", "architect"):
+        prefix = Path(req.task_dir) / "research" / f"{req.header.dispatch}-"
+        body += ("\n\n## Research output namespace\n\n"
+                 f"This independent angle owns files with the absolute prefix `{prefix}` only "
+                 "(for example `<prefix>findings.md` or `<prefix>design.md`). "
+                 "Use your Dispatch id in every research filename. Do not edit sibling outputs, "
+                 "the contract, design.md, waves.md or manifests. Concurrent sibling research is "
+                 "provisional until collected; use the brief's baseline and completed evidence. "
+                 "The main agent chooses the angles and consolidates all returned results.")
     if req.role == "review":
         checker = repo_root / DIR_WORKFLOW / "scripts" / "check_report.py"
         body += (
