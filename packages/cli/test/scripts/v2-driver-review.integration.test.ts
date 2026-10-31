@@ -26,7 +26,7 @@ describe.skipIf(!hasPython())("arbor.py validators, REVIEW, POLISH", { timeout: 
   let f: Fixture;
   afterEach(() => f?.cleanup());
 
-  it("a writer outside its boundary: dispatch violation, branch reset, STOP(VIOLATION), results row", () => {
+  it("records boundary observations without resetting commits, deleting files or stopping", () => {
     f = setupFixture();
     f.plan({
       "d-001": { write: [RED_TEST] },
@@ -35,44 +35,34 @@ describe.skipIf(!hasPython())("arbor.py validators, REVIEW, POLISH", { timeout: 
     expect(dispatch(f, "d-001").status).toBe(0);
     const before = git(f.wt, "rev-parse", "HEAD");
     const r = dispatch(f, "d-002");
-    expect(r.status).toBe(1);
-    expect(r.stdout).toContain("violation");
-
-    // reset to the pre-dispatch head (the brief commit), then the report commit on top
-    expect(git(f.wt, "log", "-1", "--format=%s")).toBe(`arbor(${TASK}): d-002 implement violation`);
-    expect(git(f.wt, "rev-parse", "HEAD~1")).toBe(git(f.wt, "rev-list", "-1", "--grep", "d-002 implement brief", "HEAD"));
-    expect(git(f.wt, "log", "--format=%s", `${before}..HEAD`)).not.toContain(`implement(${TASK})`);
-    expect(fs.existsSync(path.join(f.wt, "src/feature.txt"))).toBe(false);
-    expect(fs.existsSync(path.join(f.wt, "stray.txt"))).toBe(false);
-    expect(fs.readFileSync(path.join(f.wt, "tests/ac1.sh"), "utf-8")).toBe(RED_TEST.content);
-
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+    expect(git(f.wt, "log", "--format=%s", `${before}..HEAD`)).toContain(`implement(${TASK})`);
+    expect(fs.existsSync(path.join(f.wt, "src/feature.txt"))).toBe(true);
+    expect(fs.readFileSync(path.join(f.wt, "stray.txt"), "utf-8")).toBe("x");
+    expect(fs.readFileSync(path.join(f.wt, "tests/ac1.sh"), "utf-8")).toBe("true\n");
     const data = f.taskJson();
-    expect(data.dispatches[1]).toMatchObject({ id: "d-002", status: "violation", commit: null });
-    expect(data.stop.reason).toBe("VIOLATION");
-    const row = f.results()[1];
-    expect(row).toMatchObject({ dispatch: "d-002", status: "violation", commit: null });
-    expect(row.violations.join("\n")).toContain("implement touched test paths: tests/ac1.sh");
-    expect(row.violations.join("\n")).toContain("left uncommitted changes: stray.txt");
-    expect(fs.readFileSync(path.join(f.taskDir, "reports/d-002.md"), "utf-8")).toContain("### Violations");
+    expect(data.dispatches[1]).toMatchObject({ id: "d-002", status: "ok" });
+    expect(data.state).toBe("GATE");
+    expect(data.stop).toBeUndefined();
+    expect(data.dispatches[1].observations.join("\n")).toContain("implement touched test paths");
+    expect(fs.readFileSync(path.join(f.taskDir, "reports/d-002.md"), "utf-8"))
+      .toContain("their author is not determined");
   });
 
-  it("fail-closed replies: empty reply and a review without a verdict fail; failures count as no progress", () => {
+  it("ambiguous reports require agent judgment without deleting work or entering STOP", () => {
     f = setupFixture();
     f.plan({ "d-001": { write: [RED_TEST], reply: "" } });
-    const empty = dispatch(f, "d-001");
-    expect(empty.status).toBe(1);
-    expect(empty.stdout).toContain("empty reply");
-    expect(git(f.wt, "log", "--format=%s", "-3")).not.toContain(`test(${TASK})`);
-    expect(f.taskJson().counters.no_progress).toBe(1);
-
+    expect(dispatch(f, "d-001").status).toBe(0);
+    expect(f.next()).toMatchObject({ needs: "decide", decision: { kind: "report" } });
+    expect(fs.existsSync(path.join(f.wt, "tests/ac1.sh"))).toBe(true);
+    expect(f.run("decide", "retry", "--reason", "need actual report").status).toBe(0);
     seedCode(f, "REVIEW");
     f.plan({ "d-002": { reply: `Looks fine to me.\n\n${reviewReply("PASS", [])}` } });
-    const noVerdict = dispatch(f, "d-002");
-    expect(noVerdict.status).toBe(1);
-    const data = f.taskJson();
-    expect(data.dispatches[1]).toMatchObject({ role: "review", status: "fail", confidence: "low" });
-    expect(data.state).toBe("STOP");
-    expect(data.stop.reason).toBe("NO_PROGRESS");
+    expect(dispatch(f, "d-002").status).toBe(0);
+    expect(f.taskJson().dispatches[1]).toMatchObject({ role: "review", status: "judgment", confidence: "low" });
+    expect(f.taskJson().state).toBe("REVIEW");
+    expect(f.taskJson().stop).toBeUndefined();
+    expect(f.taskJson().counters.no_progress).toBe(0);
   });
 
   it("REVIEW: FAIL -> fix -> gate -> re-review of last_reviewed..HEAD -> PASS -> FINISH (light)", () => {
@@ -138,20 +128,18 @@ describe.skipIf(!hasPython())("arbor.py validators, REVIEW, POLISH", { timeout: 
     expect(f.taskJson().state).toBe("FINISH");
   });
 
-  it("contract.md edited after approval: run stops (HUMAN); resume re-approves and re-freezes the hash", () => {
+  it("contract edits are observations, not a frozen-hash execution gate", () => {
     f = setupFixture();
     const frozen = f.taskJson().contract_hash;
-    fs.appendFileSync(path.join(f.taskDir, "contract.md"), "\n- AC-9 sneaked in\n");
-    expect(f.next()).toMatchObject({ state: "BUILD", needs: "human", human: { kind: "approve_contract" } });
-    f.brief("d-001");
-    const r = f.run("run");
-    expect(r.status).toBe(1);
-    expect(r.stderr).toContain("contract.md changed since approval");
-    expect(f.taskJson().stop).toMatchObject({ reason: "HUMAN", contract: true });
-    expect(f.run("resume").status).toBe(0);
-    const data = f.taskJson();
-    expect(data).toMatchObject({ state: "BUILD", step: "test" });
-    expect(data.contract_hash).not.toBe(frozen);
+    fs.appendFileSync(path.join(f.taskDir, "contract.md"), "\nUpdated planning explanation.\n");
+    expect(f.next()).toMatchObject({ state: "BUILD", needs: "brief", observations: expect.any(Array) });
+    f.plan({ "d-001": { write: [RED_TEST] } });
+    const r = dispatch(f, "d-001");
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+    expect(r.stderr).toContain("contract.md differs");
+    expect(f.taskJson().stop).toBeUndefined();
+    expect(f.taskJson().contract_hash).toBe(frozen);
+    expect(f.next()).toMatchObject({ state: "BUILD", role: "implement" });
   });
 
   it("canary checks the executor and the reply's first line without touching state", () => {

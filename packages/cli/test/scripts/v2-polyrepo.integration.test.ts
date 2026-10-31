@@ -78,7 +78,6 @@ describe("central polyrepo execution", { timeout: 90000 }, () => {
       const result = path.join(f.tmp, "review-result.json");
       fs.writeFileSync(result, JSON.stringify({ task_id: "child-review", status: "completed", text: "PASS\n```json\n[]\n```" }));
       const args = ["collect", "--request", request.request_path, "--result", result];
-      expect(f.run(...args).status).toBe(1);
       expect(f.run(...args, "--accept-new-control-task", "other-task").status).toBe(1);
       expect(f.run(...args, "--accept-new-control-task", "../other-task", "--reason", "fixture").status).toBe(1);
       const collected = f.run(...args, "--accept-new-control-task", "other-task", "--reason", "Reviewed parallel planning task");
@@ -95,6 +94,11 @@ describe("central polyrepo execution", { timeout: 90000 }, () => {
         expect(saved.status).toBe("pending");
         expect(saved.control_drift_acceptance).toBeUndefined();
         expect(f.taskJson().collection_exceptions).toBeUndefined();
+        const observed = f.run(...args);
+        expect(observed.status, observed.stdout + observed.stderr).toBe(0);
+        expect(f.taskJson().dispatches[0].observations.join("\n"))
+          .toContain("repository changed during product delegation");
+        expect(f.taskJson().mcp_pending).toEqual({});
       }
     },
   );
@@ -289,7 +293,12 @@ Build two components.
     writeFile(f.taskDir, "task.json", JSON.stringify(data));
     const rejected = f.run("collect", "--request", second.request_path, "--result", result);
     expect(rejected.status).toBe(1);
-    expect(rejected.stderr).toContain("repository changed during product delegation");
+    expect(rejected.stderr).toContain("bound task_id");
+    fs.writeFileSync(result, JSON.stringify({ task_id: "child-2", status: "completed", text: "## Implementation Complete\n" }));
+    const observed = f.run("collect", "--request", second.request_path, "--result", result);
+    expect(observed.status, observed.stdout + observed.stderr).toBe(0);
+    expect(f.taskJson().title).toBe("unauthorized change");
+    expect(f.taskJson().dispatches[1].observations.join("\n")).toContain("repository changed during product delegation");
   });
 
   it("refuses a binding redirected to the control repository", () => {
@@ -307,8 +316,8 @@ Build two components.
     const relative = path.relative(execution, path.join(f.repo, "dirty.txt"));
     f.plan({ "d-001": { dirty: [{ path: relative, content: "overwritten" }] } });
     const r = dispatch(f, "d-001");
-    expect(r.status).toBe(1);
-    expect(r.stderr).toContain("repository changed during product delegation");
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+    expect(f.taskJson().dispatches[0].observations.join("\n")).toContain("repository changed during product delegation");
     expect(fs.readFileSync(path.join(f.repo, "dirty.txt"), "utf8")).toBe("overwritten");
   });
 });

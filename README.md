@@ -1,6 +1,6 @@
 # Arbor
 
-Arbor is a spec-driven AI engineering workflow for **Claude Code and Codex**. The v2 Python driver assembles task context, dispatches roles through a configured executor, validates reports and Git boundaries, and records task state.
+Arbor is a spec-driven AI engineering workflow for **Claude Code and Codex**. The v2 Python driver assembles task context, dispatches roles through a configured executor, records reports, Git observations and task state. The main agent judges procedural changes in context; executable quality checks remain enforced.
 
 ## Install and initialize
 

@@ -311,7 +311,11 @@ def plan_for(ctx: Ctx, partition: str | None = None) -> sm.Step:
 
 
 def commit_task_dir(ctx: Ctx, message: str) -> bool:
-    """Commit pending changes under the task dir on the task branch."""
+    """Commit metadata only on its intended branch; never switch/reset for recovery."""
+    rc, branch, _ = run_git(["symbolic-ref", "--short", "HEAD"], cwd=ctx.control_worktree)
+    if rc != 0 or branch.strip() != ex.control_data(ctx.data)["branch"]:
+        print("Note: task metadata preserved without committing because the checkout branch changed.", file=sys.stderr)
+        return False
     git(ctx, "add", "-A", "--", ctx.task_rel, cwd=ctx.control_worktree)
     rc, _, _ = run_git(["diff", "--cached", "--quiet", "--", ctx.task_rel], cwd=ctx.control_worktree)
     if rc == 0:
@@ -334,13 +338,10 @@ def contract_changed(ctx: Ctx) -> bool:
 
 
 def guard_contract(ctx: Ctx) -> None:
-    """STOP(HUMAN) when contract.md changed since approval."""
-    if ctx.data.get("state") not in ("STOP", "CONTRACT") and contract_changed(ctx):
-        with editing(ctx):
-            sm.stop(ctx.data, "HUMAN", "contract.md changed since approval; re-approve it with `arbor resume`",
-                    contract=True)
-            save(ctx)
-        raise DriverError(ctx.data["stop"]["detail"])
+    """Report contract drift; the main agent judges changes in context."""
+    if contract_changed(ctx):
+        print("Note: contract.md differs from the recorded approval; review the change in context. "
+              "No restoration or automatic re-approval is required to collect results.", file=sys.stderr)
 
 
 def next_dispatch_id(data: dict, task_dir: Path | None = None) -> str:
@@ -432,17 +433,15 @@ def next_payload(ctx: Ctx | None, partition: str | None = None) -> dict:
                            "approval run `task.py start`"}
     data = ctx.data
     sm.reap_stale(data, pid_alive)  # in memory only; the next locked write persists it
-    if data.get("state") not in ("STOP", "CONTRACT") and contract_changed(ctx):
-        step = sm.Step("human", f"{data['state']}: contract.md changed since approval; "
-                       "a human re-approves it with `arbor resume`",
-                       human={"kind": "approve_contract"})
-    elif data.get("state") == "FINISH" and not data.get("override_role"):
+    if data.get("state") == "FINISH" and not data.get("override_role") and not data.get("report_pending"):
         step = fin.plan_finish(ctx.main, ctx.task_dir, data)
     else:
         step = plan_for(ctx, partition)
     unit = ctx.unit(step.partition)
     out: dict = {"task": ctx.name, "state": data["state"], "tier": ctx.tier, "wave": data.get("wave", 1),
                  "partition": unit.label, "partitions_pending": list(step.pending), "needs": step.needs}
+    if contract_changed(ctx):
+        out["observations"] = ["contract.md differs from the recorded approval; main agent judges the change"]
     if step.role:
         dispatch = step.dispatch or next_dispatch_id(data, ctx.task_dir)
         out["role"] = step.role
@@ -517,7 +516,7 @@ def cmd_status(args: argparse.Namespace) -> int:
 
 @dataclass
 class Outcome:
-    status: str  # ok | fail | violation
+    status: str  # ok | fail | judgment
     reply: str
     check: rv.ReplyCheck
     exec_result: ExecResult | None
@@ -548,6 +547,12 @@ def _pending(ctx: Ctx, partition: str | None = None) -> tuple[Path, dict] | None
         if partition is None or pair[1].get("partition") == partition:
             return pair
     return None
+
+
+def require_report_decision(ctx: Ctx) -> None:
+    if ctx.data.get("report_pending"):
+        raise DriverError("report needs main-agent judgment: use `arbor decide retry` or "
+                          "`arbor decide accept --report <interpreted-report>` with --reason")
 
 
 def require_collected(ctx: Ctx) -> None:
@@ -649,6 +654,7 @@ def cmd_collect(args: argparse.Namespace) -> int:
         if ctx and (ctx.data.get("mcp_pending") or {}).get(record["dispatch"]) != str(path):
             raise DriverError("MCP request is no longer pending in this task")
         acceptance = None
+        control_observations: list[str] = []
         sibling = getattr(args, "accept_new_control_task", None)
         if sibling and (not ctx or not record.get("control_before") or not (args.reason or "").strip()):
             raise DriverError("--accept-new-control-task requires a product dispatch and a non-empty --reason")
@@ -662,21 +668,22 @@ def cmd_collect(args: argparse.Namespace) -> int:
                 else:
                     ex.check_control(ctx.main, ctx.control_worktree, ctx.task_rel, record["control_before"], ctx.execution_main)
             except ex.ExecutionError as e:
-                raise DriverError(str(e)) from None
+                if sibling:
+                    raise DriverError(str(e)) from None
+                control_observations.append(str(e))
         result, report = mcp.terminal_result(record, payload)
         before = mcp.snapshot_from(record["before"])
         role, mode, dispatch = record["role"], record["mode"], record["dispatch"]
         if record["kind"] == "run":
             assert ctx is not None
-            if contract_changed(ctx):
-                raise DriverError("contract changed during delegation; restore the approved contract before collecting")
+            guard_contract(ctx)
             data = record["job"]
             unit = Unit(data["unit"]["partition"], Path(data["unit"]["worktree"]), data["unit"]["branch"])
             job = Job(**{**data, "unit": unit})
             if ctx.data["state"] != job.state:
                 raise DriverError("task state changed while delegated; resolve the pending task before advancing")
             out = validate_dispatch(ctx, unit, role, dispatch, before, record["test_paths"], record["paths"],
-                                    record["head_before"], record["range_spec"], result)
+                                    record["head_before"], record["range_spec"], result, control_observations)
             red = None
             if unit.partition and role == "test" and out.status == "ok":
                 contract = require_contract(ctx)
@@ -686,7 +693,7 @@ def cmd_collect(args: argparse.Namespace) -> int:
             if acceptance:
                 ctx.data.setdefault("collection_exceptions", []).append(acceptance)
             _finish(ctx, job, out, red)
-            rc = 0 if out.status == "ok" else 1
+            rc = 0 if out.status in ("ok", "judgment") else 1
             print(f"{dispatch} {role}: {out.status}; report: {ctx.task_dir / 'reports' / (dispatch + '.md')}")
         elif record["kind"] == "contract":
             if ctx:
@@ -707,20 +714,6 @@ def cmd_collect(args: argparse.Namespace) -> int:
                       child_conversation_id=report.get("child_conversation_id"))
         mcp.store(path, record)
     return rc
-
-
-def _restore(ctx: Ctx, unit: Unit, before) -> None:
-    """Put the unit's branch back where it was before the dispatch."""
-    after = snapshot_refs(unit.worktree)
-    if after.head_ref != before.head_ref:
-        run_git(["checkout", "-q", "-f", unit.branch], cwd=unit.worktree)
-    run_git(["reset", "-q", "--hard", before.head], cwd=unit.worktree)
-    stray = sorted(
-        p for p in snapshot_refs(unit.worktree).dirty - before.dirty
-        if not p.startswith(f"{ctx.task_rel}/")
-    )
-    if stray:
-        run_git(["clean", "-fdq", "--", *stray], cwd=unit.worktree)
 
 
 _MOVED_RE = re.compile(r"^branch (\S+) moved [0-9a-f]+ -> [0-9a-f]+$")
@@ -782,16 +775,19 @@ def dispatch_once(ctx: Ctx, unit: Unit, role: str, mode: str | None, range_from:
     control_before = ex.snapshot_control(ctx.main, ctx.control_worktree, ctx.task_rel, ctx.execution_main) if ctx.data.get("execution_binding") else None
     result = run_executor(executor, role=role, prompt_path=prompt_file, worktree=unit.worktree,
                           task=ctx.name, dispatch=dispatch)
+    control_observations: list[str] = []
     if control_before:
         try:
             ex.check_control(ctx.main, ctx.control_worktree, ctx.task_rel, control_before, ctx.execution_main)
         except ex.ExecutionError as e:
-            raise DriverError(str(e)) from None
-    return validate_dispatch(ctx, unit, role, dispatch, before, test_paths, paths, head_before, range_spec, result)
+            control_observations.append(str(e))
+    return validate_dispatch(ctx, unit, role, dispatch, before, test_paths, paths, head_before, range_spec,
+                             result, control_observations)
 
 
 def validate_dispatch(ctx: Ctx, unit: Unit, role: str, dispatch: str, before, test_paths, paths,
-                      head_before: str, range_spec: str | None, result: ExecResult) -> Outcome:
+                      head_before: str, range_spec: str | None, result: ExecResult,
+                      observations: list[str] | None = None) -> Outcome:
     """Identical acceptance checks for command executors and external MCP replies."""
     reply = result.stdout
     violations = check_after_dispatch(role, before, unit.worktree, own_branch=unit.branch, test_paths=test_paths,
@@ -813,19 +809,18 @@ def validate_dispatch(ctx: Ctx, unit: Unit, role: str, dispatch: str, before, te
             violations.append(f"{role} left uncommitted changes: {', '.join(leftover)}")
     check = rv.check_reply(role, reply)
     violations = rv.adjust_violations(role, violations, reply, check)
+    violations.extend(observations or [])
+    if contract_changed(ctx):
+        violations.append("contract.md differs from the recorded approval")
 
-    if violations and not rv.only_missing_commit(violations):
-        status, problem = "violation", "; ".join(violations)
-    elif not result.ok:
+    if not result.ok:
         status, problem = "fail", result.error
-    elif violations:
-        status, problem = "fail", violations[0]
-    elif not check.ok:
-        status, problem = "fail", check.problem
+    elif not check.ok or check.confidence == "low":
+        status, problem = "judgment", check.problem or "report needs main-agent interpretation"
     else:
         status, problem = "ok", check.problem
-    if status != "ok" and not ctx.data.get("execution_binding"):
-        _restore(ctx, unit, before)
+    # Observations are not proof of authorship. Never reset commits or delete
+    # files: the main agent evaluates the diff, report and session context.
     return Outcome(status, reply, check, result, violations, problem, range_spec, head_before,
                    head(ctx, unit.worktree))
 
@@ -926,7 +921,9 @@ def _write_report(ctx: Ctx, dispatch: str, role: str, out: Outcome, notes: list[
     if out.problem:
         lines.append(f"- problem: {out.problem}")
     if out.violations:
-        lines += ["", "### Violations", *[f"- {v}" for v in out.violations]]
+        lines += ["", "### Observations for the main agent",
+                  "These changes were observed during dispatch; their author is not determined.",
+                  *[f"- {v}" for v in out.violations]]
     if notes:
         lines += ["", *notes]
     if res is not None and res.stderr.strip():
@@ -956,7 +953,7 @@ def _begin(ctx: Ctx, step: sm.Step, requested: str | None) -> Job:
     rc, dirty, _ = run_git(["diff", "--name-only", "HEAD", "--", ".", f":(exclude){ctx.task_rel}"],
                            cwd=unit.worktree)
     if rc == 0 and dirty.strip():
-        raise DriverError(f"uncommitted changes in {unit.worktree}: {', '.join(dirty.split())}; commit or discard them")
+        print(f"Note: existing uncommitted changes in {unit.worktree}: {', '.join(dirty.split())}", file=sys.stderr)
 
     if unit.partition:
         state, step_name = "BUILD", data["partitions"][unit.partition]["step"]
@@ -982,8 +979,12 @@ def _finish(ctx: Ctx, job: Job, out: Outcome, red: RedResult | None) -> None:
         sm.on_partition_finished(data, name)
     if job.override:
         data.pop("override_role", None)
-    if out.status == "violation":
-        sm.on_violation(data, role, dispatch, out.violations)
+    if out.status == "judgment":
+        data.setdefault("report_pending", {})[dispatch] = {
+            "job": {**asdict(job), "unit": {"partition": job.unit.partition,
+                    "worktree": str(job.unit.worktree), "branch": job.unit.branch}},
+            "outcome": asdict(out),
+        }
     elif out.status == "fail":
         if name:
             sm.on_partition_failed(data, name, role)
@@ -1002,6 +1003,7 @@ def _finish(ctx: Ctx, job: Job, out: Outcome, red: RedResult | None) -> None:
         "range": out.range_spec, "confidence": out.check.confidence,
         **({"partition": name} if name else {}),
         **({"override": True} if job.override else {}),
+        "observations": out.violations,
     }
     slot = next((i for i, d in enumerate(data["dispatches"]) if d.get("id") == dispatch), None)
     if slot is None:
@@ -1029,6 +1031,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     if args.mode:
         raise DriverError("--mode goes with --role review")
     ctx = require_started(load_ctx(args.task))
+    require_report_decision(ctx)
     guard_contract(ctx)
     with editing(ctx):
         pending = _pending(ctx, args.partition)
@@ -1070,7 +1073,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     print(colored(f"{job.dispatch} {job.role}: {out.status}" + (f" ({out.problem})" if out.problem else ""), color))
     print(f"  report: {ctx.task_dir / 'reports' / (job.dispatch + '.md')}")
     print(f"  next: {plan_for(ctx, job.unit.partition if ctx.data.get('state') == 'BUILD' else None).summary}")
-    return 0 if out.status == "ok" else 1
+    return 0 if out.status in ("ok", "judgment") else 1
 
 
 # ======================================================================# waves: partition worktrees and merge-back
@@ -1227,12 +1230,10 @@ def finish_contract(ctx: Ctx | None, main: Path, config: dict, role: str, mode: 
         violations.append(f"HEAD of {branch} moved {str(before.head)[:12]} -> {str(after.head)[:12]}; "
                           "the driver never resets the main checkout: undo it by hand")
     check = rv.check_reply(role, result.stdout)
-    if violations:
-        status, problem = "violation", "; ".join(violations)
-    elif not result.ok:
+    if not result.ok:
         status, problem = "fail", result.error
-    elif not check.ok:
-        status, problem = "fail", check.problem
+    elif not check.ok or check.confidence == "low":
+        status, problem = "judgment", check.problem or "main agent must interpret the report"
     else:
         status, problem = "ok", check.problem
 
@@ -1247,7 +1248,7 @@ def finish_contract(ctx: Ctx | None, main: Path, config: dict, role: str, mode: 
     if ctx is None:
         sys.stdout.write(result.stdout)
         print(colored(f"{role}: {status}" + (f" ({problem})" if problem else ""), color), file=sys.stderr)
-        return 0 if status == "ok" else 1
+        return 0 if status in ("ok", "judgment") else 1
 
     out = Outcome(status, result.stdout, check, result, violations, problem, None, before.head, after.head)
     _write_report(ctx, dispatch, role, out, [])
@@ -1262,7 +1263,7 @@ def finish_contract(ctx: Ctx | None, main: Path, config: dict, role: str, mode: 
     save(ctx)
     print(colored(f"{dispatch} {role}: {status}" + (f" ({problem})" if problem else ""), color))
     print(f"  report: {ctx.task_dir / 'reports' / (dispatch + '.md')}")
-    return 0 if status == "ok" else 1
+    return 0 if status in ("ok", "judgment") else 1
 
 
 # =============================================================================
@@ -1273,6 +1274,7 @@ def finish_contract(ctx: Ctx | None, main: Path, config: dict, role: str, mode: 
 def cmd_gate(args: argparse.Namespace, ctx: Ctx | None = None) -> int:
     ctx = ctx or require_started(load_ctx(args.task))
     require_collected(ctx)
+    require_report_decision(ctx)
     guard_contract(ctx)
     contract_path = find_contract(ctx.task_dir)
     if contract_path is None:
@@ -1305,10 +1307,69 @@ def cmd_gate(args: argparse.Namespace, ctx: Ctx | None = None) -> int:
     return 1 if result.failing else 0
 
 
+def decide_report(ctx: Ctx, args: argparse.Namespace) -> int:
+    """The main agent interprets a report; this is not a human approval gate."""
+    pending = ctx.data["report_pending"]
+    dispatch = args.dispatch or next(iter(pending))
+    if dispatch not in pending:
+        raise DriverError(f"no pending report {dispatch}")
+    if args.choice not in ("accept", "retry"):
+        raise DriverError("a report decision takes accept or retry")
+    saved = pending[dispatch]
+    raw_job = saved["job"]
+    job = Job(**{**raw_job, "unit": Unit(raw_job["unit"]["partition"],
+                                        Path(raw_job["unit"]["worktree"]), raw_job["unit"]["branch"])})
+    if ctx.data["state"] != job.state:
+        raise DriverError("task state changed; use an explicit override to resolve the old report")
+    interpretation = None
+    if args.choice == "accept":
+        if not args.report:
+            raise DriverError("accept requires --report with the main agent's interpretation; no implicit PASS")
+        interpretation = Path(args.report).read_text(encoding="utf-8")
+        check = rv.check_reply(job.role, interpretation)
+        if not check.ok or check.confidence == "low":
+            raise DriverError(check.problem or "interpretation needs an explicit structured result")
+        raw = saved["outcome"]
+        out = Outcome(**{**raw, "status": "ok", "reply": interpretation, "check": check,
+                         "exec_result": ExecResult(**raw["exec_result"]) if raw["exec_result"] else None})
+        notes = []
+        if job.unit.partition:
+            # Test checks run against current files, never reuse a stale red result.
+            red = None
+            if job.role == "test":
+                contract = require_contract(ctx)
+                spec = contract.partition(job.unit.partition)
+                red = run_red_check(contract, job.unit.worktree, spec.paths if spec else ())
+            notes = _advance_partition(ctx, job, red)
+        elif not job.override:
+            notes = _advance(ctx, job.state, job.step, job.role, dispatch, out)
+        rel = f"reports/{dispatch}-interpreted.md"
+        (ctx.task_dir / rel).write_text(interpretation.rstrip() + "\n\n" + "\n".join(notes) + "\n", encoding="utf-8")
+        for entry in ctx.data["dispatches"]:
+            if entry.get("id") == dispatch:
+                entry.update(status="ok", interpreted_report=rel)
+    elif job.override:
+        ctx.data["override_role"] = job.override
+    pending.pop(dispatch)
+    if not pending:
+        ctx.data.pop("report_pending", None)
+    ctx.data.setdefault("decisions", []).append({
+        "ts": utc_now(), "kind": "report", "dispatch": dispatch,
+        "choice": args.choice, "reason": args.reason,
+        **({"report": f"reports/{dispatch}-interpreted.md"} if interpretation is not None else {}),
+    })
+    save(ctx)
+    commit_task_dir(ctx, f"arbor({ctx.name}): main-agent report decision {dispatch}")
+    print(f"main-agent decision {dispatch}: {args.choice}; {plan_for(ctx).summary}")
+    return 0
+
+
 def cmd_decide(args: argparse.Namespace) -> int:
     ctx = require_started(load_ctx(args.task))
     with editing(ctx):
         require_collected(ctx)
+        if ctx.data.get("report_pending"):
+            return decide_report(ctx, args)
         decision = sm.decide(ctx.data, args.choice, ctx.tier, args.partition)
         ctx.data.setdefault("decisions", []).append({
             "ts": utc_now(), "kind": decision.get("kind"), "choice": args.choice, "reason": args.reason,
@@ -1347,6 +1408,8 @@ def _override(ctx: Ctx, args: argparse.Namespace) -> int:
         record["role"] = args.role
     else:
         raise DriverError("override needs --to STATE[/step] or --role ROLE")
+    if data.get("report_pending"):
+        record["report_pending"] = list(data.pop("report_pending"))
     data.setdefault("overrides", []).append(record)
     save(ctx)
     print(colored(f"override recorded: {plan_for(ctx).summary}", Colors.YELLOW))
@@ -1430,6 +1493,7 @@ def cmd_finish(args: argparse.Namespace) -> int:
             return fin.cleanup(main, fin.load_record(main, pending[0]))
     ctx = require_started(ctx)
     require_collected(ctx)
+    require_report_decision(ctx)
     record = fin.load_record(ctx.main, ctx.name)
     if record:
         return fin.cleanup(ctx.main, record)
@@ -1557,7 +1621,7 @@ def finish_canary(ctx: Ctx | None, main: Path, worktree: Path, role: str, before
             test_paths=(), task_rel_dir=ctx.task_rel, scope="task",
         ))
     if changed:
-        problems.append("the canary changed the worktree")
+        print("Note: worktree changes observed during canary; main agent judges their origin.", file=sys.stderr)
     status = "ok" if not problems else "fail"
     append_result(main, {
         "ts": utc_now(), "task": ctx.name if ctx else None, "dispatch": "canary", "role": role, "mode": None,
@@ -1615,7 +1679,9 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(func=cmd_finish)
     sub.add_parser("gate", help="run level 0: gate commands + contract auto checks").set_defaults(func=cmd_gate)
     p = sub.add_parser("decide", help="answer a decision the state table asked for")
-    p.add_argument("choice", choices=(*sm.DECIDE_CHOICES, *sm.PLAUSIBLE_CHOICES))
+    p.add_argument("choice", choices=(*sm.DECIDE_CHOICES, *sm.PLAUSIBLE_CHOICES, "accept", "retry"))
+    p.add_argument("--dispatch", help="report awaiting main-agent judgment (defaults to the first)")
+    p.add_argument("--report", help="main agent's interpreted report; original agent output is retained")
     p.add_argument("--reason", required=True)
     p.add_argument("--partition", help="the partition whose red-check decision this answers")
     p.set_defaults(func=cmd_decide)

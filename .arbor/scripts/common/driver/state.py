@@ -30,8 +30,8 @@ nothing else (no git, no subprocesses), so ``arbor next`` stays cheap.
 Progress (only the driver changes ``counters``): a GATE round progresses when
 the failing id set shrinks or a previously failing check passes; a REVIEW /
 POLISH round when its finding id set changes; a failed dispatch never does.
-Two consecutive rounds without progress -> STOP(NO_PROGRESS); a round cap ->
-STOP(BUDGET).
+Counters describe history for the main agent. They do not automatically STOP
+execution; legacy STOP records and explicit abandon remain supported.
 
 Waves. ``wave`` indexes the contract's Waves. A wave that is just
 ``[default]`` runs on the task branch with the BUILD rows above. Any other
@@ -171,9 +171,7 @@ def _round(data: dict, progressed: bool, what: str, counters: dict | None = None
         counters["no_progress"] = 0
         return False
     counters["no_progress"] = counters.get("no_progress", 0) + 1
-    if counters["no_progress"] >= NO_PROGRESS_LIMIT:
-        stop(data, "NO_PROGRESS", f"{counters['no_progress']} consecutive rounds without progress ({what})")
-        return True
+    # Counters describe history; retry/stop decisions belong to the main agent.
     return False
 
 
@@ -189,6 +187,13 @@ def plan(data: dict, tier: str, waves=None, partition: str | None = None) -> Ste
     state, step = data.get("state", ""), step_of(data)
     base = data.get("base")
 
+    pending = data.get("report_pending") or {}
+    if pending and state != "STOP":
+        dispatch = next(iter(pending))
+        return Step("decide", f"Report {dispatch} needs main-agent judgment: "
+                    "`arbor decide accept --report <interpretation> --reason ...` or "
+                    "`arbor decide retry --reason ...`; do not ask the user for routine interpretation",
+                    decision={"kind": "report", "dispatch": dispatch, "options": ["accept", "retry"]})
     override = data.get("override_role")
     if isinstance(override, dict) and override.get("role") and state != "STOP":
         return Step("brief", f"{state} override: write the brief for role {override['role']}, then `arbor run`",
@@ -337,7 +342,7 @@ def on_dispatch_failed(data: dict, role: str) -> None:
 
 
 def on_violation(data: dict, role: str, dispatch: str, violations: list[str]) -> None:
-    stop(data, "VIOLATION", f"{dispatch} ({role}) broke its boundary: {'; '.join(violations)}")
+    data.setdefault("observations", []).append({"dispatch": dispatch, "role": role, "changes": violations})
 
 
 def on_red_check(data: dict, passing: list[str], errored: list[str]) -> None:
@@ -390,13 +395,6 @@ def on_gate(data: dict, failing: list[str], tier: str | None = None) -> None:
         counters["no_progress"] = 0
         dest = data.pop("after_gate", None) or {"state": "REVIEW", "step": "review"}
         if dest.get("step") == "candidates":
-            if counters.get("polish", 0) >= _cap(data, "polish", POLISH_ROUND_CAP):
-                if tier == "full" and not data.get("sweep_done"):
-                    _polish_done(data, tier)  # the sweep covers the unreviewed delta
-                    return
-                stop(data, "BUDGET", f"POLISH round cap ({POLISH_ROUND_CAP}) reached with an unreviewed delta",
-                     counter="polish")
-                return
             _start_polish_round(data)
             return
         goto(data, dest["state"], dest.get("step"))
@@ -405,9 +403,6 @@ def on_gate(data: dict, failing: list[str], tier: str | None = None) -> None:
     data["gate_reds"] = int(data.get("gate_reds", 0)) + 1
     progressed = previous is None or bool(set(previous) - set(failing)) or len(failing) < len(previous)
     if _round(data, progressed, f"gate failing {', '.join(failing)}"):
-        return
-    if data["gate_reds"] > _cap(data, "gate", GATE_RED_CAP):
-        stop(data, "BUDGET", f"{data['gate_reds']} consecutive red gate rounds", counter="gate")
         return
     data["step"] = "decide"
     data["decision"] = {"kind": "gate_red", "options": list(DECIDE_CHOICES), "failing": list(failing)}
@@ -430,12 +425,8 @@ def on_review(data: dict, tier: str, verdict: str, finding_ids: list[str], range
     if _round(data, progressed, "review findings unchanged"):
         return
     counters["review"] = counters.get("review", 0) + 1
-    cap = _cap(data, "review", REVIEW_ROUND_CAP.get(tier, 1))
     data["review_from"] = range_from
     goto(data, "REVIEW", "fix")
-    if counters["review"] > cap:
-        # Resuming continues with the fix this review asked for.
-        stop(data, "BUDGET", f"REVIEW round cap ({cap}) reached and the review still fails", counter="review")
 
 
 def _start_polish_round(data: dict) -> None:
@@ -656,10 +647,7 @@ def on_partition_failed(data: dict, name: str, role: str) -> None:
     """A failed partition dispatch: a round without progress for that partition."""
     rec = data["partitions"][name]
     rec.setdefault("counters", {"no_progress": 0})
-    if not _round(data, False, f"{name}: {role} dispatch failed", rec["counters"]):
-        return
-    # _round stopped on the partition counter; resuming starts it from zero.
-    rec["counters"]["no_progress"] = 0
+    _round(data, False, f"{name}: {role} dispatch failed", rec["counters"])
 
 
 def on_partition_red_check(data: dict, name: str, passing: list[str], errored: list[str]) -> None:

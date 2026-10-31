@@ -38,7 +38,7 @@ Shows the Phase Index (Plan / Drive / Finish), the state machine, tiers and huma
   `needs=brief` → write the brief at `brief_path`, then `arbor.py run`; `needs=run` → `arbor.py gate`; `needs=decide` → `arbor.py decide <choice> --reason "…"`; `needs=human` → ask the user (`human.kind`: `approve_contract` → re-approval, then `arbor.py resume`; `plausible` → `arbor.py decide fix|skip --reason "…"`; `merge` → Phase 3); `done` → Phase 3. A `STOP` state: report it; the user chooses `resume`, `override --reason "…" (--to STATE[/step] | --role <role>)` or `abandon [--reason "…"]`.
 - `status=completed` (rare; usually archived immediately) → `{{CMD_REF:finish-work}}`
 
-Roles are never performed in this session and never through the built-in `Agent`/`Task` tool; the driver prepares and validates them; codeg MCP executes the prepared delegation.
+Roles are never performed in this session and never through the built-in `Agent`/`Task` tool; the driver prepares them and records observations for main-agent judgment; codeg MCP executes the prepared delegation.
 
 ## Step 4: Load the Specific Step
 

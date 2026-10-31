@@ -180,7 +180,7 @@ describe.skipIf(!hasPython())("arbor.py next / BUILD / GATE", { timeout: 90_000 
     expect(git(f.wt, "log", "-1", "--format=%s")).toBe(`contract(${TASK}): re-approve contract`);
   });
 
-  it("GATE red -> decide impl -> fix; the same failing set twice -> STOP(NO_PROGRESS)", () => {
+  it("GATE red -> decide impl -> fix; repeated failures stay red for main-agent decisions", () => {
     f = setupFixture({ gate: ["exit 3"] });
     f.plan({
       "d-001": { write: [RED_TEST] },
@@ -210,12 +210,12 @@ describe.skipIf(!hasPython())("arbor.py next / BUILD / GATE", { timeout: 90_000 
     f.run("override", "--reason", "skip the retest", "--to", "GATE/gate");
     expect(f.run("gate").status).toBe(1);
     data = f.taskJson();
-    expect(data.state).toBe("STOP");
-    expect(data.stop).toMatchObject({ reason: "NO_PROGRESS", prev: { state: "GATE", step: "gate" } });
-    expect(f.next()).toMatchObject({ needs: "human", human: { kind: "stop", reason: "NO_PROGRESS" } });
-    expect(f.run("run").status).toBe(1);
-    expect(f.run("resume").status).toBe(0);
-    expect(f.taskJson()).toMatchObject({ state: "GATE", step: "gate", counters: { no_progress: 0 } });
+    expect(data.state).toBe("GATE");
+    expect(data.stop).toBeUndefined();
+    expect(data.counters.no_progress).toBe(2);
+    expect(f.next()).toMatchObject({ needs: "decide", decision: { kind: "gate_red" } });
+    expect(f.run("decide", "impl", "--reason", "continue with a different fix").status).toBe(0);
+    expect(f.taskJson()).toMatchObject({ state: "GATE", step: "fix" });
     expect(f.taskJson().overrides).toHaveLength(1);
   });
 });

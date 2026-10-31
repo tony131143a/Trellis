@@ -84,21 +84,21 @@ describe.skipIf(!hasPython())("arbor.py run --role (CONTRACT phase)", { timeout:
     expect(refused.stderr).toContain("use `arbor override --role explore`");
   });
 
-  it("an explore that commits and strays: violation, files and HEAD preserved for inspection", () => {
+  it("an explore that commits and strays: observations, files and HEAD preserved for inspection", () => {
     f = setupFixture({ start: false });
     const head = git(f.repo, "rev-parse", "HEAD");
     f.plan({ "d-001": { write: [{ path: "notes.txt", content: "x\n" }], dirty: [{ path: "README.md", content: "changed\n" }, { path: "stray.txt", content: "y" }] } });
     f.brief("d-001");
     const r = f.run(...T, "run", "--role", "explore");
-    expect(r.status).toBe(1);
-    expect(r.stdout).toContain("violation");
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain("ok");
     expect(fs.readFileSync(path.join(f.repo, "README.md"), "utf-8")).toBe("changed\n");
     expect(fs.readFileSync(path.join(f.repo, "stray.txt"), "utf-8")).toBe("y");
     expect(git(f.repo, "rev-parse", "HEAD~1")).toBe(head); // the commit is reported, not reset
-    expect(f.taskJson().dispatches[0]).toMatchObject({ status: "violation" });
+    expect(f.taskJson().dispatches[0]).toMatchObject({ status: "ok" });
     expect(f.taskJson().state).toBeUndefined();
     const row = f.results()[0];
-    expect(row.status).toBe("violation");
+    expect(row.status).toBe("ok");
     expect(row.violations.join("\n")).toContain("explore must not commit");
     expect(row.violations.join("\n")).not.toContain("HEAD of main moved");
   });
@@ -114,12 +114,12 @@ describe.skipIf(!hasPython())("arbor.py run --role (CONTRACT phase)", { timeout:
     f.brief("d-001");
     expect(f.run(...T, "run", "--role", "review", "--mode", "plan").status).toBe(0);
     f.brief("d-002");
-    expect(f.run(...T, "run", "--role", "review").status).toBe(1);
+    expect(f.run(...T, "run", "--role", "review").status).toBe(0);
     f.brief("d-003");
     expect(f.run(...T, "run", "--role", "review").status).toBe(0);
     expect(f.taskJson().dispatches).toMatchObject([
       { id: "d-001", mode: "plan", status: "ok", verdict: "FAIL", findings: 1 },
-      { id: "d-002", status: "fail", confidence: "low" },
+      { id: "d-002", status: "judgment", confidence: "low" },
       { id: "d-003", status: "ok", verdict: "PASS", findings: 0 },
     ]);
     const received = fs.readFileSync(path.join(f.tmp, "received/d-001.md"), "utf-8");

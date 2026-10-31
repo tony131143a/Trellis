@@ -22,7 +22,7 @@ Every command takes `--task <dir>` before the command name (default: the session
 
 ## State Machine
 
-`CONTRACT → BUILD → GATE → REVIEW → POLISH (standard / full) → FINISH → DONE`, with `STOP` reachable from any state. `task.py start` enters BUILD after the human approves the contract. BUILD runs `test` (red, checked by the driver) then `implement`; GATE runs `gate.commands` plus every `auto` Verification-map command; REVIEW runs one `review` `Mode: self-check` over `base..HEAD` and re-reviews fixes over `last_reviewed..HEAD`; POLISH runs `simplify`, N candidate reviews, a mechanical prefilter, `verify` (at most 8 per run), and for full a `sweep`. Caps: REVIEW light 2 rounds, standard / full 1; POLISH 2. Two rounds without progress → STOP(NO_PROGRESS); a cap → STOP(BUDGET); an invariant violation → STOP(VIOLATION). Only the driver changes `task.json` `state`, `counters`, `dispatches`, `last_reviewed` and `stop`.
+`CONTRACT → BUILD → GATE → REVIEW → POLISH (standard / full) → FINISH → DONE`, with `STOP` reachable from any state. `task.py start` enters BUILD after the human approves the contract. BUILD runs `test` (red, checked by the driver) then `implement`; GATE runs `gate.commands` plus every `auto` Verification-map command; REVIEW runs one `review` `Mode: self-check` over `base..HEAD` and re-reviews fixes over `last_reviewed..HEAD`; POLISH runs `simplify`, N candidate reviews, a mechanical prefilter, `verify` (at most 8 per run), and for full a `sweep`. Suggested budgets: REVIEW light 2 rounds, standard / full 1; POLISH 2. Counters and boundary observations are advisory; the main agent decides retries or stopping. No procedural check automatically creates STOP. Only the driver changes `task.json` `state`, `counters`, `dispatches`, `last_reviewed` and `stop`.
 
 ## CONTRACT-Phase Dispatch
 
@@ -31,7 +31,7 @@ Before `task.py start` there is no state table, worktree or Range, but the contr
 - The main agent writes the brief body at `<task>/briefs/<id>.md`, where `<id>` and the path come from `next --json` (`dispatch`, `brief_path`). `--dispatch` must match that id when given. A missing or empty brief is refused.
 - `--mode plan` goes with `review` only and is its default.
 - The role runs in the main checkout, with header `Active task`, `Role`, `Mode` (review) and `Dispatch`, and no `Range:`. Nothing is committed.
-- Write boundary: `explore` and `architect` may write only `<task>/research/`; `review` writes nothing. On a violation the driver restores the stray paths with `git checkout` / `git clean`, never resets, and reports a moved HEAD for the human to undo.
+- Write boundary: `explore` and `architect` may write only `<task>/research/`; `review` writes nothing. Unexpected changes are observations for the main agent. The driver preserves the files and HEAD, without reset, checkout or clean.
 - Each run is recorded in `task.json` `dispatches` (`phase: "CONTRACT"`; review adds `verdict` and `findings`), in `<task>/reports/<id>.md`, and as a `results.jsonl` row with state `CONTRACT`.
 - `task.py start` keeps those records and commits the task directory, briefs, reports and research included. Dispatch ids continue: after pre-start d-001 and d-002, the first BUILD dispatch is d-003.
 - On a started task `run --role` is refused; an extra role goes through `override --role`.
@@ -80,9 +80,9 @@ After every dispatch the driver checks, with git:
 | `test` | changed files ⊆ test paths |
 | `implement` / `simplify` / `fix` | changed files ∩ test paths = ∅ (fix: regression tests listed in its report are allowed) |
 | everyone | remote refs and other local branches unmoved; `.arbor/` changes only under `tasks/<task>/` |
-| contract | `contract_hash` in `task.json` matches `contract.md` |
+| contract | hash drift is recorded for contextual judgment, not an execution/collection gate |
 
-A violation fails the dispatch, resets the branch to its pre-dispatch commit, and is counted in the scorecard (CONTRACT-phase dispatches restore stray paths instead; see above). Writer commits look like:
+Boundary and commit-format observations are retained for main-agent judgment without automatic failure, STOP or rollback. Role instructions recommend commits like:
 
 ```text
 <role>(<task-dir-name>): <summary>
@@ -92,7 +92,7 @@ A violation fails the dispatch, resets the branch to its pre-dispatch commit, an
 Arbor-Dispatch: d-NNN
 ```
 
-Reply validation is fail-closed: an empty reply fails; a review or verify reply without a first-line verdict counts as FAIL; a writer without a new commit fails.
+Ambiguous reports are retained with status `judgment`, never silently counted as PASS. In a started task, `next` asks the main agent to `decide retry --reason ...` or `decide accept --report <interpretation> --reason ...`. The original report remains intact and the interpretation is recorded separately. Missing commits are advisory. Actual executor failures remain failures.
 
 ## Git Model
 
@@ -112,4 +112,4 @@ Every dispatch appends one line to `.arbor/.runtime/results.jsonl` (`task`, `dis
 - `arbor.py prompt --dispatch d-NNN --print`: exactly what a role received.
 - `arbor.py canary --role review`: is the executor reachable and is the reply shaped right.
 - `.arbor/.runtime/results.jsonl`: per-dispatch exit code, status and violations.
-- A dispatch failed with a violation: read the violation list in `status`; the branch was already reset, so tighten the brief and run again, or `override --reason` when the rule is wrong for this step.
+- Observed boundary changes: inspect the retained files and raw report in context; no branch reset has occurred. Use the ordinary next step or a reasoned override. Legacy STOP records require explicit resume/override after inspecting evidence.

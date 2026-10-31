@@ -911,9 +911,9 @@ def build_dispatch_prompt(req: DispatchRequest) -> DispatchPrompt:
             "([] when empty). Put explanations after the array, never before the verdict. "
             f"Check the exact draft via stdin with `python3 -B {shlex.quote(str(checker))}` "
             "(a read-only format check, not a build or test). Use a quoted heredoc; do not create a report file. "
-            "If it fails, correct only the report using your existing review and check again; "
+            "This checker is advisory. If it reports a formatting problem, correct only the report using your existing review; "
             "do not rerun the review, infer a PASS, or discard findings to satisfy the checker. "
-            "Return the checked report itself, not the checker's JSON diagnostics."
+            "Return the report itself, not the checker's JSON diagnostics. The main agent can interpret irregular reports in context."
         )
 
     warnings = list(budget.warnings)

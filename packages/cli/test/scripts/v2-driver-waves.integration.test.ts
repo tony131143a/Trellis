@@ -161,7 +161,7 @@ describe.skipIf(!hasPython())("arbor.py waves and partitions", { timeout: 90_000
     expect(git(f.wt, "status", "--porcelain", "--", "src", "tests")).toBe("");
   });
 
-  it("a partition writer outside its paths is a violation; a merge conflict waits for a hand merge and resume", () => {
+  it("a partition writer outside its paths is reported without rollback; a merge conflict waits for a hand merge and resume", () => {
     const map = "| AC-1 | auto | `test -f a/x.txt` | tests/ac1.sh |\n| AC-2 | manual | read b/y.txt | |";
     f = setupFixture({ contract: contract("- a: a/**\n- b: b/**", "- 1: [a, b]", map, "- tests/**") });
     ok(f.run("run"));
@@ -175,17 +175,14 @@ describe.skipIf(!hasPython())("arbor.py waves and partitions", { timeout: 90_000
     const aHead = git(partitionWt(f, "a"), "rev-parse", "HEAD");
     f.brief("d-001");
     const stray = f.run("run", "--partition", "a");
-    expect(stray.status).toBe(1);
+    expect(stray.status, stray.stdout + stray.stderr).toBe(0);
     expect(fs.readFileSync(path.join(f.taskDir, "reports/d-001.md"), "utf-8"))
       .toContain("implement touched files outside partition a: b/stray.txt");
-    expect(git(partitionWt(f, "a"), "rev-parse", "HEAD")).toBe(aHead);
-    expect(f.taskJson()).toMatchObject({ state: "STOP", stop: { reason: "VIOLATION" } });
-    ok(f.run("resume"));
-    expect(f.next()).toMatchObject({ partition: "a", role: "implement", dispatch: "d-003" });
-
+    expect(git(partitionWt(f, "a"), "rev-parse", "HEAD")).not.toBe(aHead);
+    expect(f.taskJson()).toMatchObject({ state: "BUILD" });
+    expect(f.taskJson().stop).toBeUndefined();
+    expect(f.next()).toMatchObject({ partition: "b", role: "implement", dispatch: "d-002" });
     f.brief("d-002");
-    f.brief("d-003");
-    ok(f.run("run", "--partition", "a"));
     ok(f.run("run", "--partition", "b"));
     // a conflict no writer may cause: the same new file committed by hand on both partition branches
     for (const [p, content] of [["a", "A\n"], ["b", "B\n"]]) {
@@ -361,8 +358,7 @@ assert (d["state"], d["step"]) == ("BUILD", "partitions")
 sm.on_partition_failed(d, "tests", "implement")
 assert d["state"] == "BUILD"
 sm.on_partition_failed(d, "tests", "implement")
-assert d["state"] == "STOP" and d["stop"]["reason"] == "NO_PROGRESS" and "tests" in d["stop"]["detail"]
-sm.resume(d)
+assert d["state"] == "BUILD" and d["partitions"]["tests"]["counters"]["no_progress"] == 2
 assert (d["state"], d["step"]) == ("BUILD", "partitions")
 for p in ("impl", "tests"): sm.on_partition_implemented(d, p)
 assert sm.plan(d, "full", W).action == "merge"
@@ -372,7 +368,7 @@ assert sm.on_conflict_resolved(d, "s") == "tests" and "merge_conflict" not in d
 sm.on_wave_merged(d, 1)
 assert (d["state"], d["after_gate"]["state"]) == ("GATE", "REVIEW")
 
-for tier, want in (("full", ("POLISH", "sweep")), ("standard", ("STOP", "stop"))):
+for tier, want in (("full", ("POLISH", "candidates")), ("standard", ("POLISH", "candidates"))):
     d = sm.ensure_fields({"state": "GATE", "base": "b", "after_gate": {"state": "POLISH", "step": "candidates"}})
     d["counters"]["polish"] = 2
     sm.on_gate(d, [], tier)

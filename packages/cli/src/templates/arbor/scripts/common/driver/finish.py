@@ -115,8 +115,8 @@ def dirty_paths(worktree: Path) -> list[str]:
 # =============================================================================
 
 
-def _reply(task_dir: Path, dispatch: str) -> str | None:
-    path = task_dir / "reports" / f"{dispatch}.md"
+def _reply(task_dir: Path, dispatch: str, interpreted: str | None = None) -> str | None:
+    path = task_dir / interpreted if interpreted else task_dir / "reports" / f"{dispatch}.md"
     if not path.is_file():
         return None
     return path.read_text(encoding="utf-8").split(_REPORT_SPLIT, 1)[0]
@@ -142,7 +142,7 @@ def verdict_counts(task_dir: Path, dispatches: list[dict]) -> tuple[dict, Counte
         level = _level(entry)
         if level is None or entry.get("status") != "ok":
             continue
-        reply = _reply(task_dir, str(entry.get("id")))
+        reply = _reply(task_dir, str(entry.get("id")), entry.get("interpreted_report"))
         if reply is None:
             continue
         for finding in rv.check_reply(entry["role"], reply).findings:

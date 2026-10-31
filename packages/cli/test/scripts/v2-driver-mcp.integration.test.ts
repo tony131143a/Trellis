@@ -152,9 +152,9 @@ describe.skipIf(!hasPython())("codeg MCP handoff", { timeout: 90_000 }, () => {
       git(f.repo, "commit", "-qm", "implement(task-b): work\n\nArbor-Dispatch: d-001");
     }
     const r = collect(p.request_path, { task_id: "codeg-task-1", status: "completed", text: EXPLORE });
-    expect(r.status, r.stdout + r.stderr).toBe(ownTask ? 1 : 0);
+    expect(r.status, r.stdout + r.stderr).toBe(0);
     expect(f.taskJson().mcp_pending).toEqual({});
-    if (ownTask) expect(r.stdout).toContain("the canary changed the worktree");
+    if (ownTask) expect(r.stderr).toContain("worktree changes observed");
   });
 
   it("accepts failure/cancel terminal reports as failed dispatches and retains their diagnostics", () => {
@@ -186,16 +186,17 @@ describe.skipIf(!hasPython())("codeg MCP handoff", { timeout: 90_000 }, () => {
     expect(git(f.wt, "status", "--porcelain")).toBe("");
   });
 
-  it("rejects a writer that omits its commit and restores its stray files", () => {
+  it("preserves a writer without a commit and records its stray files for judgment", () => {
     configure(true);
     f.brief("d-001");
     const p = JSON.parse(f.run("run").stdout);
     bind(p.request_path);
     writeFile(f.wt, "wrong.txt", "stray");
     const r = collect(p.request_path, { task_id: "codeg-task-1", status: "completed", text: "## Tests Written\n" });
-    expect(r.status).toBe(1);
-    expect(f.taskJson().dispatches[0].status).toBe("violation");
-    expect(fs.existsSync(path.join(f.wt, "wrong.txt"))).toBe(false);
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+    expect(f.taskJson().dispatches[0].status).toBe("ok");
+    expect(f.taskJson().dispatches[0].observations.join("\n")).toContain("produced no new commit");
+    expect(fs.readFileSync(path.join(f.wt, "wrong.txt"), "utf-8")).toBe("stray");
   });
 
   it("supports a no-task canary and resolves portable assistant names without a local id", () => {

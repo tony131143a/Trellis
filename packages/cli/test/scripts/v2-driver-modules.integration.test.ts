@@ -135,7 +135,7 @@ print(json.dumps([[k["summary"] for k in kept], sorted(d["summary"] for d, _ in 
     }
   });
 
-  it("state: progress rules, round caps, resume grants one more round", () => {
+  it("state: counters remain informational; legacy STOP can still be resumed", () => {
     const out = probe(`
 from common.driver import state as sm
 def gate(d, failing):  # the real flow: decide -> fix -> GATE/gate -> on_gate
@@ -145,21 +145,23 @@ gate(d, ["AC-1", "AC-2"]); assert d["step"] == "decide" and d["counters"]["no_pr
 gate(d, ["AC-1"]);         assert d["counters"]["no_progress"] == 0          # shrank
 gate(d, ["AC-2"]);         assert d["counters"]["no_progress"] == 0          # AC-1 now passes
 gate(d, ["AC-2"]);         assert d["counters"]["no_progress"] == 1
-gate(d, ["AC-2"]);         assert d["state"] == "STOP" and d["stop"]["reason"] == "NO_PROGRESS"
-sm.resume(d); assert (d["state"], d["step"]) == ("GATE", "gate") and d["counters"]["no_progress"] == 0
+gate(d, ["AC-2"]);         assert d["state"] == "GATE" and d["step"] == "decide" and d["counters"]["no_progress"] == 2
+sm.stop(d, "NO_PROGRESS", "legacy recorded stop")
+sm.resume(d); assert (d["state"], d["step"]) == ("GATE", "decide") and d["counters"]["no_progress"] == 0
 d["after_gate"] = {"state": "REVIEW", "step": "review"}
 sm.on_gate(d, []); assert (d["state"], d["step"]) == ("REVIEW", "review") and d["gate_reds"] == 0
 
 g = sm.ensure_fields({"state": "GATE", "base": "b"})
 for i in range(sm.GATE_RED_CAP + 1):
     gate(g, ["AC-%d" % j for j in range(10 - i)])
-assert g["state"] == "STOP" and g["stop"]["reason"] == "BUDGET" and g["stop"]["counter"] == "gate"
+assert g["state"] == "GATE" and g["step"] == "decide" and "stop" not in g
 
 r = sm.ensure_fields({"state": "REVIEW", "base": "b"})
 sm.on_review(r, "standard", "FAIL", ["x"], "b", "h1"); assert (r["step"], r["counters"]["review"]) == ("fix", 1)
 r["state"], r["step"] = "REVIEW", "review"
 sm.on_review(r, "standard", "FAIL", ["y"], "h1", "h2")
-assert r["state"] == "STOP" and r["stop"]["reason"] == "BUDGET" and r["stop"]["prev"] == {"state": "REVIEW", "step": "fix"}
+assert r["state"] == "REVIEW" and r["step"] == "fix" and "stop" not in r
+sm.stop(r, "BUDGET", "legacy budget", counter="review")
 sm.resume(r); assert (r["state"], r["step"]) == ("REVIEW", "fix") and r["caps_extra"] == {"review": 1}
 
 l = sm.ensure_fields({"state": "REVIEW", "base": "b"})
@@ -185,7 +187,7 @@ sm.on_writer_done(q, "POLISH", "fix", True); assert q["state"] == "GATE"
 sm.on_gate(q, []); assert q["step"] == "candidates" and q["polish"]["range_from"] == "h2"
 q["counters"]["polish"] = sm.POLISH_ROUND_CAP
 q["state"], q["step"], q["after_gate"] = "GATE", "gate", {"state": "POLISH", "step": "candidates"}
-sm.on_gate(q, []); assert q["state"] == "STOP" and q["stop"]["counter"] == "polish"
+sm.on_gate(q, []); assert q["state"] == "POLISH" and q["step"] == "candidates" and "stop" not in q
 
 # decide / plan
 x = sm.ensure_fields({"state": "BUILD", "base": "b"})

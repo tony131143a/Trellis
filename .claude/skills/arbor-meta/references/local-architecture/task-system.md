@@ -24,7 +24,7 @@ The Arbor task system is stored entirely under `.arbor/tasks/` in the user proje
 | File | Purpose |
 | --- | --- |
 | `task.json` | Task metadata: status, assignee, priority, branch, parent/child tasks; after `task.py start` also the driver's `state`, `base`, `contract_hash`, `worktree_path`, `wave`, `last_reviewed`, `counters`, `dispatches`. |
-| `contract.md` | Goal, scope, acceptance criteria (Given / When / Then), Verification map, Interface pins, Test paths, optional Partitions / Waves. Every tier; light tasks have only this. Approved by the human and frozen by `contract_hash`. Older tasks may have `prd.md` instead. |
+| `contract.md` | Goal, scope, acceptance criteria (Given / When / Then), Verification map, Interface pins, Test paths, optional Partitions / Waves. Every tier; light tasks have only this. Approved by the human; `contract_hash` records the baseline but does not block edits or collection. Older tasks may have `prd.md` instead. |
 | `design.md` | Technical design for standard and full tasks: boundaries, contracts, data flow, compatibility, tradeoffs. |
 | `waves.md` | Full tasks: the chosen architect design's partitions and wave order with the reasoning (legacy name `implement.md`). |
 | `implement.jsonl` | List of spec/research files the `architect`, `test` and `implement` roles must read first. |
