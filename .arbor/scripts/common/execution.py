@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 
 from .config import _is_true_config_value
@@ -157,3 +158,26 @@ def snapshot_control(main: Path, control: Path, task_rel: str, product: Path | N
 def check_control(main: Path, control: Path, task_rel: str, before: dict, product: Path | None = None) -> None:
     if snapshot_control(main, control, task_rel, product) != before:
         raise ExecutionError('protected control/product main repository changed during product delegation; evidence preserved')
+
+
+def accept_new_control_task(main: Path, control: Path, task_rel: str, before: dict,
+                            product: Path, sibling: str) -> dict[str, str]:
+    """Explicit collection recovery: accept only a new sibling task in main.
+
+    Keep the original snapshot intact. Existing files, refs, index, the active
+    control worktree and product main remain protected without exceptions.
+    The caller must record the returned content hashes and the operator's reason.
+    """
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', sibling) or sibling == Path(task_rel).name:
+        raise ExecutionError('accept-new-control-task requires a different task directory name')
+    prefix = f'.arbor/tasks/{sibling}/'
+    if any(p.startswith(prefix) for p in before['main']['files']):
+        raise ExecutionError('cannot accept changes to a task that existed before delegation')
+    current = snapshot_control(main, control, task_rel, product)
+    additions = {p: h for p, h in current['main']['files'].items() if p.startswith(prefix)}
+    if prefix + 'task.json' not in additions or any(h == 'missing' or h.startswith('link:') for h in additions.values()):
+        raise ExecutionError('new control task must have task.json and only regular files')
+    current['main']['files'] = {p: h for p, h in current['main']['files'].items() if p not in additions}
+    if current != before:
+        raise ExecutionError('protected changes remain outside the new control task; evidence preserved')
+    return additions

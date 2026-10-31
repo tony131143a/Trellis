@@ -25,7 +25,7 @@
     "AGENTS.md": "ca231975c898dba52f3d2a949dd799fe6dffe7e9ff8342be7d73de432c788414",
     ".arbor/scripts/common/workflow_phase.py": "9bc8f56c0691576644eb52545d0a921eb849a355ff1aec96388c3d7ed528a4ae",
     ".claude/hooks/session-start.py": "9c09e7fb9911ef5c85f6e550d46322e41f695fc7504567f4c20e55863a4c7a44",
-    ".arbor/workflow.md": "13e4bbfe9e1b8f4f6716c875b8e324637910debe88e352437c2d9f9fb4886c0d",
+    ".arbor/workflow.md": "04b1f262083e4e291becf55a61403c62c5fd2e487b017878bc85a98aa89cf558",
     ".claude/hooks/inject-workflow-state.py": "852a496522b23cfa9610de6b16bf3bd139b8716f646dc435273443c5810fc04f",
     ".arbor/scripts/task.py": "ea3c82f371f43411ec756d8de26803f477c9c38c92259b09bef837978009c8a8",
     ".arbor/scripts/common/safe_commit.py": "07d613830ff9aecce40bf6a59249b389781a12d6795dd8eb0ce3cbb6d43ee2d5",
@@ -96,11 +96,11 @@
     ".arbor/scripts/common/driver/partitions.py": "24694ced01ba653cb13321b04d45f07ff7605e7dcfe445d1a874c4c92d801f2b",
     ".arbor/scripts/common/driver/finish.py": "181e412e8111bbd42de0b4c3bfa4106a44b3218fd4a7289bb9f3a49986b7d3a8",
     ".arbor/scripts/common/driver/autopilot.py": "e07f3085906ca2e287abe77f535d9e372496c8105a8329cd049e9858c7c2a6ca",
-    ".arbor/scripts/arbor.py": "c7ad8ffb127f0a0614f027c2a1a8bac9e4f96ee9b436bae215a5adc253690702",
+    ".arbor/scripts/arbor.py": "1d0b70803edc4f789a0ed95be08d0b543b505e5fbe83307ee16a73c1a905f1a6",
     ".arbor/agents/test.md": "3075def5a42072effd49439c31a7b4fcb91f8b5a0093cce1ca7cc056a3c816a1",
     ".arbor/scripts/common/driver/mcp.py": "affa1e54448a104db764e5b934eb34d0315b202a0dc2398222bf0acfd0c14ca7",
     ".arbor/scripts/hooks/linear_sync.py": "37d527b252930a2b67b5b886089cf8ca2c5ece064a4d9515e14944259b1f159b",
-    ".arbor/scripts/common/execution.py": "f6286e00e3636c9a1e87414b8e9efac7cba6831160962b22bd73cbd0ebd01c11",
+    ".arbor/scripts/common/execution.py": "4e50de1f4bd0203f7d6f0cbe28d2dc6e99755063ec5c4e7c5ee4e82788a6e0bf",
     ".arbor/scripts/check_report.py": "fca8e311992894b1bd1f0dda624adfb7cd12de8ced617f303b3c79bfffd2b067"
   }
 }

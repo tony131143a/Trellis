@@ -158,6 +158,8 @@ With the `codeg-mcp` executor, `arbor.py run` returns `needs=delegation`. Call c
 
 Request and snapshot records live in `.arbor/.runtime/delegations/<task>/<dispatch>.json`. `next --json` returns the pending request path and bound task id until collection; a successfully collected request cannot be collected twice. If MCP or the named assistant is unavailable, report the blocker instead of switching execution paths. Model, effort and permission settings come from the selected codeg assistant.
 
+If product collection is blocked solely by another session creating a new sibling task in control main, inspect the full drift first. An operator may then use `arbor.py collect --request <path> --result <file> --accept-new-control-task <name> --reason "<reviewed concurrent work>"`. This accepts only regular files in that previously absent task directory; existing files, Git refs/index, the active control worktree and product main must still match. The original snapshot is retained and the accepted file hashes/reason are recorded in both the request and task. It does not authorize changes made by a child outside its write boundary.
+
 ```bash
 python3 ./.arbor/scripts/arbor.py next [--json]               # the single next step
 python3 ./.arbor/scripts/arbor.py run [--dispatch d-NNN]      # execute the dispatch whose brief you just wrote

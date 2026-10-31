@@ -646,9 +646,19 @@ def cmd_collect(args: argparse.Namespace) -> int:
             raise DriverError("this MCP dispatch has already been collected")
         if ctx and (ctx.data.get("mcp_pending") or {}).get(record["dispatch"]) != str(path):
             raise DriverError("MCP request is no longer pending in this task")
+        acceptance = None
+        sibling = getattr(args, "accept_new_control_task", None)
+        if sibling and (not ctx or not record.get("control_before") or not (args.reason or "").strip()):
+            raise DriverError("--accept-new-control-task requires a product dispatch and a non-empty --reason")
         if record.get("control_before") and ctx:
             try:
-                ex.check_control(ctx.main, ctx.control_worktree, ctx.task_rel, record["control_before"], ctx.execution_main)
+                if sibling:
+                    additions = ex.accept_new_control_task(ctx.main, ctx.control_worktree, ctx.task_rel,
+                                                          record["control_before"], ctx.execution_main, sibling)
+                    acceptance = {"new_task": sibling, "reason": args.reason.strip(), "files": additions,
+                                  "checked_at": utc_now(), "dispatch": record["dispatch"]}
+                else:
+                    ex.check_control(ctx.main, ctx.control_worktree, ctx.task_rel, record["control_before"], ctx.execution_main)
             except ex.ExecutionError as e:
                 raise DriverError(str(e)) from None
         result, report = mcp.terminal_result(record, payload)
@@ -671,6 +681,8 @@ def cmd_collect(args: argparse.Namespace) -> int:
                 spec = contract.partition(unit.partition)
                 red = run_red_check(contract, unit.worktree, spec.paths if spec else ())
             ctx.data["mcp_pending"].pop(dispatch)
+            if acceptance:
+                ctx.data.setdefault("collection_exceptions", []).append(acceptance)
             _finish(ctx, job, out, red)
             rc = 0 if out.status == "ok" else 1
             print(f"{dispatch} {role}: {out.status}; report: {ctx.task_dir / 'reports' / (dispatch + '.md')}")
@@ -687,6 +699,8 @@ def cmd_collect(args: argparse.Namespace) -> int:
             if ctx:
                 ctx.data["mcp_pending"].pop(dispatch)
                 save(ctx)
+        if acceptance:
+            record["control_drift_acceptance"] = acceptance
         record.update(status="collected", driver_exit_code=rc, ended=utc_now(),
                       child_conversation_id=report.get("child_conversation_id"))
         mcp.store(path, record)
@@ -1581,6 +1595,9 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("collect", help="validate a terminal codeg MCP report and advance the task")
     p.add_argument("--request", required=True)
     p.add_argument("--result", required=True, help="file containing the complete get_delegation_status JSON")
+    p.add_argument("--accept-new-control-task", metavar="NAME",
+                   help="explicitly accept only a newly created sibling task in control main; audit hashes are recorded")
+    p.add_argument("--reason", help="required justification for --accept-new-control-task")
     p.set_defaults(func=cmd_collect)
     p = sub.add_parser("finish", help="FINISH: scorecard + PR / merge command; cleanup after the merge")
     p.add_argument("--pr", action="store_true", help="push the task branch and open a PR with gh")

@@ -58,6 +58,46 @@ function finishBuild(): void {
 
 describe("central polyrepo execution", { timeout: 90000 }, () => {
   afterEach(() => f?.cleanup());
+  it.each(["new-task", "existing-task", "main-file", "control-file", "product-file", "main-ref"])(
+    "audits collection recovery without accepting protected drift: %s", (scenario) => {
+      started();
+      expect(f.run("override", "--to", "REVIEW", "--reason", "fixture").status).toBe(0);
+      const cfg = path.join(f.repo, ".arbor/config.yaml");
+      fs.writeFileSync(cfg, fs.readFileSync(cfg, "utf8").replace("  fake:\n", "  fake:\n    type: codeg-mcp\n    assistant: arbor-{role}\n"));
+      const sibling = ".arbor/tasks/other-task/task.json";
+      if (scenario === "existing-task") writeFile(f.repo, sibling, "{}");
+      f.brief("d-001");
+      const request = JSON.parse(f.run("run").stdout);
+      expect(f.run("bind", "--request", request.request_path, "--task-id", "child-review").status).toBe(0);
+      const original = JSON.parse(fs.readFileSync(request.request_path, "utf8")).control_before;
+      writeFile(f.repo, sibling, '{"status":"planning"}');
+      if (scenario === "main-file") writeFile(f.repo, "README.md", "changed");
+      if (scenario === "control-file") writeFile(f.wt, "README.md", "changed");
+      if (scenario === "product-file") writeFile(product, "product.txt", "changed");
+      if (scenario === "main-ref") git(f.repo, "branch", "unrelated-ref");
+      const result = path.join(f.tmp, "review-result.json");
+      fs.writeFileSync(result, JSON.stringify({ task_id: "child-review", status: "completed", text: "PASS\n```json\n[]\n```" }));
+      const args = ["collect", "--request", request.request_path, "--result", result];
+      expect(f.run(...args).status).toBe(1);
+      expect(f.run(...args, "--accept-new-control-task", "other-task").status).toBe(1);
+      expect(f.run(...args, "--accept-new-control-task", "../other-task", "--reason", "fixture").status).toBe(1);
+      const collected = f.run(...args, "--accept-new-control-task", "other-task", "--reason", "Reviewed parallel planning task");
+      expect(collected.status, collected.stdout + collected.stderr).toBe(scenario === "new-task" ? 0 : 1);
+      const saved = JSON.parse(fs.readFileSync(request.request_path, "utf8"));
+      expect(saved.control_before).toEqual(original);
+      expect(fs.readFileSync(path.join(f.repo, sibling), "utf8")).toBe('{"status":"planning"}');
+      if (scenario === "new-task") {
+        expect(saved.status).toBe("collected");
+        expect(saved.control_drift_acceptance.files[sibling]).toMatch(/^[a-f0-9]{64}$/);
+        expect(f.taskJson().collection_exceptions).toEqual([saved.control_drift_acceptance]);
+        expect(f.taskJson().mcp_pending).toEqual({});
+      } else {
+        expect(saved.status).toBe("pending");
+        expect(saved.control_drift_acceptance).toBeUndefined();
+        expect(f.taskJson().collection_exceptions).toBeUndefined();
+      }
+    },
+  );
   it("rejects an empty product gate and records the failure without advancing to review", () => {
     started(CONTRACT.replace("| AC-1 | auto |", "| AC-1 | manual |"));
     writeFile(f.taskDir, "task.json", JSON.stringify({ ...f.taskJson(), state: "GATE", step: "gate" }));
