@@ -1,0 +1,58 @@
+packages/cli/test/scripts/v2-driver-mcp.integration.test.ts
+  s_6c469b399f8934::t_2559901478b08a 97-139
+  s_6c469b399f8934::t_c26ada93be371a 140-159
+packages/cli/test/setup.ts
+  s_6c469b399f8934::t_126d479ccac7b5 20-25
+packages/cli/src/templates/arbor/scripts/common/invariants.py
+  s_6c469b399f8934::t_c26ada93be371a 265-266,268-269,276-278,309-311
+  s_6c469b399f8934::t_3fa571bb8f706c 20-26,34,222-248,258,279-284,306-308
+packages/cli/test/git-isolation.integration.test.ts
+  s_6c469b399f8934::t_d3d09ca023ee40 27-29,36
+  s_6c469b399f8934::t_d4d3fea7b581e2 1-26,30-35,37-41
+.arbor/scripts/arbor.py
+  s_6c469b399f8934::t_4b6a6ae600bc35 204-206
+  s_6c469b399f8934::t_0717e8cc72d6e9 798-800,1223,1226,1553-1559
+packages/cli/test/scripts/v2-invariants.integration.test.ts
+  s_6c469b399f8934::t_89aba826c60010 71,84,87,216,221,224,231,234,241-242,246-252,292-317
+  s_6c469b399f8934::t_c26ada93be371a 272-282
+  s_f3feb1ad4bd47d::t_b69d416e76718a 253,318-319
+packages/cli/test/scripts/v2-driver-build.integration.test.ts
+  s_6c469b399f8934::t_7bee57f808562f 46-48
+  s_6c469b399f8934::t_c8e3311b5f2547 38-43,45,49-60,63-77
+packages/cli/test/scripts/v2-driver-contract.integration.test.ts
+  s_6c469b399f8934::t_80c710e7b9062e 103
+packages/cli/src/templates/arbor/workflow.md
+  s_6c469b399f8934::t_113f44148700a8 232-235
+.arbor/scripts/common/invariants.py
+  s_6c469b399f8934::t_0717e8cc72d6e9 20-26,34,222-248,258,265-266,268-269,276-284,306-311
+.arbor/workflow.md
+  s_6c469b399f8934::t_0717e8cc72d6e9 232-235
+packages/cli/src/templates/arbor/scripts/arbor.py
+  s_6c469b399f8934::t_3fa571bb8f706c 798-800,1223,1226,1553-1554,1559
+  s_6c469b399f8934::t_c26ada93be371a 1555-1558
+  s_6c469b399f8934::t_4b6a6ae600bc35 204-206
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "c656092cca04e015c4414f158f52419535ce5703",
+  "prompts": {},
+  "sessions": {
+    "s_6c469b399f8934": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18fb6-4c95-7fa1-9872-205a2227e49b",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Mr tang <mytortoise18@sina.com~>"
+    },
+    "s_f3feb1ad4bd47d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18f9f-5cf3-7b71-b867-31398ef7f748",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Mr tang <mytortoise18@sina.com~>"
+    }
+  }
+}
