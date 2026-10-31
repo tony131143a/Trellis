@@ -326,6 +326,7 @@ def cmd_create(args: argparse.Namespace) -> int:
         meta["tier"] = cli_tier
 
     # Validate --package (CLI source: fail-fast)
+    execution_mode = getattr(args, "execution", None)
     package: str | None = getattr(args, "package", None)
     if not is_monorepo(repo_root):
         # Single-repo: ignore --package, no package prefix
@@ -337,10 +338,19 @@ def cmd_create(args: argparse.Namespace) -> int:
             packages = get_packages(repo_root)
             available = ", ".join(sorted(packages.keys())) if packages else "(none)"
             print(colored(f"Error: unknown package '{package}'. Available: {available}", Colors.RED), file=sys.stderr)
+            if package == "control":
+                print("Hint: control is an execution mode, not a package. Replace --package control with --execution control.", file=sys.stderr)
             return 1
-    else:
+    elif execution_mode != "control":
         # Inferred: default_package → None (no task.json yet for create)
         package = resolve_package(repo_root=repo_root)
+
+    if execution_mode == "package":
+        from .config import _is_true_config_value
+        entry = (get_packages(repo_root) or {}).get(package) or {}
+        if not isinstance(entry, dict) or not _is_true_config_value(entry.get("git")):
+            print("Error: --execution package requires a configured git: true --package", file=sys.stderr)
+            return 1
 
     # Default assignee to current developer
     assignee = args.assignee
@@ -518,6 +528,9 @@ def cmd_create(args: argparse.Namespace) -> int:
         "notes": "",
         "meta": meta,
     }
+
+    if execution_mode:
+        task_data["execution_mode"] = execution_mode
 
     # A directory without task.json is not a task: `list` hides it and every
     # lifecycle command refuses it. Fail here rather than printing "Created
@@ -1180,6 +1193,12 @@ def _validate_branch_metadata(
     merge the feature branch is normally deleted, and refusing to archive then
     would be backwards.
     """
+    if data.get("execution_binding"):
+        if data.get("state") != "DONE" or not data.get("product_merge"):
+            print("Error: product tasks must complete both merges through arbor finish before archive", file=sys.stderr)
+            return False
+        from .execution import control_data
+        data = control_data(data)
     branch = _task_branch_field(data, "branch")
     base_branch = _task_branch_field(data, "base_branch")
     task_py = f"python3 {DIR_WORKFLOW}/scripts/task.py"
@@ -1277,7 +1296,8 @@ def _worktree_holding_task(task_name: str, repo_root: Path) -> Path | None:
 def _clear_worktree_pointers(data: dict, dir_name: str, main_root: Path) -> None:
     """Drop session pointers at the worktree copy of a task (recorded in
     `worktree_path`), which outlives an archive of the merged copy."""
-    worktree_path = data.get("worktree_path")
+    from .execution import control_data
+    worktree_path = control_data(data).get("worktree_path")
     if not isinstance(worktree_path, str) or not worktree_path.strip():
         return
     from .active_task import clear_task_from_sessions
@@ -1524,7 +1544,8 @@ def _derive_spec_changes_safely(
     never as a traceback that aborts `archive`.
     """
     try:
-        return derive_spec_changes(data, repo_root)
+        from .execution import control_data
+        return derive_spec_changes(control_data(data), repo_root)
     except Exception as exc:  # pragma: no cover - defensive
         manual = manual_spec_changes(data)
         return (

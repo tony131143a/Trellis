@@ -109,6 +109,20 @@ describe("update() integration", () => {
     fs.writeFileSync(fullPath, content, "utf-8");
   }
 
+  it("refreshes a pristine legacy Linear hook even when the package version is unchanged", async () => {
+    await setupProject();
+    const file = `${PATHS.SCRIPTS}/hooks/linear_sync.py`;
+    const shipped = readProjectFile(file);
+    const old = "# legacy installed hook only reads prd.md\n";
+    writeProjectFile(file, old);
+    const hashes = readHashesV2(hashFilePath());
+    hashes[file] = computeHash(old);
+    writeHashesV2(hashFilePath(), hashes);
+    await update({ skipAll: true });
+    expect(readProjectFile(file)).toBe(shipped);
+    expect(readHashesV2(hashFilePath())[file]).toBe(computeHash(shipped));
+  });
+
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-update-int-"));
     vi.spyOn(process, "cwd").mockReturnValue(tmpDir);

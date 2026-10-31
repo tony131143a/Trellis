@@ -95,7 +95,7 @@ from common.driver import finish as fin
 from common.driver import state as sm
 from common.driver import validate as rv
 from common.driver.executor import ExecResult, ExecutorError, resolve_executor, run_executor, utc_now
-from common.driver.gate import RedResult, format_checks, run_gate, run_red_check
+from common.driver.gate import CheckResult, RedResult, format_checks, run_gate, run_red_check
 from common.driver.lock import LockTimeout, pid_alive, task_lock
 from common.git import run_git
 from common.invariants import WRITER_ROLES, _dirty_paths, check_after_dispatch, snapshot_refs
@@ -109,6 +109,9 @@ RUNTIME = f"{DIR_WORKFLOW}/.runtime"
 CANARY_ROLES = ("explore", "review", "verify")
 CONTRACT_ROLES = ("explore", "architect", "review")
 STDERR_TAIL_LINES = 40
+
+
+from common import execution as ex
 
 
 class DriverError(RuntimeError):
@@ -127,6 +130,20 @@ class Ctx:
     @property
     def worktree(self) -> Path:
         return Path(self.data["worktree_path"])
+
+    @property
+    def control_worktree(self) -> Path:
+        return Path(ex.control_data(self.data)["worktree_path"])
+
+    @property
+    def execution_main(self) -> Path:
+        binding = self.data.get("execution_binding")
+        return Path(binding["repo"]) if binding else self.main
+
+    @property
+    def execution_config(self) -> dict:
+        binding = self.data.get("execution_binding")
+        return binding["config"] if binding else self.config
 
     @property
     def branch(self) -> str:
@@ -200,6 +217,20 @@ def load_ctx(task_arg: str | None) -> Ctx | None:
     started = bool(data.get("worktree_path") and data.get("branch") and data.get("base") and data.get("state"))
     if started:
         sm.ensure_fields(data)
+        try:
+            binding = ex.validate(main, read_arbor_config(main), data)
+            if binding:
+                control = binding["control"]
+                expected = Path(control["worktree_path"]) / DIR_WORKFLOW / DIR_TASKS / task_dir.name
+                if task_dir.resolve() != expected.resolve():
+                    merged_copy = main / DIR_WORKFLOW / DIR_TASKS / task_dir.name
+                    if (task_dir.resolve() == merged_copy.resolve() and data.get("state") == "FINISH"
+                            and fin.is_merged(main, control["branch"], control["base_branch"])):
+                        task_dir = expected
+                    else:
+                        raise ex.ExecutionError("task directory does not belong to the bound control worktree")
+        except ex.ExecutionError as e:
+            raise DriverError(str(e)) from None
     return Ctx(main, read_arbor_config(main), task_dir, task_dir.name, data, started)
 
 
@@ -224,6 +255,11 @@ def reload(ctx: Ctx) -> None:
     data, reason = read_json_checked(ctx.task_dir / FILE_TASK_JSON)
     if data is None:
         raise DriverError(f"cannot read {ctx.task_dir / FILE_TASK_JSON}: {reason}")
+    if ctx.started:
+        try:
+            ex.validate(ctx.main, ctx.config, data)
+        except ex.ExecutionError as e:
+            raise DriverError(str(e)) from None
     ctx.data = sm.ensure_fields(data) if ctx.started else data
 
 
@@ -274,11 +310,11 @@ def plan_for(ctx: Ctx, partition: str | None = None) -> sm.Step:
 
 def commit_task_dir(ctx: Ctx, message: str) -> bool:
     """Commit pending changes under the task dir on the task branch."""
-    git(ctx, "add", "-A", "--", ctx.task_rel)
-    rc, _, _ = run_git(["diff", "--cached", "--quiet", "--", ctx.task_rel], cwd=ctx.worktree)
+    git(ctx, "add", "-A", "--", ctx.task_rel, cwd=ctx.control_worktree)
+    rc, _, _ = run_git(["diff", "--cached", "--quiet", "--", ctx.task_rel], cwd=ctx.control_worktree)
     if rc == 0:
         return False
-    git(ctx, "commit", "-q", "--no-verify", "-m", message, "--", ctx.task_rel)
+    git(ctx, "commit", "-q", "--no-verify", "-m", message, "--", ctx.task_rel, cwd=ctx.control_worktree)
     return True
 
 
@@ -333,13 +369,17 @@ def append_result(main: Path, row: dict) -> None:
 
 
 def build_prompt(worktree: Path, task_dir: Path | None, role: str, mode: str | None,
-                 range_spec: str | None, dispatch: str | None, brief: str) -> str:
+                 range_spec: str | None, dispatch: str | None, brief: str, execution_root: Path | None = None) -> str:
+    if execution_root is not None:
+        brief = (f"Control repository: {worktree} (read only).\nExecution repository: {execution_root}.\n"
+                 "Run all code edits, Git commands and tests in the execution repository. "
+                 "Task/spec paths belong to the control repository; do not modify control artifacts.\n\n" + brief)
     header = DispatchHeader(
         task_dir=str(task_dir) if task_dir else None, role=role, mode=mode,
         body=brief.strip(), range=range_spec, dispatch=dispatch,
     )
     return build_dispatch_prompt(
-        DispatchRequest(repo_root=worktree, role=role, task_dir=task_dir, header=header, original_text=brief)
+        DispatchRequest(repo_root=worktree, role=role, task_dir=task_dir, header=header, original_text=brief, execution_root=execution_root)
     ).text
 
 
@@ -521,7 +561,7 @@ def prepare_mcp(ctx: Ctx | None, main: Path, executor, role: str, mode: str | No
         if pending:
             print(json.dumps(mcp.envelope(*pending), ensure_ascii=False))
             return 0
-    if ctx and _pending(ctx, extra.get("partition")):
+    if ctx and _pending(ctx, None if ctx.data.get("execution_binding") else extra.get("partition")):
         raise DriverError("an MCP dispatch is already pending; poll/collect it before starting another")
     if ctx is None or kind == "canary":
         dispatch = f"{dispatch}-{uuid4().hex[:8]}"
@@ -553,6 +593,8 @@ def prepare_mcp(ctx: Ctx | None, main: Path, executor, role: str, mode: str | No
         save(ctx)
     # Driver-created metadata must not be mistaken for the child's writes.
     record["before"] = mcp.snapshot_dict(snapshot_refs(worktree))
+    if ctx and ctx.started and ctx.data.get("execution_binding"):
+        record["control_before"] = ex.snapshot_control(ctx.main, ctx.control_worktree, ctx.task_rel, ctx.execution_main)
     mcp.store(path, record)
     print(json.dumps(mcp.envelope(path, record), ensure_ascii=False))
     return 0
@@ -565,7 +607,7 @@ def prepare_run(ctx: Ctx, job: Job, executor) -> int:
     contract = require_contract(ctx)
     paths = _partition_paths(contract, unit.partition)
     brief = pt.scope_line(unit.worktree, unit.branch, paths) + "\n\n" + job.brief if unit.partition else job.brief
-    prompt = build_prompt(ctx.worktree, ctx.task_dir, job.role, job.mode, range_spec, job.dispatch, brief)
+    prompt = build_prompt(ctx.control_worktree, ctx.task_dir, job.role, job.mode, range_spec, job.dispatch, brief, unit.worktree if ctx.data.get("execution_binding") else None)
     (runtime_dir(ctx.main, "prompts", ctx.name) / f"{job.dispatch}.md").write_text(prompt, encoding="utf-8")
     job_data = {**asdict(job), "unit": {"partition": unit.partition, "worktree": str(unit.worktree),
                                       "branch": unit.branch}}
@@ -604,6 +646,11 @@ def cmd_collect(args: argparse.Namespace) -> int:
             raise DriverError("this MCP dispatch has already been collected")
         if ctx and (ctx.data.get("mcp_pending") or {}).get(record["dispatch"]) != str(path):
             raise DriverError("MCP request is no longer pending in this task")
+        if record.get("control_before") and ctx:
+            try:
+                ex.check_control(ctx.main, ctx.control_worktree, ctx.task_rel, record["control_before"], ctx.execution_main)
+            except ex.ExecutionError as e:
+                raise DriverError(str(e)) from None
         result, report = mcp.terminal_result(record, payload)
         before = mcp.snapshot_from(record["before"])
         role, mode, dispatch = record["role"], record["mode"], record["dispatch"]
@@ -703,7 +750,7 @@ def dispatch_once(ctx: Ctx, unit: Unit, role: str, mode: str | None, range_from:
     paths = _partition_paths(contract, unit.partition)
     if unit.partition:
         brief = pt.scope_line(unit.worktree, unit.branch, paths) + "\n\n" + brief.strip()
-    prompt = build_prompt(ctx.worktree, ctx.task_dir, role, mode, range_spec, dispatch, brief)
+    prompt = build_prompt(ctx.control_worktree, ctx.task_dir, role, mode, range_spec, dispatch, brief, unit.worktree if ctx.data.get("execution_binding") else None)
     prompt_file = runtime_dir(ctx.main, "prompts", ctx.name) / f"{dispatch}.md"
     prompt_file.write_text(prompt, encoding="utf-8")
 
@@ -716,8 +763,14 @@ def dispatch_once(ctx: Ctx, unit: Unit, role: str, mode: str | None, range_from:
     except ExecutorError as e:
         empty = rv.ReplyCheck(False, str(e))
         return Outcome("fail", "", empty, None, [], str(e), range_spec, head_before, head_before)
+    control_before = ex.snapshot_control(ctx.main, ctx.control_worktree, ctx.task_rel, ctx.execution_main) if ctx.data.get("execution_binding") else None
     result = run_executor(executor, role=role, prompt_path=prompt_file, worktree=unit.worktree,
                           task=ctx.name, dispatch=dispatch)
+    if control_before:
+        try:
+            ex.check_control(ctx.main, ctx.control_worktree, ctx.task_rel, control_before, ctx.execution_main)
+        except ex.ExecutionError as e:
+            raise DriverError(str(e)) from None
     return validate_dispatch(ctx, unit, role, dispatch, before, test_paths, paths, head_before, range_spec, result)
 
 
@@ -726,7 +779,7 @@ def validate_dispatch(ctx: Ctx, unit: Unit, role: str, dispatch: str, before, te
     """Identical acceptance checks for command executors and external MCP replies."""
     reply = result.stdout
     violations = check_after_dispatch(role, before, unit.worktree, own_branch=unit.branch, test_paths=test_paths,
-                                      task_rel_dir=ctx.task_rel, dispatch_id=dispatch)
+                                      task_rel_dir=(f"__control__/{ctx.name}" if ctx.data.get("execution_binding") else ctx.task_rel), dispatch_id=dispatch)
     if unit.partition:
         violations = _concurrent_moves(ctx, unit, before, violations)
         new_dirty = _dirty_paths(unit.worktree) - before.dirty
@@ -753,7 +806,7 @@ def validate_dispatch(ctx: Ctx, unit: Unit, role: str, dispatch: str, before, te
         status, problem = "fail", check.problem
     else:
         status, problem = "ok", check.problem
-    if status != "ok":
+    if status != "ok" and not ctx.data.get("execution_binding"):
         _restore(ctx, unit, before)
     return Outcome(status, reply, check, result, violations, problem, range_spec, head_before,
                    head(ctx, unit.worktree))
@@ -771,7 +824,7 @@ def _partition_brief(ctx: Ctx, partition: str | None, brief: str) -> str:
         return brief
     contract_path = find_contract(ctx.task_dir)
     paths = _partition_paths(load_contract(contract_path) if contract_path else None, partition)
-    worktree = partition_worktree_path(ctx.main, ctx.config, ctx.name, partition)
+    worktree = partition_worktree_path(ctx.execution_main, ctx.execution_config, ctx.name, partition)
     line = pt.scope_line(worktree.resolve(), partition_branch(ctx.name, partition), paths)
     return line + "\n\n" + brief.strip()
 
@@ -870,6 +923,9 @@ def _begin(ctx: Ctx, step: sm.Step, requested: str | None) -> Job:
     """Locked: pick the dispatch id, check the brief and the worktree, mark a
     partition running, commit the brief."""
     data = ctx.data
+    if data.get("execution_binding") and (data.get("mcp_pending") or any(
+            p.get("running") for p in (data.get("partitions") or {}).values())):
+        raise DriverError("product task dispatches are serialized; collect/finish the running dispatch first")
     dispatch = step.dispatch or next_dispatch_id(data, ctx.task_dir)
     if requested and requested != dispatch:
         raise DriverError(f"the next dispatch{' of ' + step.partition if step.partition else ''} is "
@@ -1013,7 +1069,7 @@ def start_wave(ctx: Ctx) -> int:
     records: dict[str, dict] = {}
     for name in parts:
         try:
-            rec = pt.create_partition(ctx.main, ctx.config, ctx.name, name, start)
+            rec = pt.create_partition(ctx.execution_main, ctx.execution_config, ctx.name, name, start)
         except WorktreeError as e:
             raise DriverError(f"wave {wave}: {e}") from None
         rec["step"] = pt.first_step(contract, name)
@@ -1048,7 +1104,7 @@ def _merge_remaining(ctx: Ctx) -> int:
         commit_task_dir(ctx, f"arbor({ctx.name}): wave {wave} merge conflict in {result.conflict['partition']}")
         print(colored(plan_for(ctx).summary, Colors.RED))
         return 1
-    warnings = pt.remove_partitions(ctx.main, data["partitions"])
+    warnings = pt.remove_partitions(ctx.execution_main, data["partitions"])
     for warning in warnings:
         print(colored(f"  warning: {warning}", Colors.YELLOW))
     if warnings:
@@ -1076,17 +1132,6 @@ def cmd_autopilot(args: argparse.Namespace) -> int:
         finish=lambda: cmd_finish(argparse.Namespace(task=args.task, pr=False)),
         task_dir=lambda: require_started(load_ctx(args.task)).task_dir,
     )
-
-
-def _contract_restore(main: Path, paths: list[str]) -> None:
-    """Undo new dirty paths in the main checkout without moving HEAD."""
-    rc, out, _ = run_git(["ls-files", "--", *paths], cwd=main)
-    tracked = set(out.splitlines()) if rc == 0 else set()
-    if tracked:
-        run_git(["checkout", "-q", "--", *sorted(tracked)], cwd=main)
-    untracked = [p for p in paths if p not in tracked]
-    if untracked:
-        run_git(["clean", "-fq", "--", *untracked], cwd=main)
 
 
 def cmd_run_contract(args: argparse.Namespace) -> int:
@@ -1165,10 +1210,6 @@ def finish_contract(ctx: Ctx | None, main: Path, config: dict, role: str, mode: 
     check = rv.check_reply(role, result.stdout)
     if violations:
         status, problem = "violation", "; ".join(violations)
-        stray = sorted(p for p in after.dirty - before.dirty
-                       if task_rel is None or not p.startswith(f"{task_rel}/"))
-        if stray:
-            _contract_restore(main, stray)
     elif not result.ok:
         status, problem = "fail", result.error
     elif not check.ok:
@@ -1217,7 +1258,10 @@ def cmd_gate(args: argparse.Namespace, ctx: Ctx | None = None) -> int:
     contract_path = find_contract(ctx.task_dir)
     if contract_path is None:
         raise DriverError(f"{ctx.name} has no contract.md")
-    result = run_gate(get_gate_commands(ctx.config), load_contract(contract_path), ctx.worktree)
+    result = run_gate(get_gate_commands(ctx.execution_config), load_contract(contract_path), ctx.worktree)
+    if ctx.data.get("execution_binding") and not result.checks:
+        result.checks.append(CheckResult("GATE-EMPTY", "", 1,
+                                         "product gate has no commands or auto checks"))
     print(format_checks(result.checks) or "no gate commands and no auto checks")
     if result.failing:
         print(colored(f"failing: {' '.join(result.failing)}", Colors.RED))
@@ -1374,7 +1418,7 @@ def cmd_finish(args: argparse.Namespace) -> int:
         raise DriverError(f"{ctx.name} is in {ctx.data.get('state')}, not FINISH: {plan_for(ctx).summary}")
     guard_contract(ctx)
     step = fin.plan_finish(ctx.main, ctx.task_dir, ctx.data)
-    if step.needs == "run" and (ctx.task_dir / fin.SCORECARD).is_file():
+    if step.needs == "run" and (ctx.task_dir / fin.SCORECARD).is_file() and step.summary == "FINISH: merged: `arbor finish` to clean up":
         print(colored(f"{ctx.branch} is merged: cleaning up", Colors.BLUE))
         return fin.cleanup(ctx.main, fin.start_cleanup(ctx.main, ctx.task_dir, ctx.data))
     return fin.finish_before_merge(ctx.main, ctx.worktree, ctx.task_dir, ctx.task_rel, ctx.data, ctx.tier,
@@ -1412,8 +1456,8 @@ def cmd_prompt(args: argparse.Namespace) -> int:
     brief = brief_file.read_text(encoding="utf-8")
     if ctx.started:
         brief = _partition_brief(ctx, partition, brief)
-    text = build_prompt(ctx.worktree if ctx.started else ctx.main, ctx.task_dir, role, mode, range_spec, args.dispatch,
-                        brief)
+    text = build_prompt(ctx.control_worktree if ctx.started else ctx.main, ctx.task_dir, role, mode, range_spec, args.dispatch,
+                        brief, ctx.unit(partition).worktree if ctx.started and ctx.data.get("execution_binding") else None)
     if args.print:
         sys.stdout.write(text)
     else:

@@ -84,7 +84,7 @@ describe.skipIf(!hasPython())("arbor.py run --role (CONTRACT phase)", { timeout:
     expect(refused.stderr).toContain("use `arbor override --role explore`");
   });
 
-  it("an explore that commits and strays: violation, stray paths restored, HEAD left alone", () => {
+  it("an explore that commits and strays: violation, files and HEAD preserved for inspection", () => {
     f = setupFixture({ start: false });
     const head = git(f.repo, "rev-parse", "HEAD");
     f.plan({ "d-001": { write: [{ path: "notes.txt", content: "x\n" }], dirty: [{ path: "README.md", content: "changed\n" }, { path: "stray.txt", content: "y" }] } });
@@ -92,8 +92,8 @@ describe.skipIf(!hasPython())("arbor.py run --role (CONTRACT phase)", { timeout:
     const r = f.run(...T, "run", "--role", "explore");
     expect(r.status).toBe(1);
     expect(r.stdout).toContain("violation");
-    expect(fs.readFileSync(path.join(f.repo, "README.md"), "utf-8")).toBe("hi\n");
-    expect(fs.existsSync(path.join(f.repo, "stray.txt"))).toBe(false);
+    expect(fs.readFileSync(path.join(f.repo, "README.md"), "utf-8")).toBe("changed\n");
+    expect(fs.readFileSync(path.join(f.repo, "stray.txt"), "utf-8")).toBe("y");
     expect(git(f.repo, "rev-parse", "HEAD~1")).toBe(head); // the commit is reported, not reset
     expect(f.taskJson().dispatches[0]).toMatchObject({ status: "violation" });
     expect(f.taskJson().state).toBeUndefined();

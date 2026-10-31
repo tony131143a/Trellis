@@ -124,6 +124,7 @@ class DispatchRequest:
     task_dir: Path | None
     header: DispatchHeader
     original_text: str
+    execution_root: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -883,7 +884,7 @@ def build_dispatch_prompt(req: DispatchRequest) -> DispatchPrompt:
             )
         if range_spec:
             assert req.task_dir is not None
-            worktree = _task_worktree(Path(req.task_dir), repo_root)
+            worktree = req.execution_root or _task_worktree(Path(req.task_dir), repo_root)
             diff_block = _range_diff_block(worktree, range_spec, limits, budget)
             if diff_block:
                 extra.append(diff_block)

@@ -333,6 +333,8 @@ def _start_in_worktree(args: argparse.Namespace, task_dir: Path, repo_root: Path
         print(hint)
         return 1
     original_json = task_json_path.read_bytes()
+    if getattr(args, "execution", None):
+        data["execution_mode"] = args.execution
 
     rc, tracked, _ = run_git(["ls-files", "--", task_rel], cwd=repo_root)
     tracked_files = [line for line in tracked.splitlines() if line.strip()] if rc == 0 else []
@@ -347,6 +349,13 @@ def _start_in_worktree(args: argparse.Namespace, task_dir: Path, repo_root: Path
         return 1
 
     config = read_arbor_config(main)
+    from common import execution as ex
+    try:
+        binding = ex.prepare(main, task_dir, data, config, getattr(args, "execution", None),
+                             getattr(args, "base_ref", None), getattr(args, "merge_target", None))
+    except ex.ExecutionError as e:
+        print(colored(f"Error: {e}", Colors.RED))
+        return 1
     try:
         wt = create_task_worktree(repo_root, task_dir, config)
     except WorktreeError as e:
@@ -358,6 +367,25 @@ def _start_in_worktree(args: argparse.Namespace, task_dir: Path, repo_root: Path
         print(colored("Error: worktree.setup failed; start rolled back", Colors.RED))
         _rollback_start(main, wt, None, None)
         return 1
+
+    journal = main / DIR_WORKFLOW / ".runtime" / "starts" / f"{name}.json"
+    if binding:
+        binding["control"] = {"worktree_path": str(wt.path), "branch": wt.branch,
+                              "base": wt.base_sha, "base_branch": current_branch_name(main)}
+        journal = main / DIR_WORKFLOW / ".runtime" / "starts" / f"{name}.json"
+        journal.parent.mkdir(parents=True, exist_ok=True)
+        if not write_json(journal, {"binding": binding, "phase": "creating_product"}):
+            print("Error: cannot persist product start intent; control worktree preserved")
+            return 1
+        try:
+            ex.create(binding)
+            if run_setup(Path(binding["worktree_path"]),
+                         get_worktree_config(binding["config"]).get("setup")) != 0:
+                raise ex.ExecutionError("product setup failed")
+        except (ex.ExecutionError, WorktreeError) as e:
+            print(f"Error: {e}; worktrees and start journal preserved at {journal}")
+            return 1
+        data["execution_binding"] = binding
 
     dest = wt.path / DIR_WORKFLOW / DIR_TASKS / name
     if dest.exists():
@@ -380,6 +408,8 @@ def _start_in_worktree(args: argparse.Namespace, task_dir: Path, repo_root: Path
         "counters": dict(NEW_COUNTERS),
         "dispatches": data.get("dispatches") or [],  # CONTRACT-phase dispatches stay
     })
+    if binding:
+        data.update({key: binding[key] for key in ("worktree_path", "branch", "base", "base_branch")})
     if not data.get("base_branch"):
         base_branch = current_branch_name(repo_root)
         if base_branch:
@@ -415,6 +445,8 @@ def _start_in_worktree(args: argparse.Namespace, task_dir: Path, repo_root: Path
             Colors.YELLOW,
         ))
 
+    if binding:
+        write_json(journal, {"binding": binding, "phase": "committed", "task_dir": str(dest)})
     rc = _point_session_at(dest, repo_root)
     run_task_hooks("after_start", dest / FILE_TASK_JSON, repo_root)
     return rc
@@ -491,6 +523,9 @@ def cmd_start(args: argparse.Namespace) -> int:
 
     if use_worktree:
         return _start_in_worktree(args, full_path, repo_root)
+    if (getattr(args, "execution", None) or (pending_data or {}).get("execution_mode")) == "package":
+        print("Error: package execution requires an isolated worktree")
+        return 1
 
     # Convert to relative path for storage. repo_root is resolved because
     # full_path already is (resolve_task_dir only returns paths inside the
@@ -939,7 +974,9 @@ def main() -> int:
         help="Task description (required, non-empty — an empty one is refused at archive)",
     )
     p_create.add_argument("--parent", help="Parent task directory (establishes subtask link)")
-    p_create.add_argument("--package", help="Package name for monorepo projects")
+    p_create.add_argument("--package", help="Configured package name (not an execution mode)")
+    p_create.add_argument("--execution", choices=["control", "package"],
+                          help="Execution mode saved for start; control does not inherit default_package")
     p_create.add_argument(
         "--base-branch",
         help="PR target branch (overrides origin/HEAD detection and the checked-out-branch fallback)",
@@ -995,6 +1032,9 @@ def main() -> int:
     # start
     p_start = subparsers.add_parser("start", help="Set active task")
     p_start.add_argument("dir", help="Task directory")
+    p_start.add_argument("--execution", choices=["control", "package"], help="Explicit execution repository")
+    p_start.add_argument("--base-ref", help="Product source ref, resolved and frozen at start")
+    p_start.add_argument("--merge-target", help="Product local branch receiving the completed work")
     p_start.add_argument(
         "--allow-empty-context",
         action="store_true",

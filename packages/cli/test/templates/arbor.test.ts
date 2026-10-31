@@ -1,5 +1,6 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import path from "node:path";
+import fs from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   scriptsInit,
@@ -300,6 +301,16 @@ describe("arbor template constants", () => {
 // =============================================================================
 
 describe("getAllScripts", () => {
+  it("updates every Python script installed by init with the shipped content", () => {
+    const root = path.resolve(__dirname, "../../src/templates/arbor/scripts");
+    const scripts = getAllScripts();
+    const files = fs.readdirSync(root, { recursive: true }).map(String)
+      .filter((file) => file.endsWith(".py"));
+    expect([...scripts.keys()].sort()).toEqual(files.map((file) => file.split(path.sep).join("/")).sort());
+    for (const file of files) {
+      expect(scripts.get(file.split(path.sep).join("/"))).toBe(fs.readFileSync(path.join(root, file), "utf8"));
+    }
+  });
   it("returns a Map", () => {
     const scripts = getAllScripts();
     expect(scripts).toBeInstanceOf(Map);

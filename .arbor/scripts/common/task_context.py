@@ -232,6 +232,8 @@ def _seed_packages(
         return list(dict.fromkeys(requested))
 
     task_package = task_data.get("package") if isinstance(task_data, dict) else None
+    if isinstance(task_data, dict) and task_data.get("execution_mode") == "control" and not task_package:
+        return []  # Shared guides/research only; product specs require an explicit package.
     package = resolve_package(task_package, repo_root)
     if not package:
         print(

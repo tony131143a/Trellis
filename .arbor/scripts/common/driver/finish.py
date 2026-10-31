@@ -318,6 +318,16 @@ def scorecard_summary(task_dir: Path) -> str:
 
 
 def plan_finish(main: Path, task_dir: Path, data: dict) -> Step:
+    binding = data.get("execution_binding")
+    if binding and (task_dir / SCORECARD).is_file():
+        product = Path(binding["repo"])
+        if not is_merged(product, data["branch"], data["base_branch"]):
+            command = merge_command(product, data["branch"], data["base_branch"])
+            return Step("human", f"FINISH: merge product first: {command}",
+                        human={"kind": "merge", "command": command})
+        if (data.get("product_merge") or {}).get("tip") != _git(product, "rev-parse", data["branch"]):
+            return Step("run", "FINISH: record product merge evidence: `arbor finish`")
+        data = {**data, **binding["control"]}
     if not (task_dir / SCORECARD).is_file():
         return Step("run", "FINISH: write the scorecard: `arbor finish`")
     branch = data["branch"]
@@ -385,9 +395,37 @@ def open_pr(worktree: Path, task_dir: Path, data: dict, base: str) -> str:
     return urls[-1]
 
 
+def finish_product(main: Path, task_dir: Path, data: dict, tier: str, *, want_pr: bool, save) -> int:
+    binding = data["execution_binding"]
+    control = binding["control"]
+    cwt = Path(control["worktree_path"])
+    product = Path(binding["repo"])
+    task_rel = f"{DIR_WORKFLOW}/{DIR_TASKS}/{task_dir.name}"
+    write_scorecard(main, task_dir, data, tier)
+    commit_paths(cwt, task_rel, f"arbor({task_dir.name}): scorecard")
+    if not is_merged(product, data["branch"], data["base_branch"]):
+        if want_pr:
+            raise FinishError("product tasks currently use the explicit two-repository local merge flow")
+        print(f"merge product (human): {merge_command(product, data['branch'], data['base_branch'])}")
+        return 0
+    tip = _git(product, "rev-parse", data["branch"])
+    evidence = {"repo": str(product), "tip": tip,
+                "merge_commit": merge_commit(product, tip, data["base_branch"]), "target": data["base_branch"]}
+    if evidence["merge_commit"] == tip:
+        raise FinishError("product merge requires a --no-ff merge commit")
+    if data.get("product_merge") != evidence:
+        data["product_merge"] = evidence
+        save()
+        commit_paths(cwt, task_rel, f"arbor({task_dir.name}): product merge evidence")
+    print(f"merge control (human): {merge_command(main, control['branch'], control['base_branch'])}")
+    return 0
+
+
 def finish_before_merge(main: Path, worktree: Path, task_dir: Path, task_rel: str, data: dict, tier: str,
                         *, want_pr: bool, save) -> int:
     name = task_dir.name
+    if data.get("execution_binding"):
+        return finish_product(main, task_dir, data, tier, want_pr=want_pr, save=save)
     if write_scorecard(main, task_dir, data, tier):
         print(f"scorecard: {task_dir / SCORECARD}")
     if commit_paths(worktree, task_rel, f"arbor({name}): scorecard"):
@@ -440,6 +478,20 @@ def _save_record(main: Path, record: dict) -> None:
 
 def start_cleanup(main: Path, task_dir: Path, data: dict) -> dict:
     """Checks before any mutation; returns the cleanup record (not saved)."""
+    binding = data.get("execution_binding")
+    product_record = None
+    if binding:
+        if not data.get("product_merge"):
+            raise FinishError("product merge evidence missing")
+        product_data = {k: v for k, v in data.items() if k != "execution_binding"}
+        product_record = start_cleanup(Path(binding["repo"]), task_dir, product_data)
+        if product_record["tip"] != data["product_merge"].get("tip"):
+            raise FinishError("product branch advanced after the recorded merge evidence")
+        if current_branch(main) != binding["control"]["base_branch"]:
+            raise FinishError("switch the control main checkout to its merge target before cleanup")
+        product_record["repo"] = binding["repo"]
+        product_record["repo_id"] = binding["repo_id"]
+        data = {**data, **binding["control"]}
     branch = data["branch"]
     base = base_branch_of(main, data)
     if not branch_exists(main, branch) or not is_merged(main, branch, base):
@@ -452,11 +504,13 @@ def start_cleanup(main: Path, task_dir: Path, data: dict) -> dict:
                               "then re-run `arbor finish`:\n  " + "\n  ".join(dirty))
     tip = _git(main, "rev-parse", f"refs/heads/{branch}")
     merged_by = merge_commit(main, tip, base)
+    if binding and merged_by == tip:
+        raise FinishError("control merge requires a --no-ff merge commit")
     return {
         "task": task_dir.name, "title": data.get("title") or task_dir.name, "branch": branch,
         "base_branch": base, "worktree_path": str(worktree), "tip": tip, "merge_commit": merged_by,
         "summary": scorecard_summary(task_dir),
-        "gate_rounds": len(gate_rounds(task_dir, data)), "done": [],
+        "gate_rounds": len(gate_rounds(task_dir, data)), "done": [], "product": product_record,
     }
 
 
@@ -478,6 +532,28 @@ def cleanup(main: Path, record: dict) -> int:
         done.append(step)
         _save_record(main, record)
         print(f"  {step}: ok")
+
+    if record.get("product") and "product" not in done:
+        from ..execution import identity
+        product = record["product"]
+        root = Path(product["repo"])
+        if identity(root) != product["repo_id"]:
+            raise FinishError("product repository identity changed; cleanup refused")
+        tip, base = product["tip"], product["base_branch"]
+        if not is_merged(root, tip, base):
+            raise FinishError("product merge evidence no longer belongs to target")
+        wt = Path(product["worktree_path"])
+        if wt.exists():
+            if identity(wt) != product["repo_id"] or _git(wt, "rev-parse", "HEAD") != tip:
+                raise FinishError("product worktree identity/tip changed; cleanup refused")
+            if dirty_paths(wt):
+                raise FinishError("product worktree is dirty; cleanup refused")
+            remove_worktree(root, wt, delete_branch=True)
+        elif branch_exists(root, product["branch"]):
+            if _git(root, "rev-parse", product["branch"]) != tip:
+                raise FinishError("product branch moved; cleanup refused")
+            _git(root, "branch", "-d", product["branch"])
+        mark("product")
 
     if "worktree" not in done:
         worktree, branch = Path(record["worktree_path"]), record["branch"]
@@ -534,6 +610,8 @@ def cleanup(main: Path, record: dict) -> int:
             raise FinishError(f"add_session.py failed:\n{out}")
         mark("journal")
 
+    if record.get("product"):
+        (main / DIR_WORKFLOW / ".runtime" / "starts" / f"{name}.json").unlink(missing_ok=True)
     record_path(main, name).unlink(missing_ok=True)
     print(f"{name}: DONE (merged as {record['merge_commit'][:12]})")
     return 0

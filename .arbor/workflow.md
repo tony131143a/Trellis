@@ -74,6 +74,63 @@ python3 ./.arbor/scripts/task.py remove-subtask <parent> <child>
 
 **Current-task mechanism**: `task.py create` creates the task directory in this checkout and (when session identity is available) points this session at it. `task.py start` records `contract_hash`, creates branch `arbor/<task>` and its worktree `<worktree.root>/<task>` from the current HEAD, moves the task directory into that worktree, commits it as `contract(<task>): approve contract`, sets `state=BUILD`, and points the session at the task directory inside the worktree. State is stored under `.arbor/.runtime/sessions/` in the main checkout. Without a context key (hook input or `ARBOR_CONTEXT_ID`) there is no active task and `task.py start` fails with a session identity hint. `task.py finish` clears this session's pointer. `task.py archive <task>` writes `status=completed` and moves the directory to `archive/`.
 
+### Central polyrepo tasks
+
+When this repository stores tasks/specs for independent `packages.<name>.git: true`
+repositories, choose the execution repository explicitly at start. Fetch the desired
+product ref before starting; start resolves the supplied local ref to a full commit
+and never silently follows later remote changes.
+
+```bash
+# Package and execution mode are distinct; control is not a package name.
+python3 .arbor/scripts/task.py create "Product task" --description "..." --package app --execution package
+# Task has package=app; app is configured with path and git: true.
+python3 .arbor/scripts/task.py start <task> --execution package --base-ref origin/dev --merge-target dev
+# Parent coordination, documentation or driver maintenance stays in the control repo.
+python3 .arbor/scripts/task.py create "Control task" --description "..." --execution control
+python3 .arbor/scripts/task.py start <task>
+# For existing planning tasks created before this option:
+python3 .arbor/scripts/task.py start <task> --execution control
+```
+
+`create --execution control` saves `execution_mode: control` and does not inherit
+`default_package`. Context seeding then uses shared guides/research only. An explicitly
+supplied real `--package` may still select product specs.
+`start` inherits the saved mode; an explicit `start --execution` overrides it.
+`create --execution package` requires a configured independent Git package.
+
+A product task owns two worktrees. Its task directory, contract, manifests, specs,
+briefs, reports and scorecard live in the **control** worktree. Writer commits,
+Range diffs, test paths, GATE commands, partition worktrees and merges operate in
+the **product** worktree. Product code and verification paths in the contract are
+relative to the product root (for example `backend/tests`, without the meta-repo
+package prefix). Context manifests continue to reference control-repo specs;
+roles read product sources from the explicit execution directory in their prompt.
+The product repo does not need an Arbor installation.
+
+Package-specific `execution.worktree` and `execution.gate` settings may be placed
+under the package configuration. They replace the control project's setup/GATE
+settings for product execution. A product GATE with neither commands nor contract `auto` checks
+is rejected with `GATE-EMPTY`; add executable verification before advancing. Execution repository identity, source commit,
+merge target and package policy are frozen in `task.json.execution_binding`;
+changing that binding or the package policy after start is refused.
+
+Product dispatches are serialized, including within a multi-partition wave, so
+control-artifact snapshots have one accountable writer. MCP still uses the normal
+prepare/bind/collect protocol. Control artifacts and both main checkouts must not
+change during a product dispatch. Violations retain the files/commits for inspection.
+A failed/interrupted product setup retains a start journal under
+`.arbor/.runtime/starts/` and owned worktrees; inspect those before retrying rather
+than deleting them automatically. Already-started tasks without a binding keep
+legacy single-repository behavior.
+
+Finish uses two explicit local merge boundaries: `arbor finish` first prints the
+product merge command; after that `--no-ff` merge, run it again to record product
+merge evidence and obtain the control merge command. After the control `--no-ff`
+merge, run it again for cleanup/archive. Cleanup checks both repos and refuses
+dirty or changed product worktrees. Automatic product PR creation is not supported;
+use the printed local merge flow. A control merge alone never completes a product task.
+
 ### Workspace System
 
 Records every AI session for cross-session tracking under `.arbor/workspace/<developer>/`.
@@ -147,7 +204,7 @@ Before `task.py start` the task directory still sits in the main checkout, so `A
 2. Write the brief there (body only; the driver adds the header and context).
 3. `arbor.py run --role explore|architect|review [--mode plan] [--dispatch d-NNN]`.
 
-It runs in the main checkout with no `Range:` and commits nothing. `explore` and `architect` may write only `<task>/research/`; `review` writes nothing. Anything else they touch is a violation: the driver restores the stray paths (never resets the branch) and reports a moved HEAD for you to undo by hand. Each run is recorded in `task.json` (`dispatches`, `phase: CONTRACT`), in `reports/d-NNN.md` and in `results.jsonl`; `task.py start` later commits the task directory with the briefs, reports and research. Dispatch ids continue after start: with d-001 and d-002 used here, the first BUILD dispatch is d-003. After start, `run --role` is refused; an extra role then goes through `override --role`. With no task at all only `run --role explore` works: pipe the brief on stdin; the reply comes back on stdout and nothing is recorded in a task.
+It runs in the main checkout with no `Range:` and commits nothing. `explore` and `architect` may write only `<task>/research/`; `review` writes nothing. Anything else they touch is a violation and fails the dispatch. The driver retains files and commits for inspection and reports a moved HEAD for you to undo by hand; it never resets the main checkout. Each run is recorded in `task.json` (`dispatches`, `phase: CONTRACT`), in `reports/d-NNN.md` and in `results.jsonl`; `task.py start` later commits the task directory with the briefs, reports and research. Dispatch ids continue after start: with d-001 and d-002 used here, the first BUILD dispatch is d-003. After start, `run --role` is refused; an extra role then goes through `override --role`. With no task at all only `run --role explore` works: pipe the brief on stdin; the reply comes back on stdout and nothing is recorded in a task.
 
 **Briefs.** The role cannot see your conversation. A brief carries what the artifacts do not: the essential files to read first, decisions already made, known pitfalls, files to stay out of, and for review the `Angles:` line; for verify and fix, the findings JSON. Do not paste the contract or the diff; the driver injects them.
 
@@ -155,7 +212,7 @@ It runs in the main checkout with no `Range:` and commits nothing. `explore` and
 
 ### Roles
 
-Role instructions live in `.arbor/agents/<role>.md`. The driver checks each role's write boundary after every dispatch; a violation fails the dispatch and resets the branch to where it was.
+Role instructions live in `.arbor/agents/<role>.md`. The driver checks each role's write boundary after every dispatch; a violation fails the dispatch. CONTRACT readers and product delegations retain files and commits for inspection; failed control task dispatches use the existing rollback policy.
 
 | Role | Writes | Commits | Output |
 |---|---|---|---|
@@ -530,7 +587,7 @@ Standard / full only. `simplify` → GATE → N reviews `Mode: candidates` (stan
 
 #### 2.7 STOP, resume, override `[on demand]`
 
-The driver STOPs on a round cap (BUDGET), two rounds without progress (NO_PROGRESS), or an invariant violation. Report the state, the reason and the last evidence to the user. `arbor.py resume` continues; `arbor.py override --reason "…" --to STATE[/step]` jumps to a state, `override --reason "…" --role <role> [--mode M]` runs one extra role without advancing; both are recorded in the scorecard. `arbor.py abandon [--reason "…"]` ends the task. A dispatch that failed or broke an invariant has already been reset; tighten the brief rather than doing the role's work here.
+The driver STOPs on a round cap (BUDGET), two rounds without progress (NO_PROGRESS), or an invariant violation. Report the state, the reason and the last evidence to the user. `arbor.py resume` continues; `arbor.py override --reason "…" --to STATE[/step]` jumps to a state, `override --reason "…" --role <role> [--mode M]` runs one extra role without advancing; both are recorded in the scorecard. `arbor.py abandon [--reason "…"]` ends the task. A failed control task dispatch uses the existing rollback policy; CONTRACT reader and product delegation failures retain files and commits for inspection. Tighten the brief rather than doing the role's work here.
 
 ---
 
