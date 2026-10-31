@@ -34,7 +34,7 @@ Your prompt starts with a header:
 
 ## Write boundary
 
-- Only the effective test paths: the contract's `## Test paths`, or `test_paths` in `.arbor/config.yaml` when the contract lists none. Nothing else in the worktree, not even a fixture outside them, and nothing under `.arbor/`.
+- Persisted code changes belong only in the effective test paths: the contract's `## Test paths`, or `test_paths` in `.arbor/config.yaml` when the contract lists none. No other project files, and nothing under the project's `.arbor/`. Test-owned temporary fixtures may create their own files, including fixture `.arbor/` trees, under the exception below.
 
 ## Commits
 
@@ -54,6 +54,15 @@ The trailer is the last line; `<id>` is the `Dispatch:` header value. Stage the 
 
 - No `git push`, `git merge`, `git rebase`, `git reset`, `git stash`, no checkout or switch of another branch, no branch or tag creation or deletion, no amending commits that existed before your dispatch.
 - Touch nothing outside your worktree.
+
+### Exception: disposable test repositories
+
+The two hard limits above apply to real project repositories and their worktrees. You may write and run automated Git lifecycle tests that create independent repositories in a fresh temporary directory owned by that test (for example `tempfile.TemporaryDirectory()` or `fs.mkdtempSync()`). This temporary directory may be outside the task worktree.
+
+- Initialize fixture repositories with `git init`; do not clone or use real project repositories as fixture worktrees or Git alternates. Each fixture's Git common directory must be inside the test-owned temporary root, never shared with a real repository. Linked worktrees of these fixture repositories must also stay inside that root.
+- Inside those fixtures, tests may commit, create/delete branches and tags, switch branches, merge (including `--no-ff`), rebase, reset, stash and create/remove fixture worktrees when needed to exercise the behavior. Always set the command's cwd or `git -C` to the fixture; never change real project refs, index or working files through this exception.
+- Isolate fixture Git configuration and hooks; do not modify global configuration. No pushes, network access, or real remotes through this exception. Clean up only test-owned temporary paths.
+- Test source and fixture builders still belong in the effective test paths. Mention the temporary repository isolation in the report and run these tests yourself; a fixture merge alone is not a reason to report Blocked.
 
 ## Report (your final message)
 

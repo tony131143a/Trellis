@@ -33,3 +33,10 @@ User approved direct implementation and verification for this session because th
 - Product GATE now records GATE-EMPTY as a failure; CONTRACT violations retain files and commits for inspection. Source templates, dogfood scripts, workflow guidance and template hashes are synchronized.
 - Added empty-product, command-only pass/fail and legacy-control GATE regressions; updated CONTRACT preservation assertions. Before the fix, exactly two assertions failed in the targeted suites; after the fix all 16 passed.
 - Broader verification: 15 Vitest suites / 531 tests passed, plus 14 worklog PolyrepoTest checks loaded against the actual upstream scripts. Build, ESLint, TypeScript, script-tree parity and git diff --check passed.
+
+## Report validation and fixture permissions (2026-10-30)
+
+- Added a read-only stdin report checker using the driver's review validation. Review prompts now carry a final reminder and an absolute checker path; authors repair formatting before returning, reusing their existing findings. The driver rejects missing/malformed findings arrays and invalid required fields instead of accepting a possible empty PASS.
+- Replay of three worklog reports rejected their original formatting and accepted explicit formatting-only corrections, preserving the original 6, 4 and 0 findings. Verdicts in this replay were selected explicitly, never inferred by the checker.
+- Defined the test-owned disposable repository exception in test instructions, the managed AGENTS entry, workflow and product dispatch context. Fixture Git common directories must stay within the temporary root, independent of real project repositories; no pushes, real remotes or global Git configuration changes are authorized by the exception.
+- Validation: 16 suites / 545 tests passed, including preflight failures, no-filesystem-write checks, actual Git lifecycle/invariant tests and template updates. Build, ESLint, TypeScript and script parity passed. Instruction changes have not been evaluated through a new live model dispatch.

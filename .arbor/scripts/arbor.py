@@ -372,7 +372,7 @@ def build_prompt(worktree: Path, task_dir: Path | None, role: str, mode: str | N
                  range_spec: str | None, dispatch: str | None, brief: str, execution_root: Path | None = None) -> str:
     if execution_root is not None:
         brief = (f"Control repository: {worktree} (read only).\nExecution repository: {execution_root}.\n"
-                 "Run all code edits, Git commands and tests in the execution repository. "
+                 "Run code edits, Git commands and tests in the execution repository; the test role may use test-owned disposable repositories under its fixture isolation rules. "
                  "Task/spec paths belong to the control repository; do not modify control artifacts.\n\n" + brief)
     header = DispatchHeader(
         task_dir=str(task_dir) if task_dir else None, role=role, mode=mode,

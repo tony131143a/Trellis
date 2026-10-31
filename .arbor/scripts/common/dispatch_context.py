@@ -37,6 +37,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -902,6 +903,18 @@ def build_dispatch_prompt(req: DispatchRequest) -> DispatchPrompt:
         )
     body = build_role_prompt(req.role, req.header.body, context, mode)
     body = f"## Role Instructions\n\n{instructions}\n\n{body}"
+    if req.role == "review":
+        checker = repo_root / DIR_WORKFLOW / "scripts" / "check_report.py"
+        body += (
+            "\n\n## Before returning your review\n\n"
+            "Your final message must start with PASS or FAIL, followed by exactly one JSON findings array "
+            "([] when empty). Put explanations after the array, never before the verdict. "
+            f"Check the exact draft via stdin with `python3 -B {shlex.quote(str(checker))}` "
+            "(a read-only format check, not a build or test). Use a quoted heredoc; do not create a report file. "
+            "If it fails, correct only the report using your existing review and check again; "
+            "do not rerun the review, infer a PASS, or discard findings to satisfy the checker. "
+            "Return the checked report itself, not the checker's JSON diagnostics."
+        )
 
     warnings = list(budget.warnings)
     if budget.degraded:

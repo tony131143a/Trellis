@@ -179,6 +179,7 @@ export function getAllScripts(): Map<string, string> {
   scripts.set("add_session.py", addSessionScript);
   scripts.set("spec.py", specScript);
   scripts.set("arbor.py", arborScript);
+  scripts.set("check_report.py", readTemplate("scripts/check_report.py"));
   scripts.set(
     "hooks/linear_sync.py",
     readTemplate("scripts/hooks/linear_sync.py"),

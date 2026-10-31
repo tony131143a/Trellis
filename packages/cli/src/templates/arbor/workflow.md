@@ -208,7 +208,7 @@ It runs in the main checkout with no `Range:` and commits nothing. `explore` and
 
 **Briefs.** The role cannot see your conversation. A brief carries what the artifacts do not: the essential files to read first, decisions already made, known pitfalls, files to stay out of, and for review the `Angles:` line; for verify and fix, the findings JSON. Do not paste the contract or the diff; the driver injects them.
 
-**Sub-agent self-exemption.** If your own first prompt starts with `Active task:` + `Role:`, you are a dispatched role: do that role's work directly, never run `arbor.py` or `task.py start/current/finish`, never dispatch anything, never push, merge or rebase. You have no `ARBOR_CONTEXT_ID`.
+**Sub-agent self-exemption.** If your own first prompt starts with `Active task:` + `Role:`, you are a dispatched role: do that role's work directly, never run `arbor.py` or `task.py start/current/finish`, never dispatch anything, never push, merge or rebase. You have no `ARBOR_CONTEXT_ID`. The test role may run Git lifecycle operations in test-owned disposable repositories under `.arbor/agents/test.md`; real project repositories remain protected.
 
 ### Roles
 

@@ -13,9 +13,9 @@ Report formats come from ``.arbor/agents/<role>.md``:
     simplify   "## Simplify: Changed | No Change"; No Change needs no commit
     explore    "## Explore Results"
 
-Rules: an empty reply fails. A review without a first-line verdict fails
-(never read as PASS). A verify without per-candidate verdicts fails. JSON
-that does not match the schema is passed on with ``confidence: low``.
+Rules: an empty reply fails. A review without an explicit first-line verdict
+or valid findings array fails (never read as PASS). A verify without
+per-candidate verdicts fails.
 """
 
 from __future__ import annotations
@@ -87,6 +87,9 @@ def _schema_ok(findings: list, verdicts: tuple[str, ...]) -> bool:
     return all(
         isinstance(f, dict)
         and all(k in f for k in FINDING_KEYS)
+        and isinstance(f["file"], str) and bool(f["file"].strip())
+        and type(f["line"]) is int and f["line"] > 0
+        and isinstance(f["summary"], str) and bool(f["summary"].strip())
         and str(f.get("verdict", "")).upper() in verdicts
         for f in findings
     )
@@ -109,8 +112,16 @@ def check_reply(role: str, reply: str) -> ReplyCheck:
         confidence = "high" if findings is not None and _schema_ok(findings, FINDING_VERDICTS) else "low"
         findings = [f for f in (findings or []) if isinstance(f, dict)]
         if verdict_match is None:
-            return ReplyCheck(False, "review reply does not start with PASS or FAIL", "FAIL", "low", findings)
+            return ReplyCheck(False, "review reply does not start with PASS or FAIL; "
+                              "put your explicit verdict on the first line, then one JSON findings array. "
+                              "Correct the report using your existing review; do not repeat the review.",
+                              "FAIL", "low", findings)
         verdict = verdict_match.group(1)
+        if confidence == "low":
+            return ReplyCheck(False, "review reply needs a valid JSON findings array; each finding requires "
+                              "a non-empty file and summary, a positive integer line and a supported verdict. "
+                              "Use [] only when there are no findings. Correct the report without repeating the review.",
+                              verdict, "low", findings)
         if verdict == "PASS" and any(
             str(f.get("verdict", "")).upper() in ("CONFIRMED", "PLAUSIBLE", "CANDIDATE") for f in findings
         ):

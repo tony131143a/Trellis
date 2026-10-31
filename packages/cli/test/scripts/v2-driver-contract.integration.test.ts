@@ -124,6 +124,9 @@ describe.skipIf(!hasPython())("arbor.py run --role (CONTRACT phase)", { timeout:
     ]);
     const received = fs.readFileSync(path.join(f.tmp, "received/d-001.md"), "utf-8");
     expect(received).toMatch(new RegExp(`^Active task: ${f.taskDir}\nRole: review\nMode: plan\nDispatch: d-001\n`));
+    const reminder = received.slice(received.lastIndexOf("## Before returning your review"));
+    expect(reminder).toContain(path.join(f.repo, ".arbor/scripts/check_report.py"));
+    expect(reminder).toContain("do not rerun the review");
     const printed = f.run(...T, "prompt", "--dispatch", "d-001", "--print");
     expect(printed.status).toBe(0);
     expect(printed.stdout).toBe(received);

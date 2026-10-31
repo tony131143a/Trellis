@@ -65,7 +65,7 @@ assert c.ok and c.verdict == "FAIL" and c.confidence == "high" and len(c.finding
 c = check_reply("review", "PASS\\n" + J(F))
 assert c.ok and c.verdict == "FAIL" and c.confidence == "low"
 c = check_reply("review", "FAIL\\n" + J("{not json"))
-assert c.ok and c.verdict == "FAIL" and c.confidence == "low" and c.findings == []
+assert not c.ok and c.verdict == "FAIL" and c.confidence == "low" and c.findings == []
 assert not check_reply("verify", "CONFIRMED 1, PLAUSIBLE 0, REFUTED 0.").ok
 assert not check_reply("verify", J('[{"file": "a", "line": 1, "summary": "s", "verdict": "MAYBE"}]')).ok
 c = check_reply("verify", J('[{"file": "a", "line": 1, "summary": "s", "verdict": "REFUTED"}]'))
