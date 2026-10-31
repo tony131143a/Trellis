@@ -17,12 +17,13 @@ stayed inside its boundary.
 Every role: no push, merge, rebase or checkout of another branch; no writes
 under ``.arbor/`` outside ``tasks/<task>/``.
 
-    ref                          allowed during a dispatch
-    own branch                   fast-forward only (writers); never rewritten
-    other ``arbor/*`` branches   created or moved (other tasks' drivers run
-                                 concurrently); never deleted
-    any other local branch       nothing
-    remote refs                  nothing
+Checks have an explicit observation boundary:
+    worktree   task files and its checked-out branch; shared refs are not owned
+    task       planning in the shared checkout: this task's artifacts/commits
+    repository legacy product execution's additional shared-ref protections
+
+Changes to another task's refs are not evidence that this dispatch made them.
+Role instructions still prohibit push, branch switching and unrelated writes.
 """
 
 from __future__ import annotations
@@ -30,7 +31,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
-from typing import Sequence
+from typing import Literal, Sequence
 
 from .git import run_git
 
@@ -218,6 +219,33 @@ def _diff_refs(
     return problems
 
 
+def task_changes(worktree, commits: Sequence[str], dirty: Sequence[str],
+                 task_rel_dir: str) -> tuple[list[str], list[str]]:
+    """Changes relevant to one planning task in a shared checkout.
+
+    A commit belongs in this check when it changes this task's artifacts or
+    explicitly names this task in its Arbor subject. A sibling's d-NNN alone
+    is not identity: dispatch numbers are allocated independently per task.
+    Untagged source commits and sibling task directories remain outside this
+    boundary; this is an attribution check, not a filesystem sandbox.
+    """
+    prefix = task_rel_dir.strip("/") + "/"
+    name = PurePosixPath(task_rel_dir).name
+    relevant: list[str] = []
+    touched = {p for p in dirty if p.startswith(prefix)}
+    for sha in commits:
+        subject = (_git_out(["show", "-s", "--format=%s", sha], worktree) or "").strip()
+        match = COMMIT_SUBJECT_RE.fullmatch(subject)
+        paths = set((_git_out(["diff-tree", "--root", "--first-parent", "-m", "--no-commit-id",
+                               "--name-only", "--no-renames", "-r", sha], worktree) or "").splitlines())
+        owned = bool(match and match.group(2) == name)
+        artifacts = {p for p in paths if p.startswith(prefix)}
+        if owned or artifacts:
+            relevant.append(sha)
+            touched.update(paths if owned else artifacts)
+    return relevant, sorted(touched)
+
+
 def check_after_dispatch(
     role: str,
     before: RefSnapshot,
@@ -227,24 +255,33 @@ def check_after_dispatch(
     test_paths: Sequence[str],
     task_rel_dir: str,
     dispatch_id: str | None = None,
+    scope: Literal["worktree", "task", "repository"] = "worktree",
 ) -> list[str]:
     """Violations of the capability table since ``before``; empty = ok.
 
     ``task_rel_dir`` is the task dir relative to the worktree root
     (``.arbor/tasks/<task>``); its last segment is the task name commits must
     carry. ``dispatch_id``, when given, is the id the commit trailer must name.
+    ``scope`` selects a task worktree, planning artifacts in a shared checkout,
+    or the existing product-execution repository protections.
     """
+    if scope not in ("worktree", "task", "repository"):
+        raise ValueError(f"unknown dispatch check scope: {scope}")
     after = snapshot_refs(worktree)
     task_rel_dir = task_rel_dir.strip("/")
     task_prefix = f"{task_rel_dir}/"
     task_name = PurePosixPath(task_rel_dir).name
     violations: list[str] = []
 
-    violations += _diff_refs("remote ref", before.remotes, after.remotes)
-    violations += _diff_refs(
-        "branch", before.branches, after.branches,
-        skip=own_branch, concurrent_prefix=TASK_BRANCH_PREFIX,
-    )
+    if before.head_ref != f"refs/heads/{own_branch}":
+        violations.append(f"expected task branch {own_branch}, started on {before.head_ref or 'detached'}")
+
+    if scope == "repository":
+        violations += _diff_refs("remote ref", before.remotes, after.remotes)
+        violations += _diff_refs(
+            "branch", before.branches, after.branches,
+            skip=own_branch, concurrent_prefix=TASK_BRANCH_PREFIX,
+        )
     if after.head_ref != before.head_ref:
         violations.append(
             f"HEAD switched from {before.head_ref or 'detached'} to {after.head_ref or 'detached'}"
@@ -266,10 +303,12 @@ def check_after_dispatch(
             new_commits = [line for line in out.splitlines() if line.strip()]
 
     new_dirty = sorted(after.dirty - before.dirty)
-    committed = (
-        changed_files(worktree, f"{own_before}..{own_after}") if new_commits else []
-    )
-    touched = sorted(set(committed) | set(new_dirty))
+    if scope == "task":
+        new_commits, touched = task_changes(worktree, new_commits, new_dirty, task_rel_dir)
+        new_dirty = [p for p in new_dirty if p.startswith(task_prefix)]
+    else:
+        committed = changed_files(worktree, f"{own_before}..{own_after}") if new_commits else []
+        touched = sorted(set(committed) | set(new_dirty))
 
     if role in READ_ONLY_ROLES or role in RESEARCH_ROLES:
         if new_commits:

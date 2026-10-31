@@ -68,6 +68,7 @@ describe.skipIf(!hasPython())("common/invariants.py", () => {
     role: string,
     actions: string,
     dispatchId: string | null = "d-007",
+    scope = "worktree",
   ): string[] {
     const code = `
 import json, subprocess, sys
@@ -80,10 +81,10 @@ subprocess.run(sys.argv[1], shell=True, cwd=wt, check=True, capture_output=True)
 print(json.dumps(check_after_dispatch(
     sys.argv[2], before, wt, own_branch=${JSON.stringify(OWN)},
     test_paths=${JSON.stringify(TEST_PATHS)}, task_rel_dir=${JSON.stringify(TASK_REL)},
-    dispatch_id=sys.argv[3] or None,
+    dispatch_id=sys.argv[3] or None, scope=sys.argv[4],
 )))
 `;
-    const r = spawnSync("python3", ["-c", code, actions, role, dispatchId ?? ""], {
+    const r = spawnSync("python3", ["-c", code, actions, role, dispatchId ?? "", scope], {
       cwd: wt,
       encoding: "utf-8",
     });
@@ -212,35 +213,42 @@ print(json.dumps({"head": s.head, "head_ref": s.head_ref, "branches": sorted(s.b
       ).toEqual([]);
     });
 
-    it("a writer that moved another branch is a violation", () => {
+    it("moving the integration branch does not invalidate the task worktree", () => {
       const v = check(
         "implement",
         `echo b > src/a.ts && git add src/a.ts && ${commit(`implement(${TASK}): x`)} && git branch -f main HEAD`,
       );
-      expect(v).toHaveLength(1);
-      expect(v[0]).toMatch(/^branch main moved [0-9a-f]{12} -> [0-9a-f]{12}$/);
+      expect(v).toEqual([]);
     });
 
-    it("sibling arbor/* branches may move or appear during a dispatch, but not be deleted", () => {
+    it("sibling branches may move, appear or be deleted during a dispatch", () => {
       git(wt, "branch", "arbor/other");
       git(wt, "branch", "arbor/gone");
       const v = check(
         "implement",
         `echo b > src/a.ts && git add src/a.ts && ${commit(`implement(${TASK}): x`)} && git branch -f arbor/other HEAD && git branch arbor/new && git branch -D -q arbor/gone`,
       );
-      expect(v).toEqual(["branch arbor/gone was deleted"]);
+      expect(v).toEqual([]);
     });
 
-    it("creating a branch, switching HEAD and moving a remote ref are violations", () => {
+    it("still rejects switching the current HEAD while ignoring unrelated refs", () => {
       git(wt, "update-ref", "refs/remotes/origin/main", "HEAD");
       const v = check(
         "implement",
         `echo b > src/a.ts && git add src/a.ts && ${commit(`implement(${TASK}): x`)} && git update-ref refs/remotes/origin/main HEAD && git checkout -q -b side`,
       );
       const joined = v.join("\n");
-      expect(joined).toContain("remote ref refs/remotes/origin/main moved");
-      expect(joined).toContain("branch side was created");
+      expect(joined).not.toContain("remote ref");
+      expect(joined).not.toContain("branch side was created");
       expect(joined).toContain(`HEAD switched from refs/heads/${OWN} to refs/heads/side`);
+    });
+
+    it("repository scope retains the explicit cross-repository ref protections", () => {
+      const v = check("implement",
+        `echo b > src/a.ts && git add src/a.ts && ${commit(`implement(${TASK}): x`)} && git branch -f main HEAD`,
+        "d-007", "repository");
+      expect(v).toHaveLength(1);
+      expect(v[0]).toMatch(/^branch main moved /);
     });
 
     it("a merge commit on the own branch is a violation", () => {
@@ -261,12 +269,51 @@ print(json.dumps({"head": s.head, "head_ref": s.head_ref, "branches": sorted(s.b
       expect(v.join("\n")).toContain(`own branch ${OWN} was rewritten`);
     });
 
+    it("still refuses a missing current task branch", () => {
+      const v = check("review", `git update-ref -d refs/heads/${OWN}`);
+      expect(v).toContain(`own branch ${OWN} is missing`);
+    });
+
+    it("still refuses a worktree already on the wrong branch before dispatch", () => {
+      git(wt, "checkout", "-q", "main");
+      const v = check("review", "true");
+      expect(v).toContain(`expected task branch ${OWN}, started on refs/heads/main`);
+    });
+
     it("writes under .arbor/ outside the task dir are a violation", () => {
       const v = check(
         "implement",
         `mkdir -p .arbor/spec && echo s > .arbor/spec/x.md && git add .arbor && ${commit(`implement(${TASK}): x`)}`,
       );
       expect(v).toEqual([`writes under .arbor/ outside ${TASK_REL}/: .arbor/spec/x.md`]);
+    });
+  });
+
+  describe("planning in a shared checkout", () => {
+    it("ignores sibling task files and unrelated commits", () => {
+      const v = check("explore",
+        `echo b > src/b.ts && git add src/b.ts && ${commit("implement(other): work", "Arbor-Dispatch: d-007")} && mkdir -p .arbor/tasks/other && echo '{}' > .arbor/tasks/other/task.json`,
+        "d-007", "task");
+      expect(v).toEqual([]);
+    });
+
+    it("still rejects a commit explicitly attributed to this task outside its directory", () => {
+      const v = check("explore",
+        `echo b > src/b.ts && git add src/b.ts && ${commit(`explore(${TASK}): wrong`)}`,
+        "d-007", "task");
+      expect(v.join("\n")).toContain("explore must not commit");
+    });
+
+    it("still checks files inside the current task directory", () => {
+      const v = check("explore", `echo wrong > ${TASK_REL}/design.md`, "d-007", "task");
+      expect(v.join("\n")).toContain(`${TASK_REL}/design.md`);
+    });
+
+    it("does not hide another task's commit that changes the current task's files", () => {
+      const v = check("review",
+        `echo wrong > ${TASK_REL}/contract.md && git add ${TASK_REL}/contract.md && ${commit("implement(other): changed contract")}`,
+        "d-007", "task");
+      expect(v.join("\n")).toContain("review must not commit");
     });
   });
 

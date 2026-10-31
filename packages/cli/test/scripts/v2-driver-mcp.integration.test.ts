@@ -94,6 +94,69 @@ describe.skipIf(!hasPython())("codeg MCP handoff", { timeout: 90_000 }, () => {
     expect(f.taskJson().mcp_pending["d-001"]).toBe(p.request_path);
   });
 
+  it("collects planning for A while B creates task files and commits on the shared main branch", () => {
+    configure();
+    const p = prepare();
+    bind(p.request_path);
+    writeFile(f.repo, ".arbor/tasks/task-b/task.json", '{"status":"planning"}\n');
+    writeFile(f.repo, "b.txt", "B's work\n");
+    git(f.repo, "add", "b.txt");
+    git(f.repo, "commit", "-qm", "implement(task-b): work\n\nArbor-Dispatch: d-001");
+    const bHead = git(f.repo, "rev-parse", "HEAD");
+    const r = collect(p.request_path, { task_id: "codeg-task-1", status: "completed", text: EXPLORE });
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+    expect(f.taskJson().dispatches[0]).toMatchObject({ status: "ok", phase: "CONTRACT" });
+    expect(git(f.repo, "rev-parse", "HEAD")).toBe(bHead);
+    expect(fs.existsSync(path.join(f.repo, ".arbor/tasks/task-b/task.json"))).toBe(true);
+  });
+
+  it("collects A after B edits its own worktree, merges, updates remote refs and cleans up", () => {
+    configure(true);
+    f.brief("d-001");
+    const p = JSON.parse(f.run("run").stdout);
+    bind(p.request_path);
+    const b = path.join(f.tmp, "task-b");
+    git(f.repo, "worktree", "add", "-qb", "feature/task-b", b);
+    writeFile(b, "b.txt", "B's work\n");
+    git(b, "add", "b.txt");
+    git(b, "commit", "-qm", "implement(task-b): work\n\nArbor-Dispatch: d-001");
+    git(f.repo, "merge", "--no-ff", "-qm", "Merge B", "feature/task-b");
+    git(f.repo, "update-ref", "refs/remotes/origin/main", "HEAD");
+    git(f.repo, "worktree", "remove", b);
+    git(f.repo, "branch", "-d", "feature/task-b");
+    const mainHead = git(f.repo, "rev-parse", "HEAD");
+
+    writeFile(f.wt, "tests/ac1.sh", "test -f src/feature.txt\n");
+    git(f.wt, "add", "tests/ac1.sh");
+    git(f.wt, "commit", "-qm", `test(${TASK}): red\n\nArbor-Dispatch: d-001`);
+    const r = collect(p.request_path, { task_id: "codeg-task-1", status: "completed", text: "## Tests Written\n" });
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+    expect(f.next()).toMatchObject({ state: "BUILD", role: "implement" });
+    expect(git(f.repo, "rev-parse", "HEAD")).toBe(mainHead);
+    expect(fs.readFileSync(path.join(f.repo, "b.txt"), "utf8")).toBe("B's work\n");
+    expect(fs.existsSync(path.join(f.wt, "b.txt"))).toBe(false);
+  });
+
+  it.each([false, true])("planning canary checks its task boundary (current task changed: %s)", (ownTask) => {
+    configure();
+    const prepared = f.run(...T, "canary");
+    expect(prepared.status, prepared.stdout + prepared.stderr).toBe(0);
+    const p = JSON.parse(prepared.stdout);
+    bind(p.request_path);
+    if (ownTask) {
+      writeFile(f.taskDir, "research/unexpected.md", "canary must not write here\n");
+    } else {
+      writeFile(f.repo, ".arbor/tasks/task-b/task.json", '{"status":"planning"}\n');
+      writeFile(f.repo, "b.txt", "B's work\n");
+      git(f.repo, "add", "b.txt");
+      git(f.repo, "commit", "-qm", "implement(task-b): work\n\nArbor-Dispatch: d-001");
+    }
+    const r = collect(p.request_path, { task_id: "codeg-task-1", status: "completed", text: EXPLORE });
+    expect(r.status, r.stdout + r.stderr).toBe(ownTask ? 1 : 0);
+    expect(f.taskJson().mcp_pending).toEqual({});
+    if (ownTask) expect(r.stdout).toContain("the canary changed the worktree");
+  });
+
   it("accepts failure/cancel terminal reports as failed dispatches and retains their diagnostics", () => {
     configure();
     const p = prepare();

@@ -201,7 +201,9 @@ def load_ctx(task_arg: str | None) -> Ctx | None:
     if task_arg:
         task_dir = resolve_task_ref(task_arg, main)
     else:
-        active = resolve_active_task(main, allow_single_session_fallback=True)
+        # A sole session file does not make its task belong to this caller.
+        # Main-driver commands require this session's binding or explicit --task.
+        active = resolve_active_task(main)
         if not active.task_path or active.stale:
             return None
         # resolve_active_task already checked containment; absolute = started task
@@ -793,7 +795,9 @@ def validate_dispatch(ctx: Ctx, unit: Unit, role: str, dispatch: str, before, te
     """Identical acceptance checks for command executors and external MCP replies."""
     reply = result.stdout
     violations = check_after_dispatch(role, before, unit.worktree, own_branch=unit.branch, test_paths=test_paths,
-                                      task_rel_dir=(f"__control__/{ctx.name}" if ctx.data.get("execution_binding") else ctx.task_rel), dispatch_id=dispatch)
+                                      task_rel_dir=(f"__control__/{ctx.name}" if ctx.data.get("execution_binding") else ctx.task_rel),
+                                      dispatch_id=dispatch,
+                                      scope="repository" if ctx.data.get("execution_binding") else "worktree")
     if unit.partition:
         violations = _concurrent_moves(ctx, unit, before, violations)
         new_dirty = _dirty_paths(unit.worktree) - before.dirty
@@ -1216,9 +1220,10 @@ def finish_contract(ctx: Ctx | None, main: Path, config: dict, role: str, mode: 
     violations = check_after_dispatch(
         role, before, main, own_branch=branch, test_paths=get_test_paths(config),
         task_rel_dir=task_rel or f"{DIR_WORKFLOW}/{DIR_TASKS}/-", dispatch_id=None,
+        scope="task" if ctx else "worktree",
     )
     after = snapshot_refs(main)
-    if after.head != before.head:
+    if ctx is None and after.head != before.head:
         violations.append(f"HEAD of {branch} moved {str(before.head)[:12]} -> {str(after.head)[:12]}; "
                           "the driver never resets the main checkout: undo it by hand")
     check = rv.check_reply(role, result.stdout)
@@ -1545,7 +1550,13 @@ def finish_canary(ctx: Ctx | None, main: Path, worktree: Path, role: str, before
     check = rv.check_reply(role, result.stdout)
     if not check.ok or check.problem:
         problems.append(check.problem or "reply rejected")
-    if after.head != before.head or after.dirty != before.dirty:
+    changed = after.head != before.head or after.dirty != before.dirty
+    if ctx is not None and not started:
+        changed = bool(check_after_dispatch(
+            "review", before, worktree, own_branch=(before.head_ref or "").removeprefix("refs/heads/"),
+            test_paths=(), task_rel_dir=ctx.task_rel, scope="task",
+        ))
+    if changed:
         problems.append("the canary changed the worktree")
     status = "ok" if not problems else "fail"
     append_result(main, {

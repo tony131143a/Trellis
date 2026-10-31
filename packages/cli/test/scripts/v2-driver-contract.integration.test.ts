@@ -100,7 +100,7 @@ describe.skipIf(!hasPython())("arbor.py run --role (CONTRACT phase)", { timeout:
     const row = f.results()[0];
     expect(row.status).toBe("violation");
     expect(row.violations.join("\n")).toContain("explore must not commit");
-    expect(row.violations.join("\n")).toContain("undo it by hand");
+    expect(row.violations.join("\n")).not.toContain("HEAD of main moved");
   });
 
   it("review Mode: plan: verdict rule applies, findings recorded; prompt --print rebuilds a pre-start dispatch", () => {

@@ -35,14 +35,46 @@ describe.skipIf(!hasPython())("arbor.py next / BUILD / GATE", { timeout: 90_000 
     expect(git(f.wt, "rev-parse", "HEAD")).toBe(head);
   });
 
-  it("next --json without an active task, and for a task still in planning", () => {
+  it.each<[string, NodeJS.ProcessEnv]>([
+    ["missing identity", {}],
+    ["unbound Arbor session", { ARBOR_CONTEXT_ID: "other-session" }],
+    ["unbound Codex thread", { CODEX_THREAD_ID: "other-thread" }],
+    ["unbound Claude session", { CLAUDE_CODE_SESSION_ID: "other-session" }],
+  ])("does not borrow another session's sole task: %s", (_label, identity) => {
     f = setupFixture();
-    const none = spawnSync("python3", [path.join(f.repo, ".arbor/scripts/arbor.py"), "next", "--json"], {
-      cwd: f.repo, encoding: "utf-8", env: { ...process.env, ARBOR_CONTEXT_ID: "other-session" },
-    });
-    // the single-session fallback still finds the one session file
-    expect(JSON.parse(none.stdout).task).toBe(TASK);
+    const env = { ...process.env };
+    delete env.ARBOR_CONTEXT_ID;
+    delete env.CODEX_THREAD_ID;
+    delete env.CLAUDE_CODE_SESSION_ID;
+    Object.assign(env, identity);
+    const run = (...args: string[]) => spawnSync(
+      "python3", [path.join(f.repo, ".arbor/scripts/arbor.py"), ...args],
+      { cwd: f.repo, encoding: "utf-8", env },
+    );
+    const before = f.taskJson();
+    const head = git(f.wt, "rev-parse", "HEAD");
 
+    const none = run("next", "--json");
+    expect(none.status, none.stdout + none.stderr).toBe(0);
+    expect(JSON.parse(none.stdout)).toMatchObject({
+      task: null, state: "INTAKE", needs: "human", started: false,
+    });
+
+    const refused = run("override", "--role", "implement", "--reason", "session isolation probe");
+    expect(refused.status, refused.stdout + refused.stderr).toBe(1);
+    expect(refused.stderr).toContain("no active task");
+    expect(f.taskJson()).toEqual(before);
+    expect(git(f.wt, "rev-parse", "HEAD")).toBe(head);
+
+    // The owning session and an explicit --task still resolve the task.
+    expect(f.next()).toMatchObject({ task: TASK, state: "BUILD" });
+    const explicit = run("--task", f.taskDir, "next", "--json");
+    expect(explicit.status, explicit.stdout + explicit.stderr).toBe(0);
+    expect(JSON.parse(explicit.stdout)).toMatchObject({ task: TASK, state: "BUILD" });
+  });
+
+  it("next --json for an explicitly selected task still in planning", () => {
+    f = setupFixture();
     writeFile(f.repo, ".arbor/tasks/10-30-plan/task.json", JSON.stringify({ id: "plan", status: "planning" }));
     const planning = f.run("--task", ".arbor/tasks/10-30-plan", "next", "--json");
     expect(JSON.parse(planning.stdout)).toEqual({

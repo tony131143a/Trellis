@@ -229,6 +229,10 @@ Role instructions live in `.arbor/agents/<role>.md`. The driver checks each role
 
 Every role: no push, no merge, no rebase, no checkout of other branches, no writes under `.arbor/` except `tasks/<task>/`. Test paths are the contract's `## Test paths`, else `test_paths:` in `.arbor/config.yaml`.
 
+**Single-repository check boundary.** Started task dispatches validate files in their execution worktree and the task branch. Other local branches and remote-tracking refs are shared Git metadata: another task may create, advance, merge or delete its branch without invalidating this dispatch. The task's own branch must still exist, stay checked out and advance without rewriting its history; role, path and commit checks remain in force within that worktree. Partition dispatches use their partition worktree and branch.
+
+Before start, tasks share the main checkout. Planning and task-bound canary checks cover the current task directory and commits that touch its artifacts or explicitly name this task. Sibling task files and unrelated source commits do not establish a violation. Unattributed edits elsewhere in the shared checkout cannot be assigned to a planning agent by comparing Git snapshots alone; this check is not a filesystem sandbox. These boundaries do not change the explicit repository protections of product execution.
+
 **Commit format** (writers; the driver rejects anything else as a failed dispatch):
 
 ```
