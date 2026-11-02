@@ -30,8 +30,8 @@ The Arbor task system is stored entirely under `.arbor/tasks/` in the user proje
 | `implement.jsonl` | List of spec/research files the `architect`, `test` and `implement` roles must read first. |
 | `check.jsonl` | List of spec/research files the `review`, `verify`, `fix`, and `simplify` roles must read first. |
 | `research/` | Research artifacts (`explore` findings, `architect` blueprints `design-<perspective>.md`, or the main agent's notes). Larger findings should not live only in chat. |
-| `briefs/` | `d-NNN.md`: the brief the conductor (or Planner) wrote for each dispatch (body only; the driver adds header and context); `c-NNN.md`: the Planner's brief for conductor run N. |
-| `reports/` | `d-NNN.md`: the role's reply plus the driver's verdict; `c-NNN.md`: the conductor's terminal report; `gate-N.md`: output of the N-th gate round; `candidates-rN.json`: POLISH round N after the prefilter. Committed by the driver; CONTRACT-phase files are committed by `task.py start`. The assembled prompts stay uncommitted in `.arbor/.runtime/prompts/<task>/` of the main checkout. |
+| `briefs/` | `d-NNN.md`: the brief the main agent wrote for each dispatch (body only; the driver adds header and context). |
+| `reports/` | `d-NNN.md`: the role's reply plus the driver's verdict; `gate-N.md`: output of the N-th gate round; `candidates-rN.json`: POLISH round N after the prefilter. Committed by the driver; CONTRACT-phase files are committed by `task.py start`. The assembled prompts stay uncommitted in `.arbor/.runtime/prompts/<task>/` of the main checkout. |
 | `scorecard.md` | Written at FINISH: dispatches per role, rounds, findings per rung, AC automation rate, overrides, violations. |
 
 `task.py start` moves the whole directory into the task worktree (`<worktree.root>/<task>`, branch `arbor/<task>`) and commits it there; from then on the task's artifacts travel with its code into the PR.

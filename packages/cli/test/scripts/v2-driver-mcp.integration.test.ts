@@ -58,7 +58,9 @@ describe.skipIf(!hasPython())("codeg MCP handoff", { timeout: 90_000 }, () => {
     const p = prepare();
     expect(p).toMatchObject({ needs: "delegation", dispatch: "d-001", mcp: { tool: "delegate_to_agent", arguments: { assistant_id: 2, working_dir: f.repo } } });
     expect(p.mcp.arguments.task).toContain(`Active task: ${f.taskDir}\nRole: explore\nDispatch: d-001`);
-    expect(p.mcp.arguments.task).toContain("Inspect the parser");
+    expect(p.mcp.arguments.task).toContain(`Prompt: ${p.prompt_path}`);
+    expect(p.mcp.arguments.task).not.toContain("Inspect the parser");
+    expect(fs.readFileSync(p.prompt_path, "utf-8")).toContain("Inspect the parser");
     expect(path.isAbsolute(p.result_path)).toBe(true);
     expect(p.result_path.startsWith(f.repo + path.sep)).toBe(false);
     expect(fs.existsSync(path.join(f.tmp, "received"))).toBe(false);
@@ -175,7 +177,7 @@ describe.skipIf(!hasPython())("codeg MCP handoff", { timeout: 90_000 }, () => {
     expect(p.mcp.arguments).toMatchObject({ assistant_id: 4, working_dir: f.wt });
     bind(p.request_path);
     const prompt = path.join(f.tmp, "prompt.md");
-    fs.writeFileSync(prompt, p.mcp.arguments.task);
+    fs.copyFileSync(p.prompt_path, prompt);
     f.plan({ "d-001": { write: [{ path: "tests/ac1.sh", content: "test -f src/feature.txt\n" }] } });
     const child = spawnSync("python3", [path.join(f.tmp, "fake_exec.py"), "test", prompt, f.wt, TASK, "d-001"], { encoding: "utf-8" });
     expect(child.status, child.stderr).toBe(0);

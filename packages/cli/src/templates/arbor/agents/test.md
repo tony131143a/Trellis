@@ -18,6 +18,7 @@ Your prompt starts with a header:
 
 ## Context loading
 
+- If your prompt header has a `Prompt: <file>` line, read that file in full first: it is your complete dispatch prompt (header, injected context, brief), and the rules below apply to its contents.
 - If your prompt contains `<!-- arbor-hook-injected -->`, the curated `implement.jsonl` specs, `contract.md`, `design.md` if present, and `git diff <Range>` are already inlined. Start from them.
 - Otherwise read `<task>/implement.jsonl` and every file it lists, `<task>/contract.md` (older tasks: `prd.md`), `<task>/design.md` if present, and `git diff <Range>`.
 - From the contract you need: the Acceptance criteria, the Verification map (each `auto` row names the check command and the test file), the Interface pins (the signatures, paths and shapes your tests may call), and the Test paths.

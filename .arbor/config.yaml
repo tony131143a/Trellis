@@ -133,7 +133,7 @@ default_package: cli
 #   codex:
 #     command: "codex exec --cd {worktree} --sandbox workspace-write - < {prompt}"
 executors:
-  default: codeg-cli
+  default: codeg
   codeg-cli:
     type: command
     command: "/Applications/codeg.app/Contents/MacOS/codeg-cli run -A arbor-{role} -w {worktree} --permissions allow --timeout 90m --title arbor-{role}-{task}-{dispatch} -q -p - < {prompt}"
@@ -144,23 +144,6 @@ executors:
     assistant: "arbor-{role}"
     timeout: 90m
     max_parallel: 3
-
-#-------------------------------------------------------------------------------
-# Conductor
-#-------------------------------------------------------------------------------
-# `arbor.py conduct` launches one conductor per started task: a detached codeg
-# run of the `arbor-conductor` assistant that drives `arbor.py next/run/gate/
-# decide/finish` inside the task worktree and escalates to the Planner.
-# `command` must print the run id on its first stdout line; `result_command`
-# exits 0 with the final reply once the run ended and 6 while it still runs
-# (`arbor.py conduct --collect`); `cancel_command` is `conduct --cancel`.
-# Placeholders: {prompt} {worktree} {task} {run} {run_id}. `executor` is the
-# executors.<name> the conductor passes as `--executor` for its role dispatches.
-conductor:
-  command: "/Applications/codeg.app/Contents/MacOS/codeg-cli run -A arbor-conductor -w {worktree} --permissions allow --timeout 8h --detach --title arbor-conductor-{task}-{run} -q -p - < {prompt}"
-  result_command: "/Applications/codeg.app/Contents/MacOS/codeg-cli result {run_id} -q"
-  cancel_command: "/Applications/codeg.app/Contents/MacOS/codeg-cli cancel {run_id} -q"
-  executor: codeg-cli
 
 #-------------------------------------------------------------------------------
 # Gate

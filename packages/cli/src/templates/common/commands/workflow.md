@@ -1,6 +1,6 @@
 # Arbor Workflow
 
-Start an Arbor task from a request, or continue the current one. You are the Planner: you plan and approve; a conductor (`arbor.py conduct`) drives each started task and dispatches every role (explore / architect / test / implement / review / verify / fix / simplify) through the driver, `{{PYTHON_CMD}} ./.arbor/scripts/arbor.py`, and the executor configured under `executors:` in `.arbor/config.yaml`.
+Start an Arbor task from a request, or continue the current one. You are the main agent: you plan, get the contract approved, then drive the started task yourself and dispatch every role (explore / architect / test / implement / review / verify / fix / simplify) through the driver, `{{PYTHON_CMD}} ./.arbor/scripts/arbor.py`, and the executor configured under `executors:` in `.arbor/config.yaml` (default: codeg MCP delegation).
 
 Arguments: `[--tier light|standard|full] [request]`
 
@@ -44,23 +44,24 @@ They run in the main checkout and commit nothing; explore and architect may writ
 
 ## Step 4: Drive (status `in_progress`)
 
-Right after `task.py start`, launch the task's conductor and let it drive:
+Right after `task.py start`, drive the loop from this session:
 
 ```bash
-{{PYTHON_CMD}} ./.arbor/scripts/arbor.py --task <task> conduct [--brief <file>]   # decisions, pitfalls, files to stay out of
-{{PYTHON_CMD}} ./.arbor/scripts/arbor.py --task <task> next                      # supervise
+{{PYTHON_CMD}} ./.arbor/scripts/arbor.py --task <task> next   # do the one thing it names, then next again
 ```
 
 Act on `next`:
 
-- `needs=conductor` → it is running; do other work (another child, the user's questions). `arbor.py --task <task> conduct --collect` once it ended (the hook breadcrumb and `next` say so).
-- `needs=human`, `human.kind=conductor` → read `reason` and `needs_from_planner` (full report in `reports/c-NNN.md`): `contract` → edit `contract.md`, get the user's re-approval, `arbor.py resume`; `plausible` → put the findings to the user, `arbor.py decide fix|skip --reason "…"`; `stop` → inspect the evidence, then `arbor.py resume`, `override --reason "…" (--to STATE[/step] | --role <role>)`, a re-plan, or `abandon`; `merge_conflict` → merge the named branch by hand in the task worktree, commit, `arbor.py resume`; `blocked` → improve the brief. Then `arbor.py conduct` again.
-- `needs=human`, `human.kind=merge` → Phase 3 (`{{CMD_REF:finish-work}}`): the user merges `--no-ff`, then `arbor.py finish`.
-- Parent task: `arbor.py --task <parent> children` lists every child's state, conductor and merge status. Launch a conductor per child without an unmet dependency; merge children in order (for a later child: `git -C <child worktree> merge <base>` yourself, resolve, `arbor.py --task <child> gate`, then the user merges); then `arbor.py --task <parent> run --role review --mode sweep --range <before-first-merge>..<base>` (brief at `brief_path` from `next --role review --json`) and `arbor.py --task <parent> gate`; fixes become a light child; `task.py archive <parent>`.
+- `needs=brief` → write the brief at `brief_path` (decisions, pitfalls, files to stay out of), then `arbor.py run`. With the default `codeg` executor `run` returns `needs=delegation`: see below.
+- `needs=run` → `arbor.py gate` (GATE) or `arbor.py run` (wave merge). `needs=wait` → wait for the running partitions, then `next`.
+- `needs=decide` → `arbor.py decide <choice> --reason "<evidence>"` (`impl` / `tests` / `contract` after a red gate; `fix` / `skip` for PLAUSIBLE findings).
+- `needs=human` → `human.kind` says which: `approve_contract` → edit `contract.md`, get the user's re-approval, `arbor.py resume`; `plausible` → put the findings to the user once, most severe first, with your recommendation, then `arbor.py decide fix|skip --reason "…"`; `stop` → inspect the reason and evidence, then `arbor.py resume`, `override --reason "…" (--to STATE[/step] | --role <role>)`, a re-plan, or `abandon`; `merge_conflict` → merge the named branch by hand in the task worktree, commit, `arbor.py resume`; `merge` → Phase 3 (`{{CMD_REF:finish-work}}`): the user merges `--no-ff`, then `arbor.py finish`.
+- `done` → Phase 3.
+- Parent task: each child is driven from its own session (one codeg conversation per child, `--task <child>` on every call); `arbor.py --task <parent> children` lists every child's state and merge status. Start every child without an unmet dependency; merge children in order (for a later child: `git -C <child worktree> merge <base>` yourself, resolve, `arbor.py --task <child> gate`, then the user merges); then `arbor.py --task <parent> run --role review --mode sweep --range <before-first-merge>..<base>` (brief at `brief_path` from `next --role review --json`) and `arbor.py --task <parent> gate`; fixes become a light child; `task.py archive <parent>`.
 
-Only when no conductor can be launched, drive the loop yourself: `needs=brief` → write the brief at `brief_path`, then `arbor.py run`; `needs=run` → `arbor.py gate`; `needs=decide` → `arbor.py decide <choice> --reason "<evidence>"`; `needs=human` → ask the user; `done` → Phase 3. Never perform a role in this session and never use the built-in Agent/Task tool for one. The driver writes the dispatch header and injects the contract, design and diff; a brief carries only what those do not say.
+Never perform a role in this session and never use the built-in Agent/Task tool for one. The driver writes the dispatch header and injects the contract, design and diff; a brief carries only what those do not say.
 
 
 ## codeg MCP delegation (executor `codeg`)
 
-With the `codeg-mcp` executor (`executors.default: codeg` or `arbor.py --executor codeg`), `arbor.py run` returns `needs=delegation`. Call codeg MCP `delegate_to_agent` with the returned `mcp.arguments` (resolve the named assistant from the MCP roster if no id is configured), then immediately run `arbor.py bind --request <request_path> --task-id <returned task_id>`. Poll `get_delegation_status`, save its complete JSON response at the returned `result_path` outside the task worktree, and run `arbor.py collect --request <request_path> --result <file>` before proceeding. Resume/poll a bound task after interruptions; never start it again. If the configured timeout expires, cancel it through `cancel_delegation` and collect the terminal report. Claude Code and Codex both use this same MCP flow. Do not substitute native Agent/Task/spawn_agent for a role.
+With the `codeg-mcp` executor (`executors.default: codeg`, the default; or `arbor.py --executor codeg`), `arbor.py run` returns `needs=delegation`. The returned `mcp.arguments.task` is the dispatch header plus a `Prompt:` line naming the assembled prompt file in `.arbor/.runtime/prompts/<task>/`; the role reads that file first, so do not paste the prompt into the tool call. Call codeg MCP `delegate_to_agent` with the returned `mcp.arguments` (resolve the named assistant from the MCP roster if no id is configured), then immediately run `arbor.py bind --request <request_path> --task-id <returned task_id>`. Poll `get_delegation_status`, save its complete JSON response at the returned `result_path` outside the task worktree, and run `arbor.py collect --request <request_path> --result <file>` before proceeding. Resume/poll a bound task after interruptions; never start it again. If the configured timeout expires, cancel it through `cancel_delegation` and collect the terminal report. Claude Code and Codex both use this same MCP flow. Do not substitute native Agent/Task/spawn_agent for a role.

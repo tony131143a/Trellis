@@ -265,23 +265,39 @@ describe("0.2.0 manifest", () => {
 });
 
 // =============================================================================
-// 0.3.0 — Planner + conductor, parallel child tasks, round caps restored
+// 0.3.0 — parallel child tasks, round caps restored (the conductor it added is gone in 0.4.0)
 // =============================================================================
 
 describe("0.3.0 manifest", () => {
-  it("is the package version, reached from 0.2.0, with no file migrations", () => {
-    expect(VERSION).toBe("0.3.0");
+  it("is reached from 0.2.0 with no file migrations", () => {
     expect(getAllMigrationVersions()).toContain("0.3.0");
     expect(getMigrationsForVersion("0.2.0", "0.3.0")).toEqual([]);
     expect(getMigrationMetadata("0.2.0", "0.3.0").breaking).toBe(false);
   });
 
-  it("adds the conductor config section, present in the bundled config.yaml", () => {
+  it("recorded the conductor config section, which 0.4.0 no longer ships", () => {
     const sections = getConfigSectionsAddedBetween("0.2.0", "0.3.0");
     expect(sections.map((s) => s.sentinel)).toEqual(["conductor:"]);
-    const body = extractConfigSection(configYamlTemplate, sections[0].sectionHeading);
-    expect(body).not.toBeNull();
-    expect(body).toContain("conductor:");
-    expect(body).toContain("arbor-conductor");
+    expect(extractConfigSection(configYamlTemplate, sections[0].sectionHeading)).toBeNull();
+  });
+});
+
+// =============================================================================
+// 0.4.0 — the conductor is gone; one main-agent session per task, codeg MCP by default
+// =============================================================================
+
+describe("0.4.0 manifest", () => {
+  it("is the package version, reached from 0.3.0, and retires the conductor files", () => {
+    expect(VERSION).toBe("0.4.0");
+    expect(getAllMigrationVersions()).toContain("0.4.0");
+    const migrations = getMigrationsForVersion("0.3.0", "0.4.0");
+    expect(migrations.map((m) => [m.type, m.from])).toEqual([
+      ["safe-file-delete", ".arbor/scripts/common/driver/conductor.py"],
+      ["safe-file-delete", ".arbor/agents/conductor.md"],
+    ]);
+    expect(getMigrationMetadata("0.3.0", "0.4.0").breaking).toBe(false);
+    expect(getConfigSectionsAddedBetween("0.3.0", "0.4.0")).toEqual([]);
+    expect(configYamlTemplate).not.toContain("conductor");
+    expect(configYamlTemplate).toContain("default: codeg\n");
   });
 });

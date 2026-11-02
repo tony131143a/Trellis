@@ -2,17 +2,16 @@
 sources:
   - packages/cli/src/templates/arbor/scripts/arbor.py
   - packages/cli/src/templates/arbor/scripts/common/driver/executor.py
-  - packages/cli/src/templates/arbor/scripts/common/driver/conductor.py
   - packages/cli/src/templates/arbor/scripts/common/driver/mcp.py
   - packages/cli/src/templates/arbor/scripts/common/dispatch_context.py
-last_verified: 2026-11-01
+last_verified: 2026-11-02
 ---
-# `arbor.py` — Task Driver, Conductor and Executors
+# `arbor.py` — Task Driver and Executors
 
 The driver owns task state, role preparation, deterministic checks, report
-validation and Git observations. The Planner owns scope and approval; a conductor
-drives a started task through the driver. The prompt contract is in
-[dispatch.md](./dispatch.md).
+validation and Git observations. The main agent (the user's session) owns scope,
+approval and judgment and drives a started task through the driver. The prompt
+contract is in [dispatch.md](./dispatch.md).
 
 ---
 
@@ -21,16 +20,16 @@ drives a started task through the driver. The prompt contract is in
 `packages/cli/src/templates/arbor/scripts/arbor.py` ships as
 `.arbor/scripts/arbor.py`. Its helpers live under `common/driver/`; role context
 is assembled by `common/dispatch_context.py`. Run it from the repository or a
-task worktree. Select role executors under `executors:` in `.arbor/config.yaml`.
-Conductor launch, result and cancellation commands use the separate `conductor:`
-configuration.
+task worktree. Select role executors under `executors:` in `.arbor/config.yaml`
+(`executors.default: codeg`, a `codeg-mcp` executor; `codeg-cli` is the command
+executor for terminal sessions).
 
 ## 2. Signatures
 
 All global options precede the subcommand:
 
 ```text
-python3 .arbor/scripts/arbor.py [--task DIR] [--executor NAME] [--as-conductor c-NNN] COMMAND
+python3 .arbor/scripts/arbor.py [--task DIR] [--executor NAME] COMMAND
 
 next [--json] [--partition P] [--role explore|architect|review]
 run [--dispatch d-NNN] [--partition P] [--autopilot]
@@ -47,15 +46,13 @@ prompt --dispatch d-NNN [--print]
 bind --request FILE --task-id ID
 collect --request FILE --result FILE [--accept-new-control-task NAME] [--reason TEXT]
 finish [--pr]
-conduct [--brief FILE] [--collect] [--cancel] [--dry-run]
 children [--json]
 ```
 
 | Global option | Contract |
 | --- | --- |
-| `--task DIR` | Explicit task directory; otherwise the session's active task. |
+| `--task DIR` | Explicit task directory; otherwise the session's active task. A child task driven from its own conversation passes it on every call. |
 | `--executor NAME` | Select `executors.<name>`; otherwise `executors.default`. |
-| `--as-conductor c-NNN` | Identify the caller as the task's running conductor. |
 
 | Subcommand | Behavior |
 | --- | --- |
@@ -72,8 +69,7 @@ children [--json]
 | `bind` | Bind a prepared MCP request to the returned codeg task id. |
 | `collect` | Validate the complete terminal MCP JSON and advance; optional sibling-task acceptance requires `--reason`. |
 | `finish` | In FINISH, write the scorecard and print the merge command, or use `--pr` to push/open a PR with gh. After merge, clean up, archive and journal; repeated calls continue missing steps. |
-| `conduct` | Launch the task conductor. `--brief` reads the Planner's brief; `--collect` records its terminal report; `--cancel` cancels it; `--dry-run` writes its prompt and prints the command. |
-| `children` | List each child's state, conductor and merge status; `--json` emits structured output. |
+| `children` | List each child's state and merge status; `--json` emits structured output. |
 
 ## 3. Contracts
 
@@ -82,27 +78,30 @@ children [--json]
   live at `<task>/briefs/d-NNN.md` and `<task>/reports/d-NNN.md`; assembled prompts
   live under `.arbor/.runtime/prompts/<task>/` in the main checkout. Runtime
   dispatch measurements are appended to `.arbor/.runtime/results.jsonl`.
-- **Executors.** Command executors substitute shell-quoted placeholders, run in
-  the task worktree and return stdout as the report. A `type: codeg-mcp` executor
-  returns `needs=delegation`: delegate once using `mcp.arguments`, immediately
-  `bind`, poll the bound task, save the complete terminal response at the returned
-  `result_path` outside the task worktree, then `collect`. Resume bound requests
-  after interruptions; never launch them twice. See [dispatch.md](./dispatch.md).
-- **Conductor.** Launch one per started task with `conduct`. It calls the driver
-  with `--task`, `--executor` and `--as-conductor` on every call. While
-  `task.json.conductor.status` is `running`, mutations (`run`, `gate`, `decide`,
-  `override`, `resume`, `abandon`, `finish`) require that run's identity; Planner
-  `next` returns `needs=conductor`. Collection writes `reports/c-NNN.md` and
-  records `DONE`, `ESCALATE` or `FAILED` in `task.json.conductor`. A later launch
-  archives the previous record into `conductor_runs`. Escalations return
-  `needs=human`, `human.kind=conductor`; resolve the stated reason before relaunch.
+- **Executors.** The default `type: codeg-mcp` executor (`codeg`) makes `run`
+  return `needs=delegation`: `mcp.arguments.task` is the dispatch header plus a
+  `Prompt:` line naming the assembled prompt file. Delegate once using
+  `mcp.arguments`, immediately `bind`, poll the bound task, save the complete
+  terminal response at the returned `result_path` outside the task worktree, then
+  `collect`. Resume bound requests after interruptions; never launch them twice.
+  Command executors (`codeg-cli`) substitute shell-quoted placeholders, run in
+  the task worktree and return stdout as the report. See
+  [dispatch.md](./dispatch.md).
+- **The loop.** After `task.py start` the main agent runs `next`, does the one
+  thing it names (`brief` → write it, `run`; `delegation` → delegate, `bind`,
+  `collect`; `run` → `gate` or wave merge; `decide`; `human`) and runs `next`
+  again. `needs` is one of `delegation`, `brief`, `run`, `wait`, `decide`,
+  `human`, `done`; `human.kind` is one of `approve_contract`, `plausible`, `stop`,
+  `merge_conflict`, `merge`. A round cap or two rounds without progress enter
+  STOP (`needs=human`, `human.kind=stop`); `resume` grants one more round,
+  `override` records a reasoned jump, `abandon` ends the task.
 - **Planning.** Before start, `run --role explore|architect|review` performs
   CONTRACT research without a diff range or commits. Explore/architect may write
   task research; review is read-only. With no task, only explore accepts a brief
   on stdin. Started-task writers commit in their assigned worktree with the
   dispatch trailer; the driver records observations for caller judgment.
-- **Parent integration.** Inspect `children`, launch each ready child's conductor,
-  and merge children in dependency order. If a later child predates an earlier
+- **Parent integration.** Inspect `children`, drive each ready child from its
+  own session (`--task <child>`), and merge children in dependency order. If a later child predates an earlier
   merge, integrate the base into that child and rerun its `gate` before the user
   merges it with `--no-ff`. After all children merge, use the parent's
   `next --role review --json` brief, then
@@ -118,19 +117,20 @@ children [--json]
 | 1 | Refused command, failed dispatch or red gate | Inspect the report and next step; no automatic pass. |
 | 2 | Invalid CLI usage | argparse prints usage and the offending argument. |
 
-Missing/invalid executors, conductor ownership conflicts and invalid reports are
+Missing/invalid executors, duplicate collection and invalid reports are
 failures to inspect. A red rung cannot advance to a higher verification rung.
 Contract scope changes require approval; observations alone do not justify
 resetting or deleting work.
 
 ## 5. Good / Base / Bad Cases
 
-- **Good**: `python3 .arbor/scripts/arbor.py --task <task> conduct --brief <file>`;
-  after the run ends, `conduct --collect`, then inspect `next --json`.
-- **Base**: `python3 .arbor/scripts/arbor.py --task <task> next --json` names a
-  brief; write it and invoke `run` if no conductor can be launched.
-- **Bad**: invoking `run` without the running conductor's `--as-conductor`, or
-  treating an MCP delegation request as a completed role report.
+- **Good**: `python3 .arbor/scripts/arbor.py --task <task> next --json` names a
+  brief; write it, invoke `run`, delegate the returned request once, `bind`,
+  poll, `collect`, then `next` again.
+- **Base**: `python3 .arbor/scripts/arbor.py --task <task> --executor codeg-cli
+  run` lets the driver run and collect the role itself in a terminal session.
+- **Bad**: delegating a bound request a second time, or treating an MCP
+  delegation request as a completed role report.
 
 ## 6. Tests Required
 
@@ -138,10 +138,10 @@ resetting or deleting work.
   and protocols are documented, sources exist and scoped spec lint is clean.
 - `test/scripts/v2-driver-*.integration.test.ts`: build, CONTRACT, review,
   partitions, executor/MCP protocol, report handling and finish behavior.
-- `test/scripts/v2-conductor.integration.test.ts`: launch, ownership, collection,
-  escalation, cancellation and parent child visibility.
-- `test/scripts/guard-builtin-agent.integration.test.ts`: native role and
-  conductor dispatches are denied.
+- `test/scripts/v2-children.integration.test.ts`: parent child visibility and
+  merge status.
+- `test/scripts/guard-builtin-agent.integration.test.ts`: native role dispatches
+  are denied.
 
 ## 7. Wrong vs Correct
 

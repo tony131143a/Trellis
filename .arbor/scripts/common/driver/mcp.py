@@ -28,8 +28,22 @@ def snapshot_from(data: dict) -> RefSnapshot:
                        frozenset(data["dirty"]))
 
 
-def request(executor: Executor, role: str, prompt: str, worktree: Path) -> dict:
-    arguments: dict = {"task": prompt, "working_dir": str(worktree)}
+POINTER_NOTE = ("Read the file named by `Prompt:` in full before doing anything else: it is your complete "
+                "dispatch prompt (this header, the injected context and the brief).")
+
+
+def pointer_task(prompt: str, prompt_path: Path) -> str:
+    """The MCP `task` text: the dispatch header plus a `Prompt:` pointer to the
+    assembled prompt file, instead of the whole prompt (often >100 KB) inline."""
+    header, _, _ = prompt.partition("\n\n")
+    if not header.startswith("Active task:") and not header.startswith("Role:"):
+        return prompt
+    return f"{header}\nPrompt: {prompt_path}\n\n{POINTER_NOTE}\n"
+
+
+def request(executor: Executor, role: str, prompt: str, worktree: Path, prompt_path: Path | None = None) -> dict:
+    task = pointer_task(prompt, prompt_path) if prompt_path is not None else prompt
+    arguments: dict = {"task": task, "working_dir": str(worktree)}
     target = {"assistant_name": executor.assistant.replace("{role}", role)}
     assistant_id = (executor.assistant_ids or {}).get(role)
     if assistant_id is not None:
@@ -72,11 +86,13 @@ def envelope(path: Path, record: dict) -> dict:
         "result_path": str(Path(gettempdir()) / ("arbor-mcp-" + sha256(str(path).encode()).hexdigest()[:16]
                                                 + ".result.json")),
         "task_id": task_id, "mcp": record["mcp"] if not task_id else None,
+        "prompt_path": record.get("prompt_path"),
         "status_call": {"tool": "get_delegation_status", "arguments": {"task_ids": [task_id], "wait_ms": 1000}}
                        if task_id else None,
         "timeout_s": record.get("timeout_s"), "started": record["started"],
         "instructions": (
-            "Call codeg MCP delegate_to_agent once with mcp.arguments. If assistant_id/agent_type is absent, "
+            "Call codeg MCP delegate_to_agent once with mcp.arguments (its task text is the dispatch header plus "
+            "a Prompt: pointer; the role reads that file itself). If assistant_id/agent_type is absent, "
             "resolve mcp.target.assistant_name from the tool's assistant roster and add its assistant_id; "
             "if unavailable, stop and report the missing assistant. Never use codeg-cli or native Agent/Task. "
             "Immediately bind its returned task_id with arbor.py bind --request <request_path> --task-id <id>. "

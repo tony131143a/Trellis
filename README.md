@@ -1,6 +1,6 @@
 # Arbor
 
-Arbor is a spec-driven AI engineering workflow for **Claude Code and Codex**. The v3 Python driver assembles task context, dispatches roles through a configured executor, records reports, Git observations and task state. A Planner session plans and approves, one conductor sub-agent per started task drives the loop and escalates its judgment calls; executable quality checks remain enforced.
+Arbor is a spec-driven AI engineering workflow for **Claude Code and Codex**. The Python driver assembles task context, dispatches roles through a configured executor, records reports, Git observations and task state. Your session's main agent plans, gets the contract approved and drives the loop itself; the roles run as codeg MCP delegations; executable quality checks remain enforced.
 
 ## Install and initialize
 
@@ -37,28 +37,28 @@ Arbor ships eight role instructions under `.arbor/agents/`:
 
 The driver includes each role's instructions, task context, brief and report requirements in its dispatch prompt. Roles run through the executor in `.arbor/config.yaml`; native Codex sub-agent definitions are not required.
 
-Three kinds of agent take part. The **Planner** is your terminal session (Claude Code or Codex CLI): it talks to you, writes the contract, splits multi-deliverable requests into child tasks and launches one **conductor** per started task (`arbor.py --task <task> conduct`), a detached codeg run of the `arbor-conductor` assistant that drives BUILD → GATE → REVIEW → POLISH → FINISH in the task worktree and dispatches the **roles** through the executor. The conductor escalates to the Planner only for contract changes, PLAUSIBLE findings, round caps, merge conflicts or blockers; child tasks run their conductors in parallel.
+Two kinds of agent take part. The **main agent** is your session (Claude Code or Codex, normally one codeg conversation per task): it talks to you, writes the contract, splits multi-deliverable requests into child tasks, starts the task and drives BUILD → GATE → REVIEW → POLISH → FINISH with `arbor.py next`, dispatching the **roles** through the executor. It asks you only at the human gates: tier, contract approval, surviving PLAUSIBLE findings, round caps (STOP) and the merge. Child tasks run in parallel, each from its own session.
 
-The default executor runs codeg assistants named `arbor-<role>` through `codeg-cli`:
+The default executor hands every role to codeg MCP (`delegate_to_agent`) as a sub-agent of the main agent's session; the `codeg-cli` command executor stays available for terminal sessions:
 
 ```yaml
 executors:
-  default: codeg-cli
+  default: codeg
+  codeg:
+    type: codeg-mcp
+    assistant: "arbor-{role}"
+    timeout: 90m
+    max_parallel: 3
   codeg-cli:
     type: command
     command: "codeg-cli run -A arbor-{role} -w {worktree} --permissions allow --timeout 90m --title arbor-{role}-{task}-{dispatch} -q -p - < {prompt}"
     timeout: 95m
     max_parallel: 3
-conductor:
-  command: "codeg-cli run -A arbor-conductor -w {worktree} --permissions allow --timeout 8h --detach --title arbor-conductor-{task}-{run} -q -p - < {prompt}"
-  result_command: "codeg-cli result {run_id} -q"
-  cancel_command: "codeg-cli cancel {run_id} -q"
-  executor: codeg-cli
 ```
 
-Create the eight role assistants plus `arbor-conductor` in codeg with the corresponding `.arbor/agents/<name>.md` instructions and choose their underlying agent/options there (the conductor needs shell and loopback network access). Put `codeg-cli` on PATH or write its absolute path in the commands.
+Create the eight role assistants in codeg with the corresponding `.arbor/agents/<name>.md` instructions and choose their underlying agent/options there. For the command executor put `codeg-cli` on PATH or write its absolute path in the command.
 
-A `codeg-mcp` executor is still available (`executors.default: codeg`, `type: codeg-mcp`, `assistant: "arbor-{role}"`). With it, `arbor.py run` returns `needs=delegation`. Call codeg MCP `delegate_to_agent` with the returned `mcp.arguments` (resolve the named assistant from the MCP roster if no id is configured), then immediately run `arbor.py bind --request <request_path> --task-id <returned task_id>`. Poll `get_delegation_status`, save its complete JSON response at the returned `result_path` outside the task worktree, and run `arbor.py collect --request <request_path> --result <file>` before proceeding. Resume/poll a bound task after interruptions; never start it again. If the configured timeout expires, cancel it through `cancel_delegation` and collect the terminal report. Claude Code and Codex both use this same MCP flow. Do not substitute native Agent/Task/spawn_agent for a role.
+With the `codeg-mcp` executor, `arbor.py run` returns `needs=delegation`; the returned `mcp.arguments.task` is the dispatch header plus a `Prompt:` line naming the assembled prompt file (`.arbor/.runtime/prompts/<task>/d-NNN.md`), which the role reads first. Call codeg MCP `delegate_to_agent` with the returned `mcp.arguments` (resolve the named assistant from the MCP roster if no id is configured), then immediately run `arbor.py bind --request <request_path> --task-id <returned task_id>`. Poll `get_delegation_status`, save its complete JSON response at the returned `result_path` outside the task worktree, and run `arbor.py collect --request <request_path> --result <file>` before proceeding. Resume/poll a bound task after interruptions; never start it again. If the configured timeout expires, cancel it through `cancel_delegation` and collect the terminal report. Claude Code and Codex both use this same MCP flow. Do not substitute native Agent/Task/spawn_agent for a role.
 
 A direct CLI executor can also consume the prepared prompt, for example:
 

@@ -1,12 +1,11 @@
 # The Driver: arbor.py
 
-In Arbor the eight roles (`explore`, `architect`, `test`, `implement`, `review`, `verify`, `fix`, `simplify`) are not platform sub-agents. One script, `.arbor/scripts/arbor.py`, runs them. It owns three things: the task's state table, its counters, and validation (of replies, commits and git invariants). Judgment is split: the **Planner** (the user's session) owns the tier proposal, the contract, child-task splitting, escalations and the merge gate; the **conductor** (`.arbor/agents/conductor.md`, one detached codeg run per started task launched by `arbor.py conduct`) owns briefs, red-gate classification, finding dedup and retries inside the contract, and ends with a `## Conductor DONE | ESCALATE | FAILED` report recorded in `task.json.conductor`. Role instruction text lives in `.arbor/agents/<role>.md` (plain markdown, no frontmatter).
+In Arbor the eight roles (`explore`, `architect`, `test`, `implement`, `review`, `verify`, `fix`, `simplify`) are not platform sub-agents. One script, `.arbor/scripts/arbor.py`, runs them. It owns three things: the task's state table, its counters, and validation (of replies, commits and git invariants). Judgment belongs to the **main agent** (the user's session, normally one codeg conversation per task): the tier proposal, the contract, child-task splitting, briefs, red-gate classification, finding dedup, retries inside the contract, the questions put to the user and the merge gate. Role instruction text lives in `.arbor/agents/<role>.md` (plain markdown, no frontmatter).
 
 ## Commands
 
 ```bash
-python3 ./.arbor/scripts/arbor.py --task <dir> conduct [--brief <file>] | --collect | --cancel | --dry-run   # Planner: the task's conductor
-python3 ./.arbor/scripts/arbor.py --task <parent> children [--json]   # Planner: child tasks, conductors, merge status
+python3 ./.arbor/scripts/arbor.py --task <parent> children [--json]   # child tasks: state and merge status
 python3 ./.arbor/scripts/arbor.py next [--json]               # the single next step
 python3 ./.arbor/scripts/arbor.py run [--dispatch d-NNN]      # execute the pending dispatch (in GATE: the gate)
 python3 ./.arbor/scripts/arbor.py run --role explore|architect|review [--mode plan] [--dispatch d-NNN]   # CONTRACT phase, before task.py start
@@ -16,15 +15,17 @@ python3 ./.arbor/scripts/arbor.py canary [--role <role>]      # read-only probe 
 python3 ./.arbor/scripts/arbor.py override --reason "…" (--to STATE[/step] | --role <role> [--mode M])   # one step off the state table; recorded in the scorecard
 python3 ./.arbor/scripts/arbor.py status | resume | abandon [--reason "…"]
 python3 ./.arbor/scripts/arbor.py prompt --dispatch d-NNN --print   # the assembled prompt, rebuilt
+python3 ./.arbor/scripts/arbor.py bind --request <request_path> --task-id <id>        # codeg-mcp: record the delegation id
+python3 ./.arbor/scripts/arbor.py collect --request <request_path> --result <file>   # codeg-mcp: validate the terminal JSON
 ```
 
-Every command takes `--task <dir>` before the command name (default: the session's active task). Exit codes: 0 ok, 1 refused / failed dispatch / red gate, 2 usage error.
+Every command takes `--task <dir>` and `--executor <name>` before the command name (`--task` defaults to the session's active task; a child task driven from its own conversation passes it on every call). Exit codes: 0 ok, 1 refused / failed dispatch / red gate, 2 usage error.
 
-`next --json` always has `task`, `state`, `needs` (`brief | run | decide | human | done`) and `summary`; it adds `tier`, `wave`, `partition`, `role`, `mode`, `range`, `dispatch`, `brief_path`, `decision` (`kind`, `options`, `failing`), `human` (`kind`: `approve_contract | plausible | stop | merge`) and `touched_files` when they apply. On a task that is not started yet it returns `state: CONTRACT`, `needs: human` with `human.kind: approve_contract`, plus `dispatch` (the next id), `brief_path` and `contract_roles` (`explore`, `architect`, `review`). The SessionStart and per-turn hooks show only `summary` and `needs`.
+`next --json` always has `task`, `state`, `needs` (`delegation | brief | run | wait | decide | human | done`) and `summary`; it adds `tier`, `wave`, `partition`, `role`, `mode`, `range`, `dispatch`, `brief_path`, `decision` (`kind`, `options`, `failing`), `human` (`kind`: `approve_contract | plausible | stop | merge_conflict | merge`) and `touched_files` when they apply. On a task that is not started yet it returns `state: CONTRACT`, `needs: human` with `human.kind: approve_contract`, plus `dispatch` (the next id), `brief_path` and `contract_roles` (`explore`, `architect`, `review`). The SessionStart and per-turn hooks show only `summary` and `needs`.
 
 ## State Machine
 
-`CONTRACT → BUILD → GATE → REVIEW → POLISH (standard / full) → FINISH → DONE`, with `STOP` reachable from any state. `task.py start` enters BUILD after the human approves the contract. BUILD runs `test` (red, checked by the driver) then `implement`; GATE runs `gate.commands` plus every `auto` Verification-map command; REVIEW runs one `review` `Mode: self-check` over `base..HEAD` and re-reviews fixes over `last_reviewed..HEAD`; POLISH runs `simplify`, N candidate reviews, a mechanical prefilter, `verify` (at most 8 per run), and for full a `sweep`. Caps: REVIEW fix rounds light 2, standard / full 1; POLISH 2; 4 consecutive red gates; 2 rounds without progress. A cap enters STOP (`BUDGET` / `NO_PROGRESS`); the conductor escalates and the Planner continues with `resume` (grants one more round), `override` or `abandon`. Boundary observations stay advisory. While `task.json.conductor.status` is `running`, driver commands that change state require `--as-conductor c-NNN`; `next` answers `needs=conductor` to everyone else. Only the driver changes `task.json` `state`, `counters`, `dispatches`, `last_reviewed` and `stop`.
+`CONTRACT → BUILD → GATE → REVIEW → POLISH (standard / full) → FINISH → DONE`, with `STOP` reachable from any state. `task.py start` enters BUILD after the human approves the contract. BUILD runs `test` (red, checked by the driver) then `implement`; GATE runs `gate.commands` plus every `auto` Verification-map command; REVIEW runs one `review` `Mode: self-check` over `base..HEAD` and re-reviews fixes over `last_reviewed..HEAD`; POLISH runs `simplify`, N candidate reviews, a mechanical prefilter, `verify` (at most 8 per run), and for full a `sweep`. Caps: REVIEW fix rounds light 2, standard / full 1; POLISH 2; 4 consecutive red gates; 2 rounds without progress. A cap enters STOP (`BUDGET` / `NO_PROGRESS`); `next` answers `needs=human` with `human.kind: stop` and the main agent continues with `resume` (grants one more round), `override` or `abandon`. Boundary observations stay advisory. Only the driver changes `task.json` `state`, `counters`, `dispatches`, `last_reviewed` and `stop`.
 
 ## CONTRACT-Phase Dispatch
 
@@ -49,9 +50,10 @@ Role: explore | architect | test | implement | review | verify | fix | simplify
 Mode: self-check | candidates | sweep | plan   (review only)
 Range: <base>..<head>                          (roles that read or write a diff)
 Dispatch: d-NNN
+Prompt: <absolute path of .arbor/.runtime/prompts/<task>/d-NNN.md>   (codeg-mcp only)
 ```
 
-The older `Diff:`, `Target:` and `Workspace:` lines are gone. After the header comes the injected context, assembled by `common/dispatch_context.py`: the files listed in `implement.jsonl` (`architect`, `test`, `implement`) or `check.jsonl` (`review`, `verify`, `fix`, `simplify`), then `contract.md` (legacy `prd.md`), `design.md`, `waves.md` (legacy `implement.md`), then `git diff <Range>` run in the task worktree, marked `<!-- arbor-hook-injected -->`; `explore` gets the spec overview plus the contract and the research file list. Size caps come from `context_injection:` in `.arbor/config.yaml`. Last comes the main agent's brief, which is `tasks/<task>/briefs/d-NNN.md`. The assembled prompt is not committed: it is written to `.arbor/.runtime/prompts/<task>/d-NNN.md` in the main checkout, and `arbor.py prompt --dispatch d-NNN --print` rebuilds it. The reply plus the driver's verdict goes to `tasks/<task>/reports/d-NNN.md`; the driver commits the brief and the report on the task branch.
+With the `codeg-mcp` executor the MCP `task` text is only this header: the `Prompt:` line names the assembled prompt file and the role reads it first. The older `Diff:`, `Target:` and `Workspace:` lines are gone. After the header comes the injected context, assembled by `common/dispatch_context.py`: the files listed in `implement.jsonl` (`architect`, `test`, `implement`) or `check.jsonl` (`review`, `verify`, `fix`, `simplify`), then `contract.md` (legacy `prd.md`), `design.md`, `waves.md` (legacy `implement.md`), then `git diff <Range>` run in the task worktree, marked `<!-- arbor-hook-injected -->`; `explore` gets the spec overview plus the contract and the research file list. Size caps come from `context_injection:` in `.arbor/config.yaml`. Last comes the main agent's brief, which is `tasks/<task>/briefs/d-NNN.md`. The assembled prompt is not committed: it is written to `.arbor/.runtime/prompts/<task>/d-NNN.md` in the main checkout, and `arbor.py prompt --dispatch d-NNN --print` rebuilds it. The reply plus the driver's verdict goes to `tasks/<task>/reports/d-NNN.md`; the driver commits the brief and the report on the task branch.
 
 ## Executors
 
@@ -59,25 +61,20 @@ The older `Diff:`, `Target:` and `Workspace:` lines are gone. After the header c
 
 ```yaml
 executors:
-  default: codeg-cli
-  codeg-cli:
-    type: command
-    command: "codeg-cli run -A arbor-{role} -w {worktree} --permissions allow --timeout 90m --title arbor-{role}-{task}-{dispatch} -q -p - < {prompt}"
-    timeout: 95m
-    max_parallel: 3
+  default: codeg
   codeg:
     type: codeg-mcp
     assistant: "arbor-{role}"
     timeout: 90m
     max_parallel: 3
-conductor:
-  command: "codeg-cli run -A arbor-conductor -w {worktree} --permissions allow --timeout 8h --detach --title arbor-conductor-{task}-{run} -q -p - < {prompt}"
-  result_command: "codeg-cli result {run_id} -q"
-  cancel_command: "codeg-cli cancel {run_id} -q"
-  executor: codeg-cli
+  codeg-cli:
+    type: command
+    command: "codeg-cli run -A arbor-{role} -w {worktree} --permissions allow --timeout 90m --title arbor-{role}-{task}-{dispatch} -q -p - < {prompt}"
+    timeout: 95m
+    max_parallel: 3
 ```
 
-With the default `codeg-cli` command executor the driver starts the role, waits for the reply and validates it. With the `codeg-mcp` executor (`--executor codeg`), `arbor.py run` returns `needs=delegation`. Call codeg MCP `delegate_to_agent` with the returned `mcp.arguments` (resolve the named assistant from the MCP roster if no id is configured), then immediately run `arbor.py bind --request <request_path> --task-id <returned task_id>`. Poll `get_delegation_status`, save its complete JSON response at the returned `result_path` outside the task worktree, and run `arbor.py collect --request <request_path> --result <file>` before proceeding. Resume/poll a bound task after interruptions; never start it again. If the configured timeout expires, cancel it through `cancel_delegation` and collect the terminal report. Claude Code and Codex both use this same MCP flow. Do not substitute native Agent/Task/spawn_agent for a role.
+With the `codeg-cli` command executor (`--executor codeg-cli`) the driver starts the role, waits for the reply and validates it. With the default `codeg-mcp` executor (`codeg`), `arbor.py run` returns `needs=delegation`. Call codeg MCP `delegate_to_agent` with the returned `mcp.arguments` (resolve the named assistant from the MCP roster if no id is configured), then immediately run `arbor.py bind --request <request_path> --task-id <returned task_id>`. Poll `get_delegation_status`, save its complete JSON response at the returned `result_path` outside the task worktree, and run `arbor.py collect --request <request_path> --result <file>` before proceeding. Resume/poll a bound task after interruptions; never start it again. If the configured timeout expires, cancel it through `cancel_delegation` and collect the terminal report. Claude Code and Codex both use this same MCP flow. Do not substitute native Agent/Task/spawn_agent for a role.
 
 Model, effort and permissions belong to the selected codeg assistant. `arbor.py canary` uses the same prepare/bind/collect flow. CLI executors remain available only when explicitly configured with `command`; their shell-quoted placeholders are `{role}`, `{prompt}`, `{worktree}`, `{task}`, `{dispatch}`. `run --autopilot` stops at MCP handoffs; the host handles delegation and resumes the driver afterwards.
 

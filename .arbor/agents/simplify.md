@@ -20,6 +20,7 @@ Your prompt starts with a header:
 
 ## Context loading
 
+- If your prompt header has a `Prompt: <file>` line, read that file in full first: it is your complete dispatch prompt (header, injected context, brief), and the rules below apply to its contents.
 - If your prompt contains `<!-- arbor-hook-injected -->`, the curated `check.jsonl` specs, the task artifacts, and `git diff <Range>` are already inlined.
 - Otherwise read `<task>/check.jsonl` and every file it lists, `<task>/contract.md` (older tasks: `prd.md`), `design.md` if present, then run `git diff <Range>` (ignore `.arbor/`).
 

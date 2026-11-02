@@ -266,18 +266,6 @@ DEFAULT_EXECUTORS_CONFIG: dict = {
         "max_parallel": "3",
     },
 }
-# The conductor is a detached codeg run; `command` must print the run id on
-# its first stdout line, `result_command` exits 0 with the final reply when
-# the run has ended and 6 while it still runs.
-DEFAULT_CONDUCTOR_CONFIG: dict = {
-    "command": ("codeg-cli run -A arbor-conductor -w {worktree} --permissions allow --timeout 8h "
-                "--detach --title arbor-conductor-{task}-{run} -q -p - < {prompt}"),
-    "result_command": "codeg-cli result {run_id} -q",
-    "cancel_command": "codeg-cli cancel {run_id} -q",
-    "executor": "codeg-cli",
-}
-
-
 def get_worktree_config(config: dict) -> dict:
     """``worktree:`` section over its defaults (``root``, ``setup``, ``branch_prefix``)."""
     section = config.get("worktree") if isinstance(config, dict) else None
@@ -301,8 +289,8 @@ def get_executors_config(config: dict) -> dict:
     """``executors:`` section merged over the defaults.
 
     Built-in executors (``codeg-cli``, ``codeg``) stay available when the
-    section omits them, so ``conductor.executor: codeg-cli`` keeps resolving
-    even if a repo only configures ``codeg``. A configured executor overlays
+    section omits them, so ``--executor codeg-cli`` keeps resolving even if a
+    repo only configures ``codeg``. A configured executor overlays
     its built-in fields key by key; ``default`` and new executors are taken
     as written.
     """
@@ -321,15 +309,6 @@ def get_executors_config(config: dict) -> dict:
             merged[key] = dict(value)
         elif isinstance(value, str) and value.strip():
             merged[key] = value
-    return merged
-
-
-def get_conductor_config(config: dict) -> dict:
-    """``conductor:`` section over its defaults (string values only)."""
-    section = config.get("conductor") if isinstance(config, dict) else None
-    merged = dict(DEFAULT_CONDUCTOR_CONFIG)
-    if isinstance(section, dict):
-        merged.update({k: v for k, v in section.items() if isinstance(v, str)})
     return merged
 
 

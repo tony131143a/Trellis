@@ -2,8 +2,7 @@
 sources:
   - packages/cli/src/templates/arbor/scripts/arbor.py
   - packages/cli/src/templates/arbor/scripts/common/driver/executor.py
-  - packages/cli/src/templates/arbor/scripts/common/driver/conductor.py
-last_verified: 2026-11-01
+last_verified: 2026-11-02
 ---
 # Backend Development Guidelines
 
@@ -33,7 +32,7 @@ This directory contains guidelines for backend development. Fill in each file wi
 | [Configurator Shared Helpers](./configurator-shared.md) | `configurators/shared.ts` public surface: placeholder substitution, write helpers, pull-based prelude, cross-configurator invariants | Done |
 | [`arbor update` Command](./commands-update.md) | Update pipeline: flags, plan composition, migration trigger semantics, apply phase, idempotency, boundaries with `migrations.md` | Done |
 | [`arbor platforms` Command](./commands-platforms.md) | Machine-readable report of configured AI platforms: `--json` shape, registry sourcing, failure behavior | Done |
-| [`arbor.py` Driver](./commands-dispatch.md) | Task driver commands, conductor lifecycle, executors, parent/child integration, runtime files and exit codes | Done |
+| [`arbor.py` Driver](./commands-dispatch.md) | Task driver commands, the main-agent loop, executors, parent/child integration, runtime files and exit codes | Done |
 | [`arbor uninstall` Command](./commands-uninstall.md) | Uninstall orchestration: plan composition, structured-file dispatch, execute phases, `.arbor/` removal | Done |
 | [`spec.py` Freshness Lint](./spec-lint.md) | Spec doc frontmatter (`sources`, `last_verified`), lint rules, `verify` / `init-meta` rewrites, archive-time `spec_changes` traceability | Done |
 ---

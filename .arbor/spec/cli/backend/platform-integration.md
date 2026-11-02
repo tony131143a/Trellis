@@ -1160,9 +1160,9 @@ Claude Code and Codex register the native agent guard in their PreToolUse hooks
 
 | Hook | Matcher | Timeout | Behavior |
 |---|---|---|---|
-| `guard-builtin-agent.py` | Claude Code: `^(Agent\|Task)$`; Codex: `^(Agent\|Task\|spawn_agent)$` | 10 | Denies native sub-agent tools for Arbor dispatches whose first 400 prompt characters carry `Active task:`, `Role:` with an Arbor role, or `Conductor:`, or whose agent type starts with `arbor-`. Other calls pass through. `ARBOR_HOOKS=0` or `ARBOR_DISABLE_HOOKS=1` disables it. |
+| `guard-builtin-agent.py` | Claude Code: `^(Agent\|Task)$`; Codex: `^(Agent\|Task\|spawn_agent)$` | 10 | Denies native sub-agent tools for Arbor dispatches whose first 400 prompt characters carry `Active task:` or `Role:` with an Arbor role, or whose agent type starts with `arbor-`. Other calls pass through. `ARBOR_HOOKS=0` or `ARBOR_DISABLE_HOOKS=1` disables it. |
 
 The driver (`arbor.py`) assembles role context through `common/dispatch_context.py`
 and invokes the configured executor. SessionStart (`session-start.py`) supplies
 startup context; UserPromptSubmit (`inject-workflow-state.py`) emits the per-turn
-breadcrumb. The prompt and conductor header contracts are in `dispatch.md`.
+breadcrumb. The prompt header contract is in `dispatch.md`.

@@ -91,9 +91,6 @@ export const commonDriverFinish = readTemplate(
 export const commonDriverAutopilot = readTemplate(
   "scripts/common/driver/autopilot.py",
 );
-export const commonDriverConductor = readTemplate(
-  "scripts/common/driver/conductor.py",
-);
 
 // Python scripts - main
 export const getDeveloperScript = readTemplate("scripts/get_developer.py");
@@ -124,9 +121,6 @@ export const AGENT_ROLES = [
   "fix",
   "simplify",
 ] as const;
-// Controllers are not dispatched roles: the conductor drives one started task's
-// `arbor.py` loop from inside its worktree (launched by `arbor.py conduct`).
-export const CONTROLLER_AGENTS = ["conductor"] as const;
 export const implementAgentTemplate = readTemplate("agents/implement.md");
 
 /**
@@ -176,7 +170,6 @@ export function getAllScripts(): Map<string, string> {
   scripts.set("common/driver/partitions.py", commonDriverPartitions);
   scripts.set("common/driver/finish.py", commonDriverFinish);
   scripts.set("common/driver/autopilot.py", commonDriverAutopilot);
-  scripts.set("common/driver/conductor.py", commonDriverConductor);
 
   // Main
   scripts.set("get_developer.py", getDeveloperScript);
@@ -209,7 +202,7 @@ export function getAllScripts(): Map<string, string> {
  */
 export function getAllAgents(): Map<string, string> {
   const agents = new Map<string, string>();
-  for (const role of [...AGENT_ROLES, ...CONTROLLER_AGENTS]) {
+  for (const role of AGENT_ROLES) {
     agents.set(`${role}.md`, readTemplate(`agents/${role}.md`));
   }
   return agents;

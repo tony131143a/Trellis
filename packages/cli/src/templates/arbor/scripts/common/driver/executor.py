@@ -114,8 +114,8 @@ def build_command(template: str, values: dict[str, str]) -> str:
 
 
 def child_env() -> dict[str, str]:
-    """Environment for a dispatched role or conductor: a new host session, not
-    the parent Arbor controller."""
+    """Environment for a dispatched role: a new host session, not the parent
+    Arbor main agent."""
     env = os.environ.copy()
     for key in ("ARBOR_CONTEXT_ID", "CODEX_THREAD_ID", "CLAUDE_CODE_SESSION_ID", "CLAUDE_ENV_FILE"):
         env.pop(key, None)

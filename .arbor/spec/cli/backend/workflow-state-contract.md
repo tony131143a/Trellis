@@ -5,10 +5,9 @@ sources:
   - packages/cli/src/templates/shared-hooks/guard-builtin-agent.py
   - packages/cli/src/templates/arbor/scripts/arbor.py
   - packages/cli/src/templates/arbor/scripts/common/dispatch_context.py
-  - packages/cli/src/templates/arbor/scripts/common/driver/conductor.py
   - packages/cli/src/templates/arbor/workflow.md
   - packages/cli/src/templates/arbor/scripts/common/tasks.py
-last_verified: 2026-11-01
+last_verified: 2026-11-02
 ---
 # Workflow-State Breadcrumb Contract
 
@@ -281,7 +280,7 @@ Arbor must not rely on categorical breadcrumb invisibility inside assistants.
 |---------|:------------:|:--------------------:|
 | `<workflow-state>` per-turn breadcrumb | ✅ | ⚠️ possible host-dependent exposure |
 | `arbor.py` role assembler (`implement.jsonl`/`check.jsonl` + task artifacts + diff, before executor invocation) | ❌ | ✅ |
-| `arbor.py conduct` prompt (conductor instructions, artifacts, driver state and Planner brief) | ❌ | ✅ (conductor only) |
+| `Prompt:` pointer in the codeg MCP `task` text (the assembled prompt file the role reads first) | ❌ | ✅ (codeg-mcp only) |
 | Pull protocol in `.arbor/agents/<role>.md` (when `<!-- arbor-hook-injected -->` is absent) | N/A | fallback |
 
 **Implication**: dispatch-relevant guidance must be carried by the header
@@ -290,9 +289,9 @@ jsonl entries -> `contract.md` -> `design.md if present` -> `waves.md if
 present`. Breadcrumb text must be safe if an assistant sees it: the dispatch
 guidance in `in_progress` and `in_progress-parallel` self-exempts a session
 whose first prompt starts with `Active task:` + `Role:` so it performs the
-role directly instead of dispatching again. `Active task:` + `Conductor:`
-identifies the conductor, which drives the loop through `arbor.py` with
-`--task`, `--executor` and `--as-conductor` rather than performing roles itself. The same rule applies to every
+role directly instead of dispatching again. Any other session is a main agent,
+which drives the loop through `arbor.py` rather than performing roles itself.
+The same rule applies to every
 `in_progress*` block (fallback, three tiers, parallel). See `dispatch.md` in this
 directory.
 

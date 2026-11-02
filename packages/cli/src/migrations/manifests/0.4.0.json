@@ -1,0 +1,26 @@
+{
+  "version": "0.4.0",
+  "description": "v4: one main-agent session per task drives the loop; roles through codeg MCP by default; the conductor is gone",
+  "breaking": false,
+  "recommendMigrate": false,
+  "changelog": "The conductor layer (arbor.py conduct, --as-conductor, the arbor-conductor assistant, the conductor: config section) is removed: the main agent of each task's session writes the contract, starts the task and drives the arbor.py loop itself, as in v2. The default executor is codeg (codeg MCP delegate_to_agent); the MCP task text now carries the dispatch header plus a Prompt: pointer to the assembled prompt file instead of the whole prompt. A stale conductor: section in .arbor/config.yaml is ignored.",
+  "migrations": [
+    {
+      "type": "safe-file-delete",
+      "from": ".arbor/scripts/common/driver/conductor.py",
+      "description": "v3 conductor launcher, removed in v4",
+      "allowed_hashes": [
+        "dbd81a64d38c647c849e0c17e53d136261b2b14fe4e0e8b60cd5839b1b9efa98"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".arbor/agents/conductor.md",
+      "description": "v3 conductor instructions, removed in v4",
+      "allowed_hashes": [
+        "7efbb308e3c020405bbf05c4a843b8c4f4fd1334d67837de2beb9015e67cee28"
+      ]
+    }
+  ],
+  "configSectionsAdded": []
+}

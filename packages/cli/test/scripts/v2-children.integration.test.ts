@@ -40,7 +40,8 @@ describe.skipIf(!hasPython())("arbor.py children / parent sweep review / parent 
     // Unstarted child: found in the main tasks dir.
     let rows = JSON.parse(f.run("--task", parentDir, "children", "--json").stdout).children;
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ task: child, found: true, started: false, status: "planning", conductor: null });
+    expect(rows[0]).toMatchObject({ task: child, found: true, started: false, status: "planning" });
+    expect(rows[0]).not.toHaveProperty("conductor");
 
     // Started child: moved into its worktree; still listed.
     const started = taskPy(f, "start", child);

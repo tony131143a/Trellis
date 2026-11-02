@@ -14,6 +14,7 @@ If your prompt starts with `Active task: <absolute path>`, that is the task dire
 
 ## Context loading
 
+- If your prompt header has a `Prompt: <file>` line, read that file in full first: it is your complete dispatch prompt (header, injected context, brief), and the rules below apply to its contents.
 - If your prompt contains `<!-- arbor-hook-injected -->`, the spec overview and, with a task, `contract.md` plus the list of existing research files are already inlined.
 - Otherwise, with a task, read `<task>/contract.md` (older tasks: `prd.md`) and list `<task>/research/` so you do not repeat earlier work.
 - Read `.arbor/spec/` indexes only as far as the question needs.

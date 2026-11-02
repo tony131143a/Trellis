@@ -5,7 +5,7 @@
 ## Core Principles
 
 1. **The contract is the spine** — `contract.md` says what "done" looks like and how it is checked; the human approves the scope; the main agent judges later edits in context and seeks approval only for material scope changes
-2. **The driver owns control, the conductor owns in-task judgment, you own the plan** — `arbor.py` records state, counters, executable checks and observations; a conductor (one long-running sub-agent per started task) writes briefs, classifies red gates, dedups findings and retries within the contract; you (the Planner, the user's session) propose the tier, write the contract, split work into child tasks, curate context, launch conductors and answer their escalations
+2. **The driver owns control, you own judgment and the plan** — `arbor.py` records state, counters, executable checks and observations; you (the main agent, the user's session) propose the tier, write the contract, split work into child tasks, curate context, write the briefs, classify red gates, dedup findings and retry within the contract
 3. **Verification is a ladder** — deterministic checks → independent tests → one reader review → candidate reviews + verify → sweep; a red rung never climbs
 4. **Many readers, one writer** — read-only roles may run in parallel; each branch has one writer at a time
 5. **Git-native** — a task is a worktree plus a branch; writers commit; a diff is a commit range; merges are `--no-ff`
@@ -154,15 +154,12 @@ python3 ./.arbor/scripts/get_context.py --mode phase --step <X.Y>  # detailed gu
 
 ### Driver
 
-`arbor.py` owns role preparation, task state, deterministic checks, report parsing, Git observations, metrics and state transitions. Three kinds of agent talk to it:
+`arbor.py` owns role preparation, task state, deterministic checks, report parsing, Git observations, metrics and state transitions. Two kinds of agent talk to it:
 
-- **Planner** — the user's terminal session (Claude Code or Codex CLI). Phase 1, task creation and start, `arbor.py conduct`, escalations, the merge gate.
-- **Conductor** — one per started task, launched by `arbor.py conduct` as a detached codeg run of the `arbor-conductor` assistant (`conductor.command` in `.arbor/config.yaml`). It runs the Phase 2 loop inside the task worktree with `--task <dir> --executor <name> --as-conductor c-NNN` on every call, writes briefs, interprets reports and dispatches roles; instructions in `.arbor/agents/conductor.md`. It ends with a `## Conductor DONE | ESCALATE | FAILED` report that `arbor.py conduct --collect` records in `reports/c-NNN.md` and `task.json.conductor`.
-- **Roles** — dispatched by `arbor.py run` through the executor (`executors:`). The default `codeg-cli` command executor starts the child, waits for its reply and validates it in the driver, so nobody carries results by hand.
+- **Main agent** — the user's session, normally one codeg conversation per task (Claude Code or Codex). Phase 1, task creation and start, the Phase 2 loop (`arbor.py next` → brief → `arbor.py run` → …), the questions it puts to the user, the merge gate.
+- **Roles** — dispatched by `arbor.py run` through the executor (`executors:`). The default `codeg` executor (`type: codeg-mcp`) hands every role to codeg MCP `delegate_to_agent` as a sub-agent session of its own; the driver prepares the prompt and validates the reply. The `codeg-cli` command executor (`executors.default: codeg-cli` or `arbor.py --executor codeg-cli`) stays available for terminal sessions: there the driver starts the child, waits for its reply and validates it itself, so nobody carries results by hand.
 
-With the `codeg-mcp` executor (`executors.default: codeg` or `arbor.py --executor codeg`), `arbor.py run` returns `needs=delegation` instead. Call codeg MCP `delegate_to_agent` with the returned `mcp.arguments` (resolve the named assistant from the MCP roster if no id is configured), then immediately run `arbor.py bind --request <request_path> --task-id <returned task_id>`. Poll `get_delegation_status`, save its complete JSON response at the returned `result_path` outside the task worktree, and run `arbor.py collect --request <request_path> --result <file>` before proceeding. Resume/poll a bound task after interruptions; never start it again. If the configured timeout expires, cancel it through `cancel_delegation` and collect the terminal report. Claude Code and Codex both use this same MCP flow. Request and snapshot records live in `.arbor/.runtime/delegations/<task>/<dispatch>.json`; a collected request cannot be collected twice. Never substitute native Agent/Task/spawn_agent for a role.
-
-While a conductor is running (`task.json.conductor.status: running`) the driver refuses `run`, `gate`, `decide`, `override`, `resume`, `abandon` and `finish` from anyone who does not pass that run's `--as-conductor`; `next` answers `needs=conductor`. After the conductor ended, `arbor.py conduct --collect` records its report: `DONE` → `next` falls through to the driver step (normally FINISH / `merge`); `ESCALATE` or `FAILED` → `next` answers `needs=human` with `human.kind: conductor`, its `reason` (`contract`, `plausible`, `stop`, `merge_conflict`, `blocked`, `executor`, `timeout`, `canceled`) and `needs_from_planner`; handle it, then `arbor.py conduct` again (a new run `c-NNN+1`; the previous record moves to `conductor_runs`). `arbor.py conduct --cancel` cancels a run. After a launch, give the user the `codeg folder:` path it prints: codeg lists the conductor and its role runs under that folder only once the user opens it. Without a usable `conductor.command` the Planner may drive the loop itself exactly as the conductor would.
+With the `codeg` executor (`type: codeg-mcp`, the default; or `arbor.py --executor codeg`), `arbor.py run` returns `needs=delegation`. The returned `mcp.arguments.task` carries only the dispatch header plus a `Prompt:` line naming the assembled prompt file (`.arbor/.runtime/prompts/<task>/d-NNN.md` in the main checkout); the role reads that file first, so you never copy the prompt into the tool call. Call codeg MCP `delegate_to_agent` with the returned `mcp.arguments` (resolve the named assistant from the MCP roster if no id is configured), then immediately run `arbor.py bind --request <request_path> --task-id <returned task_id>`. Poll `get_delegation_status`, save its complete JSON response at the returned `result_path` outside the task worktree, and run `arbor.py collect --request <request_path> --result <file>` before proceeding. Resume/poll a bound task after interruptions; never start it again. If the configured timeout expires, cancel it through `cancel_delegation` and collect the terminal report. Claude Code and Codex both use this same MCP flow. Request and snapshot records live in `.arbor/.runtime/delegations/<task>/<dispatch>.json`; a collected request cannot be collected twice. Never substitute native Agent/Task/spawn_agent for a role.
 
 Product control drift is advisory and does not block collection. The legacy
 `--accept-new-control-task <name> --reason "..."` option remains available to record
@@ -170,7 +167,7 @@ a narrowly checked sibling-task acceptance; it is no longer required for ordinar
 collection. Binding identity, task-id matching and replay checks still apply.
 
 **Judgment, not automation.** File/role/commit observations never automatically STOP a
-task or reset/delete work. Whoever drives (conductor or Planner) inspects the diff, raw
+task or reset/delete work. The main agent inspects the diff, raw
 report and concurrent activity; observed changes alone do not establish authorship.
 Contract hash drift is an observation, including during CONTRACT plan reviews: never
 restore a different contract merely to collect a result. Scope/acceptance changes
@@ -187,12 +184,11 @@ recorded. A reasoned `override` is also available. For pre-start planning report
 review the raw result and revise the plan/brief normally; there is no execution
 state to advance. Do not ask the user to approve routine report interpretation.
 
-Round caps are escalation gates: when a GATE / REVIEW / POLISH round repeats without progress (`NO_PROGRESS`) or exceeds its budget (`BUDGET`: 4 consecutive red gates, review fix rounds light 2 / standard 1 / full 1, polish rounds 2), the driver enters STOP; the conductor escalates it, the Planner inspects the evidence and continues with `arbor.py resume` (grants one more round), `override --reason "…"`, a re-plan, or `abandon`.
+Round caps are escalation gates: when a GATE / REVIEW / POLISH round repeats without progress (`NO_PROGRESS`) or exceeds its budget (`BUDGET`: 4 consecutive red gates, review fix rounds light 2 / standard 1 / full 1, polish rounds 2), the driver enters STOP; the main agent inspects the evidence and continues with `arbor.py resume` (grants one more round), `override --reason "…"`, a re-plan, or `abandon`.
 
 ```bash
 python3 ./.arbor/scripts/arbor.py next [--json]               # the single next step
-python3 ./.arbor/scripts/arbor.py conduct [--brief <file>] | --collect | --cancel | --dry-run   # launch / collect / cancel the task's conductor (Planner)
-python3 ./.arbor/scripts/arbor.py children [--json]           # a parent task: every child's state, conductor and merge status
+python3 ./.arbor/scripts/arbor.py children [--json]           # a parent task: every child's state and merge status
 python3 ./.arbor/scripts/arbor.py run [--dispatch d-NNN]      # execute the dispatch whose brief you just wrote
 python3 ./.arbor/scripts/arbor.py run --role explore|architect|review [--mode plan] [--dispatch d-NNN]   # CONTRACT phase only, before task.py start
 python3 ./.arbor/scripts/arbor.py run --role review --mode sweep --range <before>..<base>   # a parent task reviewing its merged children
@@ -204,22 +200,19 @@ python3 ./.arbor/scripts/arbor.py status | resume | abandon [--reason "…"]
 python3 ./.arbor/scripts/arbor.py prompt --dispatch d-NNN --print   # the assembled prompt of a dispatch
 ```
 
-Every command takes `--task <dir>`, `--executor <name>` and `--as-conductor c-NNN` before the command name (`--task` defaults to this session's active task; a conductor always passes all three). Exit codes: 0 ok, 1 refused / failed dispatch / red gate, 2 usage error.
+Every command takes `--task <dir>` and `--executor <name>` before the command name (`--task` defaults to this session's active task; pass it when this session has no active-task pointer, for example a child task driven from a conversation of its own). Exit codes: 0 ok, 1 refused / failed dispatch / red gate, 2 usage error.
 
-`arbor.py next --json` always carries `task`, `state`, `needs` and `summary`; depending on `needs` it adds `role`, `mode`, `range`, `dispatch`, `brief_path`, `decision`, `human`, `conductor` and `touched_files`. Before `task.py start` it answers `state: CONTRACT`, `needs: human` with `human.kind: approve_contract`, plus the next `dispatch` id, its `brief_path` and `contract_roles` (explore, architect, review).
+`arbor.py next --json` always carries `task`, `state`, `needs` and `summary`; depending on `needs` it adds `role`, `mode`, `range`, `dispatch`, `brief_path`, `decision`, `human` and `touched_files`. Before `task.py start` it answers `state: CONTRACT`, `needs: human` with `human.kind: approve_contract`, plus the next `dispatch` id, its `brief_path` and `contract_roles` (explore, architect, review).
 
 | `needs` | Meaning | Who | Do |
 |---|---|---|---|
-| `conductor` | the task's conductor is running | Planner | other work; `arbor.py conduct --collect` once it has ended |
-| `delegation` | a prepared codeg MCP task is pending (`codeg-mcp` executor only) | driver's caller | read `request_path`; delegate once and bind, or poll/resume `task_id`; collect its terminal JSON before advancing |
-| `brief` | a role must run | conductor | write the brief for that `role` at `brief_path`, then `arbor.py run` |
-| `run` | the driver has deterministic work: GATE, or merging a finished wave back into the task branch | conductor | `arbor.py gate` for GATE (`arbor.py run` does the same there); `arbor.py run` for the wave merge |
-| `wait` | multi-partition wave: every ready partition is running or finished and the wave cannot merge yet | conductor | wait for the running `arbor.py run --partition <p>` calls, then `arbor.py next` again |
-| `decide` | a judgment the driver cannot make | conductor | `arbor.py decide <choice> --reason "…"` with one of the listed options; `contract` → escalate |
-| `human` | `human.kind` says which: `conductor`, `approve_contract`, `plausible`, `stop`, `merge_conflict` or `merge` | Planner | `conductor`: act on `reason` / `needs_from_planner` (below), then `arbor.py conduct` again. `approve_contract`: before start, finish the contract (research with `arbor.py run --role`, see CONTRACT-phase dispatch), ask for approval, then `task.py start`; after start, the user re-approves the edited `contract.md` and you run `arbor.py resume`. `plausible`: ask the user, `decide fix\|skip --reason "…"`. `stop`: inspect the reason and evidence, then `resume`, `override`, re-plan or `abandon`. `merge_conflict`: merge the named branch into the task branch by hand in the task worktree, commit, then `arbor.py resume`. `merge`: Phase 3 |
-| `done` | nothing left | Planner | stop |
-
-A conductor maps `human` to its report: `plausible` → ESCALATE `plausible`; `stop` → ESCALATE `stop`; `merge_conflict` → ESCALATE `merge_conflict`; `approve_contract` → ESCALATE `contract`; `merge` → `arbor.py finish` once, then DONE.
+| `delegation` | a prepared codeg MCP task is pending (`codeg-mcp` executor only) | main agent | read `request_path`; delegate once and bind, or poll/resume `task_id`; collect its terminal JSON before advancing |
+| `brief` | a role must run | main agent | write the brief for that `role` at `brief_path`, then `arbor.py run` |
+| `run` | the driver has deterministic work: GATE, or merging a finished wave back into the task branch | main agent | `arbor.py gate` for GATE (`arbor.py run` does the same there); `arbor.py run` for the wave merge |
+| `wait` | multi-partition wave: every ready partition is running or finished and the wave cannot merge yet | main agent | wait for the running `arbor.py run --partition <p>` calls, then `arbor.py next` again |
+| `decide` | a judgment the driver cannot make | main agent | `arbor.py decide <choice> --reason "…"` with one of the listed options; `contract` → fix the contract with the user, then `arbor.py resume` |
+| `human` | `human.kind` says which: `approve_contract`, `plausible`, `stop`, `merge_conflict` or `merge` | main agent + user | `approve_contract`: before start, finish the contract (research with `arbor.py run --role`, see CONTRACT-phase dispatch), ask for approval, then `task.py start`; after start, the user re-approves the edited `contract.md` and you run `arbor.py resume`. `plausible`: ask the user, `decide fix\|skip --reason "…"`. `stop`: inspect the reason and evidence, then `resume`, `override`, re-plan or `abandon`. `merge_conflict`: merge the named branch into the task branch by hand in the task worktree, commit, then `arbor.py resume`. `merge`: Phase 3 |
+| `done` | nothing left | main agent | stop |
 
 **Multi-partition waves.** When the contract's current wave names more than one partition, the driver gives each partition its own branch `arbor/<task>--<p>` and worktree `<worktree.root>/<task>-<p>`, and `next --json` carries `partition` plus `partitions_pending` (the other partitions that also need a brief right now). Write each brief at its `brief_path`, then start one `arbor.py run --partition <p>` per partition — they may run at the same time (the driver serialises task.json under `<task>/.lock`; keep to `executors.<name>.max_parallel`). A partition's writer should stay within its assigned paths; the driver prepends the scope line and records out-of-scope changes for main-agent judgment. When every partition is done, `next` says `run` and `arbor.py run` merges the branches back `--no-ff` in wave order; a conflict becomes `human` / `merge_conflict`.
 
@@ -231,9 +224,10 @@ Role: explore | architect | test | implement | review | verify | fix | simplify
 Mode: self-check | candidates | sweep | plan        (review only)
 Range: <base>..<head>                               (roles that read or write a diff)
 Dispatch: d-NNN
+Prompt: <absolute path of .arbor/.runtime/prompts/<task>/d-NNN.md>   (codeg MCP only)
 ```
 
-Before `task.py start` the task directory still sits in the main checkout, so `Active task:` points there. Started CONTRACT replanning uses the existing control worktree. Then the injected context (the role's manifest — `implement.jsonl` for architect / test / implement, `check.jsonl` for review / verify / fix / simplify — then `contract.md`, `design.md`, `waves.md`, and `git diff <Range>`), then your brief. Your brief is committed as `briefs/d-NNN.md` on the task branch, and the reply plus the driver's verdict as `reports/d-NNN.md`; the assembled prompt is kept at `.arbor/.runtime/prompts/<task>/d-NNN.md` in the main checkout (`arbor.py prompt --dispatch d-NNN --print` rebuilds it).
+Before `task.py start` the task directory still sits in the main checkout, so `Active task:` points there. Started CONTRACT replanning uses the existing control worktree. With the `codeg` executor the MCP `task` text is this header alone; the `Prompt:` file holds everything below and the role reads it first. Then the injected context (the role's manifest — `implement.jsonl` for architect / test / implement, `check.jsonl` for review / verify / fix / simplify — then `contract.md`, `design.md`, `waves.md`, and `git diff <Range>`), then your brief. Your brief is committed as `briefs/d-NNN.md` on the task branch, and the reply plus the driver's verdict as `reports/d-NNN.md`; the assembled prompt is kept at `.arbor/.runtime/prompts/<task>/d-NNN.md` in the main checkout (`arbor.py prompt --dispatch d-NNN --print` rebuilds it).
 
 **CONTRACT-phase dispatch.** Before `task.py start` the state table does not run yet, but you can still dispatch `explore`, `architect` and `review` (`Mode: plan`, the default for review):
 
@@ -277,13 +271,13 @@ Context byte/file budgets still apply; use curated manifests and summaries for
 large studies. Research/architecture parallelism does not enable parallel product
 writers or parallel final plan reviews.
 
-**Briefs.** The role cannot see your conversation. A brief carries what the artifacts do not: the essential files to read first, decisions already made, known pitfalls, files to stay out of, and for review the `Angles:` line; for verify and fix, the findings JSON. Do not paste the contract or the diff; the driver injects them. The Planner's brief for a conductor (`conduct --brief <file>`, kept as `briefs/c-NNN.md`) carries the same kind of knowledge for the whole task.
+**Briefs.** The role cannot see your conversation. A brief carries what the artifacts do not: the essential files to read first, decisions already made, known pitfalls, files to stay out of, and for review the `Angles:` line; for verify and fix, the findings JSON. Do not paste the contract or the diff; the driver injects them.
 
-**Sub-agent self-exemption.** If your own first prompt starts with `Active task:` + `Role:`, you are a dispatched role: do that role's work directly, never run `arbor.py` or `task.py start/current/finish`, never dispatch anything, never push, merge or rebase. You have no `ARBOR_CONTEXT_ID`. The test role may run Git lifecycle operations in test-owned disposable repositories under `.arbor/agents/test.md`; real project repositories remain protected. If it starts with `Active task:` + `Conductor:`, you are a conductor: follow `.arbor/agents/conductor.md` (drive the loop with `--task --executor --as-conductor`, dispatch roles through `arbor.py run`, never perform one, never push/merge/rebase, end with the conductor report).
+**Sub-agent self-exemption.** If your own first prompt starts with `Active task:` + `Role:`, you are a dispatched role: do that role's work directly, never run `arbor.py` or `task.py start/current/finish`, never dispatch anything, never push, merge or rebase. You have no `ARBOR_CONTEXT_ID`. The test role may run Git lifecycle operations in test-owned disposable repositories under `.arbor/agents/test.md`; real project repositories remain protected.
 
 ### Roles
 
-Role instructions live in `.arbor/agents/<role>.md` (the conductor's in `.arbor/agents/conductor.md`). They define responsibilities; the driver's caller judges compliance. The driver records boundary observations after dispatch and preserves all files and commits, including after execution failure. There is no automatic dispatch rollback.
+Role instructions live in `.arbor/agents/<role>.md`. They define responsibilities; the driver's caller judges compliance. The driver records boundary observations after dispatch and preserves all files and commits, including after execution failure. There is no automatic dispatch rollback.
 
 | Role | Writes | Commits | Output |
 |---|---|---|---|
@@ -356,7 +350,7 @@ Arbor-Dispatch: d-NNN
 
 ```
 Phase 1: Plan    → INTAKE (tier, consent) → CONTRACT (explore, one question list, contract.md, design, seed-context, validation, plan review, approval, task.py start)
-Phase 2: Drive   → `arbor.py conduct` per started task; the conductor runs the `arbor.py next` loop: BUILD (test red → implement green) → GATE → REVIEW → POLISH (standard / full); the Planner supervises and answers escalations
+Phase 2: Drive   → you run the `arbor.py next` loop from this session: BUILD (test red → implement green) → GATE → REVIEW → POLISH (standard / full); roles are codeg MCP delegations, the user is asked only at the human gates
 Phase 3: Finish  → scorecard, spec update, PR, human `--no-ff` merge, cleanup; parent: children merged in order, sweep review, gate, archive
 ```
 
@@ -366,12 +360,12 @@ Phase 3: Finish  → scorecard, spec update, PR, human `--no-ff` merge, cleanup;
 |---|---|---|---|---|
 | INTAKE | `/arbor:workflow <request>` | you → human | propose a tier with a one-line reason; the human answers ok / light / standard / full | consent → `task.py create` → CONTRACT |
 | CONTRACT | task directory exists | you + explore / architect + human | explore → one question list → `contract.md` (+ `design.md`; full: main-agent-selected architecture perspectives → consolidated → `waves.md`) → `seed-context` → structural validation → standard / full: review `Mode: plan` → human approves | `task.py start` → BUILD |
-| BUILD | a wave is pending | conductor + driver + writers | `test` commits failing tests (the driver checks they fail for the right reason) → `implement` makes them pass | GATE |
-| GATE | the task branch has new commits | driver → conductor | level 0: `gate.commands` + every `auto` row of the Verification map. Green → next wave or REVIEW. Red → the conductor classifies: impl (`fix`, tests frozen) / tests (`test` again) / contract (escalate; the human re-approves) | `counters.gate++`; 4 consecutive reds → STOP |
+| BUILD | a wave is pending | you + driver + writers | `test` commits failing tests (the driver checks they fail for the right reason) → `implement` makes them pass | GATE |
+| GATE | the task branch has new commits | driver → you | level 0: `gate.commands` + every `auto` row of the Verification map. Green → next wave or REVIEW. Red → you classify: impl (`fix`, tests frozen) / tests (`test` again) / contract (edit the contract; the human re-approves) | `counters.gate++`; 4 consecutive reds → STOP |
 | REVIEW | GATE green, all waves done | review + fix | one review `Mode: self-check` over `base..HEAD`; findings → `fix` → GATE → re-review only `last_reviewed..HEAD`; caps: light 2 rounds, standard / full 1 | PASS → light: FINISH; standard / full: POLISH; cap → STOP |
 | POLISH | standard / full, REVIEW passed | simplify, review, verify, fix, human | `simplify` → GATE → N reviews `Mode: candidates` → mechanical prefilter → `verify` (≤ 8 per run) → full: `sweep` → verify → CONFIRMED fixed; PLAUSIBLE escalated once → `fix` → GATE → re-review the delta (≤ 2 rounds) | FINISH; cap → STOP |
-| FINISH | REVIEW / POLISH done | conductor (`arbor.py finish`) + Planner + human | `scorecard.md`, spec update, PR (body = contract + scorecard), human `--no-ff` merge | merged → worktree removed, archive, journal → DONE |
-| STOP | a round cap (`BUDGET`), no progress (`NO_PROGRESS`), explicit abandon (`HUMAN`) | conductor escalates → Planner + human | inspect the reason and evidence; no automatic recovery | `arbor.py resume` (BUDGET: grants one more round), `override --reason`, a re-plan, or `abandon` |
+| FINISH | REVIEW / POLISH done | you (`arbor.py finish`) + human | `scorecard.md`, spec update, PR (body = contract + scorecard), human `--no-ff` merge | merged → worktree removed, archive, journal → DONE |
+| STOP | a round cap (`BUDGET`), no progress (`NO_PROGRESS`), explicit abandon (`HUMAN`) | you + human | inspect the reason and evidence; no automatic recovery | `arbor.py resume` (BUDGET: grants one more round), `override --reason`, a re-plan, or `abandon` |
 
 Progress (only the driver changes counters): a GATE round progresses when the set of failing AC ids shrinks or a previously failing check passes; a REVIEW / POLISH round when its set of finding ids changes. Two rounds without progress, or a round past its cap, enter STOP; `resume` grants one more round (`caps_extra`).
 
@@ -387,7 +381,7 @@ The tier decides how much contract work happens and how high the verification la
 | BUILD | one partition, serial | partitions per the contract | partitions + waves |
 | Ladder climbs to | rung 2 | rung 3 (2 candidate readers) | rung 4 (3 candidate readers + sweep) |
 | Human gates | tier · contract · merge | + PLAUSIBLE | + PLAUSIBLE |
-| Conductors | one | one | one per child task, concurrently |
+| Sessions | one | one | one per child task, concurrently |
 
 The tier lives in `task.json.meta.tier` (`task.py create --tier <t>`, later `task.py set-meta <task> tier <t>`); without it the tier is inferred from the artifacts (`waves.md` → full, `design.md` → standard, else light). Reader counts are starting values, tuned from the scorecards.
 
@@ -408,7 +402,7 @@ The tier lives in `task.json.meta.tier` (`task.py create --tier <t>`, later `tas
 3. **PLAUSIBLE** (POLISH, only when PLAUSIBLE findings survive): fix or skip, asked once.
 4. **Merge** (FINISH): the human merges the PR with `--no-ff`.
 
-Procedural observations and report interpretation belong to the conductor (or the Planner when it drives), not an additional human approval loop. A conductor escalation (`human.kind: conductor`) goes to the Planner first; it involves the user only for gates 2–4.
+Procedural observations and report interpretation belong to you, not an additional human approval loop: classify red gates, dedup findings and retry within the contract yourself, and involve the user only for gates 2–4 and for STOP.
 
 ### Request Triage
 
@@ -423,7 +417,7 @@ When a user request matches one of these intents inside an active task, route fi
 
 - Planning or unclear requirements -> `arbor-brainstorm`.
 - Questions about existing code or external libraries -> read the files yourself, or write a brief and run `arbor.py run --role explore` (before start) / the explore the driver schedules.
-- A started task, whatever its state -> `arbor.py next`: launch or collect its conductor (`arbor.py conduct`), or act on its escalation; never perform a role in this session.
+- A started task, whatever its state -> `arbor.py next`: do the one thing it names (brief, run, decide, or a question to the user); never perform a role in this session.
 - Repeated debugging -> `arbor-break-loop`; spec updates -> `arbor-update-spec`.
 
 ### Task Artifacts
@@ -460,7 +454,7 @@ Use child tasks for deliverables that can be contracted, built, checked, and arc
 
 Create new children with `task.py create "<title>" --description "<one-line summary>" --slug <name> --parent <parent-dir>`. Link existing tasks with `task.py add-subtask <parent> <child>`, and unlink mistakes with `task.py remove-subtask <parent> <child>`. Do not start the parent just because children exist; start the child that owns the next independently verifiable deliverable.
 
-**Children run in parallel.** Each started child has its own worktree, branch and conductor (`arbor.py --task <child> conduct`); launch every child whose dependencies are merged, and watch them with `arbor.py --task <parent> children`. Children merge into the base branch in order: when a later child's branch predates an earlier merge, the Planner merges the base into that child's worktree (`git -C <worktree> merge <base>`; it resolves conflicts or hands them to the user), runs `arbor.py --task <child> gate`, and only then asks the user to merge `--no-ff`. The parent's contract holds the cross-child acceptance criteria and a `## Children` list (deliverable, paths it owns, depends-on). When every child is merged, the Planner runs the parent's integration review — `arbor.py --task <parent> run --role review --mode sweep --range <base-before-first-merge>..<base>` with a brief at the `brief_path` from `next --role review --json` — dedups the findings, fixes them as a light child (or directly when ≤ 2 files), runs `arbor.py --task <parent> gate` for the parent's `auto` rows, then `task.py archive <parent>`.
+**Children run in parallel.** Each started child has its own worktree and branch and is driven from a session of its own (one codeg conversation per child, every `arbor.py` call with `--task <child>`); start every child whose dependencies are merged, and watch them from the parent's session with `arbor.py --task <parent> children` (state and merge status per child). Children merge into the base branch in order: when a later child's branch predates an earlier merge, the main agent merges the base into that child's worktree (`git -C <worktree> merge <base>`; it resolves conflicts or hands them to the user), runs `arbor.py --task <child> gate`, and only then asks the user to merge `--no-ff`. The parent's contract holds the cross-child acceptance criteria and a `## Children` list (deliverable, paths it owns, depends-on). When every child is merged, the parent's session runs the integration review — `arbor.py --task <parent> run --role review --mode sweep --range <base-before-first-merge>..<base>` with a brief at the `brief_path` from `next --role review --json` — dedups the findings, fixes them as a light child (or directly when ≤ 2 files), runs `arbor.py --task <parent> gate` for the parent's `auto` rows, then `task.py archive <parent>`.
 
 <!-- Per-turn breadcrumb: shown when there is no active task (before Phase 1) -->
 
@@ -500,8 +494,7 @@ Approve (1.7): end the planning summary with the approval question; run `task.py
 [/workflow-state:planning]
 
 ### Phase 2: Drive
-- 2.0 Launch the conductor `[required · repeatable]` (Planner: `arbor.py conduct [--brief <file>]`)
-- 2.1 The loop `[required · repeatable]` (conductor: `arbor.py next` → do the one thing it names; Planner: supervise, `conduct --collect`, escalations)
+- 2.1 The loop `[required · repeatable]` (`arbor.py next` → do the one thing it names)
 - 2.2 Write a brief `[required · repeatable]`
 - 2.3 BUILD (test red → implement green)
 - 2.4 GATE and decide `[on demand]`
@@ -513,9 +506,9 @@ Approve (1.7): end the planning summary with the approval question; run `task.py
      own one-line next step instead of this block. -->
 
 [workflow-state:in_progress]
-The driver did not answer. Run `python3 ./.arbor/scripts/arbor.py next`: `conductor` → it is running, `arbor.py conduct --collect` once it ended; `human` with kind `conductor` → act on its reason (contract re-approval + `resume`, `decide fix|skip`, `resume`/`override`/`abandon`, hand-merge), then `arbor.py conduct` again; no conductor yet → `arbor.py conduct [--brief <file>]`; `human` with kind `merge` → Phase 3; `done` → Phase 3. If `arbor.py` is missing, run `arbor update`.
-Only without a conductor drive the loop yourself: `brief` → write the brief at its path, then `arbor.py run`; `decide` → `arbor.py decide <choice> --reason "…"`; `human` → ask the user. Roles run only through `arbor.py run` (through the configured executor, or executed through codeg MCP with `--executor codeg`); never use the built-in Agent/Task tool or perform a role in this session.
-Sub-agent self-exemption: if you are already a dispatched sub-agent (your prompt starts with `Active task:` / `Role:`), perform that role directly; do not run arbor.py or task.py start/current/finish. If it starts with `Active task:` / `Conductor:`, you are the conductor: follow `.arbor/agents/conductor.md`. Launching a conductor (and dispatching roles when there is none) is main session only.
+The driver did not answer. Run `python3 ./.arbor/scripts/arbor.py next` and do the one thing it names: `brief` → write the brief at its path, then `arbor.py run`; `delegation` → `delegate_to_agent` with the returned `mcp.arguments`, `arbor.py bind`, poll, `arbor.py collect`; `run` → `arbor.py gate` / `arbor.py run`; `decide` → `arbor.py decide <choice> --reason "…"`; `human` → `approve_contract` / `plausible` / `stop` / `merge_conflict`: ask the user, then `decide` or `resume`; `merge` → Phase 3; `done` → Phase 3. If `arbor.py` is missing, run `arbor update`.
+Roles run only through `arbor.py run` (with the default `codeg` executor they are executed through codeg MCP `delegate_to_agent`; `--executor codeg-cli` lets the driver run them itself); never use the built-in Agent/Task tool or perform a role in this session.
+Sub-agent self-exemption: if you are already a dispatched sub-agent (your prompt starts with `Active task:` / `Role:`), perform that role directly; do not run arbor.py or task.py start/current/finish. Driving the loop and dispatching roles is main session only.
 [/workflow-state:in_progress]
 
 ### Phase 3: Finish
@@ -536,9 +529,9 @@ Task archived. Run `/arbor:finish-work` to record the session.
 
 1. `arbor.py next` is the source of truth for where a started task is; do the one step it names
 2. Only the driver changes `task.json` state and counters, prepares and validates roles, and runs the gate; the executor (or, with codeg-mcp, the host) executes prepared requests
-3. The Planner reviews contract changes against the user's authorization; the conductor escalates `contract` for substantive replanning
+3. You review contract changes against the user's authorization; substantive replanning goes back to the user for re-approval before `arbor.py resume`
 4. Steps tagged `[once]` are skipped when their output already exists
-5. Inside an Arbor task, never perform a role in this session and never use the built-in Agent/Task tool for one; a started task is driven by its conductor, the Planner only supervises
+5. Inside an Arbor task, never perform a role in this session and never use the built-in Agent/Task tool for one; every role goes through `arbor.py run` and the configured executor
 
 ### Loading Step Detail
 
@@ -611,7 +604,7 @@ End the planning summary (goal, scope, criteria with their checks, key decisions
 python3 ./.arbor/scripts/task.py start <task-dir>
 ```
 
-`start` checks the tier's artifacts (light `contract.md`; standard + `design.md`; full + `waves.md`) and the manifests, records `contract_hash` as the approval baseline, creates the task worktree and branch, commits the task directory (with the CONTRACT-phase briefs, reports and research), and sets `state=BUILD`. From here on the conductor leads (2.0). All state is on disk.
+`start` checks the tier's artifacts (light `contract.md`; standard + `design.md`; full + `waves.md`) and the manifests, records `contract_hash` as the approval baseline, creates the task worktree and branch, commits the task directory (with the CONTRACT-phase briefs, reports and research), and sets `state=BUILD`. From here on the driver leads (2.1). All state is on disk.
 
 If `start` reports a session-identity problem, follow its hint and retry.
 
@@ -619,18 +612,7 @@ If `start` reports a session-identity problem, follow its hint and retry.
 
 ## Phase 2: Drive
 
-Goal: the driver walks BUILD → GATE → REVIEW → POLISH; the conductor supplies judgment and briefs; the Planner launches it, supervises and answers escalations.
-
-#### 2.0 Launch the conductor `[required · repeatable]`
-
-Planner, right after `task.py start` (and again after every handled escalation):
-
-```bash
-python3 ./.arbor/scripts/arbor.py --task <task> conduct [--brief <file>]   # brief: decisions made, pitfalls, files to stay out of
-python3 ./.arbor/scripts/arbor.py --task <task> next                        # needs=conductor while it runs
-```
-
-The conductor runs detached; the Planner is free for other work (another child, the user's questions). When `next` or the hook says it ended, `arbor.py --task <task> conduct --collect` records its report. `DONE` → Phase 3. `ESCALATE` / `FAILED` → `next` returns `needs=human`, `human.kind: conductor`: act on the `reason` (`needs` table in Driver), then `conduct` again with a brief that carries the decision. `conduct --cancel` cancels a run; `conduct --dry-run` prints the command and prompt without launching. Sections 2.1–2.7 describe the loop the conductor drives; the Planner follows them itself only when no conductor can be launched.
+Goal: the driver walks BUILD → GATE → REVIEW → POLISH; you supply judgment and briefs from this session and ask the user only at the human gates.
 
 #### 2.1 The loop `[required · repeatable]`
 
@@ -638,7 +620,7 @@ The conductor runs detached; the Planner is free for other work (another child, 
 python3 ./.arbor/scripts/arbor.py next
 ```
 
-(The conductor adds `--task <dir> --executor <name> --as-conductor c-NNN` to every call.) Do exactly what it names (see the `needs` table in Driver), then run `next` again. Do not edit `task.json`, do not run roles yourself, do not commit on behalf of a role. `touched_files` in `next --json` lists what the task changed so far; read from it instead of re-exploring.
+Do exactly what it names (see the `needs` table in Driver), then run `next` again. Do not edit `task.json`, do not run roles yourself, do not commit on behalf of a role. `touched_files` in `next --json` lists what the task changed so far; read from it instead of re-exploring. A child task driven from its own conversation passes `--task <child>` on every call. With the default `codeg` executor each `run` ends in `needs=delegation`: delegate, bind, poll and collect as described in Driver, then `next` again; the pending request survives an interrupted session, so resume or poll it instead of delegating twice.
 
 #### 2.2 Write a brief `[required · repeatable]`
 
@@ -661,7 +643,7 @@ The driver runs `gate.commands` and every `auto` check. Red → `next` asks you 
 
 - `impl` — the code is wrong; `fix` runs with the tests frozen.
 - `tests` — the tests are wrong; `test` runs again.
-- `contract` — the contract is wrong; the conductor escalates `contract`; the Planner edits `contract.md`, gets the user's approval, then `arbor.py resume` and `conduct` again.
+- `contract` — the contract is wrong; edit `contract.md`, get the user's approval, then `arbor.py resume`.
 
 ```bash
 python3 ./.arbor/scripts/arbor.py decide impl|tests|contract --reason "<one line of evidence>"
@@ -669,24 +651,24 @@ python3 ./.arbor/scripts/arbor.py decide impl|tests|contract --reason "<one line
 
 #### 2.5 REVIEW
 
-One `review` `Mode: self-check` over `base..HEAD`, including "does the Verification map cover every criterion". Findings go to `fix`, back through GATE, and only `last_reviewed..HEAD` is reviewed again. Review fix-round caps: light 2, standard / full 1; past the cap the driver enters STOP and the conductor escalates. Invalid findings may stay unfixed; list them in the final summary.
+One `review` `Mode: self-check` over `base..HEAD`, including "does the Verification map cover every criterion". Findings go to `fix`, back through GATE, and only `last_reviewed..HEAD` is reviewed again. Review fix-round caps: light 2, standard / full 1; past the cap the driver enters STOP (2.7). Invalid findings may stay unfixed; list them in the final summary.
 
 #### 2.6 POLISH
 
-Standard / full only. `simplify` → GATE → N reviews `Mode: candidates` (standard 2, full 3) → you dedup → the driver prefilters mechanically (file exists, quoted code within ±5 lines, line inside the range, cited rule exists) → `verify` → full: one review `Mode: sweep` with the verified list, its new candidates verified too. CONFIRMED findings are fixed without asking. When PLAUSIBLE findings survive, the conductor escalates them once (`plausible`, most severe first, with a recommendation); the Planner puts them to the user and records the answer with `arbor.py decide fix|skip --reason "…"`. Fix rounds are re-reviewed on the delta; after two rounds the driver enters STOP (BUDGET) and the Planner reassesses the approach.
+Standard / full only. `simplify` → GATE → N reviews `Mode: candidates` (standard 2, full 3) → you dedup → the driver prefilters mechanically (file exists, quoted code within ±5 lines, line inside the range, cited rule exists) → `verify` → full: one review `Mode: sweep` with the verified list, its new candidates verified too. CONFIRMED findings are fixed without asking. When PLAUSIBLE findings survive, present them to the user once, most severe first, with your recommendation, and record the answer with `arbor.py decide fix|skip --reason "…"`. Fix rounds are re-reviewed on the delta; after two rounds the driver enters STOP (BUDGET) and you reassess the approach.
 
 #### 2.7 STOP, resume, override `[on demand]`
 
 STOP comes from a round cap (`BUDGET`), two rounds without progress (`NO_PROGRESS`)
 or an explicit `abandon` (`HUMAN`); procedural observations and report-format
 problems do not create it. Executor failures remain failures and executable red
-checks remain red; all work is preserved. The conductor reports `ESCALATE stop`
-with the driver's reason and evidence; the Planner inspects the result, tightens
-the brief or changes the plan, then `arbor.py resume` (BUDGET: grants one more
-round) and `conduct` again. `arbor.py override --reason "..." --to STATE[/step]`
-records a contextual state decision; `--role <role> [--mode M]` runs an extra role
-(the conductor may use the latter inside the contract). `arbor.py abandon --reason
-"..."` explicitly stops a task (Planner only).
+checks remain red; all work is preserved. `next` answers `needs=human` with
+`human.kind: stop` and the driver's reason and evidence; inspect the result,
+tighten the brief or change the plan, tell the user what happened, then
+`arbor.py resume` (BUDGET: grants one more round). `arbor.py override --reason
+"..." --to STATE[/step]` records a contextual state decision; `--role <role>
+[--mode M]` runs an extra role inside the contract. `arbor.py abandon --reason
+"..."` explicitly stops a task.
 
 Existing STOP records are not silently cleared on upgrade. Inspect their evidence,
 then use `arbor.py resume` or a reasoned override when authorized. Actual merge

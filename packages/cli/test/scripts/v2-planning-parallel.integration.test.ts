@@ -20,8 +20,10 @@ describe.skipIf(!hasPython())("parallel planning angles", { timeout: 90_000 }, (
     f.brief(id, `Independent ${role} angle ${id}`);
     const result = f.run("--task", f.taskDir, "run", "--role", role, "--dispatch", id);
     expect(result.status, result.stdout + result.stderr).toBe(0);
-    return JSON.parse(result.stdout) as { request_path: string; dispatch: string; mcp: { arguments: { task: string } } };
+    return JSON.parse(result.stdout) as { request_path: string; dispatch: string; prompt_path: string; mcp: { arguments: { task: string } } };
   }
+  // The MCP task text is only the header plus a `Prompt:` pointer; the injected context lives in that file.
+  const promptOf = (p: { prompt_path: string }) => fs.readFileSync(p.prompt_path, "utf8");
   function collect(request: string, id: string, role = "explore") {
     expect(f.run("bind", "--request", request, "--task-id", id).status).toBe(0);
     const file = path.join(f.tmp, `${id}.json`);
@@ -50,7 +52,10 @@ describe.skipIf(!hasPython())("parallel planning angles", { timeout: 90_000 }, (
     setup(3);
     const before = git(f.repo, "rev-parse", "HEAD");
     const a = prepare("d-001"), b = prepare("d-002", "architect"), c = prepare("d-003");
-    for (const p of [a, b, c]) expect(p.mcp.arguments.task).toContain(`/research/${p.dispatch}-`);
+    for (const p of [a, b, c]) {
+      expect(p.mcp.arguments.task).toContain(`Prompt: ${p.prompt_path}`);
+      expect(promptOf(p)).toContain(`/research/${p.dispatch}-`);
+    }
     const pending = JSON.parse(f.run(...T, "next", "--json").stdout);
     expect(pending.pending_delegations.map((d: { dispatch: string }) => d.dispatch)).toEqual(["d-001", "d-002", "d-003"]);
     const more = JSON.parse(f.run(...T, "next", "--role", "architect", "--json").stdout);
@@ -116,11 +121,11 @@ describe.skipIf(!hasPython())("parallel planning angles", { timeout: 90_000 }, (
     writeFile(f.taskDir, "research/d-001-partial.md", "UNFINISHED_SIBLING_EVIDENCE");
     writeFile(f.taskDir, "research/previous.md", "COMPLETED_PREVIOUS_EVIDENCE");
     const b = prepare("d-002", "architect");
-    expect(b.mcp.arguments.task).not.toContain("UNFINISHED_SIBLING_EVIDENCE");
-    expect(b.mcp.arguments.task).toContain("COMPLETED_PREVIOUS_EVIDENCE");
+    expect(promptOf(b)).not.toContain("UNFINISHED_SIBLING_EVIDENCE");
+    expect(promptOf(b)).toContain("COMPLETED_PREVIOUS_EVIDENCE");
     collect(a.request_path, "completed");
     const c = prepare("d-003", "architect");
-    expect(c.mcp.arguments.task).toContain("UNFINISHED_SIBLING_EVIDENCE");
+    expect(promptOf(c)).toContain("UNFINISHED_SIBLING_EVIDENCE");
     expect(fs.readFileSync(path.join(f.taskDir, "research/d-001-partial.md"), "utf8")).toBe("UNFINISHED_SIBLING_EVIDENCE");
   });
 

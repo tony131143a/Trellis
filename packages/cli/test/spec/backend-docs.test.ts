@@ -65,11 +65,11 @@ describe("backend driver documentation", () => {
       "bind",
       "collect",
       "finish",
-      "conduct",
       "children",
     ];
-    const options = ["--task", "--executor", "--as-conductor"];
-    const conductOptions = ["--brief", "--collect", "--cancel", "--dry-run"];
+    const options = ["--task", "--executor"];
+    const retiredOptions = ["--as-conductor"];
+    const retiredCommands = ["conduct"];
     const missing: string[] = [];
     if (!doc.includes("arbor.py")) missing.push("arbor.py entry point");
     for (const command of commands) {
@@ -86,11 +86,19 @@ describe("backend driver documentation", () => {
         missing.push(`option ${option}`);
       }
     }
-    // Other commands mentioning an option cannot document conduct's surface.
-    const conductSignature = /^conduct[ \t]+[^\r\n]*$/m.exec(doc)?.[0] ?? "";
-    for (const option of conductOptions) {
-      if (!new RegExp(`${option}(?![\\w-])`).test(conductSignature)) {
-        missing.push(`conduct option ${option}`);
+    // The conductor layer is gone: its option and subcommand must stay absent.
+    for (const option of retiredOptions) {
+      if (new RegExp(`${option}(?![\\w-])`).test(doc)) {
+        missing.push(`retired option ${option} still documented`);
+      }
+    }
+    for (const command of retiredCommands) {
+      const pattern = new RegExp(
+        "(?:`|\\|\\s*|arbor\\.py[^\\n]*\\s)" + command + "(?=`|\\s|\\[|$)",
+        "m",
+      );
+      if (pattern.test(doc)) {
+        missing.push(`retired subcommand ${command} still documented`);
       }
     }
     // Exit codes must be documented as table cells, not incidental digits.
@@ -110,8 +118,10 @@ describe("backend driver documentation", () => {
     );
     const missing: string[] = [];
     for (const [kind, fields] of [
-      ["role", ["Active task:", "Role:", "Mode:", "Range:", "Dispatch:"]],
-      ["conductor", ["Active task:", "Conductor:", "Executor:", "Run:"]],
+      [
+        "role",
+        ["Active task:", "Role:", "Mode:", "Range:", "Dispatch:", "Prompt:"],
+      ],
     ] as const) {
       if (
         !blocks.some((block) => fields.every((field) => block.includes(field)))
@@ -155,10 +165,12 @@ describe("backend driver documentation", () => {
     if (guardRows.length === 0)
       violations.push("missing guard-builtin-agent.py row");
     for (const row of guardRows) {
-      for (const header of ["Role:", "Conductor:"]) {
+      for (const header of ["Active task:", "Role:"]) {
         if (!row.includes(header))
           violations.push(`guard row missing ${header}`);
       }
+      if (row.includes("Conductor:"))
+        violations.push("guard row still mentions the retired Conductor: header");
     }
     expect(violations).toEqual([]);
   });
