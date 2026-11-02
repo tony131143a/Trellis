@@ -1,0 +1,20 @@
+packages/cli/test/spec/backend-docs.test.ts
+  s_51153569ed0c8d::t_55f770d105f487 1-106,111-115,119-133,136,139-145,149,153-154,157-158,161-194,198-211
+  s_51153569ed0c8d::t_04c6ba9d0c954a 107-110,116-118,134-135,137-138,146-148,150-152,155-156,159-160,195-197
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "af36c4817cbeb7966ba912eb4b5762863416aeff",
+  "prompts": {},
+  "sessions": {
+    "s_51153569ed0c8d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19a88-3d07-7402-9c4a-a44b0a9a757b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
