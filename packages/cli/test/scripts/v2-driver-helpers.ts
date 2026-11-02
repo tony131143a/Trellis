@@ -124,7 +124,7 @@ export interface Fixture {
 
 /** `start: false` leaves the task in planning, in the main checkout (CONTRACT phase). */
 export function setupFixture(
-  opts: { tier?: string; gate?: string[]; executor?: string; start?: boolean; contract?: string } = {},
+  opts: { tier?: string; gate?: string[]; executor?: string; start?: boolean; contract?: string; mandate?: "ask" | "default" } = {},
 ): Fixture {
   const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "arbor-v2-driver-")));
   const repo = path.join(tmp, "proj");
@@ -148,10 +148,14 @@ export function setupFixture(
   const gate = opts.gate?.length
     ? `gate:\n  commands:\n${opts.gate.map((c) => `    - "${c}"`).join("\n")}\n`
     : "";
+  // Every human gate asks by default, so the driver tests see the gates themselves;
+  // `mandate: "default"` keeps the shipped per-tier defaults (the mandate tests).
+  const gatesAsk = "    contract: ask\n    plausible: ask\n    stop: ask\n    merge: ask\n";
+  const mandate = opts.mandate === "default" ? "" : `mandate:\n  light:\n${gatesAsk}  standard:\n${gatesAsk}  full:\n${gatesAsk}`;
   writeFile(
     repo,
     ".arbor/config.yaml",
-    `executors:\n  default: fake\n  fake:\n    command: "${command}"\n    timeout: 30s\n${gate}`,
+    `executors:\n  default: fake\n  fake:\n    command: "${command}"\n    timeout: 30s\n${gate}${mandate}`,
   );
   const rel = `.arbor/tasks/${TASK}`;
   writeFile(

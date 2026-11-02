@@ -78,7 +78,7 @@ describe.skipIf(!hasPython())("arbor.py next / BUILD / GATE", { timeout: 90_000 
     writeFile(f.repo, ".arbor/tasks/10-30-plan/task.json", JSON.stringify({ id: "plan", status: "planning" }));
     const planning = f.run("--task", ".arbor/tasks/10-30-plan", "next", "--json");
     expect(JSON.parse(planning.stdout)).toEqual({
-      task: "10-30-plan", state: "CONTRACT", needs: "human", started: false, human: { kind: "approve_contract" },
+      task: "10-30-plan", state: "CONTRACT", needs: "human", started: false, human: { kind: "approve_contract", mandate: "ask" },
       dispatch: "d-001", brief_path: path.join(f.repo, ".arbor/tasks/10-30-plan/briefs/d-001.md"),
       contract_roles: ["explore", "architect", "review"],
       summary: expect.stringContaining("task.py start"),

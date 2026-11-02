@@ -51,7 +51,7 @@ describe.skipIf(!hasPython())("arbor.py mandate", { timeout: 120_000 }, () => {
   afterEach(() => f?.cleanup());
 
   it("next --json names the gate's mandate: tier default, config per tier, task.json meta override", () => {
-    f = setupFixture({ start: false });
+    f = setupFixture({ start: false, mandate: "default" });
     expect(f.run("--task", f.taskDir, "next", "--json").stdout).toContain('"mandate": "auto"');
     appendConfig(f, "mandate:\n  light:\n    contract: ask\n");
     let next = JSON.parse(f.run("--task", f.taskDir, "next", "--json").stdout);
@@ -72,7 +72,7 @@ describe.skipIf(!hasPython())("arbor.py mandate", { timeout: 120_000 }, () => {
   });
 
   it("task.py create --mandate validates and records meta.mandate", () => {
-    f = setupFixture({ start: false });
+    f = setupFixture({ start: false, mandate: "default" });
     const env = { ...process.env, ARBOR_CONTEXT_ID: "v2-driver-session" };
     const bad = spawnSync("python3", [".arbor/scripts/task.py", "create", "Other", "--slug", "other", "--description", "d",
       "--mandate", "stop=later", "--no-start"],
@@ -89,7 +89,7 @@ describe.skipIf(!hasPython())("arbor.py mandate", { timeout: 120_000 }, () => {
   });
 
   it("plausible=auto (standard default): PLAUSIBLE findings are skipped by the driver, not asked", () => {
-    f = setupFixture({ tier: "standard" });
+    f = setupFixture({ tier: "standard", mandate: "default" });
     seedCode(f, "REVIEW");
     f.plan({
       "d-001": { reply: reviewReply("PASS", []) },
@@ -110,7 +110,7 @@ describe.skipIf(!hasPython())("arbor.py mandate", { timeout: 120_000 }, () => {
   });
 
   it("plausible=ask (config override) keeps the human gate", () => {
-    f = setupFixture({ tier: "standard" });
+    f = setupFixture({ tier: "standard", mandate: "default" });
     appendConfig(f, "mandate:\n  standard:\n    plausible: ask\n");
     seedCode(f, "REVIEW");
     f.plan({
@@ -126,7 +126,7 @@ describe.skipIf(!hasPython())("arbor.py mandate", { timeout: 120_000 }, () => {
   });
 
   it("stop=auto (light default): the first STOP resumes itself, every later STOP asks", () => {
-    f = setupFixture();
+    f = setupFixture({ mandate: "default" });
     seedCode(f, "REVIEW");
     const same = reviewReply("FAIL", [finding("src/app.txt", 2, "CONFIRMED")]);
     const fix = { write: [{ path: "src/app.txt", content: "one\nTWO\nthree\n" }], reply: "## Fix: Done\n" };
@@ -160,7 +160,7 @@ describe.skipIf(!hasPython())("arbor.py mandate", { timeout: 120_000 }, () => {
   });
 
   it("merge=auto (light default): finish writes the scorecard first, then merges --no-ff itself and cleans up", () => {
-    f = setupFixture();
+    f = setupFixture({ mandate: "default" });
     driveToFinish(f);
     const first = f.run("finish");
     expect(first.status, first.stdout + first.stderr).toBe(0);
@@ -183,7 +183,7 @@ describe.skipIf(!hasPython())("arbor.py mandate", { timeout: 120_000 }, () => {
   });
 
   it("merge=auto falls back to the merge command when the diff is too large or the mandate says ask", () => {
-    f = setupFixture();
+    f = setupFixture({ mandate: "default" });
     appendConfig(f, "mandate:\n  auto_merge_max_lines: 1\n");
     driveToFinish(f);
     expect(f.run("finish").status).toBe(0);

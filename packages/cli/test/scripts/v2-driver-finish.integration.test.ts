@@ -66,8 +66,6 @@ describe.skipIf(!hasPython())("arbor.py FINISH", { timeout: 90_000 }, () => {
 
   it("scorecard, merge gate, merge detection, cleanup to DONE", () => {
     f = setupFixture();
-    // The light default mandate merges by itself; this test covers the human merge gate.
-    fs.appendFileSync(path.join(f.repo, ".arbor/config.yaml"), "mandate:\n  light:\n    merge: ask\n");
     driveToFinish(f);
     expect(f.next()).toMatchObject({ state: "FINISH", needs: "run", summary: expect.stringContaining("arbor finish") });
 
