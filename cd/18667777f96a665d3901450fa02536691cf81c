@@ -1,0 +1,31 @@
+.claude/hooks/guard-builtin-agent.py
+  s_239ff62966b981::t_1fb6448955f44c 4,42,74,94
+.claude/hooks/inject-workflow-state.py
+  s_632b8dd718ab3a::t_7921fad128b759 95-98
+.claude/hooks/session-start.py
+  s_632b8dd718ab3a::t_4a1d734504bf8d 207-210
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "cd18667777f96a665d3901450fa02536691cf81c",
+  "prompts": {},
+  "sessions": {
+    "s_239ff62966b981": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18de9-510d-78b1-82fe-896197125c84",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Mr tang <mytortoise18@sina.com~>"
+    },
+    "s_632b8dd718ab3a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19022-6c5b-7b00-be04-edb0f4e9b58f",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Mr tang <mytortoise18@sina.com~>"
+    }
+  }
+}
