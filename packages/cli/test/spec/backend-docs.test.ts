@@ -68,15 +68,8 @@ describe("backend driver documentation", () => {
       "conduct",
       "children",
     ];
-    const options = [
-      "--task",
-      "--executor",
-      "--as-conductor",
-      "--brief",
-      "--collect",
-      "--cancel",
-      "--dry-run",
-    ];
+    const options = ["--task", "--executor", "--as-conductor"];
+    const conductOptions = ["--brief", "--collect", "--cancel", "--dry-run"];
     const missing: string[] = [];
     if (!doc.includes("arbor.py")) missing.push("arbor.py entry point");
     for (const command of commands) {
@@ -91,6 +84,13 @@ describe("backend driver documentation", () => {
     for (const option of options) {
       if (!new RegExp(`${option}(?![\\w-])`).test(doc)) {
         missing.push(`option ${option}`);
+      }
+    }
+    // Other commands mentioning an option cannot document conduct's surface.
+    const conductSignature = /^conduct[ \t]+[^\r\n]*$/m.exec(doc)?.[0] ?? "";
+    for (const option of conductOptions) {
+      if (!new RegExp(`${option}(?![\\w-])`).test(conductSignature)) {
+        missing.push(`conduct option ${option}`);
       }
     }
     // Exit codes must be documented as table cells, not incidental digits.

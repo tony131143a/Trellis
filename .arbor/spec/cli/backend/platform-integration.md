@@ -343,8 +343,8 @@ Light tasks require `contract.md`; standard tasks also require `design.md`; full
 ### Lifecycle
 
 1. **Create** — `task.py create` writes `task.json` with `status = planning`, creates the default `contract.md`, and creates empty `implement.jsonl` / `check.jsonl`. Curation instructions are printed to the console, never written into the files.
-2. **Plan** — AI updates `contract.md`. For standard tasks, AI also writes `design.md`; full tasks also need `waves.md`; if sub-agent/spec context is needed, AI curates jsonl entries.
-3. **Review / start** — the user reviews the planning artifacts. `task.py start` is valid when the task's artifact gate is satisfied.
+2. **Plan** — AI updates `contract.md`. For standard tasks, AI also writes `design.md`; full tasks also need `waves.md`. By default, AI must curate at least one entry in each seeded manifest (`implement.jsonl` and `check.jsonl`) before start.
+3. **Review / start** — the user reviews the planning artifacts. `task.py start` requires both the tier's artifacts and curated entries in each existing manifest. For intentionally empty context, use `task.py start <task> --allow-empty-context`; this does not bypass the tier artifact gate. Missing manifests are not gated.
 4. **Consume** — the driver (`arbor.py`, using `common/dispatch_context.py`) reads context in the same order: jsonl entries, `contract.md`, `design.md` if present, `waves.md` if present.
 
 ### Signatures
@@ -366,6 +366,7 @@ Optional `type: "directory"` is supported for directory entries. Consumers ignor
 | Task creation             | `task_store.py`                                 | Always creates default `contract.md`; never auto-creates `design.md` or `waves.md`. |
 | Lightweight planning gate | workflow-state / SessionStart / continue        | contract-only is valid when the task is clearly small.                                  |
 | Tier planning gate        | `task.py start` / workflow-state / SessionStart / continue | Standard requires `contract.md` and `design.md`; full also requires `waves.md`. |
+| Start context gate        | `task.py start`                                  | Each existing manifest needs at least one curated entry unless `--allow-empty-context` is explicit. Missing manifests are not gated. |
 | Non-entry detection       | Every jsonl consumer                            | Row without a `file` key is treated as non-entry and skipped.                      |
 | Empty-file tolerance      | `arbor.py` / `common/dispatch_context.py`                   | Missing or empty jsonl is tolerated; task artifacts still load.                    |
 | Context order             | `arbor.py` / `common/dispatch_context.py`                   | jsonl entries → `contract.md` → `design.md` if present → `waves.md` if present.     |
@@ -407,20 +408,27 @@ File existence alone cannot distinguish a lightweight contract-only task from an
 #### Correct
 
 ```python
-def planning_next_action(task_dir: Path, is_complex: bool, inline_mode: bool) -> str:
+from common.task_context import curated_entry_count
+
+
+def planning_next_action(
+    task_dir: Path, tier: str, allow_empty_context: bool = False
+) -> str:
     if not (task_dir / "contract.md").is_file():
         return "write-contract"
-    if is_complex and (
-        not (task_dir / "design.md").is_file()
-        or not (task_dir / "waves.md").is_file()
+    if tier in ("standard", "full") and not (task_dir / "design.md").is_file():
+        return "write-design"
+    if tier == "full" and not (task_dir / "waves.md").is_file():
+        return "write-waves"
+    if not allow_empty_context and any(
+        curated_entry_count(task_dir / name) == 0
+        for name in ("implement.jsonl", "check.jsonl")
     ):
-        return "complete-complex-artifacts"
-    if not inline_mode and not has_curated_jsonl(task_dir):
         return "curate-jsonl"
     return "review-before-start"
 ```
 
-The route depends on task intent, artifact presence, and execution mode. Missing optional artifacts are skipped for lightweight tasks, but complex tasks cannot enter implementation until their planning artifacts are complete.
+The route depends on the resolved tier, artifact presence, and the explicit empty-context override. Light tasks need only `contract.md`; standard tasks also need `design.md`; only full tasks require `waves.md`. Inline execution does not bypass the default manifest gate. A missing manifest returns `None` from `curated_entry_count` and is not gated.
 
 For archived validation, resolving every JSONL path as `repo_root / file_path`
 is wrong because a preserved self-reference points at the task's former active
