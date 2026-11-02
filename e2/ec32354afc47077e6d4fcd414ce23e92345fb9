@@ -1,0 +1,65 @@
+.arbor/.template-hashes.json
+  s_342ea15739dd96::t_14bdcbd4073ca8 15,17,20,25,28,36,45,66,77-86,92,99-101,104
+.arbor/.version
+  s_342ea15739dd96::t_9a8339d97c9cf3 1
+.arbor/spec/cli/backend/commands-dispatch.md
+  s_342ea15739dd96::t_006583e2590ffd 7,9,12-14,23-25,32,54,72,81-97,103-104,120,127-133,141-144
+.arbor/spec/cli/backend/dispatch.md
+  s_342ea15739dd96::t_ac56f0e8231ee9 8,12,24-25,27,41,49-52,60-61,67-68,79-81,88-91,118-119,124-125,141-142,144,152-153
+.arbor/spec/cli/backend/index.md
+  s_342ea15739dd96::t_805d170c6cb389 5,35
+.arbor/spec/cli/backend/platform-integration.md
+  s_342ea15739dd96::t_a520d04cb07f93 1163,1168
+.arbor/spec/cli/backend/workflow-state-contract.md
+  s_342ea15739dd96::t_c6e1ef8a0560ec 10,283,292-294
+.arbor/workflow.md
+  s_342ea15739dd96::t_33efb92b8cc085 8,157,159-160,162,170,187,191,203,205,209-215,227,230,274,276,280,353,363-364,367-368,384,405,420,457,497,509-511,532,534,607,615,623,646,654,658,665-671
+.claude/commands/arbor/continue.md
+  s_342ea15739dd96::t_97c48515ad5aba 42,45,63
+.claude/commands/arbor/workflow.md
+  s_342ea15739dd96::t_c0146395e6143f 3,47,50,55-60,62,66
+.claude/hooks/guard-builtin-agent.py
+  s_342ea15739dd96::t_815cdaf72f524b 44,53-55
+.claude/skills/arbor-meta/references/local-architecture/dispatch.md
+  s_342ea15739dd96::t_788ffe76576dfb 3,8,18-19,22,24,28,53,56,64,70-74,77
+.claude/skills/arbor-meta/references/local-architecture/overview.md
+  s_342ea15739dd96::t_0d70301ed722e9 21
+.claude/skills/arbor-meta/references/local-architecture/task-system.md
+  s_342ea15739dd96::t_787e1c5aafcdff 33-34
+.claude/skills/arbor-meta/references/platform-files/agents.md
+  s_342ea15739dd96::t_2c00755d881e65 3
+AGENTS.md
+  s_342ea15739dd96::t_609775d86d3b5f 6,8
+CLAUDE.md
+  s_342ea15739dd96::t_01793a9e2efa71 70,74,77-79,87,90
+README.md
+  s_342ea15739dd96::t_1fff92d31a566e 3,40,42,46-51,59,61
+packages/cli/src/templates/arbor/workflow.md
+  s_342ea15739dd96::t_d5176cb313328d 8,157,159-160,162,170,187,191,203,205,209-215,227,230,274,276,280,353,363-364,367-368,384,405,420,457,497,509-511,532,534,607,615,623,646,654,658,665-671
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/local-architecture/dispatch.md
+  s_342ea15739dd96::t_7cfd18b8a1ad24 3,8,18-19,22,24,28,53,56,64,70-74,77
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/local-architecture/task-system.md
+  s_342ea15739dd96::t_b8eb228b1c5842 33-34
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/platform-files/agents.md
+  s_342ea15739dd96::t_b87f0f1579956c 3
+packages/cli/src/templates/shared-hooks/guard-builtin-agent.py
+  s_342ea15739dd96::t_845d526ff1af14 44,53-55
+packages/cli/test/spec/backend-docs.test.ts
+  s_342ea15739dd96::t_a6490e12764c5a 70-72,89-101,121-124,168,172-173
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "e2ec32354afc47077e6d4fcd414ce23e92345fb9",
+  "prompts": {},
+  "sessions": {
+    "s_342ea15739dd96": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3d284d4a-86e4-4f3d-9ca0-5b0377b43c0d",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
