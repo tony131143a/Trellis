@@ -1,0 +1,45 @@
+README.md
+  s_8f252aadb510ba::t_8595c89af394bd 40
+packages/cli/src/templates/arbor/scripts/common/driver/state.py
+  s_8f252aadb510ba::t_536b19921b57d8 30-44,112-115,142,171-172,212-300,361-364,370-372,389-391,393,787-791,805-808,813-814,845-846
+packages/cli/src/templates/arbor/workflow.md
+  s_8f252aadb510ba::t_29556ac7603cfd 207,214,633,640-642,658,662
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/local-architecture/dispatch.md
+  s_8f252aadb510ba::t_614f6a56a61bf5 24,28
+packages/cli/src/templates/common/commands/continue.md
+  s_8f252aadb510ba::t_2bd6eec20122c5 42
+packages/cli/src/templates/common/commands/workflow.md
+  s_8f252aadb510ba::t_cf8c8d338971b0 56-57
+packages/cli/src/templates/markdown/agents.md
+  s_8f252aadb510ba::t_c8f48425ab1058 8
+packages/cli/src/templates/markdown/claude.md
+  s_8f252aadb510ba::t_b804b654b90a26 12
+packages/cli/test/scripts/v2-driver-review.integration.test.ts
+  s_98feff17b6d566::t_fc76f6e68b3222 101-105,108,111,113-114,126
+packages/cli/test/scripts/v2-driver-waves.integration.test.ts
+  s_98feff17b6d566::t_5e429eb1ab9549 404-405,408-411,413-415,419,422-423,425-426
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "47d293c02d1e053cec3a68c88229c1b28f86e4e4",
+  "prompts": {},
+  "sessions": {
+    "s_8f252aadb510ba": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19b94-3576-7e72-a692-850625b8ec86",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_98feff17b6d566": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19b8a-9bd7-76c1-95f1-01f7c7837dbd",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
