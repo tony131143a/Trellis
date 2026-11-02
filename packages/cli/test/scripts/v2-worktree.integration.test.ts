@@ -262,6 +262,18 @@ test_paths:
   - "tests/**"
 executors:
   default: claude
+  claude:
+    type: command
+    command: "claude -p"
+  codeg:
+    timeout: 30m
+""")
+partial = parse_simple_yaml("""
+executors:
+  default: codeg
+  codeg:
+    type: codeg-mcp
+    assistant: "arbor-{role}"
 """)
 print(json.dumps({
     "wt_default": get_worktree_config({}),
@@ -270,6 +282,8 @@ print(json.dumps({
     "tp": get_test_paths(cfg),
     "ex_default": get_executors_config({})["default"],
     "ex": get_executors_config(cfg),
+    "ex_partial_keys": sorted(get_executors_config(partial)),
+    "ex_partial_cli": get_executors_config(partial)["codeg-cli"]["type"],
 }))
 `,
     );
@@ -279,7 +293,14 @@ print(json.dumps({
       tp_default: ["packages/*/test/**", "**/*.test.ts"],
       tp: ["tests/**"],
       ex_default: "codeg-cli",
-      ex: { default: "claude" },
+      ex: {
+        default: "claude",
+        claude: { type: "command", command: "claude -p" },
+        "codeg-cli": expect.objectContaining({ type: "command", timeout: "95m" }),
+        codeg: { type: "codeg-mcp", assistant: "arbor-{role}", timeout: "30m", max_parallel: "3" },
+      },
+      ex_partial_keys: ["codeg", "codeg-cli", "default"],
+      ex_partial_cli: "command",
     });
   });
 

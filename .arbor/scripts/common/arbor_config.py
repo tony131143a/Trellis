@@ -298,14 +298,30 @@ def get_test_paths(config: dict) -> list[str]:
 
 
 def get_executors_config(config: dict) -> dict:
-    """``executors:`` section, or the defaults when it is absent/empty."""
-    section = config.get("executors") if isinstance(config, dict) else None
-    if isinstance(section, dict) and section:
-        return section
-    return {
+    """``executors:`` section merged over the defaults.
+
+    Built-in executors (``codeg-cli``, ``codeg``) stay available when the
+    section omits them, so ``conductor.executor: codeg-cli`` keeps resolving
+    even if a repo only configures ``codeg``. A configured executor overlays
+    its built-in fields key by key; ``default`` and new executors are taken
+    as written.
+    """
+    merged = {
         key: dict(value) if isinstance(value, dict) else value
         for key, value in DEFAULT_EXECUTORS_CONFIG.items()
     }
+    section = config.get("executors") if isinstance(config, dict) else None
+    if not isinstance(section, dict):
+        return merged
+    for key, value in section.items():
+        base = merged.get(key)
+        if isinstance(value, dict) and isinstance(base, dict):
+            merged[key] = {**base, **value}
+        elif isinstance(value, dict):
+            merged[key] = dict(value)
+        elif isinstance(value, str) and value.strip():
+            merged[key] = value
+    return merged
 
 
 def get_conductor_config(config: dict) -> dict:
