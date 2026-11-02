@@ -35,7 +35,20 @@
     "polish": 0,
     "no_progress": 0
   },
-  "dispatches": [],
+  "dispatches": [
+    {
+      "id": "d-001",
+      "role": "test",
+      "mode": null,
+      "commit": "af36c4817cbeb7966ba912eb4b5762863416aeff",
+      "status": "ok",
+      "started": "2026-11-02T04:33:00Z",
+      "ended": "2026-11-02T04:35:16Z",
+      "range": "415d24533023dc1adea5b2e17624b12d06787a94..4a79a3c8d7b7f9083bb5739b6df8b142daa8b532",
+      "confidence": "high",
+      "observations": []
+    }
+  ],
   "conductor": {
     "run": "c-001",
     "run_id": "85dfbc2a-eb60-43f5-a2f8-ef95b0e670d8",
@@ -48,5 +61,6 @@
     "outcome": null,
     "reason": null,
     "needs_from_planner": null
-  }
+  },
+  "step": "implement"
 }
