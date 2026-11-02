@@ -1,0 +1,23 @@
+.arbor/tasks/11-01-spec-v3-driver-docs/reports/gate-2.md
+  s_690b6e63d35e44::t_8e3a595a2cf60d 1-9
+.arbor/tasks/11-01-spec-v3-driver-docs/task.json
+  s_690b6e63d35e44::t_8e3a595a2cf60d 28,33,105,114
+.arbor/tasks/11-01-spec-v3-driver-docs/briefs/d-005.md
+  s_690b6e63d35e44::t_4e6860febddd56 1-2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "066994b4b4fd57b5d8d59fd605b229bd6d451e6b",
+  "prompts": {},
+  "sessions": {
+    "s_690b6e63d35e44": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19a87-d008-74d0-86fd-749f6ea9e16c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
