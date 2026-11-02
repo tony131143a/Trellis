@@ -104,7 +104,7 @@ from common.io import read_json_checked, write_json, write_text_atomic
 from common.log import Colors, colored
 from common.paths import DIR_TASKS, DIR_WORKFLOW, FILE_TASK_JSON
 from common.tasks import resolve_tier
-from common.worktree import (WorktreeError, is_ancestor, main_checkout, partition_branch, partition_worktree_path,
+from common.worktree import (WorktreeError, branch_prefix, is_ancestor, main_checkout, partition_branch, partition_worktree_path,
                              worktree_root)
 
 RUNTIME = f"{DIR_WORKFLOW}/.runtime"
@@ -945,7 +945,7 @@ def _partition_brief(ctx: Ctx, partition: str | None, brief: str) -> str:
     contract_path = find_contract(ctx.task_dir)
     paths = _partition_paths(load_contract(contract_path) if contract_path else None, partition)
     worktree = partition_worktree_path(ctx.execution_main, ctx.execution_config, ctx.name, partition)
-    line = pt.scope_line(worktree.resolve(), partition_branch(ctx.name, partition), paths)
+    line = pt.scope_line(worktree.resolve(), partition_branch(ctx.name, partition, branch_prefix(ctx.execution_config)), paths)
     return line + "\n\n" + brief.strip()
 
 

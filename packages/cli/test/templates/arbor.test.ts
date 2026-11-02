@@ -470,7 +470,7 @@ describe("configYamlTemplate: executors and gate", () => {
       executor: "codeg-cli",
     });
     expect(parsed.gate).toEqual({ commands: [] });
-    expect(parsed.worktree).toEqual({ root: "../{repo}-wt", setup: "" });
+    expect(parsed.worktree).toEqual({ root: "../{repo}-wt", setup: "", branch_prefix: "arbor/" });
     expect(parsed.test_paths).toEqual(["packages/*/test/**", "**/*.test.ts"]);
     expect(parsed).not.toHaveProperty("dispatch");
   });

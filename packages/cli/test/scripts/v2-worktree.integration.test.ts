@@ -274,8 +274,8 @@ print(json.dumps({
 `,
     );
     expect(out).toEqual({
-      wt_default: { root: "../{repo}-wt", setup: "" },
-      wt: { root: "../{repo}-wt", setup: "pnpm install --offline" },
+      wt_default: { root: "../{repo}-wt", setup: "", branch_prefix: "arbor/" },
+      wt: { root: "../{repo}-wt", setup: "pnpm install --offline", branch_prefix: "arbor/" },
       tp_default: ["packages/*/test/**", "**/*.test.ts"],
       tp: ["tests/**"],
       ex_default: "codeg-cli",
@@ -295,7 +295,7 @@ print(json.dumps([get_worktree_config(cfg), get_test_paths(cfg)]))
       template,
     );
     expect(out).toEqual([
-      { root: "../{repo}-wt", setup: "" },
+      { root: "../{repo}-wt", setup: "", branch_prefix: "arbor/" },
       ["packages/*/test/**", "**/*.test.ts"],
     ]);
   });

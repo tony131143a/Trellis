@@ -178,14 +178,15 @@ gate:
 #-------------------------------------------------------------------------------
 # Task worktrees
 #-------------------------------------------------------------------------------
-# `task.py start` creates branch arbor/<task> and its worktree at
+# `task.py start` creates branch <branch_prefix><task> and its worktree at
 # <root>/<task>, starting from the current HEAD. `root` is resolved relative
 # to the main checkout; {repo} is its directory name. `setup` runs once in
 # every new worktree (e.g. "pnpm install --offline --frozen-lockfile"); a
 # non-zero exit fails the start.
 worktree:
   root: "../{repo}-wt"
-  setup: ""
+  setup: "pnpm install --offline"
+  branch_prefix: "task/"
 
 #-------------------------------------------------------------------------------
 # Test paths

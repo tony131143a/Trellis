@@ -280,7 +280,7 @@ def check_after_dispatch(
         violations += _diff_refs("remote ref", before.remotes, after.remotes)
         violations += _diff_refs(
             "branch", before.branches, after.branches,
-            skip=own_branch, concurrent_prefix=TASK_BRANCH_PREFIX,
+            skip=own_branch, concurrent_prefix=own_branch[: own_branch.rfind("/") + 1] or TASK_BRANCH_PREFIX,
         )
     if after.head_ref != before.head_ref:
         violations.append(

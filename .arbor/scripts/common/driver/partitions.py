@@ -26,6 +26,7 @@ from ..worktree import (
     WorktreeError,
     _worktree_branch,
     add_worktree,
+    branch_prefix,
     is_ancestor,
     merge_no_ff,
     partition_branch,
@@ -77,7 +78,7 @@ def create_partition(main: Path, config: dict, task: str, partition: str, start_
     """Branch + worktree (+ ``worktree.setup``) for one partition; returns
     ``{branch, worktree, base}``. A pair left by an interrupted wave start is
     reused as long as it has no commits of its own."""
-    branch = partition_branch(task, partition)
+    branch = partition_branch(task, partition, branch_prefix(config))
     path = partition_worktree_path(main, config, task, partition)
     if path.exists() and _worktree_branch(main, path) == branch:
         base = _rev(main, branch)

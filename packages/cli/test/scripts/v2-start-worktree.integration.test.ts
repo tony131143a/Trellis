@@ -103,6 +103,19 @@ describe.skipIf(!hasPython())("task.py start in a worktree (v2)", () => {
     return JSON.parse(fs.readFileSync(file, "utf-8"));
   }
 
+  it("worktree.branch_prefix names the task branch when `arbor` is already a branch", () => {
+    makeTask();
+    git(repo, "branch", "arbor"); // blocks refs/heads/arbor/<task>
+    const blocked = runTask(repo, ["start", TASK]);
+    expect(blocked.status).toBe(1);
+    expect(blocked.stdout + blocked.stderr).toContain("cannot lock ref");
+    writeFile(repo, ".arbor/config.yaml", 'worktree:\n  branch_prefix: "task/"\n');
+    const r = runTask(repo, ["start", TASK]);
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+    expect(git(wt, "branch", "--show-current")).toBe(`task/${TASK}`);
+    expect(readJson(path.join(wtTask, "task.json")).branch).toBe(`task/${TASK}`);
+  });
+
   it("creates arbor/<task> + worktree, moves and commits the task dir, writes the v2 fields", () => {
     const rel = makeTask();
     const base = git(repo, "rev-parse", "HEAD");

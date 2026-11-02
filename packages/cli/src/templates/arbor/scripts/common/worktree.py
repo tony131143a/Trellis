@@ -86,12 +86,19 @@ def worktree_root(repo_root: Path, config: dict) -> Path:
     return root.resolve()
 
 
-def task_branch(task_name: str) -> str:
-    return f"{TASK_BRANCH_PREFIX}{task_name}"
+def branch_prefix(config: dict) -> str:
+    """``worktree.branch_prefix`` (default ``arbor/``): a repository whose
+    branch namespace already holds ``arbor`` sets another prefix."""
+    value = str(get_worktree_config(config).get("branch_prefix") or TASK_BRANCH_PREFIX).strip()
+    return value if value.endswith("/") or value.endswith("-") else value + "/"
 
 
-def partition_branch(task_name: str, partition: str) -> str:
-    return f"{TASK_BRANCH_PREFIX}{task_name}{PARTITION_SEPARATOR}{partition}"
+def task_branch(task_name: str, prefix: str = TASK_BRANCH_PREFIX) -> str:
+    return f"{prefix}{task_name}"
+
+
+def partition_branch(task_name: str, partition: str, prefix: str = TASK_BRANCH_PREFIX) -> str:
+    return f"{prefix}{task_name}{PARTITION_SEPARATOR}{partition}"
 
 
 def partition_worktree_path(repo_root: Path, config: dict, task_name: str, partition: str) -> Path:
@@ -200,11 +207,11 @@ def merge_no_ff(into_worktree: Path, branch: str, message: str) -> MergeResult:
 
 
 def create_task_worktree(repo_root: Path, task_dir: Path, config: dict) -> TaskWorktree:
-    """Create ``arbor/<task>`` at the current HEAD and its worktree under the
+    """Create ``<branch_prefix><task>`` at the current HEAD and its worktree under the
     configured root. Refuses when the branch or the target path exists."""
     name = task_dir.name
     main = main_checkout(repo_root)
-    branch = task_branch(name)
+    branch = task_branch(name, branch_prefix(config))
     path = worktree_root(main, config) / name
 
     rc, out, err = run_git(["rev-parse", "--verify", "HEAD"], cwd=repo_root)

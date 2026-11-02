@@ -13,7 +13,7 @@ from pathlib import Path
 
 from .config import _is_true_config_value
 from .git import run_git
-from .worktree import add_worktree, task_branch, worktree_root
+from .worktree import add_worktree, branch_prefix, task_branch, worktree_root
 
 
 class ExecutionError(RuntimeError):
@@ -66,7 +66,7 @@ def prepare(main: Path, task_dir: Path, data: dict, config: dict, mode: str | No
     sha = git(root, 'rev-parse', '--verify', f'{base_ref}^{{commit}}')
     git(root, 'check-ref-format', '--branch', merge_target)
     git(root, 'rev-parse', '--verify', f'refs/heads/{merge_target}')
-    branch = task_branch(task_dir.name)
+    branch = task_branch(task_dir.name, branch_prefix(config))
     effective = entry.get('execution') or {}
     path = worktree_root(root, effective) / task_dir.name
     if path.exists():
