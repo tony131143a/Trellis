@@ -27,6 +27,21 @@ nothing else (no git, no subprocesses), so ``arbor next`` stays cheap.
                           run      merged: ``arbor finish`` cleans up -> DONE
     STOP      -           human    ``arbor resume`` / ``override`` / ``abandon``
 
+Reader batches. REVIEW review (``REVIEW_READERS`` per tier), POLISH
+candidates (``CANDIDATE_READERS``) and POLISH verify (one per batch of 8) are
+read-only readers of the same range: when the step opens, the caller assigns
+every reader its dispatch id under the task lock (``batch.ids``, like a
+partition's ``next_dispatch``) and the readers may run concurrently;
+``batch.running`` holds the ones in flight. The step completes when all of
+them are done (two reviewers: PASS only when both pass, findings united).
+
+Lanes (test || implement). A standard / full task whose contract has no
+partitions and pins real interfaces runs BUILD as one wave of two lanes,
+``tests`` and ``impl``, each in its own worktree (``data['lanes']``): the
+``tests`` lane writes the tests (red check of every auto check, then done),
+the ``impl`` lane implements against the Interface pins at the same time;
+the wave merge brings both into the task branch, then GATE.
+
 Progress (only the driver changes ``counters``): a GATE round progresses when
 the failing id set shrinks or a previously failing check passes; a REVIEW /
 POLISH round when its finding id set changes; a failed dispatch never does.
@@ -94,6 +109,10 @@ REVIEW_ROUND_CAP = {"light": 2, "standard": 1, "full": 1}
 POLISH_ROUND_CAP = 2
 GATE_RED_CAP = 4  # consecutive red gate rounds
 CANDIDATE_READERS = {"standard": 2, "full": 3}
+REVIEW_READERS = {"light": 1, "standard": 2, "full": 2}
+BATCH_STEPS = (("REVIEW", "review"), ("POLISH", "candidates"), ("POLISH", "verify"))
+LANES = ("tests", "impl")
+LANE_FIRST_STEP = {"tests": "test", "impl": "implement"}
 VERIFY_BATCH = 8
 NO_PROGRESS_LIMIT = 2
 NEW_COUNTERS = {"gate": 0, "review": 0, "polish": 0, "no_progress": 0}
@@ -120,6 +139,7 @@ class Step:
     dispatch: str | None = None  # pre-assigned dispatch id (partition steps)
     pending: list[str] = field(default_factory=list)  # other partitions needing a brief now
     action: str | None = None  # needs=run: gate | start_wave | merge
+    batch: list[str] = field(default_factory=list)  # reader ids of this step that may run concurrently
 
 
 # =============================================================================
@@ -148,6 +168,8 @@ def goto(data: dict, state: str, step: str | None = None) -> None:
     data["state"] = state
     data["step"] = step or DEFAULT_STEP[state]
     data.pop("decision", None)
+    data.pop("batch", None)
+    data.pop("review_round", None)
 
 
 def stop(data: dict, reason: str, detail: str, **extra) -> None:
@@ -185,6 +207,95 @@ def _budget(data: dict, counter: str, value: int, base: int, what: str) -> bool:
              counter=counter, value=value, cap=cap)
         return True
     return False
+
+
+# =============================================================================
+# Reader batches
+# =============================================================================
+
+
+def step_key(data: dict) -> str:
+    return f"{data.get('state')}/{step_of(data)}"
+
+
+def batch_of(data: dict) -> dict:
+    """The reader batch of the current step ({} when there is none)."""
+    batch = data.get("batch")
+    return batch if isinstance(batch, dict) and batch.get("key") == step_key(data) else {}
+
+
+def batch_size(data: dict, tier: str | None) -> int:
+    """How many readers the current step has in all (0: not a reader step)."""
+    key = (data.get("state"), step_of(data))
+    if key not in BATCH_STEPS or data.get("override_role"):
+        return 0
+    if key == ("REVIEW", "review"):
+        return REVIEW_READERS.get(tier or "", 1)
+    if key == ("POLISH", "candidates"):
+        return CANDIDATE_READERS.get(tier or "", 2)
+    return int((data.get("polish") or {}).get("verify_batches", 1))
+
+
+def _batch_done(data: dict) -> int:
+    key = (data.get("state"), step_of(data))
+    if key == ("REVIEW", "review"):
+        return int((data.get("review_round") or {}).get("done", 0))
+    polish = data.get("polish") or {}
+    return int(polish.get("candidates_done" if key == ("POLISH", "candidates") else "verify_done", 0))
+
+
+def unassigned_batch(data: dict, tier: str | None) -> int:
+    """Readers of the current step that still need a dispatch id."""
+    size = batch_size(data, tier)
+    if not size:
+        return 0
+    batch = batch_of(data)
+    key = step_key(data)
+    judged = sum(1 for p in (data.get("report_pending") or {}).values()
+                 if f"{(p.get('job') or {}).get('state')}/{(p.get('job') or {}).get('step')}" == key)
+    return max(0, size - _batch_done(data) - len(batch.get("ids") or []) - len(batch.get("running") or {}) - judged)
+
+
+def on_batch_assigned(data: dict, ids: list[str]) -> None:
+    batch = batch_of(data) or {"key": step_key(data), "ids": [], "running": {}}
+    batch["ids"] = list(batch.get("ids") or []) + list(ids)
+    data["batch"] = batch
+
+
+def on_batch_dispatch(data: dict, dispatch: str, pid: int, force: bool = False) -> bool:
+    """A reader of the current batch starts; False when ``dispatch`` is not one
+    (``force``: count it anyway, e.g. a reader of a task upgraded mid-step)."""
+    batch = batch_of(data)
+    if dispatch not in (batch.get("ids") or []):
+        if not force:
+            return False
+        batch = batch or {"key": step_key(data), "ids": [], "running": {}}
+        data["batch"] = batch
+    else:
+        batch["ids"].remove(dispatch)
+    batch.setdefault("running", {})[dispatch] = {"pid": pid}
+    return True
+
+
+def on_batch_finished(data: dict, dispatch: str) -> None:
+    batch = data.get("batch")
+    if isinstance(batch, dict):
+        (batch.get("running") or {}).pop(dispatch, None)
+
+
+def on_reviewer(data: dict, tier: str, verdict: str, finding_ids: list[str], range_from: str, range_to: str) -> bool:
+    """One reviewer of REVIEW review done; the round is decided once every
+    reviewer reported (PASS only when all pass, findings united). True then."""
+    rnd = data.setdefault("review_round", {"done": 0, "verdicts": [], "ids": []})
+    rnd["done"] = int(rnd.get("done", 0)) + 1
+    rnd["verdicts"] = list(rnd.get("verdicts") or []) + [verdict]
+    rnd["ids"] = sorted(set(rnd.get("ids") or []) | set(finding_ids))
+    if rnd["done"] < REVIEW_READERS.get(tier, 1):
+        return False
+    data.pop("review_round", None)
+    on_review(data, tier, "PASS" if all(v == "PASS" for v in rnd["verdicts"]) else "FAIL",
+              rnd["ids"], range_from, range_to)
+    return True
 
 
 # =============================================================================
@@ -247,11 +358,18 @@ def plan(data: dict, tier: str, waves=None, partition: str | None = None) -> Ste
     role = DISPATCH_STEPS.get((state, step))
     if role is None:
         raise StateError(f"no step '{step}' in state {state}")
+    batch = batch_of(data) if (state, step) in BATCH_STEPS else {}
+    ids = list(batch.get("ids") or [])
+    if not ids and batch.get("running"):
+        return Step("wait", f"{state} {step}: waiting for {', '.join(sorted(batch['running']))}")
     mode = None
     range_from = base
     note = ""
     if state == "REVIEW" and step == "review":
         mode, range_from = "self-check", data.get("last_reviewed") or base
+        readers = REVIEW_READERS.get(tier, 1)
+        if readers > 1:
+            note = f" ({int((data.get('review_round') or {}).get('done', 0)) + 1}/{readers}; split the angles)"
     elif step == "fix" and state in ("REVIEW", "POLISH"):
         range_from = data.get("review_from") or base
     elif step == "sweep":
@@ -268,8 +386,11 @@ def plan(data: dict, tier: str, waves=None, partition: str | None = None) -> Ste
             note = f" (batch {polish.get('verify_done', 0) + 1}/{batches}; candidates in {polish.get('candidates_file')})"
     elif state == "GATE" and step == "fix":
         note = f" (failing: {', '.join(data.get('gate_failing') or []) or '-'}; tests are frozen)"
+    if len(ids) > 1:
+        note += (f"; readers {', '.join(ids)} may run concurrently: write each brief, then "
+                 "`arbor run --dispatch <id>` for each")
     return Step("brief", f"{state}: write the brief for role {role}{note}, then `arbor run`",
-                role=role, mode=mode, range_from=range_from)
+                role=role, mode=mode, range_from=range_from, dispatch=ids[0] if ids else None, batch=ids)
 
 
 def wave_partitions(waves, wave: int) -> tuple[str, ...]:
@@ -663,6 +784,11 @@ def reap_stale(data: dict, alive) -> list[str]:
         if isinstance(running, dict) and not running.get("external") and not alive(int(running.get("pid") or 0)):
             rec.pop("running")
             reaped.append(str(running.get("dispatch")))
+    batch = data.get("batch")
+    for dispatch, run in list(((batch or {}).get("running") or {}).items()) if isinstance(batch, dict) else []:
+        if isinstance(run, dict) and not run.get("external") and not alive(int(run.get("pid") or 0)):
+            batch["running"].pop(dispatch)
+            reaped.append(str(dispatch))
     for entry in data.get("dispatches") or []:
         if entry.get("id") in reaped and entry.get("status") == "running":
             entry["status"] = "aborted"
@@ -676,11 +802,16 @@ def on_partition_failed(data: dict, name: str, role: str) -> None:
     _round(data, False, f"{name}: {role} dispatch failed", rec["counters"])
 
 
+def is_lane(data: dict, name: str | None) -> bool:
+    return bool(data.get("lanes")) and name in LANES
+
+
 def on_partition_red_check(data: dict, name: str, passing: list[str], errored: list[str]) -> None:
     rec = data["partitions"][name]
     rec["counters"]["no_progress"] = 0
     if not passing and not errored:
-        rec["step"] = "implement"
+        # The tests lane only writes tests; the impl lane implements in parallel.
+        rec["step"] = PARTITION_DONE if is_lane(data, name) else "implement"
         rec.pop("decision", None)
         return
     rec["step"] = "decide"
@@ -711,6 +842,8 @@ def _decide_partition(data: dict, choice: str, partition: str | None) -> dict:
     rec = records[name]
     decision = rec.pop("decision")
     rec["step"] = "implement" if choice == "impl" else "test"
+    if choice == "impl" and is_lane(data, name):
+        rec["step"] = PARTITION_DONE  # accept the tests as written; the impl lane implements
     if choice == "contract":
         data["resume_to"] = {"state": "BUILD", "step": "partitions"}
         goto(data, "CONTRACT")

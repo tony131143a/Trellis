@@ -82,9 +82,9 @@ describe.skipIf(!hasPython())("arbor.py mandate", { timeout: 120_000 }, () => {
     const ok = spawnSync("python3", [".arbor/scripts/task.py", "create", "Other", "--slug", "other", "--description", "d",
       "--tier", "light", "--mandate", "merge=ask", "--no-start"], { cwd: f.repo, encoding: "utf-8", env });
     expect(ok.status, ok.stdout + ok.stderr).toBe(0);
-    const dir = fs.readdirSync(path.join(f.repo, ".arbor/tasks")).find((n: string) => n.endsWith("-other"));
-    expect(dir).toBeDefined();
-    const created = JSON.parse(fs.readFileSync(path.join(f.repo, ".arbor/tasks", dir!, "task.json"), "utf-8"));
+    const dir = fs.readdirSync(path.join(f.repo, ".arbor/tasks")).find((n: string) => n.endsWith("-other")) ?? "";
+    expect(dir).not.toBe("");
+    const created = JSON.parse(fs.readFileSync(path.join(f.repo, ".arbor/tasks", dir, "task.json"), "utf-8"));
     expect(created.meta).toMatchObject({ tier: "light", mandate: "merge=ask" });
   });
 
@@ -93,14 +93,15 @@ describe.skipIf(!hasPython())("arbor.py mandate", { timeout: 120_000 }, () => {
     seedCode(f, "REVIEW");
     f.plan({
       "d-001": { reply: reviewReply("PASS", []) },
-      "d-002": { reply: "## Simplify: No Change\n" },
-      "d-003": { reply: reviewReply("FAIL", [finding("src/app.txt", 2, "CANDIDATE")]) },
+      "d-002": { reply: reviewReply("PASS", []) },
+      "d-003": { reply: "## Simplify: No Change\n" },
       "d-004": { reply: reviewReply("FAIL", [finding("src/app.txt", 2, "CANDIDATE")]) },
-      "d-005": { reply: `\`\`\`json\n${JSON.stringify([finding("src/app.txt", 2, "PLAUSIBLE")])}\n\`\`\`\nCONFIRMED 0, PLAUSIBLE 1, REFUTED 0.\n` },
+      "d-005": { reply: reviewReply("FAIL", [finding("src/app.txt", 2, "CANDIDATE")]) },
+      "d-006": { reply: `\`\`\`json\n${JSON.stringify([finding("src/app.txt", 2, "PLAUSIBLE")])}\n\`\`\`\nCONFIRMED 0, PLAUSIBLE 1, REFUTED 0.\n` },
     });
-    for (const id of ["d-001", "d-002", "d-003", "d-004"]) expect(dispatch(f, id).status).toBe(0);
+    for (const id of ["d-001", "d-002", "d-003", "d-004", "d-005"]) expect(dispatch(f, id).status).toBe(0);
     expect(f.taskJson()).toMatchObject({ state: "POLISH", step: "verify" });
-    const r = dispatch(f, "d-005");
+    const r = dispatch(f, "d-006");
     expect(r.status, r.stdout + r.stderr).toBe(0);
     expect(r.stdout).toContain("mandate: skip");
     const data = f.taskJson();
@@ -115,12 +116,13 @@ describe.skipIf(!hasPython())("arbor.py mandate", { timeout: 120_000 }, () => {
     seedCode(f, "REVIEW");
     f.plan({
       "d-001": { reply: reviewReply("PASS", []) },
-      "d-002": { reply: "## Simplify: No Change\n" },
-      "d-003": { reply: reviewReply("FAIL", [finding("src/app.txt", 2, "CANDIDATE")]) },
+      "d-002": { reply: reviewReply("PASS", []) },
+      "d-003": { reply: "## Simplify: No Change\n" },
       "d-004": { reply: reviewReply("FAIL", [finding("src/app.txt", 2, "CANDIDATE")]) },
-      "d-005": { reply: `\`\`\`json\n${JSON.stringify([finding("src/app.txt", 2, "PLAUSIBLE")])}\n\`\`\`\nCONFIRMED 0, PLAUSIBLE 1, REFUTED 0.\n` },
+      "d-005": { reply: reviewReply("FAIL", [finding("src/app.txt", 2, "CANDIDATE")]) },
+      "d-006": { reply: `\`\`\`json\n${JSON.stringify([finding("src/app.txt", 2, "PLAUSIBLE")])}\n\`\`\`\nCONFIRMED 0, PLAUSIBLE 1, REFUTED 0.\n` },
     });
-    for (const id of ["d-001", "d-002", "d-003", "d-004", "d-005"]) expect(dispatch(f, id).status).toBe(0);
+    for (const id of ["d-001", "d-002", "d-003", "d-004", "d-005", "d-006"]) expect(dispatch(f, id).status).toBe(0);
     expect(f.next()).toMatchObject({ needs: "human", human: { kind: "plausible", mandate: "ask" } });
     expect(f.taskJson().decisions ?? []).toEqual([]);
   });

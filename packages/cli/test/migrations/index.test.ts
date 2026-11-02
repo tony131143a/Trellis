@@ -306,8 +306,7 @@ describe("0.4.0 manifest", () => {
 // =============================================================================
 
 describe("0.5.0 manifest", () => {
-  it("is the package version, reached from 0.4.0, and adds the mandate config section", () => {
-    expect(VERSION).toBe("0.5.0");
+  it("is reached from 0.4.0 and adds the mandate config section", () => {
     expect(getAllMigrationVersions()).toContain("0.5.0");
     expect(getMigrationsForVersion("0.4.0", "0.5.0")).toEqual([]);
     expect(getMigrationMetadata("0.4.0", "0.5.0").breaking).toBe(false);
@@ -318,5 +317,19 @@ describe("0.5.0 manifest", () => {
     const section = extractConfigSection(configYamlTemplate, "Mandate");
     expect(section).toContain("mandate:");
     expect(section).toContain("auto_merge_max_lines: 200");
+  });
+});
+
+// =============================================================================
+// 0.6.0 — parallel reader batches, test || implement lanes
+// =============================================================================
+
+describe("0.6.0 manifest", () => {
+  it("is the package version, reached from 0.5.0, with no migrations and no config section", () => {
+    expect(VERSION).toBe("0.6.0");
+    expect(getAllMigrationVersions()).toContain("0.6.0");
+    expect(getMigrationsForVersion("0.5.0", "0.6.0")).toEqual([]);
+    expect(getMigrationMetadata("0.5.0", "0.6.0").breaking).toBe(false);
+    expect(getConfigSectionsAddedBetween("0.5.0", "0.6.0")).toEqual([]);
   });
 });

@@ -1,0 +1,8 @@
+{
+  "version": "0.6.0",
+  "description": "v4 wave 3: parallel reader batches (dual REVIEW reviewers, POLISH candidate/verify readers) and test || implement lanes",
+  "breaking": false,
+  "recommendMigrate": true,
+  "changelog": "Reader steps get their dispatch ids up front: REVIEW runs two reviewers on standard/full tasks (PASS only when both pass, findings united), POLISH candidates and verify batches run their readers concurrently. next --json lists the batch ([{dispatch, brief_path}]), readers_running and pending_delegations; with codeg MCP every reader is delegated before any is collected. A standard/full task without partitions whose contract pins real interfaces runs BUILD as two lanes, tests and impl, written at the same time on separate branches and merged before GATE.",
+  "migrations": []
+}

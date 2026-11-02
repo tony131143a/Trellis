@@ -401,28 +401,29 @@ print("ok")
     const review = (v: string, fs_: object[]) => `${v}\n\n\`\`\`json\n${JSON.stringify(fs_)}\n\`\`\`\nMode: m; angles: A; single-context pass.\n`;
     f.plan({
       "d-001": { reply: review("PASS", []) },
-      "d-002": { reply: "## Simplify: No Change\n" },
-      "d-003": { reply: review("PASS", []) },
+      "d-002": { reply: review("PASS", []) },
+      "d-003": { reply: "## Simplify: No Change\n" },
       "d-004": { reply: review("PASS", []) },
       "d-005": { reply: review("PASS", []) },
-      "d-006": { reply: review("FAIL", [{ ...finding, verdict: "CANDIDATE" }]) },
-      "d-007": { reply: `\`\`\`json\n${JSON.stringify([{ ...finding, verdict: "CONFIRMED" }])}\n\`\`\`\nCONFIRMED 1, PLAUSIBLE 0, REFUTED 0.\n` },
-      "d-008": { write: [{ path: "src/app.txt", content: "one\nTWO\nthree\n" }], reply: "## Fix: Done\n" },
+      "d-006": { reply: review("PASS", []) },
+      "d-007": { reply: review("FAIL", [{ ...finding, verdict: "CANDIDATE" }]) },
+      "d-008": { reply: `\`\`\`json\n${JSON.stringify([{ ...finding, verdict: "CONFIRMED" }])}\n\`\`\`\nCONFIRMED 1, PLAUSIBLE 0, REFUTED 0.\n` },
+      "d-009": { write: [{ path: "src/app.txt", content: "one\nTWO\nthree\n" }], reply: "## Fix: Done\n" },
     });
-    for (const id of ["d-001", "d-002", "d-003", "d-004"]) expect(dispatch(f, id).status).toBe(0);
-    expect(f.next()).toMatchObject({ state: "POLISH", role: "review", mode: "candidates", dispatch: "d-005" });
-    expect(dispatch(f, "d-005").status).toBe(0);
+    for (const id of ["d-001", "d-002", "d-003", "d-004", "d-005"]) expect(dispatch(f, id).status).toBe(0);
+    expect(f.next()).toMatchObject({ state: "POLISH", role: "review", mode: "candidates", dispatch: "d-006" });
+    expect(dispatch(f, "d-006").status).toBe(0);
     // three readers, nothing kept: full sweeps once instead of finishing
     const base = f.taskJson().base;
     expect(f.next()).toMatchObject({
-      state: "POLISH", role: "review", mode: "sweep", dispatch: "d-006", range: expect.stringMatching(new RegExp(`^${base}\\.\\.`)),
+      state: "POLISH", role: "review", mode: "sweep", dispatch: "d-007", range: expect.stringMatching(new RegExp(`^${base}\\.\\.`)),
     });
-    expect(dispatch(f, "d-006").status).toBe(0);
-    expect(fs.readFileSync(path.join(f.tmp, "received/d-006.md"), "utf-8")).toContain("Mode: sweep");
-    expect(f.taskJson()).toMatchObject({ step: "verify", sweep_done: true, sweep_ids: ["src/app.txt:2:wrong word"] });
     expect(dispatch(f, "d-007").status).toBe(0);
-    expect(f.next()).toMatchObject({ role: "fix", dispatch: "d-008" });
+    expect(fs.readFileSync(path.join(f.tmp, "received/d-007.md"), "utf-8")).toContain("Mode: sweep");
+    expect(f.taskJson()).toMatchObject({ step: "verify", sweep_done: true, sweep_ids: ["src/app.txt:2:wrong word"] });
     expect(dispatch(f, "d-008").status).toBe(0);
+    expect(f.next()).toMatchObject({ role: "fix", dispatch: "d-009" });
+    expect(dispatch(f, "d-009").status).toBe(0);
     ok(f.run("gate"));
     const data = f.taskJson();
     expect(data.state).toBe("FINISH");

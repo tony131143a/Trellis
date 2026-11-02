@@ -204,14 +204,14 @@ python3 ./.arbor/scripts/arbor.py prompt --dispatch d-NNN --print   # the assemb
 
 Every command takes `--task <dir>` and `--executor <name>` before the command name (`--task` defaults to this session's active task; pass it when this session has no active-task pointer, for example a child task driven from a conversation of its own). Exit codes: 0 ok, 1 refused / failed dispatch / red gate, 2 usage error.
 
-`arbor.py next --json` always carries `task`, `state`, `needs` and `summary`; depending on `needs` it adds `role`, `mode`, `range`, `dispatch`, `brief_path`, `decision`, `human` and `touched_files`. Before `task.py start` it answers `state: CONTRACT`, `needs: human` with `human.kind: approve_contract`, plus the next `dispatch` id, its `brief_path` and `contract_roles` (explore, architect, review).
+`arbor.py next --json` always carries `task`, `state`, `needs` and `summary`; depending on `needs` it adds `role`, `mode`, `range`, `dispatch`, `brief_path`, `batch`, `decision`, `human` and `touched_files`. `batch` lists the readers of the current step that may run concurrently (`dispatch` + `brief_path` each): the REVIEW reviewers (light 1, standard / full 2), the POLISH candidate readers (standard 2, full 3) and the verify batches. Their ids are assigned when the step opens; write every brief, then start each with `arbor.py run --dispatch <id>` without waiting for the others (with codeg MCP: delegate each, the sync hook binds and collects them in any order). `readers_running` lists the readers still in flight. Before `task.py start` it answers `state: CONTRACT`, `needs: human` with `human.kind: approve_contract`, plus the next `dispatch` id, its `brief_path` and `contract_roles` (explore, architect, review).
 
 | `needs` | Meaning | Who | Do |
 |---|---|---|---|
 | `delegation` | a prepared codeg MCP task is pending (`codeg-mcp` executor only) | main agent | read `request_path`; delegate once and bind, or poll/resume `task_id`; collect its terminal JSON before advancing |
 | `brief` | a role must run | main agent | write the brief for that `role` at `brief_path`, then `arbor.py run` |
 | `run` | the driver has deterministic work: GATE, or merging a finished wave back into the task branch | main agent | `arbor.py gate` for GATE (`arbor.py run` does the same there); `arbor.py run` for the wave merge |
-| `wait` | multi-partition wave: every ready partition is running or finished and the wave cannot merge yet | main agent | wait for the running `arbor.py run --partition <p>` calls, then `arbor.py next` again |
+| `wait` | multi-partition wave or reader batch: every ready partition or reader is running and nothing can advance yet | main agent | wait for the running `arbor.py run --partition <p>` / `run --dispatch <id>` calls (or poll their delegations), then `arbor.py next` again |
 | `decide` | a judgment the driver cannot make | main agent | `arbor.py decide <choice> --reason "…"` with one of the listed options; `contract` → fix the contract with the user, then `arbor.py resume` |
 | `human` | `human.kind` says which: `approve_contract`, `plausible`, `stop`, `merge_conflict` or `merge` | main agent + user | `approve_contract`: before start, finish the contract (research with `arbor.py run --role`, see CONTRACT-phase dispatch), ask for approval, then `task.py start`; after start, the user re-approves the edited `contract.md` and you run `arbor.py resume`. `plausible`: ask the user, `decide fix\|skip --reason "…"`. `stop`: inspect the reason and evidence, then `resume`, `override`, re-plan or `abandon`. `merge_conflict`: merge the named branch into the task branch by hand in the task worktree, commit, then `arbor.py resume`. `merge`: Phase 3. `human.mandate` says whether to ask the user (`ask`) or proceed yourself (`auto`) |
 | `done` | nothing left | main agent | stop |
@@ -630,14 +630,16 @@ Write the brief at `brief_path` for the role `next` names, then `arbor.py run`. 
 
 - **test**: which criteria to cover, the Interface pins to call, fixtures or helpers to reuse.
 - **implement / fix / simplify**: the essential files, the part of the design this run covers, pitfalls, files to stay out of; for fix, the findings JSON.
-- **review**: `Angles:` — REVIEW self-check: `A, B, Acceptance` (light: `A, B, C, D, E, Conventions, Acceptance, Cleanup-lite`); POLISH candidates: one angle group per reader (`A, D` / `B, Conventions` / `C, E, Acceptance`).
+- **review**: `Angles:` — REVIEW self-check: `A, B, Acceptance` (standard / full, two reviewers: `A, Acceptance` / `B, Conventions`) (light: `A, B, C, D, E, Conventions, Acceptance, Cleanup-lite`); POLISH candidates: one angle group per reader (`A, D` / `B, Conventions` / `C, E, Acceptance`).
 - **verify**: the deduplicated candidates JSON, at most 8.
 
 Never ask a role to dispatch another role.
 
 #### 2.3 BUILD
 
-`test` commits failing tests for the criteria. The driver checks the red run: the map commands must fail on an assertion; a collection or import error is not red. Then `implement` makes them pass without touching the test paths. A Partial or Blocked report comes back to you through `next`; add the missing information to the next brief or return to the contract.
+`test` commits failing tests for the criteria. The driver checks the red run: the map commands must fail on an assertion; a collection or import error is not red. Then `implement` makes them pass without touching the test paths.
+
+**test ∥ implement.** A standard / full task whose contract has no partitions and whose Interface pins name real interfaces (not only `existing interfaces`) runs BUILD as one wave of two lanes in their own worktrees: `tests` (role test, then the red check of every auto check) and `impl` (role implement against the pins), started together with `arbor.py run --partition tests` and `arbor.py run --partition impl`. The driver tells each lane that the other works at the same time; the wave merge brings both into the task branch, then GATE. A red-check decision in the tests lane: `impl` accepts the tests as written, `tests` reruns them, `contract` goes back to the contract. Write `existing interfaces` as the only pin to keep BUILD sequential. A Partial or Blocked report comes back to you through `next`; add the missing information to the next brief or return to the contract.
 
 #### 2.4 GATE and decide `[on demand]`
 
@@ -653,11 +655,11 @@ python3 ./.arbor/scripts/arbor.py decide impl|tests|contract --reason "<one line
 
 #### 2.5 REVIEW
 
-One `review` `Mode: self-check` over `base..HEAD`, including "does the Verification map cover every criterion". Findings go to `fix`, back through GATE, and only `last_reviewed..HEAD` is reviewed again. Review fix-round caps: light 2, standard / full 1; past the cap the driver enters STOP (2.7). Invalid findings may stay unfixed; list them in the final summary.
+One `review` `Mode: self-check` over `base..HEAD` (standard / full: two reviewers in parallel, the angles split between them; the round passes only when both pass and their findings are united), including "does the Verification map cover every criterion". Findings go to `fix`, back through GATE, and only `last_reviewed..HEAD` is reviewed again. Review fix-round caps: light 2, standard / full 1; past the cap the driver enters STOP (2.7). Invalid findings may stay unfixed; list them in the final summary.
 
 #### 2.6 POLISH
 
-Standard / full only. `simplify` → GATE → N reviews `Mode: candidates` (standard 2, full 3) → you dedup → the driver prefilters mechanically (file exists, quoted code within ±5 lines, line inside the range, cited rule exists) → `verify` → full: one review `Mode: sweep` with the verified list, its new candidates verified too. CONFIRMED findings are fixed without asking. When PLAUSIBLE findings survive and the mandate says `plausible=auto` (standard default), the driver records `decide skip` itself and lists them in the scorecard; with `ask`, present them to the user once, most severe first, with your recommendation, and record the answer with `arbor.py decide fix|skip --reason "…"`. Fix rounds are re-reviewed on the delta; after two rounds the driver enters STOP (BUDGET) and you reassess the approach.
+Standard / full only. `simplify` → GATE → N reviews `Mode: candidates` (standard 2, full 3, run in parallel from the `batch` of `next --json`) → you dedup → the driver prefilters mechanically (file exists, quoted code within ±5 lines, line inside the range, cited rule exists) → `verify` (one reader per batch of 8 candidates, in parallel) → full: one review `Mode: sweep` with the verified list, its new candidates verified too. CONFIRMED findings are fixed without asking. When PLAUSIBLE findings survive and the mandate says `plausible=auto` (standard default), the driver records `decide skip` itself and lists them in the scorecard; with `ask`, present them to the user once, most severe first, with your recommendation, and record the answer with `arbor.py decide fix|skip --reason "…"`. Fix rounds are re-reviewed on the delta; after two rounds the driver enters STOP (BUDGET) and you reassess the approach.
 
 #### 2.7 STOP, resume, override `[on demand]`
 

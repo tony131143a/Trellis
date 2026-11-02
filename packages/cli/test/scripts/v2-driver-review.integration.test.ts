@@ -98,18 +98,20 @@ describe.skipIf(!hasPython())("arbor.py validators, REVIEW, POLISH", { timeout: 
     seedCode(f, "REVIEW");
     f.plan({
       "d-001": { reply: reviewReply("PASS", []) },
-      "d-002": { reply: "## Simplify: No Change\n" },
-      "d-003": { reply: reviewReply("FAIL", [finding("src/app.txt", 2, "CANDIDATE"), finding("src/gone.txt", 1, "CANDIDATE")]) },
-      "d-004": { reply: reviewReply("FAIL", [finding("src/app.txt", 2, "CANDIDATE"), finding("README.md", 1, "CANDIDATE", "old")]) },
-      "d-005": { reply: `\`\`\`json\n${JSON.stringify([finding("src/app.txt", 2, "PLAUSIBLE")])}\n\`\`\`\nCONFIRMED 0, PLAUSIBLE 1, REFUTED 0.\n` },
+      "d-002": { reply: reviewReply("PASS", []) },
+      "d-003": { reply: "## Simplify: No Change\n" },
+      "d-004": { reply: reviewReply("FAIL", [finding("src/app.txt", 2, "CANDIDATE"), finding("src/gone.txt", 1, "CANDIDATE")]) },
+      "d-005": { reply: reviewReply("FAIL", [finding("src/app.txt", 2, "CANDIDATE"), finding("README.md", 1, "CANDIDATE", "old")]) },
+      "d-006": { reply: `\`\`\`json\n${JSON.stringify([finding("src/app.txt", 2, "PLAUSIBLE")])}\n\`\`\`\nCONFIRMED 0, PLAUSIBLE 1, REFUTED 0.\n` },
     });
     expect(dispatch(f, "d-001").status).toBe(0);
+    expect(dispatch(f, "d-002").status).toBe(0); // standard: the second reviewer
     expect(f.taskJson()).toMatchObject({ state: "POLISH", step: "simplify" });
-    expect(dispatch(f, "d-002").status).toBe(0);
-    expect(f.next()).toMatchObject({ state: "POLISH", role: "review", mode: "candidates" });
     expect(dispatch(f, "d-003").status).toBe(0);
-    expect(f.taskJson().polish.candidates_done).toBe(1);
+    expect(f.next()).toMatchObject({ state: "POLISH", role: "review", mode: "candidates" });
     expect(dispatch(f, "d-004").status).toBe(0);
+    expect(f.taskJson().polish.candidates_done).toBe(1);
+    expect(dispatch(f, "d-005").status).toBe(0);
 
     const data = f.taskJson();
     expect(data).toMatchObject({ step: "verify", counters: { polish: 1 }, polish_ids: ["src/app.txt:2:off by one"] });
@@ -121,7 +123,7 @@ describe.skipIf(!hasPython())("arbor.py validators, REVIEW, POLISH", { timeout: 
     ]);
     expect(f.next()).toMatchObject({ role: "verify", summary: expect.stringContaining("candidates-r1.json") });
 
-    expect(dispatch(f, "d-005").status).toBe(0);
+    expect(dispatch(f, "d-006").status).toBe(0);
     expect(f.next()).toMatchObject({ needs: "human", human: { kind: "plausible" } });
     expect(f.run("decide", "impl", "--reason", "x").status).toBe(1);
     expect(f.run("decide", "skip", "--reason", "trigger is unrealistic").status).toBe(0);
