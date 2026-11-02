@@ -47,6 +47,18 @@
         ]
       }
     ],
+    "PostToolUse": [
+      {
+        "matcher": "^mcp__.+__(delegate_to_agent|get_delegation_status)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{PYTHON_CMD}} .claude/hooks/sync-delegation.py",
+            "timeout": 600
+          }
+        ]
+      }
+    ],
     "UserPromptSubmit": [
       {
         "hooks": [

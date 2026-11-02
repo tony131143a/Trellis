@@ -70,6 +70,7 @@ from .spec_trace import (
     derive_spec_changes,
     manual_spec_changes,
 )
+from .driver import mandate as md
 from .tasks import TIERS
 from .task_utils import (
     archive_destination_for,
@@ -331,6 +332,17 @@ def cmd_create(args: argparse.Namespace) -> int:
         meta["tier"] = meta_tier
     elif cli_tier:
         meta["tier"] = cli_tier
+
+    # Validate the mandate (`--mandate` and `--meta mandate=` are the same setting).
+    cli_mandate: str | None = getattr(args, "mandate", None)
+    if cli_mandate:
+        meta["mandate"] = cli_mandate
+    if "mandate" in meta:
+        try:
+            md.parse_spec(meta["mandate"])
+        except md.MandateError as e:
+            print(colored(f"Error: {e}", Colors.RED), file=sys.stderr)
+            return 1
 
     # Validate --package (CLI source: fail-fast)
     execution_mode = getattr(args, "execution", None)
@@ -2075,6 +2087,12 @@ def cmd_set_meta(args: argparse.Namespace) -> int:
         print("Usage: python3 task.py set-meta <task-dir> <key> <value>")
         return 1
 
+    if key == "mandate":
+        try:
+            md.parse_spec(value)
+        except md.MandateError as e:
+            print(colored(f"Error: {e}", Colors.RED))
+            return 1
     if key == "tier":
         tier = (value or "").strip().lower()
         if tier not in TIERS:

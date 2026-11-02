@@ -10,6 +10,7 @@ Hooks and settings connect the AI tool to Arbor. `.claude/settings.json` and `.s
 | UserPromptSubmit | `inject-workflow-state.py` | With an active task, runs `.arbor/scripts/arbor.py next --json` and emits its one-line `summary` plus `needs`. Otherwise, or when the driver is missing or fails, parses `[workflow-state:STATUS]` blocks from `.arbor/workflow.md` and emits the body matching the task status; `Refer to workflow.md for current step.` when no block matches. |
 | PreToolUse, matcher `^(Agent\|Task)$`, timeout 10 | `guard-builtin-agent.py` | Denies built-in Agent/Task for Arbor role dispatches (`Active task:` / `Role:` prompt, or `subagent_type` starting `arbor-`); roles run only through `arbor.py run`. |
 | PreToolUse (Bash) | `inject-shell-session-context.py` | Lets shell commands inherit Arbor session identity (`ARBOR_CONTEXT_ID`). |
+| PostToolUse, matcher `^mcp__.+__(delegate_to_agent\|get_delegation_status)$`, timeout 600 | `sync-delegation.py` | After codeg MCP `delegate_to_agent`: `arbor.py bind` of the returned task_id to the driver's pending request; after a terminal `get_delegation_status`: saves the response and runs `arbor.py collect`. Reports the outcome as `additionalContext`. |
 
 Read `settings.json` in the project for the exact matchers and the set actually registered. Claude Code may additionally have `.claude/hooks/statusline.py` when a statusline was configured.
 

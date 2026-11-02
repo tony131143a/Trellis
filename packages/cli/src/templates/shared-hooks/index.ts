@@ -28,7 +28,8 @@ export type SharedHookName =
   | "session-start.py"
   | "inject-shell-session-context.py"
   | "inject-workflow-state.py"
-  | "guard-builtin-agent.py";
+  | "guard-builtin-agent.py"
+  | "sync-delegation.py";
 
 export type SharedHookPlatform = "claude" | "codex";
 
@@ -45,6 +46,10 @@ export type SharedHookPlatform = "claude" | "codex";
  * - `guard-builtin-agent.py` — PreToolUse on the built-in `Agent|Task` tool:
  *   denies Arbor role dispatches; roles run only through the driver
  *   (`arbor.py run`) and its configured executor.
+ * - `sync-delegation.py` — PostToolUse on the codeg MCP tools
+ *   `delegate_to_agent` / `get_delegation_status`: binds the returned task_id
+ *   to the driver's pending request and collects a terminal report, so the
+ *   main agent does not run `arbor.py bind` / `collect` by hand.
  * - `inject-shell-session-context.py` — platforms with a hook that fires
  *   *before* a shell command and receives both the session id and the pending
  *   command. That hook is the only channel by which session identity reaches
@@ -66,12 +71,14 @@ export const SHARED_HOOKS_BY_PLATFORM: Record<
     "session-start.py",
     "inject-workflow-state.py",
     "guard-builtin-agent.py",
+    "sync-delegation.py",
   ],
   codex: [
     "session-start.py",
     "inject-shell-session-context.py",
     "inject-workflow-state.py",
     "guard-builtin-agent.py",
+    "sync-delegation.py",
   ],
 };
 

@@ -82,8 +82,11 @@ and stderr is retained. A non-zero exit or timeout fails the dispatch.
   then `arbor.py bind --request <request_path> --task-id <returned id>`. Poll
   `get_delegation_status`, save its complete terminal JSON at the returned
   `result_path` outside the task worktree and run
-  `arbor.py collect --request <request_path> --result <file>`. Resume bound ids
-  after interruption. If timeout expires, cancel through `cancel_delegation`
+  `arbor.py collect --request <request_path> --result <file>`. The shared
+  PostToolUse hook `sync-delegation.py` (Claude Code and Codex) performs the
+  bind and the collect itself after those two MCP calls and reports the
+  outcome as `additionalContext`; the manual commands stay valid. Resume bound
+  ids after interruption. If timeout expires, cancel through `cancel_delegation`
   and collect the terminal report; never replace this flow with a native agent.
 - **Command executor**: `arbor.py --executor codeg-cli run` invokes the
   configured command, waits, validates the report and records the result. The

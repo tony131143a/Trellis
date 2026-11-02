@@ -92,6 +92,7 @@ from common.driver import partitions as pt
 from common.driver import autopilot
 from common.driver import mcp
 from common.driver import finish as fin
+from common.driver import mandate as md
 from common.driver import state as sm
 from common.driver import validate as rv
 from common.driver.executor import ExecResult, ExecutorError, resolve_executor, run_executor, utc_now
@@ -168,6 +169,14 @@ class Ctx:
     @property
     def tier(self) -> str:
         return resolve_tier(self.task_dir, self.data)
+
+    @property
+    def mandate(self) -> dict:
+        """Which human gates this task asks the user about (config per tier, task.json meta.mandate)."""
+        try:
+            return md.resolve(self.config, self.tier, self.data)
+        except md.MandateError as e:
+            raise DriverError(f"task.json meta.mandate: {e}") from None
 
     def unit(self, partition: str | None) -> "Unit":
         """Where a step of ``partition`` runs (None/default: the task worktree)."""
@@ -492,7 +501,8 @@ def next_payload(ctx: Ctx | None, partition: str | None = None, role: str | None
     if not ctx.started:
         dispatch = next_dispatch_id(ctx.data, ctx.task_dir)
         return {"task": ctx.name, "state": "CONTRACT", "needs": "human", "started": False, "dispatch": dispatch,
-                "brief_path": str(brief_path(ctx, dispatch)), "human": {"kind": "approve_contract"},
+                "brief_path": str(brief_path(ctx, dispatch)),
+                "human": {"kind": "approve_contract", "mandate": ctx.mandate["contract"]},
                 "contract_roles": list(CONTRACT_ROLES),
                 "summary": f"CONTRACT: finish {ctx.name}/contract.md (research with `arbor run --role "
                            "explore|architect|review [--mode plan]` after writing the brief); after human "
@@ -519,7 +529,9 @@ def next_payload(ctx: Ctx | None, partition: str | None = None, role: str | None
     if step.decision:
         out["decision"] = step.decision
     if step.human:
-        out["human"] = step.human
+        out["human"] = dict(step.human)
+        gate = md.HUMAN_KIND_GATE.get(step.human.get("kind"))
+        out["human"]["mandate"] = ctx.mandate[gate] if gate else "ask"
     out["touched_files"] = touched_files(ctx, unit.worktree)
     summary = step.summary
     if step.pending:
@@ -554,6 +566,7 @@ def cmd_status(args: argparse.Namespace) -> int:
     print(colored(f"{ctx.name}  {d['state']}/{sm.step_of(d)}  tier {ctx.tier}", Colors.CYAN))
     print(f"  worktree: {ctx.worktree} ({ctx.branch}, base {d['base'][:12]})")
     print(f"  counters: {json.dumps(d['counters'])}")
+    print(f"  mandate: {md.describe(ctx.mandate)}")
     if d.get("stop"):
         print(colored(f"  stop: {d['stop'].get('reason')}: {d['stop'].get('detail')}", Colors.RED))
     if d.get("partitions"):
@@ -1049,6 +1062,12 @@ def _begin(ctx: Ctx, step: sm.Step, requested: str | None) -> Job:
                data.get("override_role") if not unit.partition else None)
 
 
+def apply_mandate(ctx: Ctx) -> None:
+    """Automatic decisions the task's mandate allows (STOP resume once, PLAUSIBLE skip); printed, recorded."""
+    for taken in md.apply(ctx.data, ctx.mandate, ctx.tier):
+        print(colored(f"  mandate: {taken['choice']} ({taken['reason']})", Colors.YELLOW))
+
+
 def _finish(ctx: Ctx, job: Job, out: Outcome, red: RedResult | None) -> None:
     """Locked, on a fresh task.json: apply the outcome, record, commit."""
     data, role, dispatch, name = ctx.data, job.role, job.dispatch, job.unit.partition
@@ -1089,6 +1108,7 @@ def _finish(ctx: Ctx, job: Job, out: Outcome, red: RedResult | None) -> None:
     else:
         data["dispatches"][slot] = entry
     _write_report(ctx, dispatch, role, out, notes, name)
+    apply_mandate(ctx)
     save(ctx)
     commit_task_dir(ctx, f"arbor({ctx.name}): {dispatch} {role} {out.status}")
     append_result(ctx.main, {
@@ -1423,6 +1443,7 @@ def cmd_gate(args: argparse.Namespace, ctx: Ctx | None = None) -> int:
         if data["state"] != "GATE" or sm.step_of(data) != "gate":
             return 1 if result.failing else 0
         sm.on_gate(data, result.failing, ctx.tier)
+        apply_mandate(ctx)
         number = data["counters"]["gate"]
         report = ctx.task_dir / "reports" / f"gate-{number}.md"
         report.parent.mkdir(exist_ok=True)
@@ -1683,8 +1704,15 @@ def cmd_finish(args: argparse.Namespace) -> int:
     if step.needs == "run" and (ctx.task_dir / fin.SCORECARD).is_file() and step.summary == "FINISH: merged: `arbor finish` to clean up":
         print(colored(f"{ctx.branch} is merged: cleaning up", Colors.BLUE))
         return fin.cleanup(ctx.main, fin.start_cleanup(ctx.main, ctx.task_dir, ctx.data))
-    return fin.finish_before_merge(ctx.main, ctx.worktree, ctx.task_dir, ctx.task_rel, ctx.data, ctx.tier,
-                                   want_pr=args.pr, save=lambda: save(ctx))
+    mandate = ctx.mandate
+    rc = fin.finish_before_merge(ctx.main, ctx.worktree, ctx.task_dir, ctx.task_rel, ctx.data, ctx.tier,
+                                 want_pr=args.pr, save=lambda: save(ctx),
+                                 auto_merge_max_lines=mandate["auto_merge_max_lines"]
+                                 if mandate["merge"] == "auto" and not args.pr else None)
+    if rc == 0 and ctx.data.get("auto_merge") and fin.is_merged(ctx.main, ctx.branch, fin.base_branch_of(ctx.main, ctx.data)):
+        print(colored(f"{ctx.branch} is merged: cleaning up", Colors.BLUE))
+        return fin.cleanup(ctx.main, fin.start_cleanup(ctx.main, ctx.task_dir, ctx.data))
+    return rc
 
 
 # =============================================================================

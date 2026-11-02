@@ -287,8 +287,7 @@ describe("0.3.0 manifest", () => {
 // =============================================================================
 
 describe("0.4.0 manifest", () => {
-  it("is the package version, reached from 0.3.0, and retires the conductor files", () => {
-    expect(VERSION).toBe("0.4.0");
+  it("is reached from 0.3.0 and retires the conductor files", () => {
     expect(getAllMigrationVersions()).toContain("0.4.0");
     const migrations = getMigrationsForVersion("0.3.0", "0.4.0");
     expect(migrations.map((m) => [m.type, m.from])).toEqual([
@@ -299,5 +298,25 @@ describe("0.4.0 manifest", () => {
     expect(getConfigSectionsAddedBetween("0.3.0", "0.4.0")).toEqual([]);
     expect(configYamlTemplate).not.toContain("conductor");
     expect(configYamlTemplate).toContain("default: codeg\n");
+  });
+});
+
+// =============================================================================
+// 0.5.0 — delegation sync hook, mandate
+// =============================================================================
+
+describe("0.5.0 manifest", () => {
+  it("is the package version, reached from 0.4.0, and adds the mandate config section", () => {
+    expect(VERSION).toBe("0.5.0");
+    expect(getAllMigrationVersions()).toContain("0.5.0");
+    expect(getMigrationsForVersion("0.4.0", "0.5.0")).toEqual([]);
+    expect(getMigrationMetadata("0.4.0", "0.5.0").breaking).toBe(false);
+    const sections = getConfigSectionsAddedBetween("0.4.0", "0.5.0");
+    expect(sections).toEqual([
+      { file: ".arbor/config.yaml", sentinel: "mandate:", sectionHeading: "Mandate" },
+    ]);
+    const section = extractConfigSection(configYamlTemplate, "Mandate");
+    expect(section).toContain("mandate:");
+    expect(section).toContain("auto_merge_max_lines: 200");
   });
 });

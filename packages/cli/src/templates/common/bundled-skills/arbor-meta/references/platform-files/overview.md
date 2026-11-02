@@ -14,7 +14,7 @@ Platform files do not store business state.
 | Category | Paths | Purpose |
 | --- | --- | --- |
 | settings | `.claude/settings.json`, `.starFactory/settings.json` | Register hooks. Hook commands use the project-relative path of the platform directory. |
-| hooks | `.claude/hooks/`, `.starFactory/hooks/` | Session-start context, per-turn workflow-state (the `arbor next` summary), built-in Agent/Task guard, shell session bridge. |
+| hooks | `.claude/hooks/`, `.starFactory/hooks/` | Session-start context, per-turn workflow-state (the `arbor next` summary), built-in Agent/Task guard, codeg delegation sync (bind/collect), shell session bridge. |
 | skills | `.claude/skills/`, `.starFactory/skills/` | Workflow skills (brainstorm, before-dev, check, update-spec, break-loop) plus bundled skills (`arbor-meta`, `arbor-spec-bootstrap`). |
 | commands | `.claude/commands/arbor/`, `.starFactory/commands/arbor/` | Explicit entry points such as `/arbor:continue`, `/arbor:finish-work`, `/arbor:start`, `/arbor:workflow [request]`. |
 | root files | `CLAUDE.md`, `AGENTS.md` | Managed block between `<!-- ARBOR:START -->` and `<!-- ARBOR:END -->`; content outside the block is user-owned. |

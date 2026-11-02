@@ -38,6 +38,7 @@ from ..io import read_json_checked, write_json
 from ..paths import DIR_TASKS, DIR_WORKFLOW, FILE_TASK_JSON
 from ..worktree import WorktreeError, remove_worktree
 from . import validate as rv
+from .executor import utc_now
 from .state import Step
 
 SCORECARD = "scorecard.md"
@@ -421,12 +422,42 @@ def finish_product(main: Path, task_dir: Path, data: dict, tier: str, *, want_pr
     return 0
 
 
+def auto_merge_blocked(main: Path, branch: str, base: str, max_lines: int) -> tuple[str | None, int]:
+    """Why the mandate's auto-merge rule does not hold for ``branch`` (None when it
+    does), plus the product lines the branch changes."""
+    # Product lines only: the task's own metadata commits (.arbor/tasks/<task>) do not count.
+    rc, out, _ = run_git(["diff", "--numstat", f"{base}...{branch}", "--", ".", f":(exclude){DIR_WORKFLOW}/{DIR_TASKS}"],
+                         cwd=main)
+    lines = 0
+    for row in out.splitlines() if rc == 0 else []:
+        cols = row.split("\t")
+        lines += sum(int(c) for c in cols[:2] if c.isdigit())
+    if lines >= max_lines:
+        return f"{lines} changed lines, auto-merge allows fewer than {max_lines}", lines
+    if current_branch(main) != base:
+        return f"main checkout is on {current_branch(main) or 'a detached HEAD'}, not {base}", lines
+    rc, status, _ = run_git(["status", "--porcelain", "--untracked-files=no"], cwd=main)
+    if rc != 0 or status.strip():
+        return "main checkout has uncommitted changes", lines
+    return None, lines
+
+
+def merge_no_ff(main: Path, branch: str) -> str | None:
+    """``git merge --no-ff`` of ``branch`` in the main checkout; aborted on conflict (the reason)."""
+    rc, _, err = run_git(["merge", "--no-ff", "--no-edit", "-m", f"merge {branch}", branch], cwd=main)
+    if rc != 0:
+        run_git(["merge", "--abort"], cwd=main)
+        return f"merge did not apply cleanly: {err.strip().splitlines()[-1] if err.strip() else 'conflict'}"
+    return None
+
+
 def finish_before_merge(main: Path, worktree: Path, task_dir: Path, task_rel: str, data: dict, tier: str,
-                        *, want_pr: bool, save) -> int:
+                        *, want_pr: bool, save, auto_merge_max_lines: int | None = None) -> int:
     name = task_dir.name
     if data.get("execution_binding"):
         return finish_product(main, task_dir, data, tier, want_pr=want_pr, save=save)
-    if write_scorecard(main, task_dir, data, tier):
+    scorecard_written = write_scorecard(main, task_dir, data, tier)
+    if scorecard_written:
         print(f"scorecard: {task_dir / SCORECARD}")
     if commit_paths(worktree, task_rel, f"arbor({name}): scorecard"):
         print(f"committed on {data['branch']}: arbor({name}): scorecard")
@@ -442,6 +473,22 @@ def finish_before_merge(main: Path, worktree: Path, task_dir: Path, task_rel: st
         print(f"PR: {url}")
     elif want_pr:
         print("gh is not on PATH; merge locally instead")
+    elif auto_merge_max_lines is not None:
+        if scorecard_written:
+            print(f"auto-merge deferred: {SPEC_REMINDER}; then `arbor finish` again merges (mandate merge=auto)")
+            return 0
+        why, lines = auto_merge_blocked(main, data["branch"], base, auto_merge_max_lines)
+        if why is None:
+            # Recorded and committed on the task branch first, so the merge commit carries it
+            # and the worktree stays clean for the cleanup.
+            data["auto_merge"] = {"ts": utc_now(), "base": base, "lines": lines, "max_lines": auto_merge_max_lines}
+            save()
+            commit_paths(worktree, task_rel, f"arbor({name}): auto-merge into {base} (mandate merge=auto, {lines} lines)")
+            why = merge_no_ff(main, data["branch"])
+            if why is None:
+                print(f"merged {data['branch']} into {base} with --no-ff (mandate merge=auto, {lines} lines)")
+                return 0
+        print(f"auto-merge skipped: {why}")
     print(f"before merging: {SPEC_REMINDER}")
     print(f"merge (human): {merge_command(main, data['branch'], base)}")
     return 0

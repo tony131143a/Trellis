@@ -44,6 +44,18 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^mcp__.+__(delegate_to_agent|get_delegation_status)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{PYTHON_CMD}} -X utf8 \"$(git rev-parse --show-toplevel)/.codex/hooks/sync-delegation.py\"",
+            "timeout": 600
+          }
+        ]
+      }
     ]
   }
 }

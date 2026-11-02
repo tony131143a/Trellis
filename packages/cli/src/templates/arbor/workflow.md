@@ -159,7 +159,7 @@ python3 ./.arbor/scripts/get_context.py --mode phase --step <X.Y>  # detailed gu
 - **Main agent** — the user's session, normally one codeg conversation per task (Claude Code or Codex). Phase 1, task creation and start, the Phase 2 loop (`arbor.py next` → brief → `arbor.py run` → …), the questions it puts to the user, the merge gate.
 - **Roles** — dispatched by `arbor.py run` through the executor (`executors:`). The default `codeg` executor (`type: codeg-mcp`) hands every role to codeg MCP `delegate_to_agent` as a sub-agent session of its own; the driver prepares the prompt and validates the reply. The `codeg-cli` command executor (`executors.default: codeg-cli` or `arbor.py --executor codeg-cli`) stays available for terminal sessions: there the driver starts the child, waits for its reply and validates it itself, so nobody carries results by hand.
 
-With the `codeg` executor (`type: codeg-mcp`, the default; or `arbor.py --executor codeg`), `arbor.py run` returns `needs=delegation`. The returned `mcp.arguments.task` carries only the dispatch header plus a `Prompt:` line naming the assembled prompt file (`.arbor/.runtime/prompts/<task>/d-NNN.md` in the main checkout); the role reads that file first, so you never copy the prompt into the tool call. Call codeg MCP `delegate_to_agent` with the returned `mcp.arguments` (resolve the named assistant from the MCP roster if no id is configured), then immediately run `arbor.py bind --request <request_path> --task-id <returned task_id>`. Poll `get_delegation_status`, save its complete JSON response at the returned `result_path` outside the task worktree, and run `arbor.py collect --request <request_path> --result <file>` before proceeding. Resume/poll a bound task after interruptions; never start it again. If the configured timeout expires, cancel it through `cancel_delegation` and collect the terminal report. Claude Code and Codex both use this same MCP flow. Request and snapshot records live in `.arbor/.runtime/delegations/<task>/<dispatch>.json`; a collected request cannot be collected twice. Never substitute native Agent/Task/spawn_agent for a role.
+With the `codeg` executor (`type: codeg-mcp`, the default; or `arbor.py --executor codeg`), `arbor.py run` returns `needs=delegation`. The returned `mcp.arguments.task` carries only the dispatch header plus a `Prompt:` line naming the assembled prompt file (`.arbor/.runtime/prompts/<task>/d-NNN.md` in the main checkout); the role reads that file first, so you never copy the prompt into the tool call. Call codeg MCP `delegate_to_agent` with the returned `mcp.arguments` (resolve the named assistant from the MCP roster if no id is configured), then immediately run `arbor.py bind --request <request_path> --task-id <returned task_id>`. Poll `get_delegation_status`, save its complete JSON response at the returned `result_path` outside the task worktree, and run `arbor.py collect --request <request_path> --result <file>` before proceeding. With the Arbor PostToolUse hook installed (`.claude/hooks/sync-delegation.py` / `.codex/hooks/sync-delegation.py`, registered by `arbor init` and `arbor update`), the bind and the collect happen by themselves after each `delegate_to_agent` call and each terminal `get_delegation_status` reply, and the hook's note tells you what it did; run `bind` / `collect` by hand only when the note says so or no hook is installed. Resume/poll a bound task after interruptions; never start it again. If the configured timeout expires, cancel it through `cancel_delegation` and collect the terminal report. Claude Code and Codex both use this same MCP flow. Request and snapshot records live in `.arbor/.runtime/delegations/<task>/<dispatch>.json`; a collected request cannot be collected twice. Never substitute native Agent/Task/spawn_agent for a role.
 
 Product control drift is advisory and does not block collection. The legacy
 `--accept-new-control-task <name> --reason "..."` option remains available to record
@@ -186,6 +186,8 @@ state to advance. Do not ask the user to approve routine report interpretation.
 
 Round caps are escalation gates: when a GATE / REVIEW / POLISH round repeats without progress (`NO_PROGRESS`) or exceeds its budget (`BUDGET`: 4 consecutive red gates, review fix rounds light 2 / standard 1 / full 1, polish rounds 2), the driver enters STOP; the main agent inspects the evidence and continues with `arbor.py resume` (grants one more round), `override --reason "…"`, a re-plan, or `abandon`.
 
+Which of these human gates you actually put to the user is the task's **mandate**: `next --json` carries `human.mandate` (`ask` or `auto`) for `approve_contract`, `plausible`, `stop` and `merge`, resolved from `mandate:` in `.arbor/config.yaml` per tier (light: everything `auto`; standard: contract and merge `ask`; full: everything `ask`) and overridden per task with `task.py create --mandate "<gate>=<ask|auto>,…"` (or `task.py set-meta <task> mandate …`). `auto` means proceed without asking, and the driver already does what it can by itself: it records `decide skip` for PLAUSIBLE findings, resumes the first STOP of a task, and `arbor.py finish` merges the branch `--no-ff` when it changes fewer than `auto_merge_max_lines` product lines, the main checkout is on the base branch and clean, and the merge applies cleanly. Scope changes are always asked.
+
 ```bash
 python3 ./.arbor/scripts/arbor.py next [--json]               # the single next step
 python3 ./.arbor/scripts/arbor.py children [--json]           # a parent task: every child's state and merge status
@@ -211,7 +213,7 @@ Every command takes `--task <dir>` and `--executor <name>` before the command na
 | `run` | the driver has deterministic work: GATE, or merging a finished wave back into the task branch | main agent | `arbor.py gate` for GATE (`arbor.py run` does the same there); `arbor.py run` for the wave merge |
 | `wait` | multi-partition wave: every ready partition is running or finished and the wave cannot merge yet | main agent | wait for the running `arbor.py run --partition <p>` calls, then `arbor.py next` again |
 | `decide` | a judgment the driver cannot make | main agent | `arbor.py decide <choice> --reason "…"` with one of the listed options; `contract` → fix the contract with the user, then `arbor.py resume` |
-| `human` | `human.kind` says which: `approve_contract`, `plausible`, `stop`, `merge_conflict` or `merge` | main agent + user | `approve_contract`: before start, finish the contract (research with `arbor.py run --role`, see CONTRACT-phase dispatch), ask for approval, then `task.py start`; after start, the user re-approves the edited `contract.md` and you run `arbor.py resume`. `plausible`: ask the user, `decide fix\|skip --reason "…"`. `stop`: inspect the reason and evidence, then `resume`, `override`, re-plan or `abandon`. `merge_conflict`: merge the named branch into the task branch by hand in the task worktree, commit, then `arbor.py resume`. `merge`: Phase 3 |
+| `human` | `human.kind` says which: `approve_contract`, `plausible`, `stop`, `merge_conflict` or `merge` | main agent + user | `approve_contract`: before start, finish the contract (research with `arbor.py run --role`, see CONTRACT-phase dispatch), ask for approval, then `task.py start`; after start, the user re-approves the edited `contract.md` and you run `arbor.py resume`. `plausible`: ask the user, `decide fix\|skip --reason "…"`. `stop`: inspect the reason and evidence, then `resume`, `override`, re-plan or `abandon`. `merge_conflict`: merge the named branch into the task branch by hand in the task worktree, commit, then `arbor.py resume`. `merge`: Phase 3. `human.mandate` says whether to ask the user (`ask`) or proceed yourself (`auto`) |
 | `done` | nothing left | main agent | stop |
 
 **Multi-partition waves.** When the contract's current wave names more than one partition, the driver gives each partition its own branch `arbor/<task>--<p>` and worktree `<worktree.root>/<task>-<p>`, and `next --json` carries `partition` plus `partitions_pending` (the other partitions that also need a brief right now). Write each brief at its `brief_path`, then start one `arbor.py run --partition <p>` per partition — they may run at the same time (the driver serialises task.json under `<task>/.lock`; keep to `executors.<name>.max_parallel`). A partition's writer should stay within its assigned paths; the driver prepends the scope line and records out-of-scope changes for main-agent judgment. When every partition is done, `next` says `run` and `arbor.py run` merges the branches back `--no-ff` in wave order; a conflict becomes `human` / `merge_conflict`.
@@ -612,7 +614,7 @@ If `start` reports a session-identity problem, follow its hint and retry.
 
 ## Phase 2: Drive
 
-Goal: the driver walks BUILD → GATE → REVIEW → POLISH; you supply judgment and briefs from this session and ask the user only at the human gates.
+Goal: the driver walks BUILD → GATE → REVIEW → POLISH; you supply judgment and briefs from this session and ask the user only at the human gates whose mandate is `ask`.
 
 #### 2.1 The loop `[required · repeatable]`
 
@@ -620,7 +622,7 @@ Goal: the driver walks BUILD → GATE → REVIEW → POLISH; you supply judgment
 python3 ./.arbor/scripts/arbor.py next
 ```
 
-Do exactly what it names (see the `needs` table in Driver), then run `next` again. Do not edit `task.json`, do not run roles yourself, do not commit on behalf of a role. `touched_files` in `next --json` lists what the task changed so far; read from it instead of re-exploring. A child task driven from its own conversation passes `--task <child>` on every call. With the default `codeg` executor each `run` ends in `needs=delegation`: delegate, bind, poll and collect as described in Driver, then `next` again; the pending request survives an interrupted session, so resume or poll it instead of delegating twice.
+Do exactly what it names (see the `needs` table in Driver), then run `next` again. Do not edit `task.json`, do not run roles yourself, do not commit on behalf of a role. `touched_files` in `next --json` lists what the task changed so far; read from it instead of re-exploring. A child task driven from its own conversation passes `--task <child>` on every call. With the default `codeg` executor each `run` ends in `needs=delegation`: delegate, bind, poll and collect as described in Driver (the sync hook does the bind and the collect for you), then `next` again; the pending request survives an interrupted session, so resume or poll it instead of delegating twice.
 
 #### 2.2 Write a brief `[required · repeatable]`
 
@@ -655,7 +657,7 @@ One `review` `Mode: self-check` over `base..HEAD`, including "does the Verificat
 
 #### 2.6 POLISH
 
-Standard / full only. `simplify` → GATE → N reviews `Mode: candidates` (standard 2, full 3) → you dedup → the driver prefilters mechanically (file exists, quoted code within ±5 lines, line inside the range, cited rule exists) → `verify` → full: one review `Mode: sweep` with the verified list, its new candidates verified too. CONFIRMED findings are fixed without asking. When PLAUSIBLE findings survive, present them to the user once, most severe first, with your recommendation, and record the answer with `arbor.py decide fix|skip --reason "…"`. Fix rounds are re-reviewed on the delta; after two rounds the driver enters STOP (BUDGET) and you reassess the approach.
+Standard / full only. `simplify` → GATE → N reviews `Mode: candidates` (standard 2, full 3) → you dedup → the driver prefilters mechanically (file exists, quoted code within ±5 lines, line inside the range, cited rule exists) → `verify` → full: one review `Mode: sweep` with the verified list, its new candidates verified too. CONFIRMED findings are fixed without asking. When PLAUSIBLE findings survive and the mandate says `plausible=auto` (standard default), the driver records `decide skip` itself and lists them in the scorecard; with `ask`, present them to the user once, most severe first, with your recommendation, and record the answer with `arbor.py decide fix|skip --reason "…"`. Fix rounds are re-reviewed on the delta; after two rounds the driver enters STOP (BUDGET) and you reassess the approach.
 
 #### 2.7 STOP, resume, override `[on demand]`
 
@@ -665,7 +667,9 @@ problems do not create it. Executor failures remain failures and executable red
 checks remain red; all work is preserved. `next` answers `needs=human` with
 `human.kind: stop` and the driver's reason and evidence; inspect the result,
 tighten the brief or change the plan, tell the user what happened, then
-`arbor.py resume` (BUDGET: grants one more round). `arbor.py override --reason
+`arbor.py resume` (BUDGET: grants one more round). With `stop=auto` (light and
+standard default) the driver resumes the first STOP of a task by itself and says
+so; every later STOP is yours. `arbor.py override --reason
 "..." --to STATE[/step]` records a contextual state decision; `--role <role>
 [--mode M]` runs an extra role inside the contract. `arbor.py abandon --reason
 "..."` explicitly stops a task.
@@ -691,7 +695,7 @@ If the same issue was fixed more than once, load `arbor-break-loop`: classify th
 
 #### 3.3 PR and merge `[required · once]`
 
-The driver opens the PR (`gh pr create`; body = contract + scorecard) or prints the local merge command when `gh` is unavailable. The human merges with `--no-ff`; never merge or push yourself.
+The driver opens the PR (`gh pr create`; body = contract + scorecard) or prints the local merge command when `gh` is unavailable. The human merges with `--no-ff`; never merge or push yourself. With `merge=auto` (light default) the second `arbor.py finish`, after the spec update of 3.1, merges the branch `--no-ff` itself when the auto-merge rule holds (fewer than `auto_merge_max_lines` product lines, main checkout on the base branch and clean, no conflict) and goes straight on to the cleanup; otherwise it prints the merge command as usual.
 
 #### 3.4 Cleanup, archive, journal `[required · once]`
 

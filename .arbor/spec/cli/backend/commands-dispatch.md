@@ -94,7 +94,12 @@ children [--json]
   `human`, `done`; `human.kind` is one of `approve_contract`, `plausible`, `stop`,
   `merge_conflict`, `merge`. A round cap or two rounds without progress enter
   STOP (`needs=human`, `human.kind=stop`); `resume` grants one more round,
-  `override` records a reasoned jump, `abandon` ends the task.
+  `override` records a reasoned jump, `abandon` ends the task. `human.mandate`
+  (`ask` | `auto`, from `mandate:` in `.arbor/config.yaml` per tier or
+  `task.py create --mandate`) says whether the gate asks the user; with `auto`
+  the driver records `decide skip` for PLAUSIBLE findings, resumes the first
+  STOP of a task and `finish` merges a small clean branch itself
+  (`common/driver/mandate.py`).
 - **Planning.** Before start, `run --role explore|architect|review` performs
   CONTRACT research without a diff range or commits. Explore/architect may write
   task research; review is read-only. With no task, only explore accepts a brief

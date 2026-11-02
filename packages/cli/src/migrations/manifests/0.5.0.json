@@ -1,0 +1,15 @@
+{
+  "version": "0.5.0",
+  "description": "v4 wave 2: PostToolUse hook binds/collects codeg MCP delegations; mandate decides which human gates ask",
+  "breaking": false,
+  "recommendMigrate": true,
+  "changelog": "New shared hook sync-delegation.py (Claude Code .claude/settings.json PostToolUse, Codex .codex/hooks.json PostToolUse) binds the task_id returned by codeg MCP delegate_to_agent to the driver's pending request and collects a terminal get_delegation_status report, so arbor.py bind / collect no longer run by hand. New config section mandate: per tier, which human gates (contract, plausible, stop, merge) ask the user or proceed; next --json carries human.mandate; the driver skips PLAUSIBLE findings, resumes the first STOP and auto-merges a small clean branch when the mandate says auto. task.py create --mandate overrides one task.",
+  "migrations": [],
+  "configSectionsAdded": [
+    {
+      "file": ".arbor/config.yaml",
+      "sentinel": "mandate:",
+      "sectionHeading": "Mandate"
+    }
+  ]
+}

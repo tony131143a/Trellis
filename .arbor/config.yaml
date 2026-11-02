@@ -179,3 +179,35 @@ worktree:
 test_paths:
   - "packages/*/test/**"
   - "**/*.test.ts"
+
+#-------------------------------------------------------------------------------
+# Mandate
+#-------------------------------------------------------------------------------
+# Which human gates the main agent puts to the user, per tier: `ask` (stop and
+# ask) or `auto` (proceed on its own). Gates: contract (approving contract.md),
+# plausible (PLAUSIBLE findings after verify; auto = the driver records
+# `decide skip`), stop (a round cap or no progress; auto = the driver resumes
+# once per counter, the second trip still asks), merge (auto = `arbor.py
+# finish` merges the task branch --no-ff itself when it changes fewer than
+# auto_merge_max_lines lines, the main checkout is on the base branch and
+# clean, and the merge applies without conflict; otherwise it prints the merge
+# command as usual). Scope changes are always asked. One task overrides single
+# gates with `task.py create --mandate "contract=auto,merge=ask"`.
+# The values below are the defaults.
+mandate:
+  light:
+    contract: auto
+    plausible: auto
+    stop: auto
+    merge: auto
+  standard:
+    contract: ask
+    plausible: auto
+    stop: auto
+    merge: ask
+  full:
+    contract: ask
+    plausible: ask
+    stop: ask
+    merge: ask
+  auto_merge_max_lines: 200
