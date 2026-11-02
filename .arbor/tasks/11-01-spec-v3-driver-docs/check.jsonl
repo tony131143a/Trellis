@@ -1,0 +1,5 @@
+{"file": ".arbor/spec/cli/backend/index.md", "reason": "Spec index: cli/backend (seed-context)"}
+{"file": ".arbor/spec/cli/unit-test/index.md", "reason": "Spec index: cli/unit-test (seed-context)"}
+{"file": ".arbor/spec/guides/index.md", "reason": "Shared guides (seed-context)"}
+{"file": ".arbor/spec/cli/backend/spec-lint.md", "reason": "frontmatter and lint rules for spec docs"}
+{"file": ".arbor/spec/cli/unit-test/conventions.md", "reason": "vitest conventions for the regression test"}

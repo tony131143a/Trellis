@@ -1,123 +1,167 @@
-# Dispatch Contract
+---
+sources:
+  - packages/cli/src/templates/arbor/scripts/arbor.py
+  - packages/cli/src/templates/arbor/scripts/common/dispatch_context.py
+  - packages/cli/src/templates/arbor/scripts/common/driver/executor.py
+  - packages/cli/src/templates/arbor/scripts/common/driver/conductor.py
+  - packages/cli/src/templates/arbor/scripts/common/driver/mcp.py
+  - packages/cli/src/templates/shared-hooks/guard-builtin-agent.py
+last_verified: 2026-11-01
+---
+# Driver Prompt Contract
 
-> How the implement / check / research roles reach codeg assistants. Runtime
-> mechanics for the dispatch hook, `dispatch.py`, and the workflow text that
-> drives them. Workflow wording lives in `.arbor/workflow.md` (Dispatch
-> subsection, Phase 2, Phase 2P); this spec is the contract behind it.
+The driver assembles role prompts; the conductor drives a started task through
+that driver. Workflow wording lives in `.arbor/workflow.md` (Driver, Phase 2 and
+Parent / Child Task Trees). The command surface is in
+[commands-dispatch.md](./commands-dispatch.md).
 
 ---
 
-## Roles and targets
+## Roles and executors
 
-Three roles (`implement`, `check`, `research`), two targets (`star`, `pi`).
-Each role-target pair is one codeg assistant, named `arbor-<role>-<target>` by
-default (overridable under `dispatch:` in `.arbor/config.yaml`). The
-assistant instructions come from `.arbor/agents/<role>.md` (plain markdown, no
-frontmatter) via `dispatch.py codeg-setup`.
+Roles are `explore`, `architect`, `test`, `implement`, `review`, `verify`, `fix`
+and `simplify`. Their instructions live in `.arbor/agents/<role>.md`.
+`arbor.py run` selects an executor from `executors:` in `.arbor/config.yaml`.
+The Planner launches the separate conductor through `arbor.py conduct`;
+`.arbor/agents/conductor.md` defines its duties.
 
-The built-in `Agent`/`Task` tool is forbidden for these roles; a guard hook
-denies it.
+Native Agent/Task/spawn_agent tools cannot dispatch Arbor roles or conductors.
+`guard-builtin-agent.py` denies recognisable headers or an `arbor-` agent type
+inside an Arbor project.
 
 ## Header protocol
 
-The dispatch `task` text starts with:
+The driver, rather than the brief author, writes the role header:
 
+```text
+Active task: <absolute task directory in the execution checkout>
+Role: explore | architect | test | implement | review | verify | fix | simplify
+Mode: self-check | candidates | sweep | plan
+Range: <base>..<head>
+Dispatch: d-NNN
 ```
-Active task: <absolute path of the task dir in the MAIN checkout>
-Role: implement | check | check [finish] | research
-Target: star | pi              (optional)
-Workspace: <absolute worktree> (optional, parallel variant)
+
+`Mode:` applies only to review. `Range:` accompanies roles that read or write
+a diff; explore and architect do not accept it. Before start the task is in the
+main checkout; after start it is inside its task worktree. The assembler
+normalizes the task path, resolves review mode and preserves the dispatch id.
+
+The conductor has a different complete header:
+
+```text
+Active task: <absolute task directory>
+Conductor: <task name>
+Executor: <role executor name>
+Run: c-NNN
+Driver: python3 <driver path> --task <task directory> --executor <name> --as-conductor c-NNN
 ```
 
-When the header is present, the PreToolUse hook (codeg path) or `dispatch.py`
-(terminal path) prepends context built by one shared assembler, marked
-`<!-- arbor-hook-injected -->`. Order: files listed in `implement.jsonl`
-(`check.jsonl` for check) -> `prd.md` -> `design.md` if present ->
-`implement.md` if present. Without the header nothing is injected, and the
-assistant falls back to pulling the same files itself.
+Role context carries `<!-- arbor-hook-injected -->`. The normal artifact order
+is jsonl entries → `contract.md` → `design.md` if present → `waves.md` if present,
+then `git diff <Range>` when supplied, followed by the brief. Architect, test and
+implement use `implement.jsonl`; review, verify, fix and simplify use
+`check.jsonl`. Architect also receives task research. Explore receives the spec
+overview and, when a task is supplied, its contract and research file list.
+Without the marker the role pulls its required context itself.
 
-`Role: check [finish]` is the final full-scope check; it may edit
-`.arbor/spec/`.
+The conductor prompt includes the marker, conductor instructions, `contract.md`,
+optional `design.md` and `waves.md`, driver state at launch and the Planner's
+brief. It uses the driver to assemble subsequent role prompts.
 
 ## Resolution order
 
-Target (highest wins):
+The global `--executor NAME` selects `executors.<name>`; otherwise the driver uses
+`executors.default`. `--task DIR` selects the task, otherwise the session's active
+task is resolved. These options precede the subcommand. A conductor passes them
+and `--as-conductor c-NNN` on every call; its run id identifies ownership of the
+started task's driver loop.
 
-1. `Target:` header line, or `--target` on `dispatch.py run`
-2. this session's `.arbor/.runtime/sessions/<context>.dispatch-target` (`dispatch.py target set|clear`; `/arbor:workflow <target>` calls `target set`; session identity as for the active task)
-3. checkout-wide `.arbor/.runtime/dispatch-target` (`target set|clear --repo`; fallback without session identity)
-4. `ARBOR_DISPATCH_TARGET`
-5. `dispatch.default_target` in `.arbor/config.yaml`
-
-The delegation hook swaps an `assistant_id` registered under another target
-for the effective target's assistant (`reconcile_assistant`).
-
-Assistant name: `dispatch.targets.<target>.<role>` in config, else
-`arbor-<role>-<target>`. Assistant id (codeg path only): looked up in
-`.arbor/.runtime/codeg-assistants.json` (written by `codeg-setup`) and
-printed in the SessionStart `<dispatch>` section or by
-`dispatch.py resolve --role <role>`.
+Executor types are `command` and `codeg-mcp`. For a command executor, `command`
+is required; `timeout` accepts seconds or an `s`, `m` or `h` suffix. Missing or
+zero timeout means no timeout. Role command placeholders are `{role}`, `{prompt}`
+(the assembled prompt file), `{worktree}`, `{task}` and `{dispatch}`. Values are
+shell-quoted; the process runs in the assigned worktree, stdout is the report
+and stderr is retained. A non-zero exit or timeout fails the dispatch.
 
 ## Two paths
 
-- **codeg MCP tools present**: `delegate_to_agent(task, working_dir, assistant_id)`
-  returns a task id; `get_delegation_status(task_ids, wait_ms)` collects.
-- **Plain terminal**: `dispatch.py run --role <role> [--finish] [--target]
-  [--task] [--workspace] [--wait|--detach] [--prompt|--prompt-file|stdin]`
-  (also `arbor dispatch run ...`), which pipes the assembled prompt to
-  `codeg-cli run -A <assistant> ... -p -`. `dispatch.py wait RUN...` collects
-  detached runs. Full CLI surface, runtime files, and exit codes:
-  [`commands-dispatch.md`](./commands-dispatch.md).
+- **Command executor**: `arbor.py run` invokes the configured command, waits,
+  validates the report and records the result. The shipped command executor is
+  named `codeg-cli`.
+- **codeg MCP alternative**: `type: codeg-mcp` returns `needs=delegation` with
+  durable request metadata and `mcp.arguments`. Call `delegate_to_agent` once,
+  then `arbor.py bind --request <request_path> --task-id <returned id>`. Poll
+  `get_delegation_status`, save its complete terminal JSON at the returned
+  `result_path` outside the task worktree and run
+  `arbor.py collect --request <request_path> --result <file>`. Resume bound ids
+  after interruption. If timeout expires, cancel through `cancel_delegation`
+  and collect the terminal report; never replace this flow with a native agent.
 
-## Assistant registry
+## Executor configuration
 
-`dispatch.py codeg-setup` writes `.arbor/.runtime/codeg-assistants.json`:
-
-```json
-{"generated_at": "…Z", "by_name": {"arbor-implement-pi": 12},
- "by_id": {"12": {"role": "implement", "target": "pi"}}}
+```yaml
+executors:
+  default: codeg
+  codeg:
+    type: codeg-mcp
+    assistant: arbor-{role}
+    timeout: 90m
 ```
 
-Readers: the delegation hook (`by_id[assistant_id].role` when the header has
-no `Role:`), `dispatch.py resolve` (`by_name`), and the SessionStart
-`<dispatch>` section, which prints each role of the effective target as
-`- <role>: <name> (id <N>)`, or `(id unknown — run python3
-./.arbor/scripts/dispatch.py codeg-setup)` when the registry lacks it. Only
-names that `dispatch:` maps to a role are recorded.
+For MCP, `assistant_ids` may map role names to configured assistant ids. Without
+a mapped id, a configured `agent_type` is passed directly; otherwise resolve the
+returned assistant name from the MCP roster. Request and snapshot
+records live in `.arbor/.runtime/delegations/<task>/<dispatch>.json`. A collected
+request cannot be collected twice.
+
+The conductor uses `conductor.command`, `result_command` and `cancel_command`;
+`conductor.executor` supplies the role executor written into its prompt. Launch starts
+a detached run and records `task.json.conductor`. `conduct --collect` writes
+`reports/c-NNN.md`, recording `DONE`, `ESCALATE` or `FAILED`; earlier run records
+move to `conductor_runs` on relaunch.
 
 ## Sub-agent self-identification
 
-A session whose first prompt starts with `Active task:` + `Role:` is a
-dispatched sub-agent. It does the role's work, never dispatches, never
-commits, never calls `task.py start/current/finish`, and has no
-`ARBOR_CONTEXT_ID`. The `in_progress` and `in_progress-parallel` breadcrumbs,
-`CLAUDE.md`, `AGENTS.md`, and `.arbor/agents/*.md` all state this.
+A first prompt starting with `Active task:` plus `Role:` identifies a dispatched
+role. It performs that role directly, never delegates, never runs task lifecycle
+commands and has no `ARBOR_CONTEXT_ID`. Started-task writers commit with
+`Arbor-Dispatch: d-NNN` and stay inside their assigned paths; reader roles remain
+read-only. CONTRACT research roles may write only task research and do not commit.
+
+`Active task:` plus `Conductor:` identifies a conductor. It writes briefs and
+calls the driver using `Executor:` and `Run:`; it does not perform a role itself.
+While it is running, other callers cannot mutate the task through the driver
+without the matching `--as-conductor` identity.
 
 ## Parallel variant
 
-Enabled by `task.py set-meta <parent> execution parallel` (stored as
-`task.json` `meta.execution = "parallel"`); breadcrumb key
-`in_progress-parallel`. Children are created with
-`task.py create ... --parent <parent-dir>`.
+Independent deliverables use child tasks created with `task.py create --parent`.
+Each ready child has its own worktree, branch and conductor. The Planner watches
+`arbor.py --task <parent> children`, merges children in dependency order, then
+prepares the parent's review brief and invokes
+`run --role review --mode sweep --range <before-first-merge>..<base>`.
+The parent's `gate` runs cross-child `auto` checks before archive.
 
-1. One worktree and branch per child: `<repo>-wt/<parent>-<child>`, branch `wip/<parent>/<child>`.
-2. Up to `dispatch.max_parallel` implement roles at once; `working_dir` = the worktree, `Workspace:` = the worktree, `Active task:` = the child dir in the main checkout.
-3. Check per worktree; the main agent commits in the worktree.
-4. The main agent merges serially in the main checkout with `git merge --no-ff`.
-5. One final `Role: check [finish]` on the merged tree, `Active task:` = the parent.
-6. Remove merged worktrees and branches; Phase 3 runs on the parent; `/arbor:finish-work` archives parent and children.
+Within a task, named wave partitions receive separate branches and worktrees;
+`next` identifies pending partitions and `run --partition <name>` executes each.
+There is one writer per branch. Completed partitions merge back in wave order;
+conflicts require a hand merge and `resume`.
 
 ## Invariants
 
-- Sub-agents never commit, push, or merge.
-- Sub-agents never touch paths outside their working directory.
-- Sub-agents never write under `.arbor/` (exceptions: `check [finish]` may edit `.arbor/spec/`; research writes `<task>/research/*.md`).
-- `Active task:` always names the task directory in the main checkout, even when `working_dir` is a worktree.
-- Runtime state (`.arbor/.runtime`, `.arbor/.developer`) is resolved from the main checkout only; `.arbor/tasks` inside a worktree is a read-only copy.
-- Only the main agent commits (workflow Phase 3.4).
+- The driver owns prompt assembly, state, executable checks and observations.
+- Roles stay inside their execution worktree and assigned write boundary.
+- Writers commit; roles never push, merge, rebase or switch branches.
+- The conductor drives the loop; the Planner handles approval and escalations.
+- Header identity prevents recursive dispatch even if a host exposes main-session
+  breadcrumbs to a role or conductor.
+- Child process environments strip parent session identity variables.
 
 ## Required tests
 
-- Dispatch text always begins with the header and, for hook and `dispatch.py`, is byte-identical for the same inputs.
-- The guard hook denies the built-in Agent/Task tool for arbor roles.
-- Missing `in_progress-parallel` block falls back to `in_progress` (see `workflow-state-contract.md`).
+- Driver prompts preserve normalized headers, manifest/artifact order and diffs.
+- Executor/MCP tests cover preparation, binding, restart, terminal collection and
+  refusal of duplicate collection.
+- Conductor tests cover identity, ownership, reports, escalation and cancellation.
+- The native agent guard denies both `Role:` and `Conductor:` dispatch prompts.
+- Backend doc regression checks pin these protocols and concrete source paths.

@@ -8,7 +8,10 @@ sources:
   - packages/cli/src/templates/shared-hooks/index.ts
   - packages/cli/src/templates/claude/settings.json
   - packages/cli/src/templates/codex/hooks.json
-last_verified: 2026-10-30
+  - packages/cli/src/templates/arbor/scripts/arbor.py
+  - packages/cli/src/templates/arbor/scripts/common/dispatch_context.py
+  - packages/cli/src/templates/shared-hooks/guard-builtin-agent.py
+last_verified: 2026-11-01
 ---
 # Platform Integration Guide
 
@@ -23,7 +26,7 @@ Platform support uses a **centralized registry pattern**:
 - **Function registry**: `src/configurators/index.ts` — `PLATFORM_FUNCTIONS`, one entry per platform. It holds no per-platform logic
 - **Shared configurator utilities**: `src/configurators/shared.ts` — renderers (`resolvePlaceholders()`), resolvers (`resolveCommands()`, `resolveSkills()`, `resolveBundledSkills()`), map builders (`collectSkillTemplates()`, `collectSharedHooks()`), and the render/write pair (`renderTemplateMap()`, `writeTemplateMap()`). See `configurator-shared.md`
 - **Shared template utilities**: `src/templates/template-utils.ts` — `createTemplateReader()` factory
-- **Shared hooks**: `src/templates/shared-hooks/` — platform-independent Python hook scripts (session-start, inject-workflow-state, inject-delegation-context, guard-builtin-agent, inject-shell-session-context) written to the platform hook directory according to `SHARED_HOOKS_BY_PLATFORM`. Claude Code `statusLine` is not installed by default (`arbor init --with-statusline` opts in).
+- **Shared hooks**: `src/templates/shared-hooks/` — platform-independent Python hook scripts (session-start, inject-workflow-state, guard-builtin-agent, inject-shell-session-context) written to the platform hook directory according to `SHARED_HOOKS_BY_PLATFORM`. Claude Code `statusLine` is not installed by default (`arbor init --with-statusline` opts in).
 - **Common templates**: `src/templates/common/` — single source of truth for commands (`start`, `continue`, `finish-work`, `workflow`), single-file workflow skills (before-dev, brainstorm, check, break-loop, update-spec), and multi-file bundled skills (arbor-meta, arbor-spec-bootstrap), with `{{placeholder}}` resolution per platform
 - **Shared utilities**: `src/utils/compare-versions.ts` — `compareVersions()` with full prerelease support
 - **Derived helpers**: `ALL_MANAGED_DIRS`, `getConfiguredPlatforms()`, etc. — consumed by update, init, hash tracking
@@ -330,19 +333,19 @@ Static declarations that are **not** derivable: the `--claude` / `--star` option
 
 Task planning is artifact-driven:
 
-- `prd.md` is created by `task.py create` and stores requirements, constraints, and acceptance criteria.
-- `design.md` is required for complex tasks and stores technical design, boundaries, data flow, contracts, and tradeoffs.
-- `implement.md` is required for complex tasks and stores execution order, checklist, validation commands, and rollback points.
-- `implement.jsonl` / `check.jsonl` are spec and research manifests for implement/check context. They do not replace `implement.md`.
+- `contract.md` is created by `task.py create` and stores requirements, constraints, and acceptance criteria.
+- `design.md` is required for standard and full tasks and stores technical design, boundaries, data flow, contracts, and tradeoffs.
+- `waves.md` is required for full tasks and stores execution order, checklist, validation commands, and rollback points.
+- `implement.jsonl` / `check.jsonl` are spec and research manifests for implement/check context. They do not replace `waves.md`.
 
-Lightweight tasks may be PRD-only. Complex tasks must have `prd.md`, `design.md`, and `implement.md` before `task.py start` moves the task into implementation.
+Light tasks require `contract.md`; standard tasks also require `design.md`; full tasks also require `waves.md` before `task.py start` moves the task into implementation.
 
 ### Lifecycle
 
-1. **Create** — `task.py create` writes `task.json` with `status = planning`, creates the default `prd.md`, and creates empty `implement.jsonl` / `check.jsonl`. Curation instructions are printed to the console, never written into the files.
-2. **Plan** — AI updates `prd.md`. If the task is complex, AI also writes `design.md` and `implement.md`; if sub-agent/spec context is needed, AI curates jsonl entries.
-3. **Review / start** — the user reviews the planning artifacts. `task.py start` is valid when the task's artifact gate is satisfied.
-4. **Consume** — the dispatch hook and `dispatch.py` (one shared assembler, `common/dispatch_context.py`) read context in the same order: jsonl entries, `prd.md`, `design.md` if present, `implement.md` if present.
+1. **Create** — `task.py create` writes `task.json` with `status = planning`, creates the default `contract.md`, and creates empty `implement.jsonl` / `check.jsonl`. Curation instructions are printed to the console, never written into the files.
+2. **Plan** — AI updates `contract.md`. For standard tasks, AI also writes `design.md`; full tasks also need `waves.md`. By default, AI must curate at least one entry in each seeded manifest (`implement.jsonl` and `check.jsonl`) before start.
+3. **Review / start** — the user reviews the planning artifacts. `task.py start` requires both the tier's artifacts and curated entries in each existing manifest. For intentionally empty context, use `task.py start <task> --allow-empty-context`; this does not bypass the tier artifact gate. Missing manifests are not gated.
+4. **Consume** — the driver (`arbor.py`, using `common/dispatch_context.py`) reads context in the same order: jsonl entries, `contract.md`, `design.md` if present, `waves.md` if present.
 
 ### Signatures
 
@@ -360,12 +363,13 @@ Optional `type: "directory"` is supported for directory entries. Consumers ignor
 
 | Contract                  | Enforcer                                        | Behavior                                                                           |
 | ------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Task creation             | `task_store.py`                                 | Always creates default `prd.md`; never auto-creates `design.md` or `implement.md`. |
-| Lightweight planning gate | workflow-state / SessionStart / continue        | PRD-only is valid when the task is clearly small.                                  |
-| Complex planning gate     | workflow-state / SessionStart / continue        | Requires `prd.md`, `design.md`, and `implement.md` before `task.py start`.         |
+| Task creation             | `task_store.py`                                 | Always creates default `contract.md`; never auto-creates `design.md` or `waves.md`. |
+| Lightweight planning gate | workflow-state / SessionStart / continue        | contract-only is valid when the task is clearly small.                                  |
+| Tier planning gate        | `task.py start` / workflow-state / SessionStart / continue | Standard requires `contract.md` and `design.md`; full also requires `waves.md`. |
+| Start context gate        | `task.py start`                                  | Each existing manifest needs at least one curated entry unless `--allow-empty-context` is explicit. Missing manifests are not gated. |
 | Non-entry detection       | Every jsonl consumer                            | Row without a `file` key is treated as non-entry and skipped.                      |
-| Empty-file tolerance      | dispatch hook / `dispatch.py`                   | Missing or empty jsonl is tolerated; task artifacts still load.                    |
-| Context order             | dispatch hook / `dispatch.py`                   | jsonl entries → `prd.md` → `design.md` if present → `implement.md` if present.     |
+| Empty-file tolerance      | `arbor.py` / `common/dispatch_context.py`                   | Missing or empty jsonl is tolerated; task artifacts still load.                    |
+| Context order             | `arbor.py` / `common/dispatch_context.py`                   | jsonl entries → `contract.md` → `design.md` if present → `waves.md` if present.     |
 | Archived self-references  | `task_context.py` validation                    | Preserve JSONL bytes. For an archived task, remap only exact `.arbor/tasks/<same-task-name>/...` references into that archive copy. Other paths retain repo-root resolution. |
 
 ### Validation & Error Matrix
@@ -378,16 +382,16 @@ Optional `type: "directory"` is supported for directory entries. Consumers ignor
 | Archived self-reference exists in the archive copy     | Resolve inside `.arbor/tasks/archive/<year-month>/<same-task-name>/`; do not rewrite the manifest        | Exit 0                  |
 | Archived self-reference is absent from the archive copy | Report it missing even if an active task with the same name has recreated the path                         | Exit 1                  |
 | Archived self-reference traverses or follows a symlink outside the archive | Reject it as missing; never fall back to the historical active-task path                    | Exit 1                  |
-| Lightweight task has only `prd.md`                     | Valid planning state; SessionStart / continue can ask for start review                                | No error                |
-| Complex task is missing `design.md` or `implement.md`  | Stay in planning; ask user to complete missing planning artifacts                                     | Hook / command guidance |
+| Lightweight task has only `contract.md`                     | Valid planning state; SessionStart / continue can ask for start review                                | No error                |
+| Task is missing an artifact required by its tier  | Stay in planning; ask user to complete missing planning artifacts                                     | Hook / command guidance |
 | jsonl is missing                                       | Context readers fall back to task artifacts and warn where applicable                                 | No create failure       |
 
 ### Good / Base / Bad Cases
 
-- **Good**: complex task has `prd.md`, `design.md`, `implement.md`, and curated jsonl manifests. Context consumers load jsonl entries first, then all three artifacts.
+- **Good**: full task has `contract.md`, `design.md`, `waves.md`, and curated jsonl manifests. Context consumers load jsonl entries first, then all three artifacts.
 - **Good (archived)**: a moved task keeps its JSONL byte-for-byte; validation binds exact historical self-references to files or directories inside its archive copy while unrelated repository paths still resolve from the repository root.
-- **Base**: lightweight task has only `prd.md`. SessionStart / continue treats this as a valid planning state and may ask for start review.
-- **Bad**: complex task has only `prd.md` plus seed-only jsonl. SessionStart / continue must keep the task in planning; it must not treat jsonl file existence as implementation readiness.
+- **Base**: lightweight task has only `contract.md`. SessionStart / continue treats this as a valid planning state and may ask for start review.
+- **Bad**: complex task has only `contract.md` plus seed-only jsonl. SessionStart / continue must keep the task in planning; it must not treat jsonl file existence as implementation readiness.
 - **Bad (archived)**: validation resolves a historical self-reference through a recreated active task, or accepts `..` / a symlink that escapes the archived task directory.
 
 ### Wrong vs Correct
@@ -396,28 +400,35 @@ Optional `type: "directory"` is supported for directory entries. Consumers ignor
 
 ```python
 def is_ready(task_dir: Path) -> bool:
-    return (task_dir / "prd.md").is_file() and (task_dir / "implement.jsonl").is_file()
+    return (task_dir / "contract.md").is_file() and (task_dir / "implement.jsonl").is_file()
 ```
 
-File existence alone cannot distinguish a lightweight PRD-only task from an incomplete complex task, and a seed-only jsonl manifest is not curated context.
+File existence alone cannot distinguish a lightweight contract-only task from an incomplete complex task, and a seed-only jsonl manifest is not curated context.
 
 #### Correct
 
 ```python
-def planning_next_action(task_dir: Path, is_complex: bool, inline_mode: bool) -> str:
-    if not (task_dir / "prd.md").is_file():
-        return "write-prd"
-    if is_complex and (
-        not (task_dir / "design.md").is_file()
-        or not (task_dir / "implement.md").is_file()
+from common.task_context import curated_entry_count
+
+
+def planning_next_action(
+    task_dir: Path, tier: str, allow_empty_context: bool = False
+) -> str:
+    if not (task_dir / "contract.md").is_file():
+        return "write-contract"
+    if tier in ("standard", "full") and not (task_dir / "design.md").is_file():
+        return "write-design"
+    if tier == "full" and not (task_dir / "waves.md").is_file():
+        return "write-waves"
+    if not allow_empty_context and any(
+        curated_entry_count(task_dir / name) == 0
+        for name in ("implement.jsonl", "check.jsonl")
     ):
-        return "complete-complex-artifacts"
-    if not inline_mode and not has_curated_jsonl(task_dir):
         return "curate-jsonl"
     return "review-before-start"
 ```
 
-The route depends on task intent, artifact presence, and execution mode. Missing optional artifacts are skipped for lightweight tasks, but complex tasks cannot enter implementation until their planning artifacts are complete.
+The route depends on the resolved tier, artifact presence, and the explicit empty-context override. Light tasks need only `contract.md`; standard tasks also need `design.md`; only full tasks require `waves.md`. Inline execution does not bypass the default manifest gate. A missing manifest returns `None` from `curated_entry_count` and is not gated.
 
 For archived validation, resolving every JSONL path as `repo_root / file_path`
 is wrong because a preserved self-reference points at the task's former active
@@ -427,21 +438,21 @@ leave every unrelated path on normal repository-root resolution.
 
 ### Tests Required
 
-- **Create behavior**: `task.py create` creates default `prd.md` and empty jsonl, and prints the curation instructions to the console.
-- **Consumer tolerance**: `inject-delegation-context.py` skips rows without a `file` key and still injects task artifacts.
+- **Create behavior**: `task.py create` creates default `contract.md` and empty jsonl, and prints the curation instructions to the console.
+- **Consumer tolerance**: `common/dispatch_context.py` skips rows without a `file` key and still injects task artifacts.
 - **Validate placeholder**: `task.py validate` passes for empty jsonl and fails with a remediation message for a legacy `{"_example": …}` row, in both active and archived tasks.
 - **Validate archive binding**: cover archived self files and directories, unrelated paths, a missing archive copy with a recreated active task, traversal, symlink escape, and unchanged active-task behavior.
 - **List-context empty**: `task.py list-context` prints "(no curated entries yet)" for an uncurated jsonl.
-- **Artifact gates**: workflow-state, SessionStart, and continue distinguish PRD-only lightweight tasks from complex tasks that still need `design.md` / `implement.md`.
+- **Artifact gates**: workflow-state, SessionStart, and continue distinguish contract-only lightweight tasks from complex tasks that still need `design.md` / `waves.md`.
 ## Context Injection Limits Contract (`context_injection`)
 
 ### 1. Scope / Trigger
 
 The dispatch context assembler caps how much task context is inlined into a
 dispatched assistant's prompt. It lives in `common/dispatch_context.py` and is
-shared by the PreToolUse hook (`shared-hooks/inject-delegation-context.py`) and
-`dispatch.py`, so a change to injection formatting, caps, binary detection or
-config keys lands once and applies to both paths.
+called by the driver (`arbor.py`) before either command execution or MCP
+delegation, so injection formatting, caps, binary detection and config keys
+apply consistently to both executor types.
 
 ### 2. Signatures
 
@@ -456,7 +467,7 @@ config keys lands once and applies to both paths.
 ```yaml
 context_injection:
   max_file_bytes: 32768        # per implement.jsonl / check.jsonl referenced file
-  max_artifact_bytes: 65536    # per task artifact (prd.md / design.md / implement.md)
+  max_artifact_bytes: 65536    # per task artifact (contract.md / design.md / waves.md)
   max_total_bytes: 131072      # whole payload; overflow degrades to index lines
 ```
 
@@ -465,9 +476,9 @@ context_injection:
   - truncation: `\n[Arbor: truncated at {cap} bytes — read {path} for the full content]`
   - degradation: `[Arbor: not inlined (total context limit reached) — {path} ({size} bytes): {reason}]`
   - binary reference: `[Arbor: not inlined (binary file) — {path} ({size} bytes): {reason}]`
-- Artifact reasons: `Requirements document` / `Technical design document` / `Execution plan document`.
+- Artifact reasons: `Acceptance contract` / `Technical design document` / `Execution plan document`.
 - Accounting: `=== path ===` headers and notices count toward `max_total_bytes`.
-  Processing order unchanged: jsonl entries first, then prd → design → implement.md.
+  Processing order unchanged: jsonl entries first, then contract.md → design.md → waves.md.
 - Truncation is UTF-8-safe: back off over continuation bytes; drop an incomplete lead byte.
 - JSONL-referenced files are classified from bytes, not extensions. A NUL byte
   or invalid UTF-8 marks the file as binary. Binary bytes are never decoded or
@@ -805,7 +816,9 @@ One line inside the block that is already contracted to become spoken output; id
 }
 ```
 
-The same nested `hookSpecificOutput` convention applies to `inject-delegation-context.py` (`updatedInput`).
+The native agent guard uses the same nested `hookSpecificOutput` envelope for
+`permissionDecision: deny`. Role context is assembled by the driver before
+execution; it does not depend on a hook rewriting delegation input.
 
 ### Constraint
 
@@ -839,8 +852,8 @@ index on demand after the task and phase are known.
 
 `SessionStart` reports task status and artifact presence, but it does not
 approve implementation. Planning tasks stay behind the review gate: lightweight
-tasks may be PRD-only, while complex tasks need `prd.md`, `design.md`, and
-`implement.md` before `task.py start`.
+tasks need `contract.md`, standard tasks also need `design.md`, and full tasks
+also need `waves.md` before `task.py start`.
 
 For `in_progress` tasks, `SessionStart` points the AI to the per-turn
 `<workflow-state>` block and restates the implementation/check context order.
@@ -893,7 +906,7 @@ resolution or file reads. Contract:
 - Config: `.arbor/config.yaml` → `prompt_injection.skip_keyword`
   (ships commented; default in code via `common.config.get_prompt_injection_config()`;
   quoted `""` explicitly disables the hatch).
-- Scope: per-turn breadcrumb ONLY. `session-start.py`, `inject-delegation-context.py`,
+- Scope: per-turn breadcrumb ONLY. `session-start.py`, the driver context assembler,
   and `inject-shell-session-context.py` must never gain keyword handling.
 - Dogfood copy to keep patched region-identically: `.claude/hooks/inject-workflow-state.py`
   (and the shipped `shared-hooks/` original).
@@ -959,7 +972,7 @@ The hook uses `find_arbor_root()` to walk up from CWD until it finds `.arbor/`, 
 ### Why No State Machine / No Extra `task.json` Fields
 
 After first-principles analysis (historical task:
-`.arbor/tasks/archive/2026-04/04-17-workflow-enforcement-v2/prd.md`), we
+the archived `04-17-workflow-enforcement-v2` task), we
 dropped the original design's `current_phase` string / `phase_history` /
 `checkpoints` / 7 new `task.py` commands / skill tail blocks. The core insight:
 **workflow.md Phase 1.0/1.1/... is documentation layering, not runtime state**.
@@ -1142,11 +1155,14 @@ Note this is *only* about `{{…}}` placeholders. The separate `python3` → `py
 
 ## Arbor dispatch hooks (current mechanism)
 
-Claude Code and StarFactory register two PreToolUse hooks (see `templates/claude/settings.json` and `templates/star/settings.json`):
+Claude Code and Codex register the native agent guard in their PreToolUse hooks
+(see `templates/claude/settings.json` and `templates/codex/hooks.json`).
 
 | Hook | Matcher | Timeout | Behavior |
 |---|---|---|---|
-| `inject-delegation-context.py` | `^mcp__codeg[-_]mcp__delegate_to_agent$` | 30 | Inlines task context into `tool_input.task`, marked `<!-- arbor-hook-injected -->`. Role resolution: `Role:` header line, then `.arbor/.runtime/codeg-assistants.json` `by_id[assistant_id].role`, else no-op. Task: `Active task:` header, else the session active task. Output is `updatedInput` with only `task` replaced. Prompt assembly is shared with `dispatch.py` via `common/dispatch_context.py`. |
-| `guard-builtin-agent.py` | `^(Agent\|Task)$` | 10 | Denies the built-in Agent/Task tool when the call is an Arbor role dispatch (prompt carries `Active task:` / `Role:`, or `subagent_type` starts with `arbor-`), unless `dispatch.guard_builtin_agent` is false. Other calls pass through. |
+| `guard-builtin-agent.py` | Claude Code: `^(Agent\|Task)$`; Codex: `^(Agent\|Task\|spawn_agent)$` | 10 | Denies native sub-agent tools for Arbor dispatches whose first 400 prompt characters carry `Active task:`, `Role:` with an Arbor role, or `Conductor:`, or whose agent type starts with `arbor-`. Other calls pass through. `ARBOR_HOOKS=0` or `ARBOR_DISABLE_HOOKS=1` disables it. |
 
-SessionStart (`session-start.py`) adds the `<dispatch>` section with the resolved assistant ids; UserPromptSubmit (`inject-workflow-state.py`) emits the per-turn breadcrumb. The dispatch contract itself is in `dispatch.md`.
+The driver (`arbor.py`) assembles role context through `common/dispatch_context.py`
+and invokes the configured executor. SessionStart (`session-start.py`) supplies
+startup context; UserPromptSubmit (`inject-workflow-state.py`) emits the per-turn
+breadcrumb. The prompt and conductor header contracts are in `dispatch.md`.

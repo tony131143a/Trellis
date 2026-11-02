@@ -1,0 +1,125 @@
+{
+  "id": "spec-v3-driver-docs",
+  "name": "spec-v3-driver-docs",
+  "title": "Spec docs: v3 driver, conductor and executors replace v1 dispatch",
+  "description": "Rewrite .arbor/spec/cli/backend docs that still describe dispatch.py, inject-delegation-context and codeg-setup so they document the v3 arbor.py driver, conductor and executors",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": "cli",
+  "priority": "P2",
+  "creator": "tangxk",
+  "assignee": "tangxk",
+  "createdAt": "2026-11-01",
+  "completedAt": null,
+  "branch": "task/11-01-spec-v3-driver-docs",
+  "base_branch": "main",
+  "worktree_path": "/Users/xktang/person-resources/project/my/Trellis-wt/11-01-spec-v3-driver-docs",
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "tier": "light"
+  },
+  "state": "FINISH",
+  "wave": 1,
+  "base": "415d24533023dc1adea5b2e17624b12d06787a94",
+  "contract_hash": "aaeb4fd73349b5620d1e26a7e0bb6c90051907cd0559992a8ee7297cca50d27b",
+  "counters": {
+    "gate": 2,
+    "review": 1,
+    "polish": 0,
+    "no_progress": 0
+  },
+  "dispatches": [
+    {
+      "id": "d-001",
+      "role": "test",
+      "mode": null,
+      "commit": "af36c4817cbeb7966ba912eb4b5762863416aeff",
+      "status": "ok",
+      "started": "2026-11-02T04:33:00Z",
+      "ended": "2026-11-02T04:35:16Z",
+      "range": "415d24533023dc1adea5b2e17624b12d06787a94..4a79a3c8d7b7f9083bb5739b6df8b142daa8b532",
+      "confidence": "high",
+      "observations": []
+    },
+    {
+      "id": "d-002",
+      "role": "implement",
+      "mode": null,
+      "commit": "d1c7fe1df7f11b7e5479f745f139f74af8459afd",
+      "status": "ok",
+      "started": "2026-11-02T04:36:07Z",
+      "ended": "2026-11-02T04:40:12Z",
+      "range": "415d24533023dc1adea5b2e17624b12d06787a94..e618dffe2db955f0c83426c7b35d39b8289fcfe5",
+      "confidence": "high",
+      "observations": [
+        "writes under .arbor/ outside .arbor/tasks/11-01-spec-v3-driver-docs/: .arbor/spec/cli/backend/commands-dispatch.md, .arbor/spec/cli/backend/dispatch.md, .arbor/spec/cli/backend/index.md, .arbor/spec/cli/backend/platform-integration.md, .arbor/spec/cli/backend/workflow-state-contract.md"
+      ]
+    },
+    {
+      "id": "d-003",
+      "role": "review",
+      "mode": "self-check",
+      "commit": null,
+      "status": "ok",
+      "started": "2026-11-02T04:41:12Z",
+      "ended": "2026-11-02T04:42:16Z",
+      "range": "415d24533023dc1adea5b2e17624b12d06787a94..6ed5aa320b5c35bf108fff8a068ebb6c2e312968",
+      "confidence": "high",
+      "observations": []
+    },
+    {
+      "id": "d-004",
+      "role": "fix",
+      "mode": null,
+      "commit": "ec1d9b350dea0e2780c06e808941920af2e358f9",
+      "status": "ok",
+      "started": "2026-11-02T04:42:45Z",
+      "ended": "2026-11-02T04:44:17Z",
+      "range": "415d24533023dc1adea5b2e17624b12d06787a94..3a48ed63eb373abbba82f7045e525acc2ac4fb45",
+      "confidence": "high",
+      "observations": [
+        "writes under .arbor/ outside .arbor/tasks/11-01-spec-v3-driver-docs/: .arbor/spec/cli/backend/platform-integration.md"
+      ]
+    },
+    {
+      "id": "d-005",
+      "role": "review",
+      "mode": "self-check",
+      "commit": null,
+      "status": "ok",
+      "started": "2026-11-02T04:45:12Z",
+      "ended": "2026-11-02T04:45:42Z",
+      "range": "6ed5aa320b5c35bf108fff8a068ebb6c2e312968..066994b4b4fd57b5d8d59fd605b229bd6d451e6b",
+      "confidence": "high",
+      "observations": []
+    }
+  ],
+  "conductor": {
+    "run": "c-001",
+    "run_id": "85dfbc2a-eb60-43f5-a2f8-ef95b0e670d8",
+    "status": "done",
+    "started": "2026-11-02T04:32:36Z",
+    "ended": "2026-11-02T04:46:55Z",
+    "prompt_path": "/Users/xktang/person-resources/project/my/Trellis/.arbor/.runtime/prompts/11-01-spec-v3-driver-docs/c-001.md",
+    "executor": "codeg-cli",
+    "command": "/Applications/codeg.app/Contents/MacOS/codeg-cli run -A arbor-conductor -w /Users/xktang/person-resources/project/my/Trellis-wt/11-01-spec-v3-driver-docs --permissions allow --timeout 8h --detach --title arbor-conductor-11-01-spec-v3-driver-docs-c-001 -q -p - < /Users/xktang/person-resources/project/my/Trellis/.arbor/.runtime/prompts/11-01-spec-v3-driver-docs/c-001.md",
+    "outcome": "DONE",
+    "reason": "done",
+    "needs_from_planner": "合并前处理 scorecard 中重复的 A 类问题规则要求，然后人工合并 task/11-01-spec-v3-driver-docs。",
+    "report_path": "/Users/xktang/person-resources/project/my/Trellis-wt/11-01-spec-v3-driver-docs/.arbor/tasks/11-01-spec-v3-driver-docs/reports/c-001.md",
+    "problem": null
+  },
+  "step": "finish",
+  "gate_failing": [],
+  "gate_reds": 0,
+  "last_reviewed": "066994b4b4fd57b5d8d59fd605b229bd6d451e6b",
+  "review_ids": [],
+  "review_from": "415d24533023dc1adea5b2e17624b12d06787a94"
+}
