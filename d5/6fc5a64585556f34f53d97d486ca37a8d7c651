@@ -1,0 +1,23 @@
+.arbor/scripts/common/arbor_config.py
+  s_126f371ba7abef::t_4ec426f0e28175 301-309,313-324
+packages/cli/src/templates/arbor/scripts/common/arbor_config.py
+  s_126f371ba7abef::t_fdd7248ef74f81 301-309,313-324
+packages/cli/test/scripts/v2-worktree.integration.test.ts
+  s_126f371ba7abef::t_7741e3771addfb 265-276,285-286,296-303
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "d56fc5a64585556f34f53d97d486ca37a8d7c651",
+  "prompts": {},
+  "sessions": {
+    "s_126f371ba7abef": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a5538ca1-39e4-45f0-a1cb-6064cd0b2304",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
