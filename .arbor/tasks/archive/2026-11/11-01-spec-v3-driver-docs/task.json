@@ -3,7 +3,7 @@
   "name": "spec-v3-driver-docs",
   "title": "Spec docs: v3 driver, conductor and executors replace v1 dispatch",
   "description": "Rewrite .arbor/spec/cli/backend docs that still describe dispatch.py, inject-delegation-context and codeg-setup so they document the v3 arbor.py driver, conductor and executors",
-  "status": "in_progress",
+  "status": "completed",
   "dev_type": null,
   "scope": null,
   "package": "cli",
@@ -11,7 +11,7 @@
   "creator": "tangxk",
   "assignee": "tangxk",
   "createdAt": "2026-11-01",
-  "completedAt": null,
+  "completedAt": "2026-11-01",
   "branch": "task/11-01-spec-v3-driver-docs",
   "base_branch": "arbor-v3",
   "worktree_path": "/Users/xktang/person-resources/project/my/Trellis-wt/11-01-spec-v3-driver-docs",
@@ -25,7 +25,7 @@
   "meta": {
     "tier": "light"
   },
-  "state": "FINISH",
+  "state": "DONE",
   "wave": 1,
   "base": "415d24533023dc1adea5b2e17624b12d06787a94",
   "contract_hash": "aaeb4fd73349b5620d1e26a7e0bb6c90051907cd0559992a8ee7297cca50d27b",
@@ -116,10 +116,12 @@
     "report_path": "/Users/xktang/person-resources/project/my/Trellis-wt/11-01-spec-v3-driver-docs/.arbor/tasks/11-01-spec-v3-driver-docs/reports/c-001.md",
     "problem": null
   },
-  "step": "finish",
+  "step": "done",
   "gate_failing": [],
   "gate_reds": 0,
   "last_reviewed": "066994b4b4fd57b5d8d59fd605b229bd6d451e6b",
   "review_ids": [],
-  "review_from": "415d24533023dc1adea5b2e17624b12d06787a94"
+  "review_from": "415d24533023dc1adea5b2e17624b12d06787a94",
+  "spec_changes": [],
+  "spec_changes_source": "branch-diff"
 }
