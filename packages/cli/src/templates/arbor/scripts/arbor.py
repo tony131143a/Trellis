@@ -1683,6 +1683,7 @@ def cmd_conduct(args: argparse.Namespace) -> int:
         commit_task_dir(ctx, f"arbor({ctx.name}): {run} conductor start")
     print(colored(f"{run}: conductor started for {ctx.name} (run {run_id})", Colors.BLUE))
     print(f"  prompt: {prompt_file}")
+    print(f"  codeg folder: {ctx.worktree} (tell the user to open it in codeg to watch {run} and its role runs)")
     print("  next: `arbor conduct --collect` once it has ended (`arbor next` shows it running)")
     return 0
 
