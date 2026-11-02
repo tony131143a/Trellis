@@ -1,0 +1,19 @@
+.arbor/tasks/11-01-spec-v3-driver-docs/task.json
+  s_690b6e63d35e44::t_b94478e8579c3a 38-51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "1dbafb72a2b9d35efcc2970dbe759846553e235b",
+  "prompts": {},
+  "sessions": {
+    "s_690b6e63d35e44": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19a87-d008-74d0-86fd-749f6ea9e16c",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
