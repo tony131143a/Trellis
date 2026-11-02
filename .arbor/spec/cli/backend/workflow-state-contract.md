@@ -1,9 +1,14 @@
 ---
 sources:
-  - packages/cli/src/templates/shared-hooks/*.py
+  - packages/cli/src/templates/shared-hooks/session-start.py
+  - packages/cli/src/templates/shared-hooks/inject-workflow-state.py
+  - packages/cli/src/templates/shared-hooks/guard-builtin-agent.py
+  - packages/cli/src/templates/arbor/scripts/arbor.py
+  - packages/cli/src/templates/arbor/scripts/common/dispatch_context.py
+  - packages/cli/src/templates/arbor/scripts/common/driver/conductor.py
   - packages/cli/src/templates/arbor/workflow.md
   - packages/cli/src/templates/arbor/scripts/common/tasks.py
-last_verified: 2026-10-28
+last_verified: 2026-11-01
 ---
 # Workflow-State Breadcrumb Contract
 
@@ -16,7 +21,7 @@ last_verified: 2026-10-28
 
 The breadcrumb is the **only** per-turn channel that fires while an Arbor task
 is active. It is intended for the main AI session, while sub-agent context
-normally arrives through the dispatch hook (or `dispatch.py`) and the header
+normally arrives through the `arbor.py` driver and the header
 protocol described in `dispatch.md`. Host behavior can still surface the
 breadcrumb inside sub-agent turns, though, and hooks do not currently expose a
 stable main-vs-sub-agent identity signal. Therefore: **every `[required · once]`
@@ -268,25 +273,26 @@ Forks can define custom statuses. To do so:
 ## Hook reachability matrix
 
 The breadcrumb is **intended** for the main AI session. Dispatched assistants
-(codeg sessions running `star` or `pi`) get their context from the dispatch
-hook or from `dispatch.py`, but they may still read project files such as
+get their context from the `arbor.py` driver, but they may still read project files such as
 `AGENTS.md` and `workflow.md`, and a host may run per-turn hooks for them.
 Arbor must not rely on categorical breadcrumb invisibility inside assistants.
 
 | Channel | Main session | Dispatched assistant |
 |---------|:------------:|:--------------------:|
 | `<workflow-state>` per-turn breadcrumb | ✅ | ⚠️ possible host-dependent exposure |
-| PreToolUse dispatch hook (inlines `implement.jsonl`/`check.jsonl` + task artifacts into the `delegate_to_agent` task text) | ❌ | ✅ (applied to the text the main agent sends) |
-| `dispatch.py` assembler (terminal path, same text as the hook) | ❌ | ✅ |
+| `arbor.py` role assembler (`implement.jsonl`/`check.jsonl` + task artifacts + diff, before executor invocation) | ❌ | ✅ |
+| `arbor.py conduct` prompt (conductor instructions, artifacts, driver state and Planner brief) | ❌ | ✅ (conductor only) |
 | Pull protocol in `.arbor/agents/<role>.md` (when `<!-- arbor-hook-injected -->` is absent) | N/A | fallback |
 
 **Implication**: dispatch-relevant guidance must be carried by the header
 protocol and the assistant instruction sources, in this artifact order:
-jsonl entries -> `prd.md` -> `design.md if present` -> `implement.md if
+jsonl entries -> `contract.md` -> `design.md if present` -> `waves.md if
 present`. Breadcrumb text must be safe if an assistant sees it: the dispatch
 guidance in `in_progress` and `in_progress-parallel` self-exempts a session
 whose first prompt starts with `Active task:` + `Role:` so it performs the
-role directly instead of dispatching again. The same rule applies to every
+role directly instead of dispatching again. `Active task:` + `Conductor:`
+identifies the conductor, which drives the loop through `arbor.py` with
+`--task`, `--executor` and `--as-conductor` rather than performing roles itself. The same rule applies to every
 `in_progress*` block (fallback, three tiers, parallel). See `dispatch.md` in this
 directory.
 

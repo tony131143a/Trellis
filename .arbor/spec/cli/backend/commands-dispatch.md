@@ -1,173 +1,160 @@
 ---
 sources:
-  - packages/cli/src/templates/arbor/scripts/dispatch.py
-  - packages/cli/src/cli/index.ts
-last_verified: 2026-10-25
+  - packages/cli/src/templates/arbor/scripts/arbor.py
+  - packages/cli/src/templates/arbor/scripts/common/driver/executor.py
+  - packages/cli/src/templates/arbor/scripts/common/driver/conductor.py
+  - packages/cli/src/templates/arbor/scripts/common/driver/mcp.py
+  - packages/cli/src/templates/arbor/scripts/common/dispatch_context.py
+last_verified: 2026-11-01
 ---
-# `dispatch.py` / `arbor dispatch`
+# `arbor.py` — Task Driver, Conductor and Executors
 
-Terminal dispatch of the implement / check / research roles to codeg
-assistants through `codeg-cli`, for sessions without the codeg MCP tools. The
-prompt contract (header protocol, context order, resolution order) is in
-[dispatch.md](./dispatch.md); this doc is the command surface.
+The driver owns task state, role preparation, deterministic checks, report
+validation and Git observations. The Planner owns scope and approval; a conductor
+drives a started task through the driver. The prompt contract is in
+[dispatch.md](./dispatch.md).
 
 ---
 
 ## 1. Scope / Trigger
 
-- `packages/cli/src/templates/arbor/scripts/dispatch.py`, shipped to
-  `.arbor/scripts/dispatch.py` (registered in `templates/arbor/index.ts`
-  `getAllScripts()`, so init copies it and update hashes it).
-- `arbor dispatch ...` in `packages/cli/src/cli/index.ts`: finds the nearest
-  ancestor holding `.arbor/`, runs `<python> <root>/.arbor/scripts/dispatch.py
-  <args...>` with inherited stdio from the caller's cwd, and exits with its
-  status. Python is `ARBOR_PYTHON_CMD`, else `python` on Windows and
-  `python3` elsewhere. The startup update notice is suppressed for
-  `dispatch` so `--json` output stays clean.
+`packages/cli/src/templates/arbor/scripts/arbor.py` ships as
+`.arbor/scripts/arbor.py`. Its helpers live under `common/driver/`; role context
+is assembled by `common/dispatch_context.py`. Run it from the repository or a
+task worktree. Select role executors under `executors:` in `.arbor/config.yaml`.
+Conductor launch, result and cancellation commands use the separate `conductor:`
+configuration.
 
 ## 2. Signatures
 
-```text
-dispatch.py run --role R [--target T] [--task DIR] [--workspace WT] [--finish]
-                [-p/--prompt TEXT | --prompt-file F | stdin]
-                [--detach] [--wait] [--worktree[=NAME]]
-                [--standalone] [--data-dir DIR] [--url URL]
-                [--dry-run] [--print-prompt]
-dispatch.py wait RUN... [-o OUT] [--timeout DUR] [--url URL]
-dispatch.py resolve --role R [--target T] [--json]
-dispatch.py target [get | set <T> | clear]
-dispatch.py print-context --role R [--task DIR] [--finish] [--workspace WT]
-                          [--target T] [-p TEXT | --prompt-file F | stdin]
-dispatch.py codeg-setup [--target T] [--install] [--db PATH] [--codeg-cli PATH]
-```
-
-`run` argv handed to codeg-cli (global options before `run`):
+All global options precede the subcommand:
 
 ```text
-<codeg-cli> [--standalone] [--data-dir DIR] [--url URL] run
-  -A <dispatch.targets.<target>.<role>> -w <workspace or repo root>
-  --permissions <dispatch.permissions> --timeout <dispatch.timeout>
-  --title "arbor <role> <task dir name or ->" [--worktree | --worktree=NAME]
-  (--detach | -o .arbor/.runtime/dispatch/<stamp>.result.md) -p -
+python3 .arbor/scripts/arbor.py [--task DIR] [--executor NAME] [--as-conductor c-NNN] COMMAND
+
+next [--json] [--partition P] [--role explore|architect|review]
+run [--dispatch d-NNN] [--partition P] [--autopilot]
+run --role explore|architect|review [--mode plan|sweep] [--range BASE..HEAD] [--dispatch d-NNN]
+gate
+decide impl|tests|contract|fix|skip|accept|retry --reason TEXT
+       [--dispatch d-NNN] [--report FILE] [--partition P]
+canary [--role explore|review|verify]
+override --reason TEXT [--to STATE[/step]] [--role ROLE] [--mode MODE]
+status
+resume
+abandon [--reason TEXT]
+prompt --dispatch d-NNN [--print]
+bind --request FILE --task-id ID
+collect --request FILE --result FILE [--accept-new-control-task NAME] [--reason TEXT]
+finish [--pr]
+conduct [--brief FILE] [--collect] [--cancel] [--dry-run]
+children [--json]
 ```
 
-The prompt goes on stdin. `<codeg-cli>` is `dispatch.codeg_cli`, else
-`$CODEG_CLI`, else `codeg-cli` on PATH, else
-`/Applications/codeg.app/Contents/MacOS/codeg-cli` (macOS).
+| Global option | Contract |
+| --- | --- |
+| `--task DIR` | Explicit task directory; otherwise the session's active task. |
+| `--executor NAME` | Select `executors.<name>`; otherwise `executors.default`. |
+| `--as-conductor c-NNN` | Identify the caller as the task's running conductor. |
+
+| Subcommand | Behavior |
+| --- | --- |
+| `next` | Print the single next step; `--json` includes `task`, `state`, `needs`, `summary` and step-specific fields such as `brief_path`. `--role` prepares an additional CONTRACT research/design angle. |
+| `run` | Execute the named brief, validate the report and advance. In GATE, run deterministic checks; at a completed partition wave, merge its branches. `--autopilot` continues until a decision, human gate, STOP, red gate or failed dispatch. Explicit `--role` is for CONTRACT research/design; parent sweep uses review plus an explicit merged range. |
+| `gate` | Run level 0 gate commands and contract `auto` checks; report failing AC ids. A parent runs its integration checks in the main checkout. |
+| `decide` | Record a reasoned decision: `impl`, `tests`, `contract` for a red gate; `fix`, `skip` for candidates; `accept`, `retry` for report judgment. `--report` supplies a structured interpretation while preserving the raw report. |
+| `canary` | Dispatch a small read-only probe to check executor reachability and report format. |
+| `override` | Record a justified state jump or one extra role dispatch without advancing the normal table. |
+| `status` | Show task state, observations and metrics. |
+| `resume` | Leave STOP with another round, or record approval of the revised contract. |
+| `abandon` | Record abandonment, optionally with a reason. |
+| `prompt` | Rebuild a dispatch prompt; `--print` prints its text. |
+| `bind` | Bind a prepared MCP request to the returned codeg task id. |
+| `collect` | Validate the complete terminal MCP JSON and advance; optional sibling-task acceptance requires `--reason`. |
+| `finish` | In FINISH, write the scorecard and print the merge command, or use `--pr` to push/open a PR with gh. After merge, clean up, archive and journal; repeated calls continue missing steps. |
+| `conduct` | Launch the task conductor. `--brief` reads the Planner's brief; `--collect` records its terminal report; `--cancel` cancels it; `--dry-run` writes its prompt and prints the command. |
+| `children` | List each child's state, conductor and merge status; `--json` emits structured output. |
 
 ## 3. Contracts
 
-- **One assembler.** `run` and `print-context` turn the flags into a header
-  block (`Active task:` absolute, `Role:` with `[finish]`, `Target:`,
-  `Workspace:`), prepend it to the brief, and run that text through the
-  hook's own steps: `parse_dispatch_header` -> `resolve_task_dir` ->
-  `build_dispatch_prompt`. `print-context` output therefore byte-equals the
-  hook's `updatedInput.task` for the same header and brief.
-- **Header lines in the brief** fill in what the flags leave unset (task,
-  target, workspace, `[finish]`); `--role` always wins.
-- **Task**: `--task` (bare name, repo-relative, or absolute; contained via
-  `resolve_task_ref`), else the session pointer (`ARBOR_CONTEXT_ID` or the
-  single-session fallback). implement / check without a task exit 2.
-- **Target**: `--target` or `Target:` in the brief, else
-  `resolve_dispatch_target`. `run` always writes the effective `Target:` line;
-  `print-context` writes it only when given, as the hook would see it.
-- **Runtime files** (`.arbor/.runtime/`, gitignored): `dispatch/<stamp>.md`
-  (prompt, created exclusively; `<YYYYmmdd-HHMMSS>-<role>` plus `-2`, `-3` on
-  collision), `dispatch/<stamp>.result.md` (`-o`), `dispatch/<stamp>.run`
-  (`--detach` run id), `dispatch-target`, `codeg-assistants/<target>-<role>.md`,
-  `codeg-assistants.json`, `codeg-db-backups/codeg.db.<timestamp>`.
-  `--dry-run` and `--print-prompt` write nothing.
-- **Foreground is the default**; `--wait` only matters with `--detach`.
-- **`wait`** loops `codeg-cli result RUN --wait <chunk>s -o <out>` (chunks of
-  at most 600 s) until the run ends or `--timeout` (default
-  `dispatch.timeout`) runs out; exit 6 means keep waiting, exit 4 is reported
-  as codeg unreachable. `<out>` defaults to the `<stamp>.result.md` whose
-  `.run` file holds that id (prefix match), else `dispatch/<RUN>.result.md`.
-  Several runs are waited in order; the first non-zero code is returned.
-- **`target set`** validates against the configured targets, writes
-  `.arbor/.runtime/dispatch-target`; `clear` removes it. Every form prints
-  `<effective target> (source: <source>)`.
-- **`resolve`** prints `role`, `target (source)`, `assistant`, `assistant_id`
-  (from `codeg-assistants.json` `by_name`, else "unknown (run ... codeg-setup)");
-  `--json` prints `{role, target, target_source, assistant, assistant_id,
-  agent_type}` with `assistant_id: null` when unknown.
-- **`codeg-setup`** renders every target x role (or `--target` only) from
-  `.arbor/agents/<role>.md` plus a one-line note naming the assistant, role,
-  target and agent type, and prints the manual codeg UI steps.
-- **`codeg-setup --install`** (default DB
-  `~/Library/Application Support/app.codeg/codeg.db`, macOS only; `--db`
-  anywhere):
-  - `PRAGMA table_info(assistant)` must equal the 15 columns `id uid name
-    description avatar agent_type agent_options label_snapshot instructions
-    enabled sort_order revision created_at updated_at deleted_at`, otherwise
-    refuse, print the manual steps, exit 2, touch nothing.
-  - Online backup first, then `BEGIN IMMEDIATE`; a live assistant with the
-    same name (`COLLATE NOCASE`) and another uid aborts with ROLLBACK.
-  - Upsert by `uuid5(NAMESPACE_URL, "arbor/<target>/<role>")`; updates set
-    `enabled=1`, `deleted_at=NULL`, `revision=revision+1`.
-  - `agent_type` from `dispatch.targets.<t>.agent_type`; `agent_options` =
-    `{"config_values": {model, thought_level}}` for the keys the target sets
-    (else `{}`); `label_snapshot` lists exactly those options (codeg rejects
-    a value without a listed option).
-  - Limits checked before writing: name 40 chars, description 200,
-    instructions 20000.
-- **Registry**: after either mode, `codeg-cli assistants --json` (array of
-  `{id, name, agent, description}`) is mapped through `dispatch:` names to
-  `codeg-assistants.json` (shape in [dispatch.md](./dispatch.md)). If codeg
-  is unreachable the step is skipped with a message; after a successful
-  `--install` the ids are read from the database instead.
+- **Briefs and prompts.** `next --json` names `brief_path`; write only the brief
+  body there. `run` adds the role header and curated context. Briefs and reports
+  live at `<task>/briefs/d-NNN.md` and `<task>/reports/d-NNN.md`; assembled prompts
+  live under `.arbor/.runtime/prompts/<task>/` in the main checkout. Runtime
+  dispatch measurements are appended to `.arbor/.runtime/results.jsonl`.
+- **Executors.** Command executors substitute shell-quoted placeholders, run in
+  the task worktree and return stdout as the report. A `type: codeg-mcp` executor
+  returns `needs=delegation`: delegate once using `mcp.arguments`, immediately
+  `bind`, poll the bound task, save the complete terminal response at the returned
+  `result_path` outside the task worktree, then `collect`. Resume bound requests
+  after interruptions; never launch them twice. See [dispatch.md](./dispatch.md).
+- **Conductor.** Launch one per started task with `conduct`. It calls the driver
+  with `--task`, `--executor` and `--as-conductor` on every call. While
+  `task.json.conductor.status` is `running`, mutations (`run`, `gate`, `decide`,
+  `override`, `resume`, `abandon`, `finish`) require that run's identity; Planner
+  `next` returns `needs=conductor`. Collection writes `reports/c-NNN.md` and
+  records `DONE`, `ESCALATE` or `FAILED` in `task.json.conductor`. A later launch
+  archives the previous record into `conductor_runs`. Escalations return
+  `needs=human`, `human.kind=conductor`; resolve the stated reason before relaunch.
+- **Planning.** Before start, `run --role explore|architect|review` performs
+  CONTRACT research without a diff range or commits. Explore/architect may write
+  task research; review is read-only. With no task, only explore accepts a brief
+  on stdin. Started-task writers commit in their assigned worktree with the
+  dispatch trailer; the driver records observations for caller judgment.
+- **Parent integration.** Inspect `children`, launch each ready child's conductor,
+  and merge children in dependency order. If a later child predates an earlier
+  merge, integrate the base into that child and rerun its `gate` before the user
+  merges it with `--no-ff`. After all children merge, use the parent's
+  `next --role review --json` brief, then
+  `run --role review --mode sweep --range <before-first-merge>..<base>`.
+  Resolve findings, run the parent's `gate`, then archive the parent. Tree
+  position alone does not encode dependencies; write them in child contracts.
 
 ## 4. Validation & Error Matrix
 
-| Condition | Exit | Behavior |
+| Exit | Condition | Behavior |
 | --- | --- | --- |
-| Unknown `--role` / bad flags | 2 | argparse usage error |
-| Unknown target (flag, brief, `target set`) | 2 | lists known targets |
-| implement / check without a task, or `--task` not found | 2 | nothing written |
-| `--finish` with a role other than check | 2 | |
-| `--standalone` with `--detach` or `--url` | 2 | codeg-cli would refuse too |
-| codeg-cli not found / not executable | 127 | |
-| codeg-cli failed | its code | 3 timeout, 4 unreachable, 5 permission, 6 still running |
-| `wait -o` with several runs, bad `--timeout` | 2 | |
-| `--install` schema mismatch, DB missing, non-macOS without `--db` | 2 | manual steps printed instead |
-| `--install` name clash | 1 | transaction rolled back |
-| `.arbor/agents/<role>.md` missing | 1 | suggests `arbor update` |
-| `arbor dispatch` outside a project / script missing | 1 | message on stderr |
+| 0 | Command completed successfully | Read `needs` or the collected verdict; success can still require a decision or escalation. |
+| 1 | Refused command, failed dispatch or red gate | Inspect the report and next step; no automatic pass. |
+| 2 | Invalid CLI usage | argparse prints usage and the offending argument. |
+
+Missing/invalid executors, conductor ownership conflicts and invalid reports are
+failures to inspect. A red rung cannot advance to a higher verification rung.
+Contract scope changes require approval; observations alone do not justify
+resetting or deleting work.
 
 ## 5. Good / Base / Bad Cases
 
-- **Good**: `python3 ./.arbor/scripts/dispatch.py run --role implement --task 10-24-foo --wait <<< "Implement step 1 of implement.md"`.
-- **Base**: `run --role research --target pi -p "Summarize spec layout"` with no active task: no `Active task:` line, spec overview context only.
-- **Bad**: `run --role research --standalone` without `--data-dir`: the throwaway server has no assistants, so codeg-cli fails with `unknown_assistant` (dispatch.py warns first).
+- **Good**: `python3 .arbor/scripts/arbor.py --task <task> conduct --brief <file>`;
+  after the run ends, `conduct --collect`, then inspect `next --json`.
+- **Base**: `python3 .arbor/scripts/arbor.py --task <task> next --json` names a
+  brief; write it and invoke `run` if no conductor can be launched.
+- **Bad**: invoking `run` without the running conductor's `--as-conductor`, or
+  treating an MCP delegation request as a completed role report.
 
 ## 6. Tests Required
 
-`test/scripts/dispatch-py.integration.test.ts` (fake `codeg-cli` via
-`dispatch.codeg_cli`; never the real binary or database):
-
-- `print-context` byte-equals the hook for implement, `check --finish`, research (with and without task).
-- `run --dry-run` argv; `run` argv + stdin + stored prompt/result; `--detach --wait` with an exit-6 retry; `wait` default output mapping; `--standalone --detach` refused.
-- `resolve --json` before/after the registry; `target set/get/clear` and unknown target.
-- `codeg-setup` print mode (three files, registry from `assistants --json`), unreachable codeg, `--install` idempotent upsert into a 15-column table, refusal on a different schema.
-
-`test/commands/dispatch.integration.test.ts`: `arbor dispatch --help` /
-argument / exit-code passthrough via the built bin, and the no-project error.
-SessionStart ids: `test/scripts/dispatch-config.integration.test.ts`.
+- `test/spec/backend-docs.test.ts`: retired surfaces stay absent, all commands
+  and protocols are documented, sources exist and scoped spec lint is clean.
+- `test/scripts/v2-driver-*.integration.test.ts`: build, CONTRACT, review,
+  partitions, executor/MCP protocol, report handling and finish behavior.
+- `test/scripts/v2-conductor.integration.test.ts`: launch, ownership, collection,
+  escalation, cancellation and parent child visibility.
+- `test/scripts/guard-builtin-agent.integration.test.ts`: native role and
+  conductor dispatches are denied.
 
 ## 7. Wrong vs Correct
 
 #### Wrong
 
-```bash
-# A second assembler that re-implements the hook's prompt format
-codeg-cli run -A arbor-implement-pi -p "Active task: ...
-Role: implement
-Do X"
-```
+Use a native Agent/Task/spawn_agent call with a hand-written role prompt, bypassing
+brief tracking, invariant checks, commit validation and task state.
 
 #### Correct
 
 ```bash
-python3 ./.arbor/scripts/dispatch.py run --role implement --task 10-24-foo -p "Do X"
-# or, to debug: diff <(python3 ./.arbor/scripts/dispatch.py print-context --role implement --task 10-24-foo -p "Do X") <hook output>
+python3 .arbor/scripts/arbor.py --task <task> next --json
+# Write the body at the returned brief_path; the driver assembles the prompt.
+python3 .arbor/scripts/arbor.py --task <task> run --dispatch d-NNN
+python3 .arbor/scripts/arbor.py --task <task> prompt --dispatch d-NNN --print
 ```
