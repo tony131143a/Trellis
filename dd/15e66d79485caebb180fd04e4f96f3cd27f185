@@ -1,0 +1,115 @@
+.arbor/scripts/common/driver/finish.py
+  s_8f252aadb510ba::t_3b3a26dbe13269 12-16,19-23,47-49,100-102,355-362,374-375,448-457,487-547,549-550,560-562,579-582,663-665,669,672,725-726,741,752-762
+packages/cli/package.json
+  s_8f252aadb510ba::t_b9d7b4ec0b654b 3
+.arbor/.version
+  s_8f252aadb510ba::t_458d2ebf70cf63 1
+.arbor/config.yaml
+  s_8f252aadb510ba::t_f49c36f2374312 191-200,207
+packages/cli/test/scripts/v4-ready-merge.integration.test.ts
+  s_8f252aadb510ba::t_04297dbd0b54d5 1-281
+.arbor/scripts/common/driver/integration.py
+  s_8f252aadb510ba::t_346c7204f2f68c 1-195
+.arbor/scripts/arbor.py
+  s_8f252aadb510ba::t_3e847acb0f2b37 96,110,515-525,542,565,567-568,574-576,581-657,673-679,1401-1407,1430-1447,1518-1521,1627-1631,1802-1805,1852-1854,1858-1860,1868-1932,1937-1940,1943,1951-1955,1958-1959,1961,1963,1971-1983,2019-2027,2031-2034,2211,2213-2214
+packages/cli/src/templates/arbor/index.ts
+  s_98feff17b6d566::t_d1f27636536df0 80,169
+.arbor/scripts/common/driver/state.py
+  s_8f252aadb510ba::t_be8927338755d1 442-446
+.arbor/scripts/common/driver/mandate.py
+  s_8f252aadb510ba::t_7df27034cc634b 16-19,32
+.claude/commands/arbor/workflow.md
+  s_8f252aadb510ba::t_74401fd8344c6c 59-60,62
+packages/cli/test/scripts/v2-driver-waves.integration.test.ts
+  s_8f252aadb510ba::t_48714547d8e7b5 164,187,189-190,193-201,206,216-217,225
+packages/cli/src/templates/arbor/scripts/task.py
+  s_8f252aadb510ba::t_950df1681823ff 331-335,342-357,359-360,413-417
+packages/cli/src/templates/arbor/scripts/common/driver/mandate.py
+  s_8f252aadb510ba::t_cf5d83fc93932c 16-19,32
+packages/cli/test/migrations/index.test.ts
+  s_8f252aadb510ba::t_613b4791eb6948 336-351
+  s_f0e3d2d13667ae::t_a78b1c7bcbc983 328,335
+packages/cli/src/templates/markdown/claude.md
+  s_8f252aadb510ba::t_b682b6a585a18a 11
+  s_f0e3d2d13667ae::t_dee4d026291f2d 12
+packages/cli/src/templates/arbor/config.yaml
+  s_8f252aadb510ba::t_6bfa891d31b6b6 172-181,188
+packages/cli/src/migrations/manifests/0.7.0.json
+  s_8f252aadb510ba::t_f8fb3caba43bcf 1-8
+.arbor/scripts/task.py
+  s_8f252aadb510ba::t_5c77a889227a17 331-335,342-357,359-360,413-417
+.arbor/.template-hashes.json
+  s_8f252aadb510ba::t_b0cdcc2d82e916 30,36,79,86,88,91,97,99,105-107
+  s_f0e3d2d13667ae::t_349d37cf340dbb 25,28
+packages/cli/src/templates/arbor/scripts/common/worktree.py
+  s_8f252aadb510ba::t_b21bf033cef4fb 209-213,219,221
+.arbor/spec/cli/backend/commands-dispatch.md
+  s_8f252aadb510ba::t_1828e11717eb4f 49,72,101-112,118-130
+packages/cli/src/templates/arbor/scripts/arbor.py
+  s_98feff17b6d566::t_99ae1d5008a1c0 96,110,515-525,542,565,567-568,574-576,581-657,673-679,1401-1407,1430-1447,1518-1521,1627-1631,1802-1805,1852-1854,1858-1860,1868-1932,1937-1940,1943,1951-1955,1958-1959,1961,1963,1971-1983,2019-2027,2031-2034,2211,2213-2214
+packages/cli/src/templates/arbor/workflow.md
+  s_8f252aadb510ba::t_1249ccb2f59679 189,193-194,208,220,357,460,701
+.arbor/scripts/common/worktree.py
+  s_8f252aadb510ba::t_79f355e77a7944 209-213,219,221
+packages/cli/test/scripts/v2-children.integration.test.ts
+  s_8f252aadb510ba::t_89f9f7fe057be8 29,46-47
+.arbor/workflow.md
+  s_8f252aadb510ba::t_92e2f97aa01e66 189,193-194,208,220,357,460,701
+packages/cli/src/templates/arbor/scripts/common/driver/finish.py
+  s_8f252aadb510ba::t_0b4c09ce6efde4 12-16,19-23,47-49,100-102,355-362,374-375,448-457,487-547,549-550,560-562,579-582,663-665,669,672,725-726,741,752-762
+packages/cli/src/templates/arbor/scripts/common/driver/state.py
+  s_8f252aadb510ba::t_b7e38a762981d3 442-446
+packages/cli/test/scripts/v2-mandate.integration.test.ts
+  s_8f252aadb510ba::t_865d60b6a310da 164,167-178,201
+packages/cli/src/templates/arbor/scripts/common/driver/integration.py
+  s_8f252aadb510ba::t_0ba3a2715e59ec 1-195
+packages/cli/src/templates/common/commands/workflow.md
+  s_8f252aadb510ba::t_e12e3b9b77bfd6 59-60,62
+CLAUDE.md
+  s_8f252aadb510ba::t_bb9c22b71ecf78 77
+  s_f0e3d2d13667ae::t_a1cdd71a0e3fd3 78
+.claude/commands/arbor/continue.md
+  s_f0e3d2d13667ae::t_6add35d7a3588a 42
+AGENTS.md
+  s_f0e3d2d13667ae::t_bad3a3833d1242 8
+README.md
+  s_f0e3d2d13667ae::t_d07a9379e61401 40
+packages/cli/src/templates/common/commands/continue.md
+  s_f0e3d2d13667ae::t_b7c257c2bf7323 42
+packages/cli/src/templates/markdown/agents.md
+  s_f0e3d2d13667ae::t_fdcc0117637b88 8
+packages/cli/test/scripts/v2-parallel.integration.test.ts
+  s_f0e3d2d13667ae::t_2bd04e73d9b5e9 42-45,130-131,135-137
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "dd15e66d79485caebb180fd04e4f96f3cd27f185",
+  "prompts": {},
+  "sessions": {
+    "s_8f252aadb510ba": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19b94-3576-7e72-a692-850625b8ec86",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_98feff17b6d566": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19b8a-9bd7-76c1-95f1-01f7c7837dbd",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_f0e3d2d13667ae": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19bd9-3379-7e81-9870-7634e66e9927",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
