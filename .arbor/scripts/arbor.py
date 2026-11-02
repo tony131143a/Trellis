@@ -90,6 +90,7 @@ from common.dispatch_context import (
 )
 from common.driver import partitions as pt
 from common.driver import autopilot
+from common.driver import conductor as cd
 from common.driver import mcp
 from common.driver import finish as fin
 from common.driver import state as sm
@@ -103,13 +104,25 @@ from common.io import read_json_checked, write_json, write_text_atomic
 from common.log import Colors, colored
 from common.paths import DIR_TASKS, DIR_WORKFLOW, FILE_TASK_JSON
 from common.tasks import resolve_tier
-from common.worktree import WorktreeError, is_ancestor, main_checkout, partition_branch, partition_worktree_path
+from common.worktree import (WorktreeError, is_ancestor, main_checkout, partition_branch, partition_worktree_path,
+                             worktree_root)
 
 RUNTIME = f"{DIR_WORKFLOW}/.runtime"
 CANARY_ROLES = ("explore", "review", "verify")
 CONTRACT_ROLES = ("explore", "architect", "review")
 PARALLEL_RESEARCH_ROLES = ("explore", "architect")
 STDERR_TAIL_LINES = 40
+
+
+@dataclass
+class Options:
+    """Global flags: which executor dispatches roles, and whether the caller is
+    the task's running conductor (``--as-conductor c-NNN``) rather than the Planner."""
+    executor: str | None = None
+    as_conductor: str | None = None
+
+
+OPTS = Options()
 
 
 from common import execution as ex
@@ -394,7 +407,7 @@ def build_prompt(worktree: Path, task_dir: Path | None, role: str, mode: str | N
 
 def _max_parallel(config: dict) -> int | None:
     section = get_executors_config(config)
-    spec = section.get(str(section.get("default") or ""))
+    spec = section.get(OPTS.executor or str(section.get("default") or ""))
     value = spec.get("max_parallel") if isinstance(spec, dict) else None
     return int(value) if isinstance(value, int) or (isinstance(value, str) and value.isdigit()) else None
 
@@ -435,6 +448,27 @@ def planning_next(ctx: Ctx, role: str) -> dict:
             "summary": blocked or f"CONTRACT: write {dispatch}'s brief for {role}; "
                 f"run --role {role} --dispatch {dispatch}. Independent research may run concurrently; "
                 "the main agent chooses the number of angles and consolidates their results."}
+
+
+def conductor_payload(ctx: Ctx, record: dict) -> dict:
+    """What the Planner sees while a conductor runs or after it escalated/failed."""
+    out = {"task": ctx.name, "state": ctx.data.get("state"), "tier": ctx.tier, "started": True,
+           "conductor": {k: record.get(k) for k in ("run", "run_id", "status", "started", "ended",
+                                                     "outcome", "reason", "needs_from_planner")}}
+    if record.get("status") == "running":
+        out["needs"] = "conductor"
+        out["summary"] = (f"conductor {record['run']} is driving {ctx.name} (since {record.get('started')}): "
+                          "`arbor conduct --collect` once it has ended")
+        return out
+    step = plan_for(ctx)
+    out["needs"] = "human"
+    out["human"] = {"kind": "conductor", "run": record["run"], "outcome": record.get("outcome"),
+                    "reason": record.get("reason"), "needs_from_planner": record.get("needs_from_planner")}
+    out["after"] = step.summary
+    out["summary"] = (f"conductor {record['run']} {record.get('status')} ({record.get('reason') or '-'}): "
+                      f"{record.get('needs_from_planner') or 'see ' + str(ctx.task_dir / 'reports' / (record['run'] + '.md'))}"
+                      f" -> handle it, then `arbor conduct` again (driver step: {step.summary})")
+    return out
 
 
 def next_payload(ctx: Ctx | None, partition: str | None = None, role: str | None = None) -> dict:
@@ -480,6 +514,9 @@ def next_payload(ctx: Ctx | None, partition: str | None = None, role: str | None
                 "summary": f"CONTRACT: finish {ctx.name}/contract.md (research with `arbor run --role "
                            "explore|architect|review [--mode plan]` after writing the brief); after human "
                            "approval run `task.py start`"}
+    record = cd.current(ctx.data)
+    if record and not OPTS.as_conductor and record.get("status") != "done":
+        return conductor_payload(ctx, record)
     data = ctx.data
     sm.reap_stale(data, pid_alive)  # in memory only; the next locked write persists it
     if data.get("state") == "FINISH" and not data.get("override_role") and not data.get("report_pending"):
@@ -602,6 +639,19 @@ def require_report_decision(ctx: Ctx) -> None:
     if ctx.data.get("report_pending"):
         raise DriverError("report needs main-agent judgment: use `arbor decide retry` or "
                           "`arbor decide accept --report <interpreted-report>` with --reason")
+
+
+def require_no_conductor(ctx: Ctx) -> None:
+    """The Planner must not drive a task while its conductor runs; the
+    conductor identifies itself with ``--as-conductor``."""
+    record = cd.running(ctx.data)
+    if OPTS.as_conductor:
+        if record is None or record.get("run") != OPTS.as_conductor:
+            raise DriverError(f"--as-conductor {OPTS.as_conductor} is not the running conductor of {ctx.name}")
+        return
+    if record:
+        raise DriverError(f"conductor {record['run']} is driving {ctx.name} (run {record.get('run_id')}): "
+                          "wait for it, or `arbor conduct --collect` / `arbor conduct --cancel`")
 
 
 def require_collected(ctx: Ctx) -> None:
@@ -825,7 +875,7 @@ def dispatch_once(ctx: Ctx, unit: Unit, role: str, mode: str | None, range_from:
     )
     before = snapshot_refs(unit.worktree)
     try:
-        executor = resolve_executor(ctx.config)
+        executor = resolve_executor(ctx.config, OPTS.executor)
     except ExecutorError as e:
         empty = rv.ReplyCheck(False, str(e))
         return Outcome("fail", "", empty, None, [], str(e), range_spec, head_before, head_before)
@@ -1088,6 +1138,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     if args.mode:
         raise DriverError("--mode goes with --role review")
     ctx = require_started(load_ctx(args.task))
+    require_no_conductor(ctx)
     require_report_decision(ctx)
     guard_contract(ctx)
     with editing(ctx):
@@ -1100,7 +1151,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             return start_wave(ctx)
         if step.action == "merge":
             return merge_wave(ctx)
-        executor = resolve_executor(ctx.config) if step.needs == "brief" else None
+        executor = resolve_executor(ctx.config, OPTS.executor) if step.needs == "brief" else None
         if executor is not None and executor.kind == "codeg-mcp":
             limit = _max_parallel(ctx.config)
             if limit and len(ctx.data.get("mcp_pending") or {}) >= limit:
@@ -1218,7 +1269,14 @@ def cmd_run_contract(args: argparse.Namespace) -> int:
     mode = args.mode or ("plan" if role == "review" else None)
     if args.mode and role != "review":
         raise DriverError("--mode goes with --role review")
+    range_spec = getattr(args, "range", None)
+    if mode == "sweep" and not range_spec:
+        raise DriverError("--mode sweep needs --range <base>..<head> (a parent task reviewing its merged children)")
+    if range_spec and mode != "sweep":
+        raise DriverError("--range goes with --role review --mode sweep")
     ctx = load_ctx(args.task)
+    if range_spec and (ctx is None or ctx.started):
+        raise DriverError("--range is for a task that is not started (a parent task)")
     main = ctx.main if ctx else _main()
     config = ctx.config if ctx else read_arbor_config(main)
     if ctx is None and (role != "explore" or args.dispatch):
@@ -1270,8 +1328,8 @@ def cmd_run_contract(args: argparse.Namespace) -> int:
         if before.head_ref is None or not before.head_ref.startswith("refs/heads/"):
             raise DriverError(f"{worktree} is on a detached HEAD; check out a branch first")
         branch = before.head_ref[len("refs/heads/"):]
-        executor = resolve_executor(config)
-        prompt = build_prompt(worktree, task_dir, role, mode, None, dispatch if ctx else None, brief)
+        executor = resolve_executor(config, OPTS.executor)
+        prompt = build_prompt(worktree, task_dir, role, mode, range_spec, dispatch if ctx else None, brief)
         stamp = utc_now().replace(":", "").replace("-", "")
         prompt_file = (runtime_dir(main, "prompts", ctx.name) / f"{dispatch}.md" if ctx
                        else runtime_dir(main, "prompts") / f"intake-{stamp}.md")
@@ -1355,8 +1413,25 @@ def finish_contract(ctx: Ctx | None, main: Path, config: dict, role: str, mode: 
 # =============================================================================
 
 
+def _gate_parent(ctx: Ctx) -> int:
+    """A parent task is never started: its ``auto`` checks run in the main
+    checkout against the merged children."""
+    contract_path = find_contract(ctx.task_dir)
+    if contract_path is None:
+        raise DriverError(f"{ctx.name} has no contract.md")
+    result = run_gate(get_gate_commands(ctx.config), load_contract(contract_path), ctx.main)
+    print(format_checks(result.checks) or "no gate commands and no auto checks")
+    print(colored(f"failing: {' '.join(result.failing)}", Colors.RED) if result.failing
+          else colored("gate green", Colors.GREEN))
+    return 1 if result.failing else 0
+
+
 def cmd_gate(args: argparse.Namespace, ctx: Ctx | None = None) -> int:
-    ctx = ctx or require_started(load_ctx(args.task))
+    ctx = ctx or load_ctx(args.task)
+    if ctx is not None and not ctx.started and ctx.data.get("children"):
+        return _gate_parent(ctx)
+    ctx = require_started(ctx)
+    require_no_conductor(ctx)
     require_collected(ctx)
     require_report_decision(ctx)
     guard_contract(ctx)
@@ -1451,6 +1526,7 @@ def decide_report(ctx: Ctx, args: argparse.Namespace) -> int:
 def cmd_decide(args: argparse.Namespace) -> int:
     ctx = require_started(load_ctx(args.task))
     with editing(ctx):
+        require_no_conductor(ctx)
         require_collected(ctx)
         if ctx.data.get("report_pending"):
             return decide_report(ctx, args)
@@ -1468,6 +1544,7 @@ def cmd_decide(args: argparse.Namespace) -> int:
 def cmd_override(args: argparse.Namespace) -> int:
     ctx = require_started(load_ctx(args.task))
     with editing(ctx):
+        require_no_conductor(ctx)
         require_collected(ctx)
         return _override(ctx, args)
 
@@ -1503,6 +1580,7 @@ def _override(ctx: Ctx, args: argparse.Namespace) -> int:
 def cmd_resume(args: argparse.Namespace) -> int:
     ctx = require_started(load_ctx(args.task))
     with editing(ctx):
+        require_no_conductor(ctx)
         require_collected(ctx)
         if ctx.data.get("merge_conflict") and ctx.data.get("state") == "BUILD":
             return _resume_merge(ctx)
@@ -1550,10 +1628,147 @@ def _resume(ctx: Ctx) -> int:
 def cmd_abandon(args: argparse.Namespace) -> int:
     ctx = require_started(load_ctx(args.task))
     with editing(ctx):
+        require_no_conductor(ctx)
         require_collected(ctx)
         sm.stop(ctx.data, "HUMAN", f"abandoned{': ' + args.reason if args.reason else ''}")
         save(ctx)
     print(colored(f"{ctx.name}: STOP (HUMAN, abandoned)", Colors.YELLOW))
+    return 0
+
+
+# =============================================================================
+# conduct / children
+# =============================================================================
+
+
+def cmd_conduct(args: argparse.Namespace) -> int:
+    ctx = require_started(load_ctx(args.task))
+    cfg = cd.resolve_config(ctx.config)
+    if args.collect or args.cancel:
+        return _conduct_collect(ctx, cfg, cancel=bool(args.cancel))
+    brief = Path(args.brief).read_text(encoding="utf-8") if args.brief else ""
+    with editing(ctx):
+        require_no_conductor(ctx)
+        require_collected(ctx)
+        run = cd.next_run(ctx.data)
+        cd.archive_current(ctx.data)
+        state_json = json.dumps(next_payload(ctx), ensure_ascii=False, indent=2)
+        prompt = cd.build_prompt(ctx.control_worktree, ctx.task_dir, ctx.name, cfg.executor, run, state_json, brief)
+        prompt_file = runtime_dir(ctx.main, "prompts", ctx.name) / f"{run}.md"
+        if not write_text_atomic(prompt_file, prompt):
+            raise DriverError(f"cannot write {prompt_file}")
+        if args.dry_run:
+            print(f"{run}: would run in {ctx.worktree}:")
+            print("  " + cd.build_command(cfg.command, {"prompt": str(prompt_file), "worktree": str(ctx.worktree),
+                                                       "task": ctx.name, "run": run}))
+            print(f"  prompt: {prompt_file} ({len(prompt.encode('utf-8'))} bytes)")
+            return 0
+        brief_file = ctx.task_dir / "briefs" / f"{run}.md"
+        brief_file.parent.mkdir(exist_ok=True)
+        brief_file.write_text((brief.strip() or "(no planner brief)") + "\n", encoding="utf-8")
+        run_id, command = cd.start(cfg, prompt_path=prompt_file, worktree=ctx.worktree, task=ctx.name, run=run)
+        ctx.data["conductor"] = {
+            "run": run, "run_id": run_id, "status": "running", "started": utc_now(), "ended": None,
+            "prompt_path": str(prompt_file), "executor": cfg.executor, "command": command,
+            "outcome": None, "reason": None, "needs_from_planner": None,
+        }
+        save(ctx)
+        commit_task_dir(ctx, f"arbor({ctx.name}): {run} conductor start")
+    print(colored(f"{run}: conductor started for {ctx.name} (run {run_id})", Colors.BLUE))
+    print(f"  prompt: {prompt_file}")
+    print("  next: `arbor conduct --collect` once it has ended (`arbor next` shows it running)")
+    return 0
+
+
+def _conduct_collect(ctx: Ctx, cfg: cd.ConductorConfig, *, cancel: bool) -> int:
+    with editing(ctx):
+        record = cd.running(ctx.data)
+        if record is None:
+            raise DriverError(f"{ctx.name} has no running conductor")
+        run = record["run"]
+        if cancel:
+            error = cd.cancel(cfg, record["run_id"], ctx.worktree)
+            if error:
+                raise DriverError(error)
+            reply, stderr = "", ""
+            report = cd.Report("FAILED", "canceled", ctx.data.get("state"), "canceled by the Planner", None)
+        else:
+            status, reply, stderr = cd.result(cfg, record["run_id"], ctx.worktree)
+            if status == "running":
+                print(colored(f"{run}: still running (run {record['run_id']})", Colors.YELLOW))
+                return 0
+            if status == "error":
+                raise DriverError(stderr)
+            report = cd.parse_report(reply)
+        notes = []
+        if stderr.strip():
+            notes += ["### Result stderr (tail)", "```", *stderr.rstrip().splitlines()[-STDERR_TAIL_LINES:], "```"]
+        path = cd.write_report(ctx.task_dir, run, reply, report, notes)
+        record.update({"status": report.status, "ended": utc_now(), "outcome": report.outcome,
+                       "reason": report.reason, "needs_from_planner": report.needs_from_planner,
+                       "report_path": str(path), "problem": report.problem})
+        save(ctx)
+        commit_task_dir(ctx, f"arbor({ctx.name}): {run} conductor {report.status}")
+        append_result(ctx.main, {
+            "ts": utc_now(), "task": ctx.name, "dispatch": run, "role": "conductor", "mode": None,
+            "state": ctx.data.get("state"), "wave": None, "partition": None, "executor": cfg.executor,
+            "started": record.get("started"), "ended": record["ended"], "duration_s": None, "exit_code": None,
+            "status": report.status, "commit": None, "violations": [],
+        })
+    color = Colors.GREEN if report.status == "done" else Colors.RED
+    print(colored(f"{run} conductor: {report.status} ({report.reason or '-'})"
+                  + (f" - {report.problem}" if report.problem else ""), color))
+    print(f"  report: {path}")
+    print(f"  next: {next_payload(ctx)['summary']}")
+    return 0 if report.status in ("done", "escalated") else 1
+
+
+def find_task_anywhere(main: Path, config: dict, name: str) -> tuple[Path, dict] | None:
+    """A task directory by name: main checkout, its task worktree, or the archive."""
+    candidates = [main / DIR_WORKFLOW / DIR_TASKS / name,
+                  worktree_root(main, config) / name / DIR_WORKFLOW / DIR_TASKS / name,
+                  *sorted((main / DIR_WORKFLOW / DIR_TASKS / "archive").glob(f"*/{name}"))]
+    for task_dir in candidates:
+        data, _ = read_json_checked(task_dir / FILE_TASK_JSON) if (task_dir / FILE_TASK_JSON).is_file() else (None, "")
+        if data is not None:
+            return task_dir, data
+    return None
+
+
+def cmd_children(args: argparse.Namespace) -> int:
+    ctx = load_ctx(args.task)
+    if ctx is None:
+        raise DriverError("no active task (pass --task <parent>)")
+    rows = []
+    for name in ctx.data.get("children") or []:
+        found = find_task_anywhere(ctx.main, ctx.config, name)
+        row: dict = {"task": name, "found": found is not None}
+        if found:
+            task_dir, data = found
+            started = bool(data.get("worktree_path") and data.get("state"))
+            record = cd.current(data) or {}
+            row.update({
+                "status": data.get("status"), "started": started, "tier": resolve_tier(task_dir, data),
+                "state": data.get("state"), "step": sm.step_of(data) if started else None,
+                "conductor": {k: record.get(k) for k in ("run", "status", "reason")} if record else None,
+                "merged": (fin.is_merged(ctx.main, data["branch"], data.get("base_branch") or fin.current_branch(ctx.main) or "")
+                           if started and data.get("branch") else None),
+                "dir": str(task_dir),
+            })
+        rows.append(row)
+    if args.json:
+        print(json.dumps({"task": ctx.name, "children": rows}, ensure_ascii=False))
+        return 0
+    print(colored(f"{ctx.name}: {len(rows)} children", Colors.BLUE))
+    for row in rows:
+        if not row["found"]:
+            print(f"  {row['task']}: not found")
+            continue
+        conductor = row["conductor"]
+        c = f" conductor {conductor['run']} {conductor['status']}" + (f" ({conductor['reason']})" if conductor.get("reason") else "") if conductor else ""
+        where = f"{row['state']}/{row['step']}" if row["started"] else row["status"]
+        merged = " merged" if row["merged"] else ""
+        print(f"  {row['task']}: {where} [{row['tier']}]{c}{merged}")
     return 0
 
 
@@ -1576,6 +1791,7 @@ def cmd_finish(args: argparse.Namespace) -> int:
         if pending:
             return fin.cleanup(main, fin.load_record(main, pending[0]))
     ctx = require_started(ctx)
+    require_no_conductor(ctx)
     require_collected(ctx)
     require_report_decision(ctx)
     record = fin.load_record(ctx.main, ctx.name)
@@ -1677,7 +1893,7 @@ def cmd_canary(args: argparse.Namespace) -> int:
     prompt_file = runtime_dir(main, "prompts") / f"canary-{stamp}.md"
     prompt_file.write_text(prompt, encoding="utf-8")
 
-    executor = resolve_executor(config)
+    executor = resolve_executor(config, OPTS.executor)
     before = snapshot_refs(worktree)
     if executor.kind == "codeg-mcp":
         branch = (before.head_ref or "").removeprefix("refs/heads/")
@@ -1733,6 +1949,8 @@ def finish_canary(ctx: Ctx | None, main: Path, worktree: Path, role: str, before
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="arbor.py", description="arbor task driver")
     parser.add_argument("--task", help="task dir (default: the session's active task)")
+    parser.add_argument("--executor", help="executors.<name> that dispatches roles (default: executors.default)")
+    parser.add_argument("--as-conductor", metavar="c-NNN", help="the caller is this running conductor of the task")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("next", help="print the single next step")
@@ -1743,7 +1961,8 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("run", help="dispatch briefs/<id>.md, validate, advance")
     p.add_argument("--dispatch")
     p.add_argument("--role", choices=CONTRACT_ROLES, help="CONTRACT phase only: dispatch before task.py start")
-    p.add_argument("--mode", choices=("plan",), help="with --role review")
+    p.add_argument("--mode", choices=("plan", "sweep"), help="with --role review (sweep: a parent task over --range)")
+    p.add_argument("--range", help="<base>..<head> for --role review --mode sweep on a parent task")
     p.add_argument("--partition", help="run this partition's step (multi-partition waves)")
     p.add_argument("--autopilot", action="store_true",
                    help="keep going until a decision, a human gate, STOP, red or a failed dispatch")
@@ -1759,6 +1978,15 @@ def main(argv: list[str] | None = None) -> int:
                    help="explicitly accept only a newly created sibling task in control main; audit hashes are recorded")
     p.add_argument("--reason", help="required justification for --accept-new-control-task")
     p.set_defaults(func=cmd_collect)
+    p = sub.add_parser("conduct", help="launch the task's conductor (a detached codeg run), or collect/cancel it")
+    p.add_argument("--brief", help="file with the Planner's brief for the conductor (decisions, pitfalls)")
+    p.add_argument("--collect", action="store_true", help="fetch the conductor's terminal report and record it")
+    p.add_argument("--cancel", action="store_true", help="cancel the running conductor")
+    p.add_argument("--dry-run", action="store_true", help="write the prompt and print the command only")
+    p.set_defaults(func=cmd_conduct)
+    p = sub.add_parser("children", help="one line per child task: state, conductor, merged")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_children)
     p = sub.add_parser("finish", help="FINISH: scorecard + PR / merge command; cleanup after the merge")
     p.add_argument("--pr", action="store_true", help="push the task branch and open a PR with gh")
     p.set_defaults(func=cmd_finish)
@@ -1790,6 +2018,7 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(func=cmd_prompt)
 
     args = parser.parse_args(argv)
+    OPTS.executor, OPTS.as_conductor = args.executor, args.as_conductor
     try:
         return args.func(args)
     except (DriverError, sm.StateError, ExecutorError, ContractError, WorktreeError, fin.FinishError, LockTimeout, OSError,

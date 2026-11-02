@@ -251,13 +251,30 @@ def read_arbor_config(repo_root: Optional[Path] = None) -> dict:
 DEFAULT_WORKTREE_CONFIG: dict = {"root": "../{repo}-wt", "setup": ""}
 DEFAULT_TEST_PATHS: tuple[str, ...] = ("packages/*/test/**", "**/*.test.ts")
 DEFAULT_EXECUTORS_CONFIG: dict = {
-    "default": "codeg",
+    "default": "codeg-cli",
+    "codeg-cli": {
+        "type": "command",
+        "command": ("codeg-cli run -A arbor-{role} -w {worktree} --permissions allow --timeout 90m "
+                    "--title arbor-{role}-{task}-{dispatch} -q -p - < {prompt}"),
+        "timeout": "95m",
+        "max_parallel": "3",
+    },
     "codeg": {
         "type": "codeg-mcp",
         "assistant": "arbor-{role}",
         "timeout": "90m",
         "max_parallel": "3",
     },
+}
+# The conductor is a detached codeg run; `command` must print the run id on
+# its first stdout line, `result_command` exits 0 with the final reply when
+# the run has ended and 6 while it still runs.
+DEFAULT_CONDUCTOR_CONFIG: dict = {
+    "command": ("codeg-cli run -A arbor-conductor -w {worktree} --permissions allow --timeout 8h "
+                "--detach --title arbor-conductor-{task}-{run} -q -p - < {prompt}"),
+    "result_command": "codeg-cli result {run_id} -q",
+    "cancel_command": "codeg-cli cancel {run_id} -q",
+    "executor": "codeg-cli",
 }
 
 
@@ -289,6 +306,15 @@ def get_executors_config(config: dict) -> dict:
         key: dict(value) if isinstance(value, dict) else value
         for key, value in DEFAULT_EXECUTORS_CONFIG.items()
     }
+
+
+def get_conductor_config(config: dict) -> dict:
+    """``conductor:`` section over its defaults (string values only)."""
+    section = config.get("conductor") if isinstance(config, dict) else None
+    merged = dict(DEFAULT_CONDUCTOR_CONFIG)
+    if isinstance(section, dict):
+        merged.update({k: v for k, v in section.items() if isinstance(v, str)})
+    return merged
 
 
 def get_gate_commands(config: dict) -> list[str]:

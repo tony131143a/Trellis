@@ -1,0 +1,15 @@
+{
+  "version": "0.3.0",
+  "description": "v3: Planner + conductor (codeg-cli), parallel child tasks, round caps restored",
+  "breaking": false,
+  "recommendMigrate": false,
+  "changelog": "A started task is now driven by a conductor sub-agent (arbor.py conduct), launched and supervised by the Planner session; roles run through the default codeg-cli command executor. Child tasks run in parallel, one conductor each. Round caps (gate, review, polish, no-progress) enter STOP again and are handled as escalations; tasks already past a cap STOP on their next round and continue with arbor.py resume. New config section: conductor:.",
+  "migrations": [],
+  "configSectionsAdded": [
+    {
+      "file": ".arbor/config.yaml",
+      "sentinel": "conductor:",
+      "sectionHeading": "Conductor"
+    }
+  ]
+}

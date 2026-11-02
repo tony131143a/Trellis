@@ -222,8 +222,7 @@ describe("clearManifestCache", () => {
 // =============================================================================
 
 describe("0.2.0 manifest", () => {
-  it("is the package version and is reached from 0.1.0", () => {
-    expect(VERSION).toBe("0.2.0");
+  it("is reached from 0.1.0", () => {
     expect(getAllMigrationVersions()).toContain("0.2.0");
     const paths = getMigrationsForVersion("0.1.0", "0.2.0").map((m) => m.from);
     expect(paths).toEqual([
@@ -262,5 +261,27 @@ describe("0.2.0 manifest", () => {
       expect(body, s.sectionHeading).not.toBeNull();
       expect(body).toContain(s.sentinel);
     }
+  });
+});
+
+// =============================================================================
+// 0.3.0 — Planner + conductor, parallel child tasks, round caps restored
+// =============================================================================
+
+describe("0.3.0 manifest", () => {
+  it("is the package version, reached from 0.2.0, with no file migrations", () => {
+    expect(VERSION).toBe("0.3.0");
+    expect(getAllMigrationVersions()).toContain("0.3.0");
+    expect(getMigrationsForVersion("0.2.0", "0.3.0")).toEqual([]);
+    expect(getMigrationMetadata("0.2.0", "0.3.0").breaking).toBe(false);
+  });
+
+  it("adds the conductor config section, present in the bundled config.yaml", () => {
+    const sections = getConfigSectionsAddedBetween("0.2.0", "0.3.0");
+    expect(sections.map((s) => s.sentinel)).toEqual(["conductor:"]);
+    const body = extractConfigSection(configYamlTemplate, sections[0].sectionHeading);
+    expect(body).not.toBeNull();
+    expect(body).toContain("conductor:");
+    expect(body).toContain("arbor-conductor");
   });
 });

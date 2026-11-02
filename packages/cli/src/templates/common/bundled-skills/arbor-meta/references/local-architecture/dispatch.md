@@ -1,10 +1,12 @@
 # The Driver: arbor.py
 
-In Arbor the eight roles (`explore`, `architect`, `test`, `implement`, `review`, `verify`, `fix`, `simplify`) are not platform sub-agents. One script, `.arbor/scripts/arbor.py`, runs them. It owns three things: the task's state table, its counters, and validation (of replies, commits and git invariants). The main agent owns judgment: the tier proposal, the contract, briefs, red-gate classification, finding dedup, PLAUSIBLE trade-offs and spec updates. Role instruction text lives in `.arbor/agents/<role>.md` (plain markdown, no frontmatter).
+In Arbor the eight roles (`explore`, `architect`, `test`, `implement`, `review`, `verify`, `fix`, `simplify`) are not platform sub-agents. One script, `.arbor/scripts/arbor.py`, runs them. It owns three things: the task's state table, its counters, and validation (of replies, commits and git invariants). Judgment is split: the **Planner** (the user's session) owns the tier proposal, the contract, child-task splitting, escalations and the merge gate; the **conductor** (`.arbor/agents/conductor.md`, one detached codeg run per started task launched by `arbor.py conduct`) owns briefs, red-gate classification, finding dedup and retries inside the contract, and ends with a `## Conductor DONE | ESCALATE | FAILED` report recorded in `task.json.conductor`. Role instruction text lives in `.arbor/agents/<role>.md` (plain markdown, no frontmatter).
 
 ## Commands
 
 ```bash
+python3 ./.arbor/scripts/arbor.py --task <dir> conduct [--brief <file>] | --collect | --cancel | --dry-run   # Planner: the task's conductor
+python3 ./.arbor/scripts/arbor.py --task <parent> children [--json]   # Planner: child tasks, conductors, merge status
 python3 ./.arbor/scripts/arbor.py next [--json]               # the single next step
 python3 ./.arbor/scripts/arbor.py run [--dispatch d-NNN]      # execute the pending dispatch (in GATE: the gate)
 python3 ./.arbor/scripts/arbor.py run --role explore|architect|review [--mode plan] [--dispatch d-NNN]   # CONTRACT phase, before task.py start
@@ -22,7 +24,7 @@ Every command takes `--task <dir>` before the command name (default: the session
 
 ## State Machine
 
-`CONTRACT → BUILD → GATE → REVIEW → POLISH (standard / full) → FINISH → DONE`, with `STOP` reachable from any state. `task.py start` enters BUILD after the human approves the contract. BUILD runs `test` (red, checked by the driver) then `implement`; GATE runs `gate.commands` plus every `auto` Verification-map command; REVIEW runs one `review` `Mode: self-check` over `base..HEAD` and re-reviews fixes over `last_reviewed..HEAD`; POLISH runs `simplify`, N candidate reviews, a mechanical prefilter, `verify` (at most 8 per run), and for full a `sweep`. Suggested budgets: REVIEW light 2 rounds, standard / full 1; POLISH 2. Counters and boundary observations are advisory; the main agent decides retries or stopping. No procedural check automatically creates STOP. Only the driver changes `task.json` `state`, `counters`, `dispatches`, `last_reviewed` and `stop`.
+`CONTRACT → BUILD → GATE → REVIEW → POLISH (standard / full) → FINISH → DONE`, with `STOP` reachable from any state. `task.py start` enters BUILD after the human approves the contract. BUILD runs `test` (red, checked by the driver) then `implement`; GATE runs `gate.commands` plus every `auto` Verification-map command; REVIEW runs one `review` `Mode: self-check` over `base..HEAD` and re-reviews fixes over `last_reviewed..HEAD`; POLISH runs `simplify`, N candidate reviews, a mechanical prefilter, `verify` (at most 8 per run), and for full a `sweep`. Caps: REVIEW fix rounds light 2, standard / full 1; POLISH 2; 4 consecutive red gates; 2 rounds without progress. A cap enters STOP (`BUDGET` / `NO_PROGRESS`); the conductor escalates and the Planner continues with `resume` (grants one more round), `override` or `abandon`. Boundary observations stay advisory. While `task.json.conductor.status` is `running`, driver commands that change state require `--as-conductor c-NNN`; `next` answers `needs=conductor` to everyone else. Only the driver changes `task.json` `state`, `counters`, `dispatches`, `last_reviewed` and `stop`.
 
 ## CONTRACT-Phase Dispatch
 
@@ -57,15 +59,25 @@ The older `Diff:`, `Target:` and `Workspace:` lines are gone. After the header c
 
 ```yaml
 executors:
-  default: codeg
+  default: codeg-cli
+  codeg-cli:
+    type: command
+    command: "codeg-cli run -A arbor-{role} -w {worktree} --permissions allow --timeout 90m --title arbor-{role}-{task}-{dispatch} -q -p - < {prompt}"
+    timeout: 95m
+    max_parallel: 3
   codeg:
     type: codeg-mcp
     assistant: "arbor-{role}"
     timeout: 90m
     max_parallel: 3
+conductor:
+  command: "codeg-cli run -A arbor-conductor -w {worktree} --permissions allow --timeout 8h --detach --title arbor-conductor-{task}-{run} -q -p - < {prompt}"
+  result_command: "codeg-cli result {run_id} -q"
+  cancel_command: "codeg-cli cancel {run_id} -q"
+  executor: codeg-cli
 ```
 
-With the `codeg-mcp` executor, `arbor.py run` returns `needs=delegation`. Call codeg MCP `delegate_to_agent` with the returned `mcp.arguments` (resolve the named assistant from the MCP roster if no id is configured), then immediately run `arbor.py bind --request <request_path> --task-id <returned task_id>`. Poll `get_delegation_status`, save its complete JSON response at the returned `result_path` outside the task worktree, and run `arbor.py collect --request <request_path> --result <file>` before proceeding. Resume/poll a bound task after interruptions; never start it again. If the configured timeout expires, cancel it through `cancel_delegation` and collect the terminal report. Claude Code and Codex both use this same MCP flow. Do not substitute `codeg-cli run` or native Agent/Task/spawn_agent.
+With the default `codeg-cli` command executor the driver starts the role, waits for the reply and validates it. With the `codeg-mcp` executor (`--executor codeg`), `arbor.py run` returns `needs=delegation`. Call codeg MCP `delegate_to_agent` with the returned `mcp.arguments` (resolve the named assistant from the MCP roster if no id is configured), then immediately run `arbor.py bind --request <request_path> --task-id <returned task_id>`. Poll `get_delegation_status`, save its complete JSON response at the returned `result_path` outside the task worktree, and run `arbor.py collect --request <request_path> --result <file>` before proceeding. Resume/poll a bound task after interruptions; never start it again. If the configured timeout expires, cancel it through `cancel_delegation` and collect the terminal report. Claude Code and Codex both use this same MCP flow. Do not substitute native Agent/Task/spawn_agent for a role.
 
 Model, effort and permissions belong to the selected codeg assistant. `arbor.py canary` uses the same prepare/bind/collect flow. CLI executors remain available only when explicitly configured with `command`; their shell-quoted placeholders are `{role}`, `{prompt}`, `{worktree}`, `{task}`, `{dispatch}`. `run --autopilot` stops at MCP handoffs; the host handles delegation and resumes the driver afterwards.
 

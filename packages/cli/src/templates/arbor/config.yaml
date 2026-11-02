@@ -107,29 +107,57 @@ max_journal_lines: 2000
 #-------------------------------------------------------------------------------
 # Executors
 #-------------------------------------------------------------------------------
-# How `arbor.py run` prepares a role. With codeg-mcp, Claude Code and Codex
-# call codeg's delegate_to_agent using the driver-produced request, bind its
-# task_id, then collect the terminal MCP report for validation. No CLI child.
-# Model, effort and permissions belong to the executor, not to Arbor: with
-# codeg, configure one `arbor-<role>` assistant per role. `timeout` bounds one
-# dispatch (the host cancels overdue MCP tasks); max_parallel bounds simultaneous
-# BUILD partition workers only. CONTRACT explore/architect readers have no total
-# or simultaneous cap; the main agent chooses their scopes, angles and fan-out.
-# Optional assistant_ids maps role names to codeg assistant ids. Without it,
-# the host resolves `assistant` from the MCP tool's assistant roster.
+# How `arbor.py run` executes a role. The default is a `command` executor
+# running `codeg-cli`: the driver starts the child, waits for its reply and
+# validates it itself (put codeg-cli on PATH or write its absolute path).
+# Placeholders: {role} {prompt} {worktree} {task} {dispatch}. Model, effort and
+# permissions belong to the executor, not to Arbor: with codeg, configure one
+# `arbor-<role>` assistant per role. `timeout` bounds one dispatch;
+# max_parallel bounds simultaneous BUILD partition workers only. CONTRACT
+# explore/architect readers have no total or simultaneous cap; the Planner
+# chooses their scopes, angles and fan-out.
 #
-# Other executors (copy one, then point `default` at it):
+# `codeg` (type codeg-mcp) is the host-driven alternative: `arbor.py run`
+# prepares a delegate_to_agent request, the host session calls codeg MCP,
+# binds the task_id and collects the terminal report. Optional assistant_ids
+# maps role names to codeg assistant ids; without it the host resolves
+# `assistant` from the MCP roster. Pick it with `executors.default: codeg` or
+# `arbor.py --executor codeg`.
+#
+# Other command executors (copy one, then point `default` at it):
 #   claude:
 #     command: "claude -p < {prompt}"
 #   codex:
 #     command: "codex exec --cd {worktree} --sandbox workspace-write - < {prompt}"
 executors:
-  default: codeg
+  default: codeg-cli
+  codeg-cli:
+    type: command
+    command: "codeg-cli run -A arbor-{role} -w {worktree} --permissions allow --timeout 90m --title arbor-{role}-{task}-{dispatch} -q -p - < {prompt}"
+    timeout: 95m
+    max_parallel: 3
   codeg:
     type: codeg-mcp
     assistant: "arbor-{role}"
     timeout: 90m
     max_parallel: 3
+
+#-------------------------------------------------------------------------------
+# Conductor
+#-------------------------------------------------------------------------------
+# `arbor.py conduct` launches one conductor per started task: a detached codeg
+# run of the `arbor-conductor` assistant that drives `arbor.py next/run/gate/
+# decide/finish` inside the task worktree and escalates to the Planner.
+# `command` must print the run id on its first stdout line; `result_command`
+# exits 0 with the final reply once the run ended and 6 while it still runs
+# (`arbor.py conduct --collect`); `cancel_command` is `conduct --cancel`.
+# Placeholders: {prompt} {worktree} {task} {run} {run_id}. `executor` is the
+# executors.<name> the conductor passes as `--executor` for its role dispatches.
+conductor:
+  command: "codeg-cli run -A arbor-conductor -w {worktree} --permissions allow --timeout 8h --detach --title arbor-conductor-{task}-{run} -q -p - < {prompt}"
+  result_command: "codeg-cli result {run_id} -q"
+  cancel_command: "codeg-cli cancel {run_id} -q"
+  executor: codeg-cli
 
 #-------------------------------------------------------------------------------
 # Gate

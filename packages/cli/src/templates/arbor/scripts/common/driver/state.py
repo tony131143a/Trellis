@@ -171,7 +171,19 @@ def _round(data: dict, progressed: bool, what: str, counters: dict | None = None
         counters["no_progress"] = 0
         return False
     counters["no_progress"] = counters.get("no_progress", 0) + 1
-    # Counters describe history; retry/stop decisions belong to the main agent.
+    if counters["no_progress"] >= _cap(data, "no_progress", NO_PROGRESS_LIMIT):
+        stop(data, "NO_PROGRESS", what, counter="no_progress")
+        return True
+    return False
+
+
+def _budget(data: dict, counter: str, value: int, base: int, what: str) -> bool:
+    """STOP(BUDGET) when a round counter passed its cap (``caps_extra`` raises it)."""
+    cap = _cap(data, counter, base)
+    if value > cap:
+        stop(data, "BUDGET", f"{what} ({value} > {cap}); resume grants one more round",
+             counter=counter, value=value, cap=cap)
+        return True
     return False
 
 
@@ -402,10 +414,12 @@ def on_gate(data: dict, failing: list[str], tier: str | None = None) -> None:
 
     data["gate_reds"] = int(data.get("gate_reds", 0)) + 1
     progressed = previous is None or bool(set(previous) - set(failing)) or len(failing) < len(previous)
-    if _round(data, progressed, f"gate failing {', '.join(failing)}"):
-        return
+    # The decision is recorded first so that a STOP resumes at GATE/decide.
     data["step"] = "decide"
     data["decision"] = {"kind": "gate_red", "options": list(DECIDE_CHOICES), "failing": list(failing)}
+    if _round(data, progressed, f"gate failing {', '.join(failing)}"):
+        return
+    _budget(data, "gate", data["gate_reds"], GATE_RED_CAP, "consecutive red gates")
 
 
 def on_review(data: dict, tier: str, verdict: str, finding_ids: list[str], range_from: str, range_to: str) -> None:
@@ -426,7 +440,8 @@ def on_review(data: dict, tier: str, verdict: str, finding_ids: list[str], range
         return
     counters["review"] = counters.get("review", 0) + 1
     data["review_from"] = range_from
-    goto(data, "REVIEW", "fix")
+    goto(data, "REVIEW", "fix")  # a STOP(BUDGET) resumes here, at the fix
+    _budget(data, "review", counters["review"], REVIEW_ROUND_CAP.get(tier, 1), "review fix rounds")
 
 
 def _start_polish_round(data: dict) -> None:
@@ -500,6 +515,8 @@ def on_candidates_filtered(data: dict, kept_ids: list[str], candidates_file: str
         return
     progressed = previous is None or set(previous) != set(kept_ids)
     if _round(data, progressed, "polish candidates unchanged"):
+        return
+    if _budget(data, "polish", counters["polish"], POLISH_ROUND_CAP, "polish rounds"):
         return
     _start_verify(data, kept_ids, candidates_file)
 
@@ -576,9 +593,14 @@ def resume(data: dict) -> str:
         prev = info.get("prev") or {"state": "BUILD", "step": "test"}
         counter = info.get("counter")
         if info.get("reason") == "BUDGET" and counter:
+            # One more round: the cap moves past the value that tripped it.
             extra = data.setdefault("caps_extra", {})
-            extra[counter] = int(extra.get(counter, 0)) + 1
+            over = max(int(info.get("value", 0)) - int(info.get("cap", 0)), 0)
+            extra[counter] = int(extra.get(counter, 0)) + over + 1
         data["counters"]["no_progress"] = 0
+        for rec in (data.get("partitions") or {}).values():
+            if isinstance(rec, dict) and isinstance(rec.get("counters"), dict):
+                rec["counters"]["no_progress"] = 0
         prev_state = prev.get("state") if prev.get("state") in DEFAULT_STEP else "BUILD"
         if prev_state == "STOP":
             prev_state = "BUILD"

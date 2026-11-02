@@ -37,12 +37,12 @@ Shows the Phase Index (Plan / Drive / Finish), the state machine, tiers and huma
   - explore / architect / review in this phase: write the brief at the `brief_path` from `arbor.py next --json`, then `arbor.py run --role <role> [--mode plan]` (main checkout, no commit)
 - `status=in_progress` (Phase 2, driven) → run the driver and do the one thing it names:
   ```bash
-  {{PYTHON_CMD}} ./.arbor/scripts/arbor.py next
+  {{PYTHON_CMD}} ./.arbor/scripts/arbor.py --task <task> next
   ```
-  `needs=brief` → write the brief at `brief_path`, then `arbor.py run`; `needs=run` → `arbor.py gate`; `needs=decide` → `arbor.py decide <choice> --reason "…"`; `needs=human` → ask the user (`human.kind`: `approve_contract` → re-approval, then `arbor.py resume`; `plausible` → `arbor.py decide fix|skip --reason "…"`; `merge` → Phase 3); `done` → Phase 3. A `STOP` state: report it; the user chooses `resume`, `override --reason "…" (--to STATE[/step] | --role <role>)` or `abandon [--reason "…"]`.
+  `needs=conductor` → the conductor is running; `arbor.py conduct --collect` once it ended. `needs=human`, `human.kind=conductor` → act on its `reason` (`contract` → re-approval + `resume`; `plausible` → `arbor.py decide fix|skip --reason "…"`; `stop` → `resume` / `override --reason "…" (--to STATE[/step] | --role <role>)` / `abandon`; `merge_conflict` → hand-merge, `resume`; `blocked` → better brief), then `arbor.py conduct` again. No conductor yet → `arbor.py --task <task> conduct [--brief <file>]`. `human.kind=merge` → Phase 3. Parent task → `arbor.py --task <parent> children`. Only without a conductor: `needs=brief` → write the brief at `brief_path`, then `arbor.py run`; `needs=run` → `arbor.py gate`; `needs=decide` → `arbor.py decide <choice> --reason "…"`; `needs=human` → ask the user; `done` → Phase 3.
 - `status=completed` (rare; usually archived immediately) → `{{CMD_REF:finish-work}}`
 
-Roles are never performed in this session and never through the built-in `Agent`/`Task` tool; the driver prepares them and records observations for main-agent judgment; codeg MCP executes the prepared delegation.
+Roles are never performed in this session and never through the built-in `Agent`/`Task` tool; the conductor dispatches them through the driver, which records observations for judgment.
 
 ## Step 4: Load the Specific Step
 
@@ -59,6 +59,6 @@ Follow the loaded instructions. After each `[required]` step completes, move to 
 Full workflow and detailed phase steps live in `.arbor/workflow.md`. This command is only an entry point — the canonical guidance is there.
 
 
-## codeg MCP delegation
+## codeg MCP delegation (executor `codeg`)
 
-With the `codeg-mcp` executor, `arbor.py run` returns `needs=delegation`. Call codeg MCP `delegate_to_agent` with the returned `mcp.arguments` (resolve the named assistant from the MCP roster if no id is configured), then immediately run `arbor.py bind --request <request_path> --task-id <returned task_id>`. Poll `get_delegation_status`, save its complete JSON response at the returned `result_path` outside the task worktree, and run `arbor.py collect --request <request_path> --result <file>` before proceeding. Resume/poll a bound task after interruptions; never start it again. If the configured timeout expires, cancel it through `cancel_delegation` and collect the terminal report. Claude Code and Codex both use this same MCP flow. Do not substitute `codeg-cli run` or native Agent/Task/spawn_agent.
+With the `codeg-mcp` executor (`executors.default: codeg` or `arbor.py --executor codeg`), `arbor.py run` returns `needs=delegation`. Call codeg MCP `delegate_to_agent` with the returned `mcp.arguments` (resolve the named assistant from the MCP roster if no id is configured), then immediately run `arbor.py bind --request <request_path> --task-id <returned task_id>`. Poll `get_delegation_status`, save its complete JSON response at the returned `result_path` outside the task worktree, and run `arbor.py collect --request <request_path> --result <file>` before proceeding. Resume/poll a bound task after interruptions; never start it again. If the configured timeout expires, cancel it through `cancel_delegation` and collect the terminal report. Claude Code and Codex both use this same MCP flow. Do not substitute native Agent/Task/spawn_agent for a role.

@@ -72,21 +72,21 @@ describe.skipIf(!hasPython())("main-agent contextual judgment", { timeout: 90_00
     expect(f.next()).toMatchObject({ state: "BUILD", role: "test" });
   });
 
-  it("repeated executor failures preserve commits and dirty files, remain failures, and never lock the task", () => {
+  it("repeated executor failures preserve commits and dirty files, remain failures, and STOP after two", () => {
     f = setupFixture();
     f.plan({
       "d-001": { write: [RED_TEST], dirty: [{ path: "local.txt", content: "keep me" }], exit: 4 },
       "d-002": { write: [{ path: "tests/extra.txt", content: "second attempt" }], exit: 4 },
-      "d-003": { exit: 4 },
     });
-    for (const id of ["d-001", "d-002", "d-003"]) expect(dispatch(f, id).status).toBe(1);
-    expect(f.taskJson()).toMatchObject({ state: "BUILD", counters: { no_progress: 3 } });
-    expect(f.taskJson().stop).toBeUndefined();
-    expect(f.taskJson().dispatches.map((d: { status: string }) => d.status)).toEqual(["fail", "fail", "fail"]);
+    for (const id of ["d-001", "d-002"]) expect(dispatch(f, id).status).toBe(1);
+    expect(f.taskJson()).toMatchObject({ state: "STOP", stop: { reason: "NO_PROGRESS" }, counters: { no_progress: 2 } });
+    expect(f.taskJson().dispatches.map((d: { status: string }) => d.status)).toEqual(["fail", "fail"]);
     expect(fs.readFileSync(path.join(f.wt, "local.txt"), "utf8")).toBe("keep me");
     expect(fs.existsSync(path.join(f.wt, "tests/extra.txt"))).toBe(true);
     expect(git(f.wt, "log", "--format=%s")).toContain(`test(${TASK}): work`);
-    expect(f.next()).toMatchObject({ needs: "brief", role: "test", dispatch: "d-004" });
+    expect(f.next()).toMatchObject({ needs: "human", human: { kind: "stop" } });
+    expect(f.run("resume").status).toBe(0);
+    expect(f.next()).toMatchObject({ needs: "brief", role: "test", dispatch: "d-003" });
   });
   it("main-agent FAIL interpretation preserves findings for fix routing and the scorecard", () => {
     f = setupFixture();

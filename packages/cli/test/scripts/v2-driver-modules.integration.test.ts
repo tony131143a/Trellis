@@ -36,7 +36,7 @@ for cfg in ({"executors": {"default": "nope", "x": {"command": "c"}}}, {"executo
     try:
         resolve_executor(cfg); raise SystemExit("missing executor accepted")
     except ExecutorError: pass
-assert resolve_executor({}).name == "codeg"
+assert resolve_executor({}).name == "codeg-cli"
 ex = Executor("t", "echo {role}-{dispatch}; echo err >&2", None)
 r = run_executor(ex, role="review", prompt_path=Path("p"), worktree=Path("."), task="t", dispatch="d-001")
 assert r.ok and r.stdout == "review-d-001\\n" and r.stderr == "err\\n", r
@@ -135,7 +135,7 @@ print(json.dumps([[k["summary"] for k in kept], sorted(d["summary"] for d, _ in 
     }
   });
 
-  it("state: counters remain informational; legacy STOP can still be resumed", () => {
+  it("state: round caps enter STOP (NO_PROGRESS / BUDGET); resume continues and raises the budget", () => {
     const out = probe(`
 from common.driver import state as sm
 def gate(d, failing):  # the real flow: decide -> fix -> GATE/gate -> on_gate
@@ -145,29 +145,34 @@ gate(d, ["AC-1", "AC-2"]); assert d["step"] == "decide" and d["counters"]["no_pr
 gate(d, ["AC-1"]);         assert d["counters"]["no_progress"] == 0          # shrank
 gate(d, ["AC-2"]);         assert d["counters"]["no_progress"] == 0          # AC-1 now passes
 gate(d, ["AC-2"]);         assert d["counters"]["no_progress"] == 1
-gate(d, ["AC-2"]);         assert d["state"] == "GATE" and d["step"] == "decide" and d["counters"]["no_progress"] == 2
-sm.stop(d, "NO_PROGRESS", "legacy recorded stop")
-sm.resume(d); assert (d["state"], d["step"]) == ("GATE", "decide") and d["counters"]["no_progress"] == 0
+gate(d, ["AC-2"]);         assert d["state"] == "STOP" and d["stop"]["reason"] == "NO_PROGRESS" and d["stop"]["prev"] == {"state": "GATE", "step": "decide"}
+sm.resume(d); assert (d["state"], d["step"]) == ("GATE", "decide") and d["counters"]["no_progress"] == 0 and d["decision"]["kind"] == "gate_red"
 d["after_gate"] = {"state": "REVIEW", "step": "review"}
 sm.on_gate(d, []); assert (d["state"], d["step"]) == ("REVIEW", "review") and d["gate_reds"] == 0
 
 g = sm.ensure_fields({"state": "GATE", "base": "b"})
-for i in range(sm.GATE_RED_CAP + 1):
+for i in range(sm.GATE_RED_CAP):
     gate(g, ["AC-%d" % j for j in range(10 - i)])
 assert g["state"] == "GATE" and g["step"] == "decide" and "stop" not in g
+gate(g, ["AC-0"]); assert g["state"] == "STOP" and g["stop"]["reason"] == "BUDGET" and g["stop"]["counter"] == "gate"
+sm.resume(g); assert (g["state"], g["step"]) == ("GATE", "decide") and g["caps_extra"] == {"gate": 2}
+gate(g, ["AC-0"]); assert g["state"] == "GATE"                                # one more round granted
+gate(g, []); assert g["state"] != "STOP"
 
 r = sm.ensure_fields({"state": "REVIEW", "base": "b"})
 sm.on_review(r, "standard", "FAIL", ["x"], "b", "h1"); assert (r["step"], r["counters"]["review"]) == ("fix", 1)
 r["state"], r["step"] = "REVIEW", "review"
 sm.on_review(r, "standard", "FAIL", ["y"], "h1", "h2")
-assert r["state"] == "REVIEW" and r["step"] == "fix" and "stop" not in r
-sm.stop(r, "BUDGET", "legacy budget", counter="review")
-sm.resume(r); assert (r["state"], r["step"]) == ("REVIEW", "fix") and r["caps_extra"] == {"review": 1}
+assert r["state"] == "STOP" and r["stop"]["reason"] == "BUDGET" and r["stop"]["prev"] == {"state": "REVIEW", "step": "fix"}
+sm.resume(r); assert (r["state"], r["step"]) == ("REVIEW", "fix") and r["caps_extra"] == {"review": 2} and r["review_from"] == "h1"
 
 l = sm.ensure_fields({"state": "REVIEW", "base": "b"})
 sm.on_review(l, "light", "FAIL", ["x"], "b", "h1"); l["step"] = "review"
 sm.on_review(l, "light", "FAIL", ["x"], "h1", "h2")
 assert l["counters"]["no_progress"] == 1 and l["step"] == "fix"
+l["step"] = "review"
+sm.on_review(l, "light", "FAIL", ["x"], "h2", "h3")
+assert l["state"] == "STOP" and l["stop"]["reason"] == "NO_PROGRESS"
 p = sm.ensure_fields({"state": "REVIEW", "base": "b"})
 sm.on_review(p, "light", "PASS", [], "b", "h"); assert p["state"] == "FINISH" and p["last_reviewed"] == "h"
 s = sm.ensure_fields({"state": "REVIEW", "base": "b"})

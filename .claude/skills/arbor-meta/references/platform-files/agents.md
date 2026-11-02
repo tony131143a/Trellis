@@ -1,6 +1,6 @@
 # Agents (Role Instruction Sources)
 
-Arbor has eight roles: `explore`, `architect`, `test`, `implement`, `review`, `verify`, `fix`, and `simplify`. In Arbor they are not platform-native sub-agents and there are no `.claude/agents/` or `.starFactory/agents/` files. The driver (`.arbor/scripts/arbor.py`) prepares and validates roles; the default `codeg-mcp` executor uses the host’s codeg MCP delegation tools. See `../local-architecture/dispatch.md` for the mechanism.
+Arbor has eight roles: `explore`, `architect`, `test`, `implement`, `review`, `verify`, `fix`, and `simplify`. In Arbor they are not platform-native sub-agents and there are no `.claude/agents/` or `.starFactory/agents/` files. The driver (`.arbor/scripts/arbor.py`) prepares and validates roles through the executor in `.arbor/config.yaml` (default: a `codeg-cli` command). A ninth instruction file, `conductor.md`, is not a role: it instructs the conductor sub-agent that `arbor.py conduct` launches per started task to drive the loop and dispatch the roles. See `../local-architecture/dispatch.md` for the mechanism.
 
 ## Instruction Sources
 

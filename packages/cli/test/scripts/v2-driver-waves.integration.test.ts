@@ -358,8 +358,9 @@ assert (d["state"], d["step"]) == ("BUILD", "partitions")
 sm.on_partition_failed(d, "tests", "implement")
 assert d["state"] == "BUILD"
 sm.on_partition_failed(d, "tests", "implement")
-assert d["state"] == "BUILD" and d["partitions"]["tests"]["counters"]["no_progress"] == 2
-assert (d["state"], d["step"]) == ("BUILD", "partitions")
+assert d["state"] == "STOP" and d["stop"]["reason"] == "NO_PROGRESS" and d["partitions"]["tests"]["counters"]["no_progress"] == 2
+sm.resume(d)
+assert (d["state"], d["step"]) == ("BUILD", "partitions") and d["partitions"]["tests"]["counters"]["no_progress"] == 0
 for p in ("impl", "tests"): sm.on_partition_implemented(d, p)
 assert sm.plan(d, "full", W).action == "merge"
 sm.on_merge_conflict(d, {"partition": "tests", "files": ["a"], "branch": "x--tests", "into": "x"})

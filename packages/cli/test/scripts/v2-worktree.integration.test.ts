@@ -278,7 +278,7 @@ print(json.dumps({
       wt: { root: "../{repo}-wt", setup: "pnpm install --offline" },
       tp_default: ["packages/*/test/**", "**/*.test.ts"],
       tp: ["tests/**"],
-      ex_default: "codeg",
+      ex_default: "codeg-cli",
       ex: { default: "claude" },
     });
   });

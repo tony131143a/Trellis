@@ -22,6 +22,7 @@ import {
   getAllAgents,
   implementAgentTemplate,
   AGENT_ROLES,
+  CONTROLLER_AGENTS,
   configYamlTemplate,
 } from "../../src/templates/arbor/index.js";
 
@@ -363,10 +364,11 @@ describe("getAllScripts", () => {
 // =============================================================================
 
 describe("getAllAgents", () => {
-  it("ships exactly the eight role agents", () => {
+  it("ships exactly the eight role agents plus the conductor", () => {
     expect([...getAllAgents().keys()].sort()).toEqual(
-      [...AGENT_ROLES].map((role) => `${role}.md`).sort(),
+      [...AGENT_ROLES, ...CONTROLLER_AGENTS].map((role) => `${role}.md`).sort(),
     );
+    expect(CONTROLLER_AGENTS).toEqual(["conductor"]);
     expect(AGENT_ROLES).toEqual([
       "explore",
       "architect",
@@ -447,13 +449,25 @@ describe("configYamlTemplate: executors and gate", () => {
     expect(configYamlTemplate).not.toMatch(/default_target|codeg-setup|ARBOR_DISPATCH_TARGET/);
     const parsed = parseTemplate();
     expect(parsed.executors).toEqual({
-      default: "codeg",
+      default: "codeg-cli",
+      "codeg-cli": {
+        type: "command",
+        command: "codeg-cli run -A arbor-{role} -w {worktree} --permissions allow --timeout 90m --title arbor-{role}-{task}-{dispatch} -q -p - < {prompt}",
+        timeout: "95m",
+        max_parallel: "3",
+      },
       codeg: {
         type: "codeg-mcp",
         assistant: "arbor-{role}",
         timeout: "90m",
         max_parallel: "3",
       },
+    });
+    expect(parsed.conductor).toEqual({
+      command: "codeg-cli run -A arbor-conductor -w {worktree} --permissions allow --timeout 8h --detach --title arbor-conductor-{task}-{run} -q -p - < {prompt}",
+      result_command: "codeg-cli result {run_id} -q",
+      cancel_command: "codeg-cli cancel {run_id} -q",
+      executor: "codeg-cli",
     });
     expect(parsed.gate).toEqual({ commands: [] });
     expect(parsed.worktree).toEqual({ root: "../{repo}-wt", setup: "" });

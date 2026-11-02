@@ -18,7 +18,7 @@ Arbor provides four layers inside a user project:
 1. **Workflow layer**: `.arbor/workflow.md` defines phases, routing, next actions, and prompt blocks.
 2. **Persistence layer**: `.arbor/tasks/`, `.arbor/spec/`, and `.arbor/workspace/` store tasks, specs, and session journals.
 3. **Platform integration layer**: hooks, settings, skills, and commands in `.claude/` and `.starFactory/` connect the Arbor workflow to the AI tool.
-4. **Driver layer**: `.arbor/scripts/arbor.py` holds the task state machine and runs every role through the executor configured in `.arbor/config.yaml`; the main agent writes the contract and the briefs (see `dispatch.md`).
+4. **Driver layer**: `.arbor/scripts/arbor.py` holds the task state machine and runs every role through the executor configured in `.arbor/config.yaml`; the Planner (main session) writes the contract and launches a conductor per started task (`arbor.py conduct`), which writes the briefs and drives the loop (see `dispatch.md`).
 
 All four layers live inside the user project, so an AI can read and modify them directly.
 

@@ -29,7 +29,7 @@ from pathlib import Path
 
 from ..arbor_config import get_executors_config
 
-PLACEHOLDERS = ("role", "prompt", "worktree", "task", "dispatch")
+PLACEHOLDERS = ("role", "prompt", "worktree", "task", "dispatch", "run", "run_id")
 _TIMEOUT_RE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*([smh]?)\s*$", re.IGNORECASE)
 _UNIT_SECONDS = {"": 1, "s": 1, "m": 60, "h": 3600}
 
@@ -113,6 +113,15 @@ def build_command(template: str, values: dict[str, str]) -> str:
     return command
 
 
+def child_env() -> dict[str, str]:
+    """Environment for a dispatched role or conductor: a new host session, not
+    the parent Arbor controller."""
+    env = os.environ.copy()
+    for key in ("ARBOR_CONTEXT_ID", "CODEX_THREAD_ID", "CLAUDE_CODE_SESSION_ID", "CLAUDE_ENV_FILE"):
+        env.pop(key, None)
+    return env
+
+
 def run_executor(
     executor: Executor,
     *,
@@ -143,10 +152,7 @@ def run_executor(
             round(time.monotonic() - t0, 3), error,
         )
 
-    # A role is a new host session, not the parent Arbor controller.
-    env = os.environ.copy()
-    for key in ("ARBOR_CONTEXT_ID", "CODEX_THREAD_ID", "CLAUDE_CODE_SESSION_ID", "CLAUDE_ENV_FILE"):
-        env.pop(key, None)
+    env = child_env()
 
     try:
         proc = subprocess.Popen(

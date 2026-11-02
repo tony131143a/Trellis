@@ -41,7 +41,7 @@ if callable(_stdin_reconfigure):
 DIR_WORKFLOW = ".arbor"
 GUARDED_TOOLS = ("Agent", "Task", "spawn_agent")
 ROLE_RE = re.compile(
-    r"^\s*(?:Active task:|Role:\s*"
+    r"^\s*(?:Active task:|Conductor:|Role:\s*"
     r"(?:explore|architect|test|implement|review|verify|fix|simplify)\b)",
     re.IGNORECASE | re.MULTILINE,
 )
@@ -50,8 +50,8 @@ ROLE_RE = re.compile(
 HEADER_SCAN_CHARS = 400
 DENY_REASON = (
     "Arbor roles (explore/architect/test/implement/review/verify/fix/simplify) "
-    "run only through the driver. Run `python3 ./.arbor/scripts/arbor.py next`, "
-    "write the brief it names, then `python3 ./.arbor/scripts/arbor.py run`. "
+    "and the conductor run only through the driver. Run `python3 ./.arbor/scripts/arbor.py next`, "
+    "then `arbor.py conduct` (a started task) or write the brief it names and `arbor.py run`. "
     "Never the built-in Agent/Task tool."
 )
 
