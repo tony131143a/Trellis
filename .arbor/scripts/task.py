@@ -46,7 +46,6 @@ from common.paths import (
 )
 from common.active_task import (
     clear_active_task,
-    in_registered_worktree,
     resolve_active_task,
     resolve_context_key,
     set_active_task,
@@ -60,7 +59,7 @@ from common.io import (
     write_json,
 )
 from common.safe_commit import print_gitignore_warning, safe_git_add
-from common.task_utils import resolve_task_dir, run_task_hooks
+from common.task_utils import resolve_task_dir, run_task_hooks, started_task_in_worktree
 from common.tasks import (
     TIERS,
     children_progress,
@@ -237,27 +236,6 @@ def _tier_gate(task_dir: Path, task_input: str) -> bool:
 NEW_COUNTERS = {"gate": 0, "review": 0, "polish": 0, "no_progress": 0}
 
 
-def _started_task_in_worktree(task_input: str, repo_root: Path) -> Path | None:
-    """An absolute task dir inside a registered worktree of this repo (a task
-    already started there), or None. Re-starting it only re-points the
-    session; the worktree, branch and task.json are left alone."""
-    candidate = Path(task_input)
-    if not candidate.is_absolute():
-        return None
-    try:
-        resolved = candidate.resolve()
-        root = repo_root.resolve()
-    except OSError:
-        return None
-    if resolved == root or root in resolved.parents:
-        return None
-    if not (resolved / FILE_TASK_JSON).is_file():
-        return None
-    if resolved.parent.name != DIR_TASKS or resolved.parent.parent.name != DIR_WORKFLOW:
-        return None
-    return resolved if in_registered_worktree(resolved, repo_root) else None
-
-
 def _point_session_at(task_dir: Path, repo_root: Path) -> int:
     """Set the session pointer to an absolute task dir.
 
@@ -410,9 +388,16 @@ def _start_in_worktree(args: argparse.Namespace, task_dir: Path, repo_root: Path
     })
     if binding:
         data.update({key: binding[key] for key in ("worktree_path", "branch", "base", "base_branch")})
-    if not data.get("base_branch"):
+    elif data.get("base_branch_source") != "explicit":
+        # The task branch was just cut from the checked-out branch, and that is
+        # where `finish` merges it back; a default stamped at create time
+        # (origin/HEAD) is replaced. `--base-branch` at create wins.
         base_branch = current_branch_name(repo_root)
-        if base_branch:
+        if base_branch and base_branch != data.get("base_branch"):
+            if data.get("base_branch"):
+                print(colored(f"note: base_branch '{data['base_branch']}' -> '{base_branch}' "
+                              f"(the branch this task was started from); "
+                              f"task.py set-base-branch to override", Colors.YELLOW))
             data["base_branch"] = base_branch
     if not write_json(dest / FILE_TASK_JSON, data):
         print(colored(f"Error: Failed to write {dest / FILE_TASK_JSON}; start rolled back", Colors.RED))
@@ -462,11 +447,6 @@ def cmd_start(args: argparse.Namespace) -> int:
         print(colored("Error: task directory or name required", Colors.RED))
         return 1
 
-    if use_worktree:
-        started = _started_task_in_worktree(task_input, repo_root)
-        if started is not None:
-            return _point_session_at(started, repo_root)
-
     # Resolve task directory (supports task name, relative path, or absolute path)
     full_path = resolve_task_dir(task_input, repo_root)
 
@@ -475,6 +455,11 @@ def cmd_start(args: argparse.Namespace) -> int:
         # generic line on stdout would split one diagnosis across two streams
         # and bury the specific message.
         return 1
+
+    if use_worktree:
+        started = started_task_in_worktree(str(full_path), repo_root)
+        if started is not None:
+            return _point_session_at(started, repo_root)
 
     if not full_path.is_dir():
         print(colored(f"Error: Task not found: {task_input}", Colors.RED))

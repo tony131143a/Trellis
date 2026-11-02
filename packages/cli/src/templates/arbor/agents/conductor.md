@@ -69,7 +69,7 @@ After a Partial, Blocked or FAIL report, read it and put the missing information
 
 ## Report (your final message)
 
-The driver parses it: keep the exact header and field names, one field per line, `Summary:` may run over several lines.
+The driver parses it: keep the exact header and field names, one field per line, `Summary:` may run over several lines. Write the report in English, whatever language the brief or the contract uses: the Planner reads it.
 
 ```
 ## Conductor DONE | ESCALATE | FAILED

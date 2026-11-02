@@ -66,6 +66,8 @@ The trailer is the last line; `<id>` is the `Dispatch:` header value. Stage the 
 
 ## Report (your final message)
 
+Write the report in English, whatever language the brief or the contract uses: the driver and the next role read it.
+
 ```
 ## Implementation Complete | Partial | Blocked
 

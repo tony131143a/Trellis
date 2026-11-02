@@ -93,6 +93,8 @@ Do not edit `implement.jsonl` or `check.jsonl`; the main agent curates them. Sug
 
 ## Report (your final message)
 
+Write the report in English, whatever language the brief or the contract uses: the driver and the next role read it.
+
 Keep it short; the details live in the file.
 
 ```

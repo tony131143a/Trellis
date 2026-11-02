@@ -66,6 +66,8 @@ The two hard limits above apply to real project repositories and their worktrees
 
 ## Report (your final message)
 
+Write the report in English, whatever language the brief or the contract uses: the driver and the next role read it.
+
 ```
 ## Tests Written | Partial | Blocked
 

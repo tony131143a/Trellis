@@ -47,6 +47,8 @@ Exactly one per candidate:
 
 ## Report (your final message)
 
+Write the report in English, whatever language the brief or the contract uses: the driver and the next role read it.
+
 One JSON block, one entry per deduplicated candidate, most severe first:
 
 ```json

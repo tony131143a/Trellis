@@ -6,6 +6,8 @@ Provides:
     is_within_tasks_dir - Check a resolved path is a task directly under tasks/
     find_task_by_name   - Find task directory by name
     resolve_task_dir    - Resolve task directory from name, relative, or absolute path
+    started_task_in_worktree - A task dir living inside a registered task worktree
+    started_copy_by_name - The worktree copy of a started task, by name
     archive_destination_for - Path a task would be archived to
     archive_task_dir    - Archive task to monthly directory
     run_task_hooks      - Run lifecycle hooks for task events
@@ -19,7 +21,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .paths import get_repo_root, get_tasks_dir
+from .paths import DIR_TASKS, DIR_WORKFLOW, FILE_TASK_JSON, get_repo_root, get_tasks_dir
 
 if TYPE_CHECKING:
     import subprocess
@@ -217,6 +219,11 @@ def resolve_task_dir(target_dir: str, repo_root: Path) -> Path | None:
         Absolute path spelled through the repo's own tasks dir (in-repo
         lexical form), or None when it is not a location inside the tasks
         directory (an error naming the path is printed to stderr).
+
+    A started task has moved into its task worktree. Its name, or the absolute
+    path of that copy, resolves there (``started_task_in_worktree``) so
+    ``set-base-branch`` / ``set-meta`` / ``add-context`` keep working after
+    ``start``; ``archive`` narrows this again with ``is_within_tasks_dir``.
     """
     if not target_dir:
         print("Error: task directory is required", file=sys.stderr)
@@ -238,6 +245,8 @@ def resolve_task_dir(target_dir: str, repo_root: Path) -> Path | None:
         # fallback to repo_root/<name> only ever produced a path the check
         # below rejects, so a miss ends here instead.
         candidate = find_task_by_name(target_dir, tasks_dir)
+        if candidate is None and "/" not in normalized:
+            candidate = started_copy_by_name(target_dir, repo_root)
         if candidate is None:
             # find_task_by_name reports invalid names and ambiguity itself.
             print(
@@ -263,6 +272,9 @@ def resolve_task_dir(target_dir: str, repo_root: Path) -> Path | None:
         return None
 
     if tasks_resolved not in resolved.parents:
+        started = started_task_in_worktree(str(resolved), repo_root)
+        if started is not None:
+            return started
         print(
             f"Error: refusing to use '{target_dir}': {resolved} is outside {tasks_resolved}",
             file=sys.stderr,
@@ -275,6 +287,42 @@ def resolve_task_dir(target_dir: str, repo_root: Path) -> Path | None:
     # task is legitimate, and callers converting to a repo-relative ref for
     # storage would refuse it.
     return tasks_lexical / resolved.relative_to(tasks_resolved)
+
+
+def started_task_in_worktree(task_input: str, repo_root: Path) -> Path | None:
+    """An absolute task dir inside a registered worktree of this repo (a task
+    already started there), or None. The main checkout's own tasks dir does
+    not count: that case is ``resolve_task_dir``'s normal path."""
+    from .active_task import in_registered_worktree
+
+    candidate = Path(task_input)
+    if not candidate.is_absolute():
+        return None
+    try:
+        resolved = candidate.resolve()
+        root = repo_root.resolve()
+    except OSError:
+        return None
+    if resolved == root or root in resolved.parents:
+        return None
+    if not (resolved / FILE_TASK_JSON).is_file():
+        return None
+    if resolved.parent.name != DIR_TASKS or resolved.parent.parent.name != DIR_WORKFLOW:
+        return None
+    return resolved if in_registered_worktree(resolved, repo_root) else None
+
+
+def started_copy_by_name(task_name: str, repo_root: Path) -> Path | None:
+    """``<worktree.root>/<name>/.arbor/tasks/<name>`` when that started copy exists."""
+    from .arbor_config import read_arbor_config
+    from .worktree import worktree_root
+
+    try:
+        root = worktree_root(repo_root, read_arbor_config(repo_root))
+    except OSError:
+        return None
+    candidate = root / task_name / DIR_WORKFLOW / DIR_TASKS / task_name
+    return candidate if (candidate / FILE_TASK_JSON).is_file() else None
 
 
 # =============================================================================

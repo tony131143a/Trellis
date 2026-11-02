@@ -110,6 +110,8 @@ PLAUSIBLE by default: do not refute a candidate for being "speculative" or "depe
 
 ## Report (your final message)
 
+Write the report in English, whatever language the brief or the contract uses: the driver and the next role read it.
+
 First line: `PASS` (no CONFIRMED or PLAUSIBLE finding; in `candidates` / `sweep` mode, no candidate) or `FAIL`.
 
 Then one JSON block, most severe first:

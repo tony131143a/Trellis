@@ -243,6 +243,64 @@ describe.skipIf(!hasPython())("task.py start in a worktree (v2)", () => {
     expect(git(wt, "rev-parse", "HEAD")).toBe(head);
   });
 
+  it("re-starting by name re-points the session too; set-base-branch / set-meta reach the started copy", () => {
+    makeTask();
+    expect(runTask(repo, ["start", TASK]).status).toBe(0);
+    const head = git(wt, "rev-parse", "HEAD");
+
+    const other = { ARBOR_CONTEXT_ID: "third-session" };
+    const again = runTask(repo, ["start", TASK], other);
+    expect(again.status, again.stdout + again.stderr).toBe(0);
+    expect(runTask(repo, ["current"], other).stdout.trim()).toBe(wtTask);
+    expect(git(wt, "rev-parse", "HEAD")).toBe(head);
+
+    const byName = runTask(repo, ["set-base-branch", TASK, "develop"]);
+    expect(byName.status, byName.stdout + byName.stderr).toBe(0);
+    expect(readJson(path.join(wtTask, "task.json")).base_branch).toBe("develop");
+    const byPath = runTask(repo, ["set-base-branch", wtTask, "release"]);
+    expect(byPath.status, byPath.stdout + byPath.stderr).toBe(0);
+    expect(readJson(path.join(wtTask, "task.json")).base_branch).toBe("release");
+    const meta = runTask(repo, ["set-meta", TASK, "tier", "standard"]);
+    expect(meta.status, meta.stdout + meta.stderr).toBe(0);
+    expect((readJson(path.join(wtTask, "task.json")).meta as Record<string, unknown>).tier).toBe("standard");
+
+    // arbor.py accepts the task's relative path from inside the worktree.
+    const next = spawnSync("python3", [path.join(repo, ".arbor/scripts/arbor.py"), "--task", `.arbor/tasks/${TASK}`, "next", "--json"], {
+      cwd: wt, encoding: "utf-8", env: { ...process.env },
+    });
+    expect(next.status, next.stdout + next.stderr).toBe(0);
+    expect(JSON.parse(next.stdout)).toMatchObject({ task: TASK, state: "BUILD" });
+    // ...and the bare name from the main checkout.
+    const byTaskName = spawnSync("python3", [".arbor/scripts/arbor.py", "--task", TASK, "next", "--json"], {
+      cwd: repo, encoding: "utf-8", env: { ...process.env },
+    });
+    expect(byTaskName.status, byTaskName.stdout + byTaskName.stderr).toBe(0);
+    expect(JSON.parse(byTaskName.stdout)).toMatchObject({ task: TASK, state: "BUILD" });
+  });
+
+  it("start re-stamps a default base_branch to the branch it was started from; an explicit one stays", () => {
+    const rel = makeTask();
+    const taskJson = path.join(repo, rel, "task.json");
+    const patch = (fields: Record<string, unknown>) =>
+      fs.writeFileSync(taskJson, JSON.stringify({ ...readJson(taskJson), ...fields }) + "\n");
+    git(repo, "checkout", "-q", "-b", "topic");
+
+    patch({ base_branch: "main", base_branch_source: "default" });
+    let r = runTask(repo, ["start", TASK]);
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+    expect(r.stdout).toContain("note: base_branch 'main' -> 'topic'");
+    expect(readJson(path.join(wtTask, "task.json")).base_branch).toBe("topic");
+
+    git(repo, "worktree", "remove", "--force", wt);
+    git(repo, "branch", "-D", `arbor/${TASK}`);
+    makeTask();
+    patch({ base_branch: "main", base_branch_source: "explicit" });
+    r = runTask(repo, ["start", TASK]);
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+    expect(r.stdout).not.toContain("note: base_branch");
+    expect(readJson(path.join(wtTask, "task.json")).base_branch).toBe("main");
+  });
+
   it("archive finds a task that lives in its worktree and clears the session pointer", () => {
     makeTask();
     expect(runTask(repo, ["start", TASK]).status).toBe(0);

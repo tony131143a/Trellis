@@ -103,6 +103,7 @@ from common.invariants import WRITER_ROLES, _dirty_paths, check_after_dispatch, 
 from common.io import read_json_checked, write_json, write_text_atomic
 from common.log import Colors, colored
 from common.paths import DIR_TASKS, DIR_WORKFLOW, FILE_TASK_JSON
+from common.task_utils import started_copy_by_name
 from common.tasks import resolve_tier
 from common.worktree import (WorktreeError, branch_prefix, is_ancestor, main_checkout, partition_branch, partition_worktree_path,
                              worktree_root)
@@ -213,6 +214,12 @@ def load_ctx(task_arg: str | None) -> Ctx | None:
     """The active task, or None when there is none."""
     main = _main()
     if task_arg:
+        local = Path(task_arg)
+        if not local.is_absolute() and (local / FILE_TASK_JSON).is_file():
+            task_arg = str(local.resolve())  # relative to cwd (e.g. inside the task worktree)
+        elif "/" not in task_arg and not (main / DIR_WORKFLOW / DIR_TASKS / task_arg / FILE_TASK_JSON).is_file():
+            started = started_copy_by_name(task_arg, main)  # a started task lives in its worktree
+            task_arg = str(started) if started else task_arg
         task_dir = resolve_task_ref(task_arg, main)
     else:
         # A sole session file does not make its task belong to this caller.

@@ -518,6 +518,7 @@ def cmd_create(args: argparse.Namespace) -> int:
         "completedAt": None,
         "branch": None,
         "base_branch": base_branch,
+        "base_branch_source": "explicit" if explicit_base_branch else "default",
         "worktree_path": None,
         "commit": None,
         "pr_url": None,
