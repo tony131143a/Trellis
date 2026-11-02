@@ -104,15 +104,17 @@
   "conductor": {
     "run": "c-001",
     "run_id": "85dfbc2a-eb60-43f5-a2f8-ef95b0e670d8",
-    "status": "running",
+    "status": "done",
     "started": "2026-11-02T04:32:36Z",
-    "ended": null,
+    "ended": "2026-11-02T04:46:55Z",
     "prompt_path": "/Users/xktang/person-resources/project/my/Trellis/.arbor/.runtime/prompts/11-01-spec-v3-driver-docs/c-001.md",
     "executor": "codeg-cli",
     "command": "/Applications/codeg.app/Contents/MacOS/codeg-cli run -A arbor-conductor -w /Users/xktang/person-resources/project/my/Trellis-wt/11-01-spec-v3-driver-docs --permissions allow --timeout 8h --detach --title arbor-conductor-11-01-spec-v3-driver-docs-c-001 -q -p - < /Users/xktang/person-resources/project/my/Trellis/.arbor/.runtime/prompts/11-01-spec-v3-driver-docs/c-001.md",
-    "outcome": null,
-    "reason": null,
-    "needs_from_planner": null
+    "outcome": "DONE",
+    "reason": "done",
+    "needs_from_planner": "合并前处理 scorecard 中重复的 A 类问题规则要求，然后人工合并 task/11-01-spec-v3-driver-docs。",
+    "report_path": "/Users/xktang/person-resources/project/my/Trellis-wt/11-01-spec-v3-driver-docs/.arbor/tasks/11-01-spec-v3-driver-docs/reports/c-001.md",
+    "problem": null
   },
   "step": "finish",
   "gate_failing": [],
