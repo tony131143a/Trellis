@@ -1,0 +1,55 @@
+packages/cli/src/templates/arbor/config.yaml
+  s_342ea15739dd96::t_bd7ba1318f9258 164-195
+packages/cli/src/templates/arbor/index.ts
+  s_32e6af00137676::t_820c33acc7fb9f 79,167
+packages/cli/src/templates/arbor/scripts/common/driver/mandate.py
+  s_32e6af00137676::t_4d726a6beaace0 1-114
+packages/cli/src/templates/arbor/scripts/common/task_store.py
+  s_32e6af00137676::t_7de676de985754 73,336-346,2090-2095
+packages/cli/src/templates/claude/settings.json
+  s_9e7456cfc7483c::t_8df7631c21d69c 50-61
+packages/cli/src/templates/codex/hooks.json
+  s_9e7456cfc7483c::t_06e235df625746 47-58
+packages/cli/src/templates/shared-hooks/index.ts
+  s_9e7456cfc7483c::t_8625abda83ba3a 31-32,49-52,74,81
+packages/cli/src/templates/shared-hooks/sync-delegation.py
+  s_32e6af00137676::t_92d20c5bb26431 1-260
+packages/cli/test/scripts/sync-delegation.integration.test.ts
+  s_342ea15739dd96::t_1852fbbabcd230 1-176
+packages/cli/test/templates/claude.test.ts
+  s_9e7456cfc7483c::t_5ed0c6e791d00b 81-96
+packages/cli/test/templates/shared-hooks.test.ts
+  s_9e7456cfc7483c::t_eae0c54ddc0402 19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "d415dd82c01f88127c83ef4c5a61bdd77a153c54",
+  "prompts": {},
+  "sessions": {
+    "s_32e6af00137676": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3679134e-3ec5-4f38-aaca-fc9c80d2d93d",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_342ea15739dd96": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3d284d4a-86e4-4f3d-9ca0-5b0377b43c0d",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_9e7456cfc7483c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19af0-7e0f-7863-8769-1fcb903947c7",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
