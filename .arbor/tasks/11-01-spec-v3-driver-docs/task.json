@@ -25,12 +25,12 @@
   "meta": {
     "tier": "light"
   },
-  "state": "GATE",
+  "state": "REVIEW",
   "wave": 1,
   "base": "415d24533023dc1adea5b2e17624b12d06787a94",
   "contract_hash": "aaeb4fd73349b5620d1e26a7e0bb6c90051907cd0559992a8ee7297cca50d27b",
   "counters": {
-    "gate": 1,
+    "gate": 2,
     "review": 1,
     "polish": 0,
     "no_progress": 0
@@ -102,7 +102,7 @@
     "reason": null,
     "needs_from_planner": null
   },
-  "step": "gate",
+  "step": "review",
   "gate_failing": [],
   "gate_reds": 0,
   "last_reviewed": "6ed5aa320b5c35bf108fff8a068ebb6c2e312968",
@@ -111,9 +111,5 @@
     ".arbor/spec/cli/backend/platform-integration.md:413:标为正确的规划示例错误地要求标准任务提供 waves.md。",
     "packages/cli/test/spec/backend-docs.test.ts:91:AC-2 测试只在全文查找选项，无法验证 conduct 的选项归属。"
   ],
-  "review_from": "415d24533023dc1adea5b2e17624b12d06787a94",
-  "after_gate": {
-    "state": "REVIEW",
-    "step": "review"
-  }
+  "review_from": "415d24533023dc1adea5b2e17624b12d06787a94"
 }
