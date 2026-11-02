@@ -1,0 +1,21 @@
+.arbor/tasks/11-01-spec-v3-driver-docs/reports/d-004.md
+  s_690b6e63d35e44::t_17136f093af9b5 1-40
+.arbor/tasks/11-01-spec-v3-driver-docs/task.json
+  s_690b6e63d35e44::t_6e069d13d79c74 28,76-89,105,114-118
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "98fbb5e4be8190f8c76d7bfa70619d027f1c2cf0",
+  "prompts": {},
+  "sessions": {
+    "s_690b6e63d35e44": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19a87-d008-74d0-86fd-749f6ea9e16c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
