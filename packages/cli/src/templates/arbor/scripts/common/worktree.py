@@ -206,17 +206,19 @@ def merge_no_ff(into_worktree: Path, branch: str, message: str) -> MergeResult:
     return MergeResult(False, conflicts, None)
 
 
-def create_task_worktree(repo_root: Path, task_dir: Path, config: dict) -> TaskWorktree:
-    """Create ``<branch_prefix><task>`` at the current HEAD and its worktree under the
-    configured root. Refuses when the branch or the target path exists."""
+def create_task_worktree(repo_root: Path, task_dir: Path, config: dict,
+                         start_point: str = "HEAD") -> TaskWorktree:
+    """Create ``<branch_prefix><task>`` at ``start_point`` (the current HEAD, or a
+    parent's integration branch) and its worktree under the configured root.
+    Refuses when the branch or the target path exists."""
     name = task_dir.name
     main = main_checkout(repo_root)
     branch = task_branch(name, branch_prefix(config))
     path = worktree_root(main, config) / name
 
-    rc, out, err = run_git(["rev-parse", "--verify", "HEAD"], cwd=repo_root)
+    rc, out, err = run_git(["rev-parse", "--verify", f"{start_point}^{{commit}}"], cwd=repo_root)
     if rc != 0:
-        raise WorktreeError(f"no commit to start from (git rev-parse HEAD: {err.strip()})")
+        raise WorktreeError(f"no commit to start from (git rev-parse {start_point}: {err.strip()})")
     base_sha = out.strip()
 
     rc, _, _ = run_git(["rev-parse", "--verify", "--quiet", f"refs/heads/{branch}"], cwd=main)

@@ -1,0 +1,8 @@
+{
+  "version": "0.7.0",
+  "description": "v4: next --json ready set; children merge into the parent's integration branch; merge checks (scope, review head); baseline merge asks by default",
+  "breaking": false,
+  "recommendMigrate": true,
+  "changelog": "next --json carries the task's ready set: items (every actionable step, including every reader of a batch, each partition that needs a brief and every unsent MCP delegation), running and blocked_on. Starting the first child of an unstarted parent creates the integration branch arbor/<parent>; children are cut from it and their second arbor.py finish merges them back --no-ff without a human (catch-up merge, gate, scope and review-head checks; a failed check falls back to the human merge command). arbor.py children shows the integration branch; children --cleanup removes it after a human merged it into the baseline. A wave merge refuses a partition that changed files outside its paths (human merge_conflict, reason scope). Automatic merges also require the last review PASS to cover every product commit. The light mandate now defaults to merge: ask; set merge: auto in mandate: to opt in. A .arbor/config.yaml written by 0.5.0 or 0.6.0 still says merge: auto under light; edit it to ask by hand to get the new default.",
+  "migrations": []
+}

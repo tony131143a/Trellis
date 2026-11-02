@@ -39,6 +39,10 @@ describe.skipIf(!hasPython())("arbor.py parallel readers and lanes", { timeout: 
     expect(next.batch.map((b: { dispatch: string }) => b.dispatch)).toEqual(["d-001", "d-002"]);
     expect(next.batch[1].brief_path).toBe(path.join(f.taskDir, "briefs/d-002.md"));
     expect(next.summary).toContain("may run concurrently");
+    // The ready set lists every reader of the batch as its own item.
+    expect(next.items.map((i: { role: string; dispatch: string; brief_path: string }) => [i.role, i.dispatch, i.brief_path])).toEqual([
+      ["review", "d-001", path.join(f.taskDir, "briefs/d-001.md")], ["review", "d-002", path.join(f.taskDir, "briefs/d-002.md")],
+    ]);
 
     f.plan({
       "d-001": { sleep: 2, reply: reviewReply("PASS", []) },
@@ -123,10 +127,14 @@ describe.skipIf(!hasPython())("arbor.py parallel readers and lanes", { timeout: 
     const between = f.next();
     expect(between).toMatchObject({ needs: "brief", dispatch: "d-002", readers_running: ["d-001"] });
     expect(between.pending_delegations.map((d: { dispatch: string }) => d.dispatch)).toEqual(["d-001"]);
+    // Ready set: the unsent delegation of d-001 and d-002's brief, side by side.
+    expect(between.items.map((i: { needs: string; dispatch: string }) => [i.needs, i.dispatch])).toEqual([["delegation", "d-001"], ["brief", "d-002"]]);
     // `run` without --dispatch starts the next reader instead of repeating d-001's envelope.
     const second = JSON.parse(f.run("run").stdout);
     expect(second).toMatchObject({ needs: "delegation", dispatch: "d-002" });
-    expect(f.next()).toMatchObject({ needs: "delegation" });
+    const both = f.next();
+    expect(both).toMatchObject({ needs: "delegation" });
+    expect(both.items.map((i: { needs: string; dispatch: string }) => [i.needs, i.dispatch])).toEqual([["delegation", "d-001"], ["delegation", "d-002"]]);
     // Asking for d-001 again returns its own envelope, not a new delegation.
     expect(JSON.parse(f.run("run", "--dispatch", "d-001").stdout)).toMatchObject({ dispatch: "d-001", request_path: first.request_path });
 

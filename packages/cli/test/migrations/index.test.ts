@@ -325,11 +325,27 @@ describe("0.5.0 manifest", () => {
 // =============================================================================
 
 describe("0.6.0 manifest", () => {
-  it("is the package version, reached from 0.5.0, with no migrations and no config section", () => {
-    expect(VERSION).toBe("0.6.0");
+  it("is reached from 0.5.0, with no migrations and no config section", () => {
     expect(getAllMigrationVersions()).toContain("0.6.0");
     expect(getMigrationsForVersion("0.5.0", "0.6.0")).toEqual([]);
     expect(getMigrationMetadata("0.5.0", "0.6.0").breaking).toBe(false);
     expect(getConfigSectionsAddedBetween("0.5.0", "0.6.0")).toEqual([]);
+  });
+});
+
+// =============================================================================
+// 0.7.0 — ready set, integration branch, merge checks, merge asks by default
+// =============================================================================
+
+describe("0.7.0 manifest", () => {
+  it("is the package version, reached from 0.6.0 without migrations, and the light mandate asks before merging", () => {
+    expect(VERSION).toBe("0.7.0");
+    expect(getAllMigrationVersions()).toContain("0.7.0");
+    expect(getMigrationsForVersion("0.6.0", "0.7.0")).toEqual([]);
+    expect(getMigrationMetadata("0.6.0", "0.7.0").breaking).toBe(false);
+    expect(getConfigSectionsAddedBetween("0.6.0", "0.7.0")).toEqual([]);
+    const section = extractConfigSection(configYamlTemplate, "Mandate");
+    expect(section).toMatch(/light:\n(?: {4}\w+: \w+\n)*? {4}merge: ask\n/);
+    expect(section.split("\n").filter((l) => !l.startsWith("#")).join("\n")).not.toContain("merge: auto");
   });
 });

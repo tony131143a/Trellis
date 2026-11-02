@@ -328,14 +328,36 @@ def _start_in_worktree(args: argparse.Namespace, task_dir: Path, repo_root: Path
 
     config = read_arbor_config(main)
     from common import execution as ex
+    from common.driver import integration as ig
+    if isinstance(data.get("integration"), dict) and not data["integration"].get("cleaned"):
+        print(colored(f"Error: {name} is a parent with an integration branch "
+                      f"({data['integration'].get('branch')}); start its children instead", Colors.RED))
+        return 1
     try:
         binding = ex.prepare(main, task_dir, data, config, getattr(args, "execution", None),
                              getattr(args, "base_ref", None), getattr(args, "merge_target", None))
     except ex.ExecutionError as e:
         print(colored(f"Error: {e}", Colors.RED))
         return 1
+    # A child of an unstarted parent is cut from the parent's integration branch
+    # and merges back into it (arbor finish, no human merge); only the
+    # integration branch goes into the baseline, by a human. `--base-branch` at
+    # create time opts out.
+    integration = None
+    parent = ig.parent_dir(main, data) if not binding and data.get("base_branch_source") != "explicit" else None
+    if parent is not None:
+        parent_data, _ = read_json_checked(parent / FILE_TASK_JSON)
+        if parent_data and not (parent_data.get("worktree_path") or parent_data.get("state")):
+            try:
+                integration = ig.ensure(main, config, parent)
+            except ig.IntegrationError as e:
+                print(colored(f"Error: {e}", Colors.RED))
+                return 1
+            print(colored(f"✓ Integration branch: {integration['branch']} ({integration['worktree']}), "
+                          f"merged into {integration['base_branch']} by a human at the end", Colors.GREEN))
     try:
-        wt = create_task_worktree(repo_root, task_dir, config)
+        wt = create_task_worktree(repo_root, task_dir, config,
+                                  integration["branch"] if integration else "HEAD")
     except WorktreeError as e:
         print(colored(f"Error: {e}", Colors.RED))
         return 1
@@ -388,6 +410,11 @@ def _start_in_worktree(args: argparse.Namespace, task_dir: Path, repo_root: Path
     })
     if binding:
         data.update({key: binding[key] for key in ("worktree_path", "branch", "base", "base_branch")})
+    elif integration:
+        data["base_branch"] = integration["branch"]
+        data["base_branch_source"] = "integration"
+        data["integration_target"] = {"parent": parent.name, "branch": integration["branch"],
+                                      "worktree": integration["worktree"]}
     elif data.get("base_branch_source") != "explicit":
         # The task branch was just cut from the checked-out branch, and that is
         # where `finish` merges it back; a default stamped at create time

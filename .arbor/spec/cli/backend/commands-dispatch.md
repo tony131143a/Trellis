@@ -46,7 +46,7 @@ prompt --dispatch d-NNN [--print]
 bind --request FILE --task-id ID
 collect --request FILE --result FILE [--accept-new-control-task NAME] [--reason TEXT]
 finish [--pr]
-children [--json]
+children [--json] [--cleanup]
 ```
 
 | Global option | Contract |
@@ -69,7 +69,7 @@ children [--json]
 | `bind` | Bind a prepared MCP request to the returned codeg task id. |
 | `collect` | Validate the complete terminal MCP JSON and advance; optional sibling-task acceptance requires `--reason`. |
 | `finish` | In FINISH, write the scorecard and print the merge command, or use `--pr` to push/open a PR with gh. After merge, clean up, archive and journal; repeated calls continue missing steps. |
-| `children` | List each child's state and merge status; `--json` emits structured output. |
+| `children` | List each child's state and merge status and the parent's integration branch; `--json` emits structured output; `--cleanup`, after a human merged the integration branch into the baseline, writes the journal entry and removes its worktree and branch. |
 
 ## 3. Contracts
 
@@ -98,21 +98,36 @@ children [--json]
   (`ask` | `auto`, from `mandate:` in `.arbor/config.yaml` per tier or
   `task.py create --mandate`) says whether the gate asks the user; with `auto`
   the driver records `decide skip` for PLAUSIBLE findings, resumes the first
-  STOP of a task and `finish` merges a small clean branch itself
-  (`common/driver/mandate.py`).
+  STOP of a task and `finish` merges a small, in-scope, reviewed branch itself
+  (`common/driver/mandate.py`). Merge into the baseline defaults to `ask` in
+  every tier. After start, `next --json` also carries the ready set: `items`
+  (every actionable step: the current one, every other partition needing a
+  brief, unbound MCP requests), `running` (in-flight dispatches) and
+  `blocked_on` when nothing is actionable. The driver computes it; the caller
+  acts on every item, then waits.
+- **Merge checks.** Before a wave merge, a partition branch changing files
+  outside its paths, the test paths and the task directory becomes
+  `human.kind=merge_conflict` with `reason: scope`. Before any automatic merge
+  of a task branch, the same scope check holds and the last review PASS must
+  cover every product commit (`common/driver/integration.py`).
 - **Planning.** Before start, `run --role explore|architect|review` performs
   CONTRACT research without a diff range or commits. Explore/architect may write
   task research; review is read-only. With no task, only explore accepts a brief
   on stdin. Started-task writers commit in their assigned worktree with the
   dispatch trailer; the driver records observations for caller judgment.
-- **Parent integration.** Inspect `children`, drive each ready child from its
-  own session (`--task <child>`), and merge children in dependency order. If a later child predates an earlier
-  merge, integrate the base into that child and rerun its `gate` before the user
-  merges it with `--no-ff`. After all children merge, use the parent's
-  `next --role review --json` brief, then
-  `run --role review --mode sweep --range <before-first-merge>..<base>`.
-  Resolve findings, run the parent's `gate`, then archive the parent. Tree
-  position alone does not encode dependencies; write them in child contracts.
+- **Parent integration.** The first started child of an unstarted parent
+  creates the integration branch `arbor/<parent>` and its worktree (recorded in
+  the parent's `task.json.integration`); children are cut from it, and a
+  child's second `finish` merges it back `--no-ff` without a human after a
+  catch-up merge, the gate and the merge checks. A failed check records
+  `merge_blocked` and prints the merge command (`human.kind=merge`, mandate
+  `ask`). A child created with `--base-branch` opts out. After all children
+  merge, use the parent's `next --role review --json` brief, then
+  `run --role review --mode sweep --range <sweep_range>`, run the parent's
+  `gate` (in the integration worktree), let the user merge the integration
+  branch into the baseline, then `children --cleanup` and archive the parent.
+  Tree position alone does not encode dependencies; write them in child
+  contracts.
 
 ## 4. Validation & Error Matrix
 

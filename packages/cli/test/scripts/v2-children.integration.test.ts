@@ -26,7 +26,7 @@ describe.skipIf(!hasPython())("arbor.py children / parent sweep review / parent 
     f = setupFixture({ start: false });
     const parentDir = f.taskDir;
     const created = taskPy(f, "create", "Child A", "--description", "first deliverable", "--slug", "childa",
-      "--parent", parentDir, "--tier", "light", "--no-start");
+      "--parent", parentDir, "--tier", "light", "--no-start", "--base-branch", "main");
     expect(created.status, created.stdout + created.stderr).toBe(0);
     const parent = f.taskJson();
     expect(parent.children).toHaveLength(1);
@@ -43,7 +43,8 @@ describe.skipIf(!hasPython())("arbor.py children / parent sweep review / parent 
     expect(rows[0]).toMatchObject({ task: child, found: true, started: false, status: "planning" });
     expect(rows[0]).not.toHaveProperty("conductor");
 
-    // Started child: moved into its worktree; still listed.
+    // Started child (explicit --base-branch: no integration branch): moved
+    // into its worktree; still listed.
     const started = taskPy(f, "start", child);
     expect(started.status, started.stdout + started.stderr).toBe(0);
     rows = JSON.parse(f.run("--task", parentDir, "children", "--json").stdout).children;

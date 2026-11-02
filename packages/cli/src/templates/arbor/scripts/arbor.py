@@ -93,6 +93,7 @@ from common.driver import partitions as pt
 from common.driver import autopilot
 from common.driver import mcp
 from common.driver import finish as fin
+from common.driver import integration as ig
 from common.driver import mandate as md
 from common.driver import state as sm
 from common.driver import validate as rv
@@ -106,7 +107,7 @@ from common.log import Colors, colored
 from common.paths import DIR_TASKS, DIR_WORKFLOW, FILE_TASK_JSON
 from common.task_utils import started_copy_by_name
 from common.tasks import resolve_tier
-from common.worktree import (WorktreeError, branch_prefix, is_ancestor, main_checkout, partition_branch, partition_worktree_path,
+from common.worktree import (WorktreeError, branch_prefix, is_ancestor, main_checkout, partition_branch, partition_worktree_path, remove_worktree,
                              worktree_root)
 
 RUNTIME = f"{DIR_WORKFLOW}/.runtime"
@@ -511,14 +512,17 @@ def next_payload(ctx: Ctx | None, partition: str | None = None, role: str | None
         pending = None  # other readers of the batch still wait for their brief; poll this one alongside
     if pending:
         path, record = pending
-        return {"task": ctx.name, "state": record["state"], "needs": "delegation",
-                "dispatch": record["dispatch"], "role": record["role"], "request_path": str(path),
-                "task_id": record.get("task_id"), "started": ctx.started,
-                "delegation_started": record["started"],
-                "pending_delegations": planning_runs(ctx),
-                "summary": f"MCP delegation {record['dispatch']}: " + (
-                    f"poll/resume task {record['task_id']}, then arbor collect --request {path} --result <file>"
-                    if record.get("task_id") else f"read {path}, call codeg MCP once, then arbor bind")}
+        out = {"task": ctx.name, "state": record["state"], "needs": "delegation",
+               "dispatch": record["dispatch"], "role": record["role"], "request_path": str(path),
+               "task_id": record.get("task_id"), "started": ctx.started,
+               "delegation_started": record["started"],
+               "pending_delegations": planning_runs(ctx),
+               "summary": f"MCP delegation {record['dispatch']}: " + (
+                   f"poll/resume task {record['task_id']}, then arbor collect --request {path} --result <file>"
+                   if record.get("task_id") else f"read {path}, call codeg MCP once, then arbor bind")}
+        if ctx.started:
+            out.update(ready_set(ctx, _current_step(ctx, partition)))
+        return out
     active_planning = [] if reader_running else planning_runs(ctx)
     if active_planning:
         return {"task": ctx.name, "state": "CONTRACT", "started": ctx.started, "needs": "wait",
@@ -535,10 +539,7 @@ def next_payload(ctx: Ctx | None, partition: str | None = None, role: str | None
                            "approval run `task.py start`"}
     data = ctx.data
     sm.reap_stale(data, pid_alive)  # in memory only; the next locked write persists it
-    if data.get("state") == "FINISH" and not data.get("override_role") and not data.get("report_pending"):
-        step = fin.plan_finish(ctx.main, ctx.task_dir, data)
-    else:
-        step = plan_for(ctx, partition)
+    step = _current_step(ctx, partition)
     unit = ctx.unit(step.partition)
     out: dict = {"task": ctx.name, "state": data["state"], "tier": ctx.tier, "wave": data.get("wave", 1),
                  "partition": unit.label, "partitions_pending": list(step.pending), "needs": step.needs}
@@ -561,16 +562,96 @@ def next_payload(ctx: Ctx | None, partition: str | None = None, role: str | None
     if step.decision:
         out["decision"] = step.decision
     if step.human:
-        out["human"] = dict(step.human)
-        gate = md.HUMAN_KIND_GATE.get(step.human.get("kind"))
-        out["human"]["mandate"] = ctx.mandate[gate] if gate else "ask"
+        out["human"] = _human(ctx, step.human)
     out["touched_files"] = touched_files(ctx, unit.worktree)
+    ready = ready_set(ctx, step)
+    out.update(ready)
     summary = step.summary
     if step.pending:
         limit = _max_parallel(ctx.config)
         summary += (f"; also ready: {', '.join(step.pending)} (brief each from `next --partition P`, then "
                     f"`arbor run --partition P` in parallel{f', at most {limit} at once' if limit else ''})")
+    if len(ready["items"]) > 1:
+        summary += (f"; {len(ready['items'])} items ready: act on every one (brief each at its brief_path, "
+                    "dispatch them all), then wait once for the running ones")
     out["summary"] = summary
+    return out
+
+
+def _current_step(ctx: Ctx, partition: str | None = None) -> sm.Step:
+    data = ctx.data
+    if data.get("state") == "FINISH" and not data.get("override_role") and not data.get("report_pending"):
+        return fin.plan_finish(ctx.main, ctx.task_dir, data)
+    return plan_for(ctx, partition)
+
+
+def _human(ctx: Ctx, human: dict) -> dict:
+    """``human`` plus the mandate of its gate; a blocked automatic merge always asks."""
+    out = dict(human)
+    gate = md.HUMAN_KIND_GATE.get(human.get("kind"))
+    out["mandate"] = "ask" if human.get("blocked") else (ctx.mandate[gate] if gate else "ask")
+    return out
+
+
+def _item(ctx: Ctx, step: sm.Step) -> dict:
+    unit = ctx.unit(step.partition)
+    item: dict = {"needs": step.needs, "partition": unit.label, "summary": step.summary}
+    if step.role:
+        dispatch = step.dispatch or next_dispatch_id(ctx.data, ctx.task_dir)
+        item.update(role=step.role, mode=step.mode, dispatch=dispatch, brief_path=str(brief_path(ctx, dispatch)))
+        if step.role in RANGE_ROLES and step.range_from:
+            item["range"] = f"{step.range_from}..{head(ctx, unit.worktree)}"
+    if step.action:
+        item["action"] = step.action
+    if step.decision:
+        item["decision"] = step.decision
+    if step.human:
+        item["human"] = _human(ctx, step.human)
+    return item
+
+
+def ready_set(ctx: Ctx, step: sm.Step | None) -> dict:
+    """The task's ready set, computed by the driver from its state (the main
+    agent never adds to it): ``items`` = every step that can be acted on now
+    (unbound MCP delegations, the current step and every other partition
+    needing a brief), ``running`` = what is in flight, ``blocked_on`` = what
+    the task waits for when there is nothing to act on."""
+    items: list[dict] = []
+    running: list[dict] = []
+    default_busy = False
+    readers = sm.batch_of(ctx.data).get("running") or {}
+    for path in (ctx.data.get("mcp_pending") or {}).values():
+        _, record = mcp.load(ctx.main, path)
+        entry = {"dispatch": record["dispatch"], "role": record["role"],
+                 "partition": record.get("partition") or "default", "request_path": str(path)}
+        if record.get("task_id"):
+            running.append({**entry, "kind": "delegation", "task_id": record["task_id"]})
+        else:
+            items.append({"needs": "delegation", **entry,
+                          "summary": f"delegate {record['dispatch']} once with codeg MCP delegate_to_agent "
+                                     f"(arguments in {path}), then bind its task_id"})
+        # a reader of the current batch runs alongside the rest of its batch
+        default_busy = default_busy or not (record.get("partition") or record["dispatch"] in readers)
+    listed = {r["dispatch"] for r in running} | {i["dispatch"] for i in items}
+    running += [{"dispatch": d, "kind": "command", "partition": "default"} for d in sorted(readers) if d not in listed]
+    for name, rec in (ctx.data.get("partitions") or {}).items():
+        run = rec.get("running")
+        if isinstance(run, dict) and not run.get("external"):
+            running.append({"dispatch": run.get("dispatch"), "partition": name, "kind": "command"})
+    running += [{"dispatch": r["dispatch"], "role": r["role"], "kind": "command", "partition": "default"}
+                for r in planning_runs(ctx) if r.get("kind") == "contract"]
+    if step is not None and step.needs != "wait" and not (default_busy and step.partition is None):
+        items.append(_item(ctx, step))
+        for dispatch in step.batch[1:]:  # the other readers of a reader batch, each with its own brief
+            items.append({**items[-1], "dispatch": dispatch, "brief_path": str(brief_path(ctx, dispatch))})
+        for name in step.pending:
+            other = plan_for(ctx, name)
+            if other.needs == "brief":
+                items.append(_item(ctx, other))
+    out: dict = {"items": items, "running": running}
+    if not items:
+        out["blocked_on"] = (step.summary if step is not None and step.needs == "wait"
+                             else "waiting for " + ", ".join(str(r["dispatch"]) for r in running))
     return out
 
 
@@ -589,6 +670,13 @@ def cmd_next(args: argparse.Namespace) -> int:
         print(f"  decision: {json.dumps(payload['decision'])}")
     if payload.get("touched_files"):
         print(f"  touched: {', '.join(payload['touched_files'])}")
+    if len(payload.get("items") or []) > 1:
+        print("  ready:")
+        for item in payload["items"]:
+            what = item.get("role") or item.get("needs")
+            print(f"    {item.get('dispatch') or '-':<7} {what:<10} [{item.get('partition')}] {item.get('brief_path') or ''}")
+    for run in payload.get("running") or []:
+        print(f"  running: {run.get('dispatch')} [{run.get('partition')}] {run.get('task_id') or run.get('kind')}")
     return 0
 
 
@@ -1310,6 +1398,13 @@ def _merge_remaining(ctx: Ctx) -> int:
     rc, dirty, _ = run_git(["status", "--porcelain", "--", ".", f":(exclude){ctx.task_rel}"], cwd=ctx.worktree)
     if rc == 0 and dirty.strip():
         raise DriverError(f"uncommitted changes in {ctx.worktree}; commit or discard them before the merge")
+    escape = _scope_escape(ctx, order)
+    if escape:
+        sm.on_merge_conflict(data, escape)
+        save(ctx)
+        commit_task_dir(ctx, f"arbor({ctx.name}): wave {wave} partition {escape['partition']} outside its paths")
+        print(colored(plan_for(ctx).summary, Colors.RED))
+        return 1
     result = pt.merge_partitions(ctx.worktree, ctx.name, wave, order, data["partitions"])
     for name, sha in result.merged:
         sm.on_partition_merged(data, name, sha)
@@ -1330,6 +1425,24 @@ def _merge_remaining(ctx: Ctx) -> int:
     commit_task_dir(ctx, f"arbor({ctx.name}): wave {wave} merged")
     print(colored(f"wave {wave} merged: {plan_for(ctx).summary}", Colors.GREEN))
     return 0
+
+
+def _scope_escape(ctx: Ctx, order: list[str]) -> dict | None:
+    """The first unmerged partition whose branch changed files outside its paths
+    (the test paths and the task directory aside): the merge-time scope check."""
+    if ctx.data.get("execution_binding"):
+        return None
+    contract = require_contract(ctx)
+    test_paths = effective_test_paths(contract, get_test_paths(ctx.config))
+    for name in order:
+        rec = ctx.data["partitions"][name]
+        if rec.get("merged") or sm.is_lane(ctx.data, name):
+            continue  # lanes have no declared paths
+        globs = ig.scope_globs(_partition_paths(contract, name), test_paths, ctx.task_rel)
+        files = ig.out_of_scope(ctx.worktree, f"{rec.get('base') or ctx.branch}..{rec['branch']}", globs)
+        if files:
+            return {"partition": name, "branch": rec["branch"], "into": ctx.branch, "files": files, "reason": "scope"}
+    return None
 
 
 def merge_wave(ctx: Ctx) -> int:
@@ -1402,6 +1515,10 @@ def cmd_run_contract(args: argparse.Namespace) -> int:
             brief = brief_file.read_text(encoding="utf-8") if brief_file.is_file() else ""
             if not brief.strip():
                 raise DriverError(f"write the brief first: {brief_file}")
+            record = _live_integration(ctx) if mode == "sweep" else None
+            if record:
+                brief = (f"The merged children are checked out at {record['worktree']} (branch {record['branch']}); "
+                         "read the code there, not in the main checkout.\n\n" + brief)
             task_dir = ctx.task_dir
             worktree = ctx.control_worktree if ctx.started else main
             task_rel = task_dir.relative_to(worktree).as_posix()
@@ -1507,7 +1624,11 @@ def _gate_parent(ctx: Ctx) -> int:
     contract_path = find_contract(ctx.task_dir)
     if contract_path is None:
         raise DriverError(f"{ctx.name} has no contract.md")
-    result = run_gate(get_gate_commands(ctx.config), load_contract(contract_path), ctx.main)
+    record = _live_integration(ctx)
+    where = Path(record["worktree"]) if record and Path(record["worktree"]).is_dir() else ctx.main
+    if where != ctx.main:
+        print(f"gate in the integration worktree {where} ({record['branch']})")
+    result = run_gate(get_gate_commands(ctx.config), load_contract(contract_path), where)
     print(format_checks(result.checks) or "no gate commands and no auto checks")
     print(colored(f"failing: {' '.join(result.failing)}", Colors.RED) if result.failing
           else colored("gate green", Colors.GREEN))
@@ -1678,6 +1799,10 @@ def _resume_merge(ctx: Ctx) -> int:
     if rc == 0:
         raise DriverError(f"a merge is still in progress in {ctx.worktree}; finish it with `git commit` first")
     if not is_ancestor(ctx.worktree, conflict["branch"]):
+        if conflict.get("reason") == "scope":
+            # Not accepted by a hand merge: the branch was corrected; check it again.
+            ctx.data.pop("merge_conflict")
+            return _merge_remaining(ctx)
         raise DriverError(f"{conflict['branch']} is not merged into {conflict.get('into')} yet: run "
                           f"`git merge --no-ff {conflict['branch']}` in {ctx.worktree}, resolve, commit")
     name = sm.on_conflict_resolved(ctx.data, head(ctx))
@@ -1724,11 +1849,15 @@ def cmd_abandon(args: argparse.Namespace) -> int:
 # =============================================================================
 
 
-def find_task_anywhere(main: Path, config: dict, name: str) -> tuple[Path, dict] | None:
-    """A task directory by name: main checkout, its task worktree, or the archive."""
+def find_task_anywhere(main: Path, config: dict, name: str, roots: tuple[Path, ...] = ()) -> tuple[Path, dict] | None:
+    """A task directory by name: main checkout, its task worktree, the archive,
+    then the same places in ``roots`` (a parent's integration worktree)."""
     candidates = [main / DIR_WORKFLOW / DIR_TASKS / name,
                   worktree_root(main, config) / name / DIR_WORKFLOW / DIR_TASKS / name,
                   *sorted((main / DIR_WORKFLOW / DIR_TASKS / "archive").glob(f"*/{name}"))]
+    for root in roots:
+        candidates += [root / DIR_WORKFLOW / DIR_TASKS / name,
+                       *sorted((root / DIR_WORKFLOW / DIR_TASKS / "archive").glob(f"*/{name}"))]
     for task_dir in candidates:
         data, _ = read_json_checked(task_dir / FILE_TASK_JSON) if (task_dir / FILE_TASK_JSON).is_file() else (None, "")
         if data is not None:
@@ -1736,13 +1865,82 @@ def find_task_anywhere(main: Path, config: dict, name: str) -> tuple[Path, dict]
     return None
 
 
+def _live_integration(ctx: Ctx) -> dict | None:
+    record = ctx.data.get("integration")
+    return record if isinstance(record, dict) and not record.get("cleaned") else None
+
+
+def _integration_view(ctx: Ctx, rows: list[dict]) -> dict | None:
+    record = ctx.data.get("integration")
+    if not isinstance(record, dict):
+        return None
+    view = {**record, "children_merged": sum(1 for r in rows if r.get("merged")),
+            "all_merged": bool(rows) and all(r.get("merged") for r in rows)}
+    if record.get("cleaned"):
+        return view
+    branch, base = record["branch"], record["base_branch"]
+    view["merged_into_base"] = fin.branch_exists(ctx.main, branch) and fin.is_merged(ctx.main, branch, base)
+    view["sweep_range"] = f"{record['base']}..{branch}"
+    view["merge_command"] = fin.merge_command(ctx.main, branch, base)
+    return view
+
+
+def _integration_cleanup(ctx: Ctx) -> int:
+    """After a human merged the integration branch into the baseline: one journal
+    entry for the parent, then the integration worktree and branch go."""
+    record = ctx.data.get("integration")
+    if not isinstance(record, dict):
+        raise DriverError(f"{ctx.name} has no integration branch")
+    if record.get("cleaned"):
+        print(f"{record['branch']}: already cleaned up ({record['cleaned']})")
+        return 0
+    branch, base, wt = record["branch"], record["base_branch"], Path(record["worktree"])
+    if not fin.branch_exists(ctx.main, branch) or not fin.is_merged(ctx.main, branch, base):
+        raise DriverError(f"{branch} is not merged into {base} yet; a human merges it first: "
+                          f"{fin.merge_command(ctx.main, branch, base)}")
+    if wt.exists() and fin.dirty_paths(wt):
+        raise DriverError(f"the integration worktree {wt} has uncommitted changes; commit or discard them first:\n  "
+                          + "\n  ".join(fin.dirty_paths(wt)))
+    tip = fin._git(ctx.main, "rev-parse", f"refs/heads/{branch}")
+    merged_by = fin.merge_commit(ctx.main, tip, base)
+    children = record.get("merged") or []
+    changes = [arg for m in children for arg in ("--change", f"{m.get('task')}: {m.get('summary')}")]
+    rc, out = fin._script(
+        ctx.main, "add_session.py", "--title", str(ctx.data.get("title") or ctx.name), "--commit", merged_by,
+        "--summary", f"{len(children)} child task(s) merged through {branch}", "--branch", base,
+        "--change", f"Merged {branch} into {base} ({merged_by[:12]})", *changes,
+        "--idempotency-key", f"arbor-integration-{ctx.name}"[:64],
+    )
+    if rc != 0:
+        raise DriverError(f"add_session.py failed:\n{out}")
+    print("  journal: ok")
+    try:
+        if wt.exists():
+            remove_worktree(ctx.main, wt, delete_branch=True)
+        else:
+            fin._git(ctx.main, "worktree", "prune")
+            fin._git(ctx.main, "branch", "-D", branch)
+    except WorktreeError as e:
+        raise DriverError(str(e)) from None
+    print(f"  removed {wt} and {branch}")
+    record["cleaned"] = utc_now()
+    record["merge_commit"] = merged_by
+    save(ctx)
+    print(colored(f"{ctx.name}: integration done; archive it with `task.py archive {ctx.name}`", Colors.GREEN))
+    return 0
+
+
 def cmd_children(args: argparse.Namespace) -> int:
     ctx = load_ctx(args.task)
     if ctx is None:
         raise DriverError("no active task (pass --task <parent>)")
+    if getattr(args, "cleanup", False):
+        return _integration_cleanup(ctx)
+    record = ctx.data.get("integration") if isinstance(ctx.data.get("integration"), dict) else None
+    roots = (Path(record["worktree"]),) if record and Path(record["worktree"]).is_dir() else ()
     rows = []
     for name in ctx.data.get("children") or []:
-        found = find_task_anywhere(ctx.main, ctx.config, name)
+        found = find_task_anywhere(ctx.main, ctx.config, name, roots)
         row: dict = {"task": name, "found": found is not None}
         if found:
             task_dir, data = found
@@ -1750,13 +1948,19 @@ def cmd_children(args: argparse.Namespace) -> int:
             row.update({
                 "status": data.get("status"), "started": started, "tier": resolve_tier(task_dir, data),
                 "state": data.get("state"), "step": sm.step_of(data) if started else None,
-                "merged": (fin.is_merged(ctx.main, data["branch"], data.get("base_branch") or fin.current_branch(ctx.main) or "")
-                           if started and data.get("branch") else None),
+                "merged": (True if data.get("state") == "DONE" else
+                           fin.is_merged(ctx.main, data["branch"], data.get("base_branch") or fin.current_branch(ctx.main) or "")
+                           if started and data.get("branch") and fin.branch_exists(ctx.main, data["branch"]) else
+                           False if started else None),
+                "merge_target": data.get("base_branch"),
                 "dir": str(task_dir),
             })
+            if record and started and data.get("state") != "DONE" and fin.branch_exists(ctx.main, data["branch"]):
+                row["behind"] = not fin.is_merged(ctx.main, record["branch"], data["branch"])
         rows.append(row)
+    view = _integration_view(ctx, rows)
     if args.json:
-        print(json.dumps({"task": ctx.name, "children": rows}, ensure_ascii=False))
+        print(json.dumps({"task": ctx.name, "children": rows, "integration": view}, ensure_ascii=False))
         return 0
     print(colored(f"{ctx.name}: {len(rows)} children", Colors.BLUE))
     for row in rows:
@@ -1764,8 +1968,19 @@ def cmd_children(args: argparse.Namespace) -> int:
             print(f"  {row['task']}: not found")
             continue
         where = f"{row['state']}/{row['step']}" if row["started"] else row["status"]
-        merged = " merged" if row["merged"] else ""
-        print(f"  {row['task']}: {where} [{row['tier']}]{merged}")
+        merged = f" merged into {row.get('merge_target')}" if row["merged"] else ""
+        behind = " (behind the integration branch)" if row.get("behind") else ""
+        print(f"  {row['task']}: {where} [{row['tier']}]{merged}{behind}")
+    if view and view.get("cleaned"):
+        print(f"  integration: {view['branch']} merged and cleaned up ({view['cleaned']})")
+    elif view:
+        print(f"  integration: {view['branch']} at {view['worktree']} -> {view['base_branch']}, "
+              f"{view['children_merged']}/{len(rows)} children merged")
+        if view["merged_into_base"]:
+            print(f"  merged into {view['base_branch']}: `arbor --task {ctx.name} children --cleanup`")
+        elif view["all_merged"]:
+            print(f"  every child is merged: integration review over {view['sweep_range']}, `arbor --task {ctx.name} gate`, "
+                  f"then a human merges it: {view['merge_command']}")
     return 0
 
 
@@ -1801,11 +2016,22 @@ def cmd_finish(args: argparse.Namespace) -> int:
         print(colored(f"{ctx.branch} is merged: cleaning up", Colors.BLUE))
         return fin.cleanup(ctx.main, fin.start_cleanup(ctx.main, ctx.task_dir, ctx.data))
     mandate = ctx.mandate
+    contract = require_contract(ctx)
+    scope = ig.scope_globs([g for part in contract.partitions for g in part.paths],
+                           effective_test_paths(contract, get_test_paths(ctx.config)), ctx.task_rel)
+
+    def gate() -> list[str]:
+        result = run_gate(get_gate_commands(ctx.execution_config), contract, ctx.worktree)
+        print(format_checks(result.checks) or "no gate commands and no auto checks")
+        return result.failing
+
     rc = fin.finish_before_merge(ctx.main, ctx.worktree, ctx.task_dir, ctx.task_rel, ctx.data, ctx.tier,
                                  want_pr=args.pr, save=lambda: save(ctx),
                                  auto_merge_max_lines=mandate["auto_merge_max_lines"]
-                                 if mandate["merge"] == "auto" and not args.pr else None)
-    if rc == 0 and ctx.data.get("auto_merge") and fin.is_merged(ctx.main, ctx.branch, fin.base_branch_of(ctx.main, ctx.data)):
+                                 if mandate["merge"] == "auto" and not args.pr else None,
+                                 scope=scope, gate=gate)
+    merged_itself = ctx.data.get("auto_merge") or ctx.data.get("integration_merge")
+    if rc == 0 and merged_itself and fin.is_merged(ctx.main, ctx.branch, fin.base_branch_of(ctx.main, ctx.data)):
         print(colored(f"{ctx.branch} is merged: cleaning up", Colors.BLUE))
         return fin.cleanup(ctx.main, fin.start_cleanup(ctx.main, ctx.task_dir, ctx.data))
     return rc
@@ -1982,8 +2208,10 @@ def main(argv: list[str] | None = None) -> int:
                    help="explicitly accept only a newly created sibling task in control main; audit hashes are recorded")
     p.add_argument("--reason", help="required justification for --accept-new-control-task")
     p.set_defaults(func=cmd_collect)
-    p = sub.add_parser("children", help="one line per child task: state, merged")
+    p = sub.add_parser("children", help="one line per child task: state, merged; the parent's integration branch")
     p.add_argument("--json", action="store_true")
+    p.add_argument("--cleanup", action="store_true",
+                   help="after a human merged the integration branch: journal, remove its worktree and branch")
     p.set_defaults(func=cmd_children)
     p = sub.add_parser("finish", help="FINISH: scorecard + PR / merge command; cleanup after the merge")
     p.add_argument("--pr", action="store_true", help="push the task branch and open a PR with gh")

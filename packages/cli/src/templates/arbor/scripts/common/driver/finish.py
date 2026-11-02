@@ -9,10 +9,18 @@ cleanup.
                    the local ``merge --no-ff`` command. Nothing else pushes.
     merge          a human merges the task branch into ``base_branch``
                    (``git merge-base --is-ancestor`` in the main checkout).
+                   A child of a parent task targets the parent's integration
+                   branch instead: the second ``arbor finish`` catches the
+                   child up with it, runs the gate and the merge checks, and
+                   merges it ``--no-ff`` itself (``integration.py``); a failed
+                   check leaves a human merge with the reason.
     after merge    ``arbor finish`` removes the task worktree and branch (never
                    forced: a dirty worktree stops it), sets ``state: DONE`` in
-                   the merged copy of task.json, archives the task, clears the
-                   session pointer and writes the journal entry -> DONE.
+                   the merged copy of task.json (in the checkout of the target
+                   branch), archives the task there, clears the session
+                   pointer and writes the journal entry -> DONE. A child merged
+                   into an integration branch records itself on the parent
+                   instead of writing the journal (the baseline stays untouched).
 
 Every step is idempotent. Cleanup progress lives in
 ``<main>/.arbor/.runtime/finish/<task>.json`` so a re-run continues at the
@@ -36,7 +44,9 @@ from ..contract import find_contract, load_contract
 from ..git import run_git
 from ..io import read_json_checked, write_json
 from ..paths import DIR_TASKS, DIR_WORKFLOW, FILE_TASK_JSON
-from ..worktree import WorktreeError, remove_worktree
+from ..worktree import WorktreeError, is_ancestor, remove_worktree
+from ..worktree import merge_no_ff as merge_into_worktree
+from . import integration as ig
 from . import validate as rv
 from .executor import utc_now
 from .state import Step
@@ -87,6 +97,9 @@ def is_merged(main: Path, branch: str, base_branch: str) -> bool:
 
 
 def merge_command(main: Path, branch: str, base_branch: str) -> str:
+    landing = ig.checkout_of(main, base_branch)
+    if landing is not None and landing.resolve() != main.resolve():
+        return f"git -C {landing} merge --no-ff {branch}"
     cmd = f"git -C {main} merge --no-ff {branch}"
     if current_branch(main) != base_branch:
         cmd = f"git -C {main} checkout {base_branch} && {cmd}"
@@ -339,6 +352,14 @@ def plan_finish(main: Path, task_dir: Path, data: dict) -> Step:
     if branch_exists(main, branch) and is_merged(main, branch, base):
         return Step("run", "FINISH: merged: `arbor finish` to clean up")
     command = merge_command(main, branch, base)
+    if data.get("integration_target"):
+        blocked = data.get("merge_blocked")
+        if blocked:
+            return Step("human", f"FINISH: automatic merge into {base} blocked ({blocked.get('reason')}); "
+                        f"check it with the user, then fix the branch and `arbor finish`, or merge by hand: "
+                        f"`{command}`", human={"kind": "merge", "command": command, "into": base, "blocked": blocked})
+        return Step("run", f"FINISH: `arbor finish` merges {branch} into {base} "
+                    "(integration branch: catch-up, gate, merge checks, no human merge)", action="finish")
     pr = data.get("pr_url")
     how = (f"merge PR {pr} with a merge commit, then update {base} in {main}" if pr
            else f"merge with `{command}`")
@@ -350,6 +371,8 @@ def finish_stage(main: Path, task_dir: Path, data: dict) -> str:
     if not (task_dir / SCORECARD).is_file():
         return "scorecard missing (`arbor finish`)"
     step = plan_finish(main, task_dir, data)
+    if step.action == "finish":
+        return f"ready to merge into {data.get('base_branch')} (`arbor finish`)"
     if step.needs == "run":
         return "merged (`arbor finish` cleans up)"
     pr = data.get("pr_url")
@@ -422,6 +445,16 @@ def finish_product(main: Path, task_dir: Path, data: dict, tier: str, *, want_pr
     return 0
 
 
+def merge_checks(worktree: Path, task_rel: str, data: dict, target: str,
+                 scope: tuple[str, ...] | None) -> tuple[str | None, list[str]]:
+    """The checks before any automatic merge of a task branch into ``target``:
+    why they fail (None when they hold) and the files outside the declared scope."""
+    files = ig.out_of_scope(worktree, f"{target}...HEAD", scope)
+    if files:
+        return f"{len(files)} changed file(s) outside the declared paths", files
+    return ig.review_binding_problem(worktree, data.get("last_reviewed"), target, task_rel), []
+
+
 def auto_merge_blocked(main: Path, branch: str, base: str, max_lines: int) -> tuple[str | None, int]:
     """Why the mandate's auto-merge rule does not hold for ``branch`` (None when it
     does), plus the product lines the branch changes."""
@@ -451,8 +484,70 @@ def merge_no_ff(main: Path, branch: str) -> str | None:
     return None
 
 
+def merge_into_integration(main: Path, worktree: Path, task_dir: Path, task_rel: str, data: dict, *,
+                           scorecard_written: bool, save, scope: tuple[str, ...] | None, gate) -> int:
+    """A child into its parent's integration branch, without a human: catch up
+    with the integration branch, gate, merge checks, ``--no-ff`` merge. A failed
+    check is recorded (``merge_blocked``) and leaves the merge to a human."""
+    name, branch = task_dir.name, data["branch"]
+    target = data["integration_target"]
+    into, landing = target["branch"], Path(target["worktree"])
+    if scorecard_written:
+        print(f"merge deferred: {SPEC_REMINDER}; then `arbor finish` again merges {branch} into {into} "
+              "(integration branch, no human merge)")
+        return 0
+
+    def blocked(reason: str, files: list[str] | None = None) -> int:
+        data["merge_blocked"] = {"ts": utc_now(), "into": into, "reason": reason, "files": files or []}
+        save()
+        commit_paths(worktree, task_rel, f"arbor({name}): automatic merge into {into} blocked")
+        print(f"automatic merge into {into} blocked: {reason}")
+        for path in files or []:
+            print(f"  {path}")
+        print(f"merge (human, after checking): {merge_command(main, branch, into)}")
+        return 0
+
+    if not landing.is_dir():
+        return blocked(f"the integration worktree {landing} is missing")
+    if dirty_paths(landing):
+        return blocked(f"the integration worktree {landing} has uncommitted changes")
+    dirty = dirty_paths(worktree)
+    if dirty:
+        print(f"{worktree} has uncommitted changes; commit or discard them, then `arbor finish`:")
+        for path in dirty:
+            print(f"  {path}")
+        return 1
+    if not is_ancestor(worktree, into):
+        caught = merge_into_worktree(worktree, into, f"arbor({name}): catch up with {into}")
+        if not caught.ok:
+            print(f"catching up with {into} conflicts ({', '.join(caught.conflicts) or '-'}): in {worktree} run "
+                  f"`git merge --no-ff {into}`, resolve, commit, then `arbor finish` again")
+            return 1
+        print(f"caught up with {into} ({(caught.sha or '')[:12]})")
+    if gate is not None:
+        failing = gate()
+        if failing:
+            print(f"gate red before the merge into {into}: {', '.join(failing)}; fix it on the task branch "
+                  "(`arbor override --to GATE --reason \"...\"`), then `arbor finish` again")
+            return 1
+    why, files = merge_checks(worktree, task_rel, data, into, scope)
+    if why:
+        return blocked(why, files)
+    data.pop("merge_blocked", None)
+    data["integration_merge"] = {"ts": utc_now(), "into": into, "parent": target.get("parent")}
+    save()
+    commit_paths(worktree, task_rel, f"arbor({name}): merge into {into} (integration branch)")
+    merged = merge_into_worktree(landing, branch, f"merge {branch} into {into}")
+    if not merged.ok:
+        data.pop("integration_merge", None)
+        return blocked(f"the merge into {into} conflicts ({', '.join(merged.conflicts) or '-'})")
+    print(f"merged {branch} into {into} with --no-ff (integration branch)")
+    return 0
+
+
 def finish_before_merge(main: Path, worktree: Path, task_dir: Path, task_rel: str, data: dict, tier: str,
-                        *, want_pr: bool, save, auto_merge_max_lines: int | None = None) -> int:
+                        *, want_pr: bool, save, auto_merge_max_lines: int | None = None,
+                        scope: tuple[str, ...] | None = None, gate=None) -> int:
     name = task_dir.name
     if data.get("execution_binding"):
         return finish_product(main, task_dir, data, tier, want_pr=want_pr, save=save)
@@ -462,6 +557,9 @@ def finish_before_merge(main: Path, worktree: Path, task_dir: Path, task_rel: st
     if commit_paths(worktree, task_rel, f"arbor({name}): scorecard"):
         print(f"committed on {data['branch']}: arbor({name}): scorecard")
     base = base_branch_of(main, data)
+    if data.get("integration_target") and not want_pr:
+        return merge_into_integration(main, worktree, task_dir, task_rel, data, scorecard_written=scorecard_written,
+                                      save=save, scope=scope, gate=gate)
     if data.get("pr_url"):
         print(f"PR: {data['pr_url']}")
     elif want_pr and shutil.which("gh"):
@@ -478,6 +576,10 @@ def finish_before_merge(main: Path, worktree: Path, task_dir: Path, task_rel: st
             print(f"auto-merge deferred: {SPEC_REMINDER}; then `arbor finish` again merges (mandate merge=auto)")
             return 0
         why, lines = auto_merge_blocked(main, data["branch"], base, auto_merge_max_lines)
+        if why is None:
+            why, files = merge_checks(worktree, task_rel, data, base, scope)
+            if files:
+                why += ": " + ", ".join(files[:10])
         if why is None:
             # Recorded and committed on the task branch first, so the merge commit carries it
             # and the worktree stays clean for the cleanup.
@@ -558,13 +660,16 @@ def start_cleanup(main: Path, task_dir: Path, data: dict) -> dict:
         "base_branch": base, "worktree_path": str(worktree), "tip": tip, "merge_commit": merged_by,
         "summary": scorecard_summary(task_dir),
         "gate_rounds": len(gate_rounds(task_dir, data)), "done": [], "product": product_record,
+        # The checkout of the target branch: the merged copy of the task lives there.
+        "landing": str(ig.checkout_of(main, base) or main),
+        "integration_parent": (data.get("integration_target") or {}).get("parent"),
     }
 
 
-def _script(main: Path, script: str, *args: str) -> tuple[int, str]:
+def _script(main: Path, script: str, *args: str, cwd: Path | None = None) -> tuple[int, str]:
     proc = subprocess.run(
         [sys.executable, str(main / DIR_WORKFLOW / "scripts" / script), *args],
-        cwd=main, capture_output=True, text=True, encoding="utf-8", errors="replace",
+        cwd=cwd or main, capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
     return proc.returncode, (proc.stdout + proc.stderr).strip()
 
@@ -617,7 +722,8 @@ def cleanup(main: Path, record: dict) -> int:
             raise FinishError(str(e)) from e
         mark("worktree")
 
-    merged_copy = main / DIR_WORKFLOW / DIR_TASKS / name
+    landing = Path(record.get("landing") or main)
+    merged_copy = landing / DIR_WORKFLOW / DIR_TASKS / name
     if "state" not in done:
         path = merged_copy / FILE_TASK_JSON
         if path.is_file():
@@ -632,7 +738,7 @@ def cleanup(main: Path, record: dict) -> int:
 
     if "archive" not in done:
         if merged_copy.is_dir():
-            rc, out = _script(main, "task.py", "archive", name)
+            rc, out = _script(main, "task.py", "archive", name, cwd=landing)
             if rc != 0:
                 raise FinishError(f"task.py archive {name} failed:\n{out}")
         mark("archive")
@@ -642,6 +748,17 @@ def cleanup(main: Path, record: dict) -> int:
         if rc != 0:
             raise FinishError(f"task.py finish failed:\n{out}")
         mark("pointer")
+
+    if "journal" not in done and record.get("integration_parent"):
+        # The baseline stays untouched until a human merges the integration
+        # branch; the parent writes one journal entry for all its children then.
+        parent = main / DIR_WORKFLOW / DIR_TASKS / record["integration_parent"]
+        try:
+            ig.record_merged(parent, {"task": name, "title": record["title"], "tip": record["tip"],
+                                      "merge_commit": record["merge_commit"], "summary": record["summary"]})
+        except ig.IntegrationError as e:
+            raise FinishError(str(e)) from e
+        mark("journal")
 
     if "journal" not in done:
         short = record["merge_commit"][:12]

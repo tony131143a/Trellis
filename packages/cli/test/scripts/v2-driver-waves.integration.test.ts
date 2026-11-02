@@ -161,7 +161,7 @@ describe.skipIf(!hasPython())("arbor.py waves and partitions", { timeout: 90_000
     expect(git(f.wt, "status", "--porcelain", "--", "src", "tests")).toBe("");
   });
 
-  it("a partition writer outside its paths is reported without rollback; a merge conflict waits for a hand merge and resume", () => {
+  it("a partition writer outside its paths is reported, then stops the merge until reverted; a merge conflict waits for a hand merge and resume", () => {
     const map = "| AC-1 | auto | `test -f a/x.txt` | tests/ac1.sh |\n| AC-2 | manual | read b/y.txt | |";
     f = setupFixture({ contract: contract("- a: a/**\n- b: b/**", "- 1: [a, b]", map, "- tests/**") });
     ok(f.run("run"));
@@ -184,18 +184,26 @@ describe.skipIf(!hasPython())("arbor.py waves and partitions", { timeout: 90_000
     expect(f.next()).toMatchObject({ partition: "b", role: "implement", dispatch: "d-002" });
     f.brief("d-002");
     ok(f.run("run", "--partition", "b"));
-    // a conflict no writer may cause: the same new file committed by hand on both partition branches
+    // a conflict no writer may cause: the same new file (a test path, in scope for both) committed by hand on both branches
     for (const [p, content] of [["a", "A\n"], ["b", "B\n"]]) {
-      writeFile(partitionWt(f, p), "shared.txt", content);
-      git(partitionWt(f, p), "add", "shared.txt");
+      writeFile(partitionWt(f, p), "tests/shared.txt", content);
+      git(partitionWt(f, p), "add", "tests/shared.txt");
       git(partitionWt(f, p), "commit", "-q", "-m", "shared");
     }
-    const merge = f.run("run");
+    // the merge-time scope check stops partition a on its stray file, nothing merged
+    const scoped = f.run("run");
+    expect(scoped.status).toBe(1);
+    expect(f.next()).toMatchObject({ needs: "human", human: { kind: "merge_conflict" } });
+    expect(f.taskJson().merge_conflict).toMatchObject({ partition: "a", reason: "scope", files: ["b/stray.txt"] });
+    expect(f.taskJson().partitions.a.merged).toBeUndefined();
+    git(partitionWt(f, "a"), "rm", "-q", "b/stray.txt");
+    git(partitionWt(f, "a"), "commit", "-q", "-m", "revert stray");
+    const merge = f.run("resume");
     expect(merge.status).toBe(1);
     const next = f.next();
     expect(next).toMatchObject({
       state: "BUILD", needs: "human", partition: "b",
-      human: { kind: "merge_conflict", partition: "b", files: ["shared.txt"], branch: `arbor/${TASK}--b`, into: `arbor/${TASK}` },
+      human: { kind: "merge_conflict", partition: "b", files: ["tests/shared.txt"], branch: `arbor/${TASK}--b`, into: `arbor/${TASK}` },
     });
     expect(git(f.wt, "status", "--porcelain")).toBe("");
     expect(f.taskJson().partitions.a.merged).toMatch(/^[0-9a-f]{40}$/);
@@ -205,8 +213,8 @@ describe.skipIf(!hasPython())("arbor.py waves and partitions", { timeout: 90_000
     expect(early.status).toBe(1);
     expect(early.stderr).toContain("is not merged");
     spawnSync("git", ["merge", "--no-ff", "--no-edit", `arbor/${TASK}--b`], { cwd: f.wt });
-    writeFile(f.wt, "shared.txt", "AB\n");
-    git(f.wt, "add", "shared.txt");
+    writeFile(f.wt, "tests/shared.txt", "AB\n");
+    git(f.wt, "add", "tests/shared.txt");
     git(f.wt, "commit", "-q", "--no-edit");
     ok(f.run("resume"));
     const data = f.taskJson();
@@ -214,7 +222,7 @@ describe.skipIf(!hasPython())("arbor.py waves and partitions", { timeout: 90_000
     expect(data.merge_conflict).toBeUndefined();
     expect(data.wave_history[0].partitions.b.merge).toBe(git(f.wt, "rev-parse", "HEAD~1"));
     expect(fs.existsSync(partitionWt(f, "b"))).toBe(false);
-    expect(fs.readFileSync(path.join(f.wt, "shared.txt"), "utf-8")).toBe("AB\n");
+    expect(fs.readFileSync(path.join(f.wt, "tests/shared.txt"), "utf-8")).toBe("AB\n");
   });
 
   it("two waves in sequence; a single [default] wave keeps the task-branch flow", () => {

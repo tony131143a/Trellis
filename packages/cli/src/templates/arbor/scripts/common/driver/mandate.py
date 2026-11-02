@@ -13,7 +13,10 @@ task.json (``"contract=auto,merge=ask"``, set with ``task.py create
 Two gates the driver can act on by itself when they are ``auto``:
 ``plausible`` (record ``decide skip``) and ``stop`` (``resume`` once per
 counter). ``contract`` only tells the main agent whether to ask; ``merge``
-lets ``arbor.py finish`` merge a small, clean branch itself.
+lets ``arbor.py finish`` merge a small, clean branch into its baseline
+itself. ``merge`` is ``ask`` in every tier by default: the baseline is only
+merged automatically when the user opts in. A child's merge into its
+parent's integration branch is not a gate at all (``integration.py``).
 """
 from __future__ import annotations
 
@@ -26,7 +29,7 @@ AUTO_MERGE_MAX_LINES = 200
 HUMAN_KIND_GATE = {"approve_contract": "contract", "plausible": "plausible", "stop": "stop", "merge": "merge"}
 
 DEFAULTS: dict[str, dict[str, str]] = {
-    "light": {"contract": "auto", "plausible": "auto", "stop": "auto", "merge": "auto"},
+    "light": {"contract": "auto", "plausible": "auto", "stop": "auto", "merge": "ask"},
     "standard": {"contract": "ask", "plausible": "auto", "stop": "auto", "merge": "ask"},
     "full": {"contract": "ask", "plausible": "ask", "stop": "ask", "merge": "ask"},
 }

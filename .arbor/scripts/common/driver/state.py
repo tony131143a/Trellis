@@ -439,6 +439,11 @@ def _plan_wave(data: dict, parts: tuple[str, ...], partition: str | None) -> Ste
     conflict = data.get("merge_conflict")
     if isinstance(conflict, dict):
         files = ", ".join(conflict.get("files") or []) or "-"
+        if conflict.get("reason") == "scope":
+            return Step("human", f"BUILD wave {wave}: partition {conflict.get('partition')} changed files outside "
+                        f"its paths ({files}); ask the user: revert them on {conflict.get('branch')} or merge it by "
+                        "hand in the task worktree to accept them, then `arbor resume`",
+                        human={"kind": "merge_conflict", **conflict}, partition=conflict.get("partition"))
         return Step("human", f"BUILD wave {wave}: merging {conflict.get('branch')} into {conflict.get('into')} "
                     f"conflicts ({files}); merge it by hand in the task worktree, commit, then `arbor resume`",
                     human={"kind": "merge_conflict", **conflict}, partition=conflict.get("partition"))

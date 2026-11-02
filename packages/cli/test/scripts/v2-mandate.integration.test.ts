@@ -161,8 +161,20 @@ describe.skipIf(!hasPython())("arbor.py mandate", { timeout: 120_000 }, () => {
     expect(f.next()).toMatchObject({ needs: "human", human: { kind: "stop", mandate: "auto" } });
   });
 
-  it("merge=auto (light default): finish writes the scorecard first, then merges --no-ff itself and cleans up", () => {
+  it("merge=ask is the light default: finish prints the human merge command", () => {
     f = setupFixture({ mandate: "default" });
+    driveToFinish(f);
+    expect(f.run("finish").status).toBe(0);
+    const r = f.run("finish");
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+    expect(r.stdout).not.toContain("auto-merge");
+    expect(r.stdout).toContain(`merge (human): git -C ${f.repo} merge --no-ff ${BRANCH}`);
+    expect(f.next()).toMatchObject({ needs: "human", human: { kind: "merge", mandate: "ask" } });
+  });
+
+  it("merge=auto (opted in): finish writes the scorecard first, then merges --no-ff itself and cleans up", () => {
+    f = setupFixture({ mandate: "default" });
+    appendConfig(f, "mandate:\n  light:\n    merge: auto\n");
     driveToFinish(f);
     const first = f.run("finish");
     expect(first.status, first.stdout + first.stderr).toBe(0);
@@ -186,7 +198,7 @@ describe.skipIf(!hasPython())("arbor.py mandate", { timeout: 120_000 }, () => {
 
   it("merge=auto falls back to the merge command when the diff is too large or the mandate says ask", () => {
     f = setupFixture({ mandate: "default" });
-    appendConfig(f, "mandate:\n  auto_merge_max_lines: 1\n");
+    appendConfig(f, "mandate:\n  auto_merge_max_lines: 1\n  light:\n    merge: auto\n");
     driveToFinish(f);
     expect(f.run("finish").status).toBe(0);
     const r = f.run("finish");

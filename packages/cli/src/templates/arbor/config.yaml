@@ -169,18 +169,23 @@ gate:
 # plausible (PLAUSIBLE findings after verify; auto = the driver records
 # `decide skip`), stop (a round cap or no progress; auto = the driver resumes
 # once per counter, the second trip still asks), merge (auto = `arbor.py
-# finish` merges the task branch --no-ff itself when it changes fewer than
-# auto_merge_max_lines lines, the main checkout is on the base branch and
-# clean, and the merge applies without conflict; otherwise it prints the merge
-# command as usual). Scope changes are always asked. One task overrides single
-# gates with `task.py create --mandate "contract=auto,merge=ask"`.
+# finish` merges the task branch --no-ff into the base branch itself when it
+# changes fewer than auto_merge_max_lines lines, stays within the partition and
+# test paths, has no product commit after the last review PASS, the main
+# checkout is on the base branch and clean, and the merge applies without
+# conflict; otherwise it prints the merge command as usual). Merging into the
+# base branch asks in every tier: set `merge: auto` only when the user opts in.
+# A child of a parent task merges into the parent's integration branch without
+# a gate; only the integration branch goes into the base branch, by a human.
+# Scope changes are always asked. One task overrides single gates with
+# `task.py create --mandate "contract=auto,merge=ask"`.
 # The values below are the defaults.
 mandate:
   light:
     contract: auto
     plausible: auto
     stop: auto
-    merge: auto
+    merge: ask
   standard:
     contract: ask
     plausible: auto
