@@ -25,12 +25,12 @@
   "meta": {
     "tier": "light"
   },
-  "state": "GATE",
+  "state": "REVIEW",
   "wave": 1,
   "base": "415d24533023dc1adea5b2e17624b12d06787a94",
   "contract_hash": "aaeb4fd73349b5620d1e26a7e0bb6c90051907cd0559992a8ee7297cca50d27b",
   "counters": {
-    "gate": 0,
+    "gate": 1,
     "review": 0,
     "polish": 0,
     "no_progress": 0
@@ -76,9 +76,7 @@
     "reason": null,
     "needs_from_planner": null
   },
-  "step": "gate",
-  "after_gate": {
-    "state": "REVIEW",
-    "step": "review"
-  }
+  "step": "review",
+  "gate_failing": [],
+  "gate_reds": 0
 }
