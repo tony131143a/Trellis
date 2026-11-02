@@ -72,8 +72,14 @@ max_journal_lines: 2000
 #   webapp:
 #     path: ./webapp
 #     git: true
+#     # Optional: defaults for `task.py start` of a task in this package
+#     # (`--base-ref` / `--merge-target` override them).
+#     execution:
+#       base_ref: origin/dev
+#       merge_target: dev
 
-# Default package used when --package is not specified.
+# Default package used when --package is not specified. A git: true package
+# is never inherited: such tasks run in the control repo (execution control).
 # default_package: frontend
 
 #-------------------------------------------------------------------------------

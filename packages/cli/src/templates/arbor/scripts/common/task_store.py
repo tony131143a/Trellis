@@ -265,6 +265,13 @@ def _parse_meta_pairs(pairs: list[str] | None) -> dict[str, str] | None:
 # Command: create
 # =============================================================================
 
+
+def _is_independent_package(repo_root: Path, package: str) -> bool:
+    """Whether ``packages.<package>`` is an independent Git repository (``git: true``)."""
+    from .config import _is_true_config_value
+    entry = (get_packages(repo_root) or {}).get(package) or {}
+    return isinstance(entry, dict) and _is_true_config_value(entry.get("git"))
+
 def cmd_create(args: argparse.Namespace) -> int:
     """Create a new task."""
     repo_root = get_repo_root()
@@ -342,15 +349,21 @@ def cmd_create(args: argparse.Namespace) -> int:
                 print("Hint: control is an execution mode, not a package. Replace --package control with --execution control.", file=sys.stderr)
             return 1
     elif execution_mode != "control":
-        # Inferred: default_package → None (no task.json yet for create)
+        # Inferred: default_package → None (no task.json yet for create).
+        # A default that is an independent repository (git: true) is never
+        # inherited: a task without --package belongs to the control repo.
         package = resolve_package(repo_root=repo_root)
+        if package and _is_independent_package(repo_root, package):
+            package = None
+            execution_mode = "control"
 
-    if execution_mode == "package":
-        from .config import _is_true_config_value
-        entry = (get_packages(repo_root) or {}).get(package) or {}
-        if not isinstance(entry, dict) or not _is_true_config_value(entry.get("git")):
-            print("Error: --execution package requires a configured git: true --package", file=sys.stderr)
-            return 1
+    independent = bool(package) and _is_independent_package(repo_root, package)
+    if execution_mode == "package" and not independent:
+        print("Error: --execution package requires a configured git: true --package", file=sys.stderr)
+        return 1
+    if execution_mode is None and independent:
+        # Naming an independent repository means working in it.
+        execution_mode = "package"
 
     # Default assignee to current developer
     assignee = args.assignee

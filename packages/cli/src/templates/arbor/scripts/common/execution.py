@@ -44,8 +44,26 @@ def package_root(main: Path, config: dict, package: str) -> tuple[Path, dict]:
     return root, entry
 
 
+# Start-time defaults: consumed by prepare() and frozen as the binding's
+# base_ref/base_branch, so editing them never invalidates a started task.
+START_DEFAULT_KEYS = ('base_ref', 'merge_target')
+
+
+def frozen_execution(entry: dict) -> dict:
+    """``packages.<pkg>.execution`` without the start-time defaults."""
+    section = entry.get('execution') if isinstance(entry, dict) else None
+    if not isinstance(section, dict):
+        return {}
+    return {k: v for k, v in section.items() if k not in START_DEFAULT_KEYS}
+
+
 def policy_hash(entry: dict) -> str:
-    return hashlib.sha256(json.dumps(entry, sort_keys=True).encode()).hexdigest()
+    policy = dict(entry)
+    if 'execution' in policy:
+        policy['execution'] = frozen_execution(entry)
+        if not policy['execution']:
+            del policy['execution']
+    return hashlib.sha256(json.dumps(policy, sort_keys=True).encode()).hexdigest()
 
 
 def prepare(main: Path, task_dir: Path, data: dict, config: dict, mode: str | None,
@@ -56,18 +74,27 @@ def prepare(main: Path, task_dir: Path, data: dict, config: dict, mode: str | No
     entry = (config.get('packages') or {}).get(str(data.get('package') or '')) or {}
     independent = isinstance(entry, dict) and _is_true_config_value(entry.get('git'))
     if mode is None and independent:
-        raise ExecutionError('git: true package requires explicit --execution package --base-ref <ref> '
-                             '--merge-target <branch>, or --execution control for a control-only task')
+        raise ExecutionError('git: true package requires explicit --execution package (with --base-ref/--merge-target '
+                             'or packages.<pkg>.execution.base_ref/merge_target), or --execution control '
+                             'for a control-only task')
     if mode != 'package':
         return None
+    package = str(data.get('package') or '')
+    defaults = (entry.get('execution') or {}) if isinstance(entry, dict) else {}
+    defaults = defaults if isinstance(defaults, dict) else {}
+    base_ref = base_ref or str(defaults.get('base_ref') or '').strip() or None
+    merge_target = merge_target or str(defaults.get('merge_target') or '').strip() or None
     if not base_ref or not merge_target or base_ref.startswith('-') or merge_target.startswith('-'):
-        raise ExecutionError('package execution requires --base-ref and --merge-target')
-    root, entry = package_root(main, config, str(data.get('package') or ''))
+        raise ExecutionError(
+            'package execution requires --base-ref and --merge-target (or set '
+            f'packages.{package or "<pkg>"}.execution.base_ref and merge_target in .arbor/config.yaml), e.g. '
+            f'task.py start {task_dir.name} --base-ref origin/dev --merge-target dev')
+    root, entry = package_root(main, config, package)
     sha = git(root, 'rev-parse', '--verify', f'{base_ref}^{{commit}}')
     git(root, 'check-ref-format', '--branch', merge_target)
     git(root, 'rev-parse', '--verify', f'refs/heads/{merge_target}')
     branch = task_branch(task_dir.name, branch_prefix(config))
-    effective = entry.get('execution') or {}
+    effective = frozen_execution(entry)
     path = worktree_root(root, effective) / task_dir.name
     if path.exists():
         raise ExecutionError(f'product worktree already exists: {path}')
@@ -98,7 +125,7 @@ def validate(main: Path, config: dict, data: dict) -> dict | None:
     root, entry = package_root(main, config, binding['package'])
     if str(root) != binding['repo'] or identity(root) != binding['repo_id'] or policy_hash(entry) != binding['policy_hash']:
         raise ExecutionError('product repository or execution policy changed since start')
-    if binding['config'] != (entry.get('execution') or {}):
+    if binding['config'] != frozen_execution(entry):
         raise ExecutionError('frozen execution policy was modified')
     wt = Path(binding['worktree_path'])
     registered = git(root, 'worktree', 'list', '--porcelain').splitlines()

@@ -166,6 +166,46 @@ describe("central polyrepo execution", { timeout: 90000 }, () => {
     expect(git(wt, "rev-parse", "--path-format=absolute", "--git-common-dir")).toBe(path.join(f.repo, ".git"));
   });
 
+  it("derives the execution mode from the package at create", () => {
+    prepare();
+    fs.appendFileSync(path.join(f.repo, ".arbor/config.yaml"), "default_package: app\n");
+    const create = (slug: string, ...args: string[]) => {
+      const r = spawnSync("python3", [".arbor/scripts/task.py", "create", "Mode " + slug,
+        "--description", "Mode inference", "--slug", slug, "--tier", "light", "--no-start", ...args],
+        { cwd: f.repo, encoding: "utf8" });
+      expect(r.status, r.stdout + r.stderr).toBe(0);
+      const name = fs.readdirSync(path.join(f.repo, ".arbor/tasks")).find((item) => item.endsWith(slug));
+      if (!name) throw new Error(`${slug} was not created`);
+      return JSON.parse(fs.readFileSync(path.join(f.repo, ".arbor/tasks", name, "task.json"), "utf8"));
+    };
+    expect(create("no-package")).toMatchObject({ package: null, execution_mode: "control" });
+    expect(create("named-package", "--package", "app")).toMatchObject({ package: "app", execution_mode: "package" });
+    expect(create("spec-only", "--package", "app", "--execution", "control"))
+      .toMatchObject({ package: "app", execution_mode: "control" });
+  });
+
+  it("takes base ref and merge target from the package execution config", () => {
+    prepare();
+    const cfg = path.join(f.repo, ".arbor/config.yaml");
+    fs.writeFileSync(cfg, fs.readFileSync(cfg, "utf8").replace("    git: true\n",
+      "    git: true\n    execution:\n      base_ref: dev\n      merge_target: dev\n"));
+    git(f.repo, "commit", "-qam", "execution defaults");
+    const data = f.taskJson();
+    data.execution_mode = "package";
+    writeFile(f.taskDir, "task.json", JSON.stringify(data));
+    const result = start();
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    const saved = JSON.parse(fs.readFileSync(path.join(f.wt, ".arbor/tasks", TASK, "task.json"), "utf8"));
+    expect(saved.execution_binding).toMatchObject({ base_ref: "dev", base_branch: "dev", package: "app" });
+    expect(saved.execution_binding.config).toEqual({});
+    // Start-time defaults are not frozen policy: editing them keeps the binding valid.
+    fs.writeFileSync(cfg, fs.readFileSync(cfg, "utf8").replace("merge_target: dev", "merge_target: main"));
+    f.taskDir = path.join(f.wt, ".arbor/tasks", TASK);
+    const next = f.run("next", "--json");
+    expect(next.stdout + next.stderr).not.toContain("execution policy");
+    expect(next.status, next.stdout + next.stderr).toBe(0);
+  });
+
   it("inherits saved product mode and still requires an explicit source", () => {
     prepare();
     const data = f.taskJson();

@@ -77,27 +77,28 @@ python3 ./.arbor/scripts/task.py remove-subtask <parent> <child>
 ### Central polyrepo tasks
 
 When this repository stores tasks/specs for independent `packages.<name>.git: true`
-repositories, choose the execution repository explicitly at start. Fetch the desired
-product ref before starting; start resolves the supplied local ref to a full commit
-and never silently follows later remote changes.
+repositories, the package decides the execution repository. Fetch the desired
+product ref before starting; start resolves the base ref to a full commit and never
+silently follows later remote changes.
 
 ```bash
-# Package and execution mode are distinct; control is not a package name.
-python3 .arbor/scripts/task.py create "Product task" --description "..." --package app --execution package
-# Task has package=app; app is configured with path and git: true.
-python3 .arbor/scripts/task.py start <task> --execution package --base-ref origin/dev --merge-target dev
-# Parent coordination, documentation or driver maintenance stays in the control repo.
-python3 .arbor/scripts/task.py create "Control task" --description "..." --execution control
+# Naming a git: true package means working in it (execution package).
+python3 .arbor/scripts/task.py create "Product task" --description "..." --package app
+# base ref / merge target: flags, else packages.app.execution.base_ref / merge_target.
+python3 .arbor/scripts/task.py start <task> --base-ref origin/dev --merge-target dev
+# No --package: the task belongs to the control repo (execution control); a git: true
+# default_package is never inherited.
+python3 .arbor/scripts/task.py create "Control task" --description "..."
 python3 .arbor/scripts/task.py start <task>
-# For existing planning tasks created before this option:
+# Edit only the control repo while still selecting app's specs:
+python3 .arbor/scripts/task.py create "Spec task" --description "..." --package app --execution control
+# Tasks created before this rule (package set, no execution_mode) still need an explicit choice:
 python3 .arbor/scripts/task.py start <task> --execution control
 ```
 
-`create --execution control` saves `execution_mode: control` and does not inherit
-`default_package`. Context seeding then uses shared guides/research only. An explicitly
-supplied real `--package` may still select product specs.
-`start` inherits the saved mode; an explicit `start --execution` overrides it.
-`create --execution package` requires a configured independent Git package.
+`execution_mode` is saved at create; `start` inherits it and an explicit
+`start --execution` overrides it. A control task without a package seeds shared
+guides/research only. `--execution package` requires a configured independent Git package.
 
 A product task owns two worktrees. Its task directory, contract, manifests, specs,
 briefs, reports and scorecard live in the **control** worktree. Writer commits,
