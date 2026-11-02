@@ -1,0 +1,22 @@
+packages/cli/test/spec/backend-docs.test.ts
+  s_6977c0cb43760a::t_af6c7411fbd183 71-72,89-93
+  s_6977c0cb43760a::t_0b12014e1e56ff 94-95
+.arbor/spec/cli/backend/platform-integration.md
+  s_6977c0cb43760a::t_af6c7411fbd183 346-347,369,411-416,419-425,431
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "ec1d9b350dea0e2780c06e808941920af2e358f9",
+  "prompts": {},
+  "sessions": {
+    "s_6977c0cb43760a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19a91-2e98-76f0-8a92-0877a54d43ec",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
