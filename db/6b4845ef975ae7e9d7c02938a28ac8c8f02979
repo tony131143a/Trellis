@@ -1,0 +1,49 @@
+.arbor/scripts/common/execution.py
+  s_3d451b9f41c4c1::t_c251c73948f51e 47-59,61-66,77-79,82-86,88-92,97,128
+.arbor/scripts/common/task_store.py
+  s_3d451b9f41c4c1::t_db63a3d0b2d45b 268-274,352-354,356-358,360-366
+.arbor/workflow.md
+  s_3d451b9f41c4c1::t_126a96c3986719 80-82,85-91,93-95,99-101
+packages/cli/src/templates/arbor/config.yaml
+  s_258bf8f19041c9::t_b1f8cb5288beb8 75-79,81-82
+packages/cli/src/templates/arbor/scripts/common/execution.py
+  s_3d451b9f41c4c1::t_8de0a4446f06c1 47-59,61-66,77-79,82-86,88-92,97,128
+packages/cli/src/templates/arbor/scripts/common/task_store.py
+  s_9e7456cfc7483c::t_cd66eae294eec0 268-274,352-354,356-358,360-366
+packages/cli/src/templates/arbor/workflow.md
+  s_258bf8f19041c9::t_5f3b48c0125409 80-82,85-91,93-95,99-101
+packages/cli/test/scripts/v2-polyrepo.integration.test.ts
+  s_3d451b9f41c4c1::t_f7f8f68bb1e86c 169-208
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "db6b4845ef975ae7e9d7c02938a28ac8c8f02979",
+  "prompts": {},
+  "sessions": {
+    "s_258bf8f19041c9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e050c1ee-496e-48c7-a6de-f2050bda9391",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_3d451b9f41c4c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19b0d-ddb6-7c01-ada8-5ad29dd6776a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_9e7456cfc7483c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19af0-7e0f-7863-8769-1fcb903947c7",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
