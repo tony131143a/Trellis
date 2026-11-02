@@ -124,3 +124,35 @@ Made StarFactory a trellis channel worker provider so Claude Code can plan while
 - 让 Conductor 会话 397c3541 后台重跑 advance（可先 /compact 重新注入新版 conductor.md）
 - 可选：清理玩具 channel 目录（orch-v2、orch-v2-review）
 - 可选：按分析把编排流程沉淀进 Trellis（阶段 1：spec + channel 运行时问题复核修复）
+
+
+## Session 4: Spec docs: v3 driver, conductor and executors replace v1 dispatch
+<!-- arbor-session: v=2 fp=f7cb87fbe2b6a0c7 -->
+
+**Date**: 2026-11-01
+**Task**: Spec docs: v3 driver, conductor and executors replace v1 dispatch
+**Package**: cli
+**Branch**: `arbor-v3`
+
+### Summary
+
+light tier: 5 dispatches, 2 gate round(s), 2 review / 0 polish round(s), AC auto-coverage 5/5, 0 override(s), 0 invariant violation(s)
+
+### Main Changes
+
+- Merged task/11-01-spec-v3-driver-docs into arbor-v3 (eda54f94d884)
+- Scorecard archived with the task: 11-01-spec-v3-driver-docs/scorecard.md
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `eda54f94d88478a08e397198f6b76be10fc5caa2` | Merge task/11-01-spec-v3-driver-docs: record base branch arbor-v3 |
+
+### Testing
+
+- [OK] Gate: 2 round(s); last round green
+
+### Status
+
+[OK] **Completed**
