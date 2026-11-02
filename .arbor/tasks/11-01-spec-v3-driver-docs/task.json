@@ -13,7 +13,7 @@
   "createdAt": "2026-11-01",
   "completedAt": null,
   "branch": "task/11-01-spec-v3-driver-docs",
-  "base_branch": "main",
+  "base_branch": "arbor-v3",
   "worktree_path": "/Users/xktang/person-resources/project/my/Trellis-wt/11-01-spec-v3-driver-docs",
   "commit": null,
   "pr_url": null,
