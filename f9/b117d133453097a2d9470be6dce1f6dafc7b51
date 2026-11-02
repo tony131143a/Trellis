@@ -1,0 +1,223 @@
+packages/cli/test/commands/update.integration.test.ts
+  s_d6f132b76ff5ad::t_96c03ac673203d 788-793,806-808,814-819
+  s_d6f132b76ff5ad::t_b63f0d229bbcf6 389
+packages/cli/test/registry-invariants.test.ts
+  s_d6f132b76ff5ad::t_96c03ac673203d 14,101-102,113,142-145,157-158,197-198,230-237
+.claude/commands/arbor/workflow.md
+  s_d6f132b76ff5ad::t_aa275172c9cebb 62
+  s_d6f132b76ff5ad::t_8054abbf1d9227 58-61
+packages/cli/src/templates/shared-hooks/session-start.py
+  s_d6f132b76ff5ad::t_f673813b832639 207-210
+.arbor/scripts/common/driver/autopilot.py
+  s_d6f132b76ff5ad::t_31883fe6cc2865 72-76
+packages/cli/src/templates/arbor/scripts/common/driver/executor.py
+  s_d6f132b76ff5ad::t_0dfe35ad6b1d7a 99-100
+  s_d6f132b76ff5ad::t_e3c81fb45b78e3 2-4
+  s_d6f132b76ff5ad::t_f673813b832639 146-150,156
+  s_d6f132b76ff5ad::t_9885ad63074f7c 46-49,93-95,97,101-103,126-127
+packages/cli/test/commands/init-uninstall-overdelete.integration.test.ts
+  s_d6f132b76ff5ad::t_96c03ac673203d 228,327-331,351-355,358
+  s_d6f132b76ff5ad::t_784596a713619e 67,72,80,83,86,135,138,146
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/local-architecture/dispatch.md
+  s_d6f132b76ff5ad::t_0c746f76f7a0f0 62-63,69-70
+  s_d6f132b76ff5ad::t_dd88435018d015 68
+.arbor/scripts/common/active_task.py
+  s_d6f132b76ff5ad::t_f673813b832639 37-38,47-48
+packages/cli/src/migrations/manifests/0.2.0.json
+  s_d6f132b76ff5ad::t_ea486ec07a42f9 56-383
+CLAUDE.md
+  s_d6f132b76ff5ad::t_aa275172c9cebb 77
+packages/cli/src/templates/arbor/scripts/common/driver/autopilot.py
+  s_d6f132b76ff5ad::t_41f1d968d0104a 72-76
+.arbor/scripts/common/driver/state.py
+  s_d6f132b76ff5ad::t_31883fe6cc2865 646
+packages/cli/src/templates/arbor/scripts/common/arbor_config.py
+  s_d6f132b76ff5ad::t_e47ad860edb71d 256-257
+packages/cli/src/types/ai-tools.ts
+  s_d6f132b76ff5ad::t_f673813b832639 10,15,18,21,55,121-126,130-132,135
+.arbor/scripts/common/driver/mcp.py
+  s_d6f132b76ff5ad::t_31883fe6cc2865 1-12,14,16-71,74-82,86-119,124-143
+  s_d6f132b76ff5ad::t_dd88435018d015 13,15,72-73,84-85
+  s_d6f132b76ff5ad::t_95f49b729f55ad 83,120-123
+packages/cli/src/templates/codex/hooks.json
+  s_d6f132b76ff5ad::t_ea486ec07a42f9 9,20,32,42
+  s_d6f132b76ff5ad::t_917cbb64bcbb48 1-8,10-19,21-31,33-41,43-49
+.arbor/workflow.md
+  s_d6f132b76ff5ad::t_8054abbf1d9227 98,101-102,122,381,402
+  s_d6f132b76ff5ad::t_aa275172c9cebb 100
+  s_d6f132b76ff5ad::t_31b11510f50a74 99
+packages/cli/src/utils/manifest-prune.ts
+  s_d6f132b76ff5ad::t_96c03ac673203d 102
+  s_d6f132b76ff5ad::t_f673813b832639 40,62
+packages/cli/test/configurators/platforms.test.ts
+  s_d6f132b76ff5ad::t_96c03ac673203d 70-72,333-338,341-342,344-347
+  s_d6f132b76ff5ad::t_bae5add0cab024 348-351
+README.md
+  s_d6f132b76ff5ad::t_83563b2410e29b 3,5,8-11,14,16-19,21,23,25,27,29-36,38,40,42-45,48-49,56,59-63,66,68,70,72-78,84,86-88,91,95
+  s_d6f132b76ff5ad::t_0c746f76f7a0f0 46-47,52
+  s_d6f132b76ff5ad::t_dd88435018d015 54
+packages/cli/src/configurators/shared.ts
+  s_d6f132b76ff5ad::t_f673813b832639 177-178,221,300
+packages/cli/test/scripts/v2-driver-mcp.integration.test.ts
+  s_d6f132b76ff5ad::t_e3c81fb45b78e3 5-6,12-26
+  s_d6f132b76ff5ad::t_2673d23dc2a9a8 8,32-33,145,150-189
+  s_d6f132b76ff5ad::t_bff250068f6b5e 1-4,7,9-11,27-31,34-61,64-144,146-149,190,201
+  s_d6f132b76ff5ad::t_a32edd9ed3bc8e 62-63
+  s_d6f132b76ff5ad::t_9f4c72f4e74286 191-200
+packages/cli/src/templates/arbor/scripts/common/dispatch_context.py
+  s_d6f132b76ff5ad::t_f673813b832639 28,892-901,903
+packages/cli/src/commands/update.ts
+  s_d6f132b76ff5ad::t_96c03ac673203d 914-919
+  s_d6f132b76ff5ad::t_ea486ec07a42f9 1
+packages/cli/test/commands/init.integration.test.ts
+  s_d6f132b76ff5ad::t_96c03ac673203d 165-167,169-189,527-533
+  s_d6f132b76ff5ad::t_53fe03ac742409 77,146,156,159-160,163-164,756,778,826,849
+packages/cli/src/templates/shared-hooks/index.ts
+  s_d6f132b76ff5ad::t_f673813b832639 33,70
+packages/cli/test/commands/uninstall.integration.test.ts
+  s_d6f132b76ff5ad::t_96c03ac673203d 68-72,79,84,167,169,173,177,206,208,210,213,215,217-219,290-292,309-311,360-361,363,366,384,398-400
+.arbor/scripts/common/driver/executor.py
+  s_d6f132b76ff5ad::t_adf35e1b84a009 2-4
+  s_d6f132b76ff5ad::t_f673813b832639 146-150,156
+  s_d6f132b76ff5ad::t_31883fe6cc2865 46-49,93-95,97,99-103,126-127
+packages/cli/src/templates/common/commands/continue.md
+  s_d6f132b76ff5ad::t_0c746f76f7a0f0 41,56-59
+  s_d6f132b76ff5ad::t_dd88435018d015 60
+packages/cli/test/commands/retired-platform.integration.test.ts
+  s_d6f132b76ff5ad::t_fec4fa4956f3b0 1-9,11-15,18-26,28-38,40-51,54-55,57-67,71-73,75-80,82-86,88-91,93-94,96-98
+  s_d6f132b76ff5ad::t_1e77415896cc54 10,16-17,27,39,52-53,56,68-70,74,81,87,92,95
+packages/cli/src/configurators/codex.ts
+  s_d6f132b76ff5ad::t_917cbb64bcbb48 1-30
+.arbor/.template-hashes.json
+  s_d6f132b76ff5ad::t_aa275172c9cebb 28,36,78,86,101
+  s_d6f132b76ff5ad::t_8054abbf1d9227 20,22,30,66,91-92,98-100,103
+.arbor/config.yaml
+  s_d6f132b76ff5ad::t_8054abbf1d9227 116-118,121-123,135-143
+  s_d6f132b76ff5ad::t_f673813b832639 127,129
+  s_d6f132b76ff5ad::t_2838468555b7b3 133-134
+.arbor/scripts/task.py
+  s_d6f132b76ff5ad::t_31883fe6cc2865 452-456
+packages/cli/test/scripts/codex-host.integration.test.ts
+  s_d6f132b76ff5ad::t_c19a8cb659e48f 1-7,12-23,37-41,44-52,56-62,65-71,75,80-83,86-100,105,113-115,119-124
+  s_d6f132b76ff5ad::t_96c03ac673203d 8-11,24-36,42-43,53-55,63-64,72-74,76-79,84-85,101-104,106-112,116-118
+packages/cli/src/templates/shared-hooks/inject-workflow-state.py
+  s_d6f132b76ff5ad::t_f673813b832639 95-98
+packages/cli/test/regression.test.ts
+  s_d6f132b76ff5ad::t_9f4c72f4e74286 7116-7117
+  s_d6f132b76ff5ad::t_f96eb8a1c9c995 477,2134,6606-6610,6730
+.claude/skills/arbor-meta/references/local-architecture/dispatch.md
+  s_d6f132b76ff5ad::t_8054abbf1d9227 62-63,69-70
+  s_d6f132b76ff5ad::t_aa275172c9cebb 68
+packages/cli/src/cli/index.ts
+  s_d6f132b76ff5ad::t_f673813b832639 60,68
+.arbor/scripts/common/dispatch_context.py
+  s_d6f132b76ff5ad::t_f673813b832639 28,892-901,903
+packages/cli/package.json
+  s_d6f132b76ff5ad::t_f673813b832639 4
+packages/cli/src/templates/common/commands/start.md
+  s_d6f132b76ff5ad::t_0c746f76f7a0f0 60-63
+  s_d6f132b76ff5ad::t_dd88435018d015 64
+packages/cli/src/templates/codex/index.ts
+  s_d6f132b76ff5ad::t_917cbb64bcbb48 1-5
+packages/cli/src/templates/markdown/claude.md
+  s_d6f132b76ff5ad::t_dd88435018d015 11
+packages/cli/src/templates/shared-hooks/guard-builtin-agent.py
+  s_d6f132b76ff5ad::t_f673813b832639 4,42,74,94
+.arbor/scripts/common/arbor_config.py
+  s_d6f132b76ff5ad::t_31883fe6cc2865 256-257
+packages/cli/src/templates/arbor/scripts/common/driver/mcp.py
+  s_d6f132b76ff5ad::t_f49bbd181826d7 93-101
+  s_d6f132b76ff5ad::t_2673d23dc2a9a8 83,120-123
+  s_d6f132b76ff5ad::t_0dfe35ad6b1d7a 104-105,107-108,118-119,134-135
+  s_d6f132b76ff5ad::t_9885ad63074f7c 1-12,14,16-71,74-82,86-92,102-103,106,109-117,124-133,136-143
+  s_d6f132b76ff5ad::t_a32edd9ed3bc8e 13,15,72-73,84-85
+packages/cli/src/templates/arbor/config.yaml
+  s_d6f132b76ff5ad::t_e47ad860edb71d 110-112,115-117,127-128
+  s_d6f132b76ff5ad::t_f673813b832639 121,123
+packages/cli/src/templates/arbor/scripts/task.py
+  s_d6f132b76ff5ad::t_0dfe35ad6b1d7a 452-456
+.arbor/spec/cli/backend/platform-integration.md
+  s_d6f132b76ff5ad::t_83563b2410e29b 7,10-11,15,22,37-46,48,50
+packages/cli/src/templates/arbor/scripts/common/driver/state.py
+  s_d6f132b76ff5ad::t_dbf96b38e08d45 646
+packages/cli/test/commands/platforms.integration.test.ts
+  s_d6f132b76ff5ad::t_96c03ac673203d 30,55,58,68,88
+packages/cli/test/setup.ts
+  s_d6f132b76ff5ad::t_f673813b832639 17-19
+.claude/skills/arbor-meta/references/platform-files/overview.md
+  s_d6f132b76ff5ad::t_8054abbf1d9227 22
+.claude/commands/arbor/continue.md
+  s_d6f132b76ff5ad::t_8054abbf1d9227 41,56-58
+  s_d6f132b76ff5ad::t_aa275172c9cebb 59
+.arbor/scripts/arbor.py
+  s_d6f132b76ff5ad::t_dd88435018d015 584,601,1146,1473,1572
+  s_d6f132b76ff5ad::t_adf35e1b84a009 12-13
+  s_d6f132b76ff5ad::t_31883fe6cc2865 65-66,93,360-366,373-382,503-583,585-600,602-648,721-726,960-963,969-973,975-976,1103-1108,1145,1147-1148,1152-1156,1215,1248,1263,1296,1343,1369,1471-1472,1474-1475,1478-1482,1533-1540,1573
+packages/cli/src/commands/init.ts
+  s_d6f132b76ff5ad::t_f673813b832639 868,1074
+  s_d6f132b76ff5ad::t_65e6c27d2c8146 1163
+AGENTS.md
+  s_d6f132b76ff5ad::t_aa275172c9cebb 8
+packages/cli/src/templates/common/commands/workflow.md
+  s_d6f132b76ff5ad::t_0c746f76f7a0f0 58-62
+  s_d6f132b76ff5ad::t_dd88435018d015 63
+packages/cli/src/configurators/index.ts
+  s_d6f132b76ff5ad::t_f673813b832639 24,68
+packages/cli/src/templates/arbor/index.ts
+  s_d6f132b76ff5ad::t_dbf96b38e08d45 79,88-90,166
+packages/cli/src/templates/markdown/agents.md
+  s_d6f132b76ff5ad::t_dd88435018d015 8
+packages/cli/src/templates/arbor/workflow.md
+  s_d6f132b76ff5ad::t_dd88435018d015 100
+  s_d6f132b76ff5ad::t_0c746f76f7a0f0 98,101-102,122,381,402
+  s_d6f132b76ff5ad::t_b7b4f6bb7ae286 99
+.claude/skills/arbor-meta/references/platform-files/agents.md
+  s_d6f132b76ff5ad::t_8054abbf1d9227 3,18
+packages/cli/src/templates/arbor/scripts/common/active_task.py
+  s_d6f132b76ff5ad::t_f673813b832639 37-38,47-48
+packages/cli/src/templates/arbor/scripts/arbor.py
+  s_d6f132b76ff5ad::t_f49bbd181826d7 360-365,518-522
+  s_d6f132b76ff5ad::t_ea98b5cc44da31 65-66,373-376,379-381,721-726,960-962,975-976,1103-1107,1146-1148,1152-1155
+  s_d6f132b76ff5ad::t_dbf96b38e08d45 1145,1471-1475,1478-1482,1533-1539
+  s_d6f132b76ff5ad::t_41f1d968d0104a 377-378
+  s_d6f132b76ff5ad::t_e3c81fb45b78e3 12-13
+  s_d6f132b76ff5ad::t_0dfe35ad6b1d7a 510-514,581-582,611-612,969-972,1572
+  s_d6f132b76ff5ad::t_ad239277f2b572 503-509,515-517,523-580,583-610,613-645,963
+  s_d6f132b76ff5ad::t_286f6c41ce88bb 93,366,382,646-648,973,1108,1156,1215,1248,1263,1296,1343,1369,1540,1573
+packages/cli/src/utils/retired-platforms.ts
+  s_d6f132b76ff5ad::t_f673813b832639 1-42,44
+  s_d6f132b76ff5ad::t_96c03ac673203d 43
+packages/cli/test/templates/arbor.test.ts
+  s_d6f132b76ff5ad::t_41f1d968d0104a 151,165-168,439-440
+  s_d6f132b76ff5ad::t_cee15838ae47f5 467-468
+packages/cli/src/utils/managed-removal.ts
+  s_d6f132b76ff5ad::t_96c03ac673203d 355-361
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/platform-files/agents.md
+  s_d6f132b76ff5ad::t_840385a6441b39 3,18
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/platform-files/overview.md
+  s_d6f132b76ff5ad::t_96d78ebf98f3d8 22
+packages/cli/test/configurators/index.test.ts
+  s_d6f132b76ff5ad::t_c63d892c2b66b2 249
+packages/cli/test/fixtures/retired-star.json
+  s_d6f132b76ff5ad::t_29a03819436c8a 1-4
+packages/cli/test/migrations/index.test.ts
+  s_d6f132b76ff5ad::t_ef2038c5a410ce 1,234
+packages/cli/test/templates/hook-timeouts.test.ts
+  s_d6f132b76ff5ad::t_1af4ac7ed177d4 50-51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "f9b117d133453097a2d9470be6dce1f6dafc7b51",
+  "prompts": {},
+  "sessions": {
+    "s_d6f132b76ff5ad": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18d44-0b4a-70d0-8420-ef548d7a2743",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Mr tang <mytortoise18@sina.com~>"
+    }
+  }
+}

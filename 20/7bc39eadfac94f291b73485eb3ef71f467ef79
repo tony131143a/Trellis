@@ -1,0 +1,80 @@
+.claude/skills/arbor-meta/references/local-architecture/task-system.md
+  s_b0e20135d0aef0::t_71ea8e702102fb 27
+packages/cli/src/templates/arbor/scripts/arbor.py
+  s_b0e20135d0aef0::t_59692e4329669a 341-344,436,443-444,552-557,657,671-673,679,686,696,778,783-785,789-790,812-814,816,818-819,822-823,924-926,956,982-985,987,1006,1034,1076,1233,1235-1236,1251,1266,1277,1310-1366,1371-1372,1411-1412,1624,1682-1684
+  s_b0e20135d0aef0::t_9f1cd090f4da09 314-318,519,986,1496
+CLAUDE.md
+  s_b0e20135d0aef0::t_71ea8e702102fb 77
+.claude/commands/arbor/continue.md
+  s_b0e20135d0aef0::t_71ea8e702102fb 41
+packages/cli/test/scripts/v2-contextual-validation.integration.test.ts
+  s_b0e20135d0aef0::t_f8c11c0861898a 1-119
+packages/cli/test/scripts/v2-driver-modules.integration.test.ts
+  s_b0e20135d0aef0::t_10cd97f172bfe4 138,148-150,157,163-164,190
+packages/cli/test/scripts/v2-driver-contract.integration.test.ts
+  s_b0e20135d0aef0::t_10cd97f172bfe4 87,93-94,98,101,117,122
+packages/cli/test/scripts/v2-driver-mcp.integration.test.ts
+  s_b0e20135d0aef0::t_10cd97f172bfe4 155,157,189,196-199
+packages/cli/test/scripts/v2-driver-review.integration.test.ts
+  s_b0e20135d0aef0::t_10cd97f172bfe4 29,38-42,44-49,52,55-58,61-65,131,134-142
+.arbor/scripts/common/dispatch_context.py
+  s_b0e20135d0aef0::t_71ea8e702102fb 914,916
+.arbor/scripts/common/driver/finish.py
+  s_b0e20135d0aef0::t_71ea8e702102fb 118-119,145
+.arbor/scripts/common/driver/state.py
+  s_b0e20135d0aef0::t_71ea8e702102fb 33-34,174,190-196,345,650
+.claude/skills/arbor-meta/references/local-architecture/dispatch.md
+  s_b0e20135d0aef0::t_71ea8e702102fb 25,34,83,85,95,115
+.arbor/workflow.md
+  s_b0e20135d0aef0::t_f756048780840c 7-8,48,118-122,156,162-183,211,231,239,254,256,258,323,327,329,359,363,488,503,563,610,614,618-629
+packages/cli/test/scripts/v2-driver-build.integration.test.ts
+  s_b0e20135d0aef0::t_10cd97f172bfe4 183,213-218
+.arbor/scripts/arbor.py
+  s_b0e20135d0aef0::t_f756048780840c 314-318,341-344,436,443-444,519,552-557,657,671-673,679,686,696,778,783-785,789-790,812-814,816,818-819,822-823,924-926,956,982-987,1006,1034,1076,1233,1235-1236,1251,1266,1277,1310-1366,1371-1372,1411-1412,1496,1624,1682-1684
+packages/cli/src/templates/arbor/workflow.md
+  s_b0e20135d0aef0::t_9f1cd090f4da09 7-8,48,118-122,156,162-183,211,231,239,254,256,258,323,327,329,359,363,488,503,563,610,614,618-629
+.arbor/.template-hashes.json
+  s_b0e20135d0aef0::t_f756048780840c 28,99
+  s_b0e20135d0aef0::t_71ea8e702102fb 17,25,36,76,78-79,89,91,97
+packages/cli/src/templates/arbor/scripts/common/driver/state.py
+  s_b0e20135d0aef0::t_59692e4329669a 174,190-196,345
+  s_b0e20135d0aef0::t_7f0e171105f444 33-34,650
+packages/cli/test/scripts/v2-driver-waves.integration.test.ts
+  s_b0e20135d0aef0::t_10cd97f172bfe4 164,178,181-184,361,371
+AGENTS.md
+  s_b0e20135d0aef0::t_71ea8e702102fb 8
+README.md
+  s_b0e20135d0aef0::t_251f1bddff2064 3
+packages/cli/src/templates/arbor/scripts/common/dispatch_context.py
+  s_b0e20135d0aef0::t_9543b3ab6df4cc 914,916
+packages/cli/src/templates/arbor/scripts/common/driver/finish.py
+  s_b0e20135d0aef0::t_2520c46f9c72a0 118-119,145
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/local-architecture/dispatch.md
+  s_b0e20135d0aef0::t_f6723ce38533f0 25,34,83,85,95,115
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/local-architecture/task-system.md
+  s_b0e20135d0aef0::t_458996097c08a4 27
+packages/cli/src/templates/common/commands/continue.md
+  s_b0e20135d0aef0::t_cd41b25a4c8f19 41
+packages/cli/src/templates/markdown/agents.md
+  s_b0e20135d0aef0::t_ac6b69d53b42c1 8
+packages/cli/src/templates/markdown/claude.md
+  s_b0e20135d0aef0::t_136dd6093769b5 11
+packages/cli/test/scripts/v2-polyrepo.integration.test.ts
+  s_b0e20135d0aef0::t_b54db724bd21fd 97-101,296-301,319-320
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "207bc39eadfac94f291b73485eb3ef71f467ef79",
+  "prompts": {},
+  "sessions": {
+    "s_b0e20135d0aef0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19003-30bc-76a2-a7fe-3cb2582258b0",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Mr tang <mytortoise18@sina.com~>"
+    }
+  }
+}

@@ -1,0 +1,93 @@
+.arbor/scripts/arbor.py
+  s_b0e20135d0aef0::t_9a650bede2abf9 418,429,434,624,1249
+  s_b0e20135d0aef0::t_ef33ba8989fce3 102,111,402-417,419-428,430-433,435-444,466,470-474,517,608-610,623,625-627,756,758-759,762,1216,1224-1247,1250-1292,1294-1295,1299-1300,1302,1306,1335,1340-1346,1741
+.arbor/agents/explore.md
+  s_b0e20135d0aef0::t_ef33ba8989fce3 56,82-83,88
+.arbor/workflow.md
+  s_b0e20135d0aef0::t_78a92e8190138c 553
+  s_b0e20135d0aef0::t_ef33ba8989fce3 118,223,231-233,237-253,256-265,355,372-373,436,468,471,480,572-573
+  s_b0e20135d0aef0::t_9a650bede2abf9 234-236,254-255
+packages/cli/src/templates/arbor/workflow.md
+  s_b0e20135d0aef0::t_78a92e8190138c 553
+  s_b0e20135d0aef0::t_81679686cefa63 118,223,231-233,237-253,256-265,355,372-373,436,468,471,480,572-573
+  s_b0e20135d0aef0::t_9a650bede2abf9 234-236,254-255
+.claude/skills/arbor-meta/references/local-architecture/dispatch.md
+  s_b0e20135d0aef0::t_ef33ba8989fce3 31,37,116
+  s_b0e20135d0aef0::t_9a650bede2abf9 117
+CLAUDE.md
+  s_b0e20135d0aef0::t_9a650bede2abf9 76
+  s_b0e20135d0aef0::t_ef33ba8989fce3 75
+packages/cli/test/scripts/v2-planning-parallel.integration.test.ts
+  s_b0e20135d0aef0::t_9a650bede2abf9 1-197
+.arbor/agents/architect.md
+  s_b0e20135d0aef0::t_ef33ba8989fce3 23,29,40,82
+.claude/commands/arbor/continue.md
+  s_b0e20135d0aef0::t_ef33ba8989fce3 23-24,26
+  s_b0e20135d0aef0::t_9a650bede2abf9 25
+packages/cli/src/templates/markdown/claude.md
+  s_b0e20135d0aef0::t_9a650bede2abf9 9-10
+packages/cli/test/templates/arbor.test.ts
+  s_b0e20135d0aef0::t_78a92e8190138c 245-247
+packages/cli/src/templates/arbor/config.yaml
+  s_b0e20135d0aef0::t_9a650bede2abf9 115-117
+.arbor/scripts/common/dispatch_context.py
+  s_b0e20135d0aef0::t_ef33ba8989fce3 425-435,443,456-457,734,736-737,899-900,922-930
+.claude/skills/arbor-meta/references/platform-files/agents.md
+  s_b0e20135d0aef0::t_ef33ba8989fce3 9-10
+packages/cli/src/templates/common/commands/workflow.md
+  s_b0e20135d0aef0::t_9a650bede2abf9 30,40
+  s_b0e20135d0aef0::t_eb0f060487f14e 41
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/platform-files/agents.md
+  s_b0e20135d0aef0::t_81679686cefa63 9-10
+packages/cli/src/templates/common/bundled-skills/arbor-meta/references/local-architecture/dispatch.md
+  s_b0e20135d0aef0::t_9a650bede2abf9 31,37,116-117
+packages/cli/src/templates/common/commands/continue.md
+  s_b0e20135d0aef0::t_9a650bede2abf9 23-26
+.claude/skills/arbor-brainstorm/SKILL.md
+  s_b0e20135d0aef0::t_ef33ba8989fce3 51,200-201
+packages/cli/src/templates/markdown/agents.md
+  s_b0e20135d0aef0::t_9a650bede2abf9 8
+.arbor/scripts/task.py
+  s_b0e20135d0aef0::t_ef33ba8989fce3 485-490
+.arbor/scripts/common/driver/state.py
+  s_b0e20135d0aef0::t_ef33ba8989fce3 635-638
+.arbor/.template-hashes.json
+  s_b0e20135d0aef0::t_9a650bede2abf9 25,28,36,78-79,86,99
+  s_b0e20135d0aef0::t_ef33ba8989fce3 20,30,37,76,80-81,91,106
+.claude/commands/arbor/workflow.md
+  s_b0e20135d0aef0::t_9a650bede2abf9 40
+  s_b0e20135d0aef0::t_ef33ba8989fce3 30
+  s_b0e20135d0aef0::t_50738a3f42c121 41
+AGENTS.md
+  s_b0e20135d0aef0::t_9a650bede2abf9 8
+packages/cli/src/templates/arbor/scripts/arbor.py
+  s_b0e20135d0aef0::t_9a650bede2abf9 102,111,402-444,466,470-474,517,608-610,623-627,756,758-759,762,1216,1224-1247,1249-1292,1294-1295,1299-1300,1302,1306,1335,1340-1346,1741
+packages/cli/src/templates/arbor/agents/architect.md
+  s_b0e20135d0aef0::t_6bbb6297813053 23,29,40,82
+packages/cli/src/templates/arbor/agents/explore.md
+  s_b0e20135d0aef0::t_e462a1fead601f 56,82-83,88
+packages/cli/src/templates/arbor/scripts/common/dispatch_context.py
+  s_b0e20135d0aef0::t_cd32196507a383 425-435,443,456-457,734,736-737,899-900,922-930
+packages/cli/src/templates/arbor/scripts/common/driver/state.py
+  s_b0e20135d0aef0::t_bace112ba50fcd 635-638
+packages/cli/src/templates/arbor/scripts/task.py
+  s_b0e20135d0aef0::t_04801a551aee84 485-490
+packages/cli/src/templates/common/skills/brainstorm.md
+  s_b0e20135d0aef0::t_523afd957ea0fb 46,195-196
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "905837f86a3542256f2a8f8477a9eb3d44e5d41b",
+  "prompts": {},
+  "sessions": {
+    "s_b0e20135d0aef0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19003-30bc-76a2-a7fe-3cb2582258b0",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Mr tang <mytortoise18@sina.com~>"
+    }
+  }
+}

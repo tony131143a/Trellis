@@ -1,0 +1,64 @@
+.arbor/scripts/arbor.py
+  s_f3feb1ad4bd47d::t_0a1cb5c1b91d27 375
+packages/cli/src/templates/arbor/scripts/arbor.py
+  s_f3feb1ad4bd47d::t_4ebe3f5b4ab6d7 375
+packages/cli/src/templates/markdown/agents.md
+  s_f3feb1ad4bd47d::t_4ebe3f5b4ab6d7 7
+.arbor/agents/test.md
+  s_f3feb1ad4bd47d::t_0a1cb5c1b91d27 37,58-65
+  s_f3feb1ad4bd47d::t_190ed37555ccb3 66
+packages/cli/test/scripts/v2-driver-modules.integration.test.ts
+  s_f3feb1ad4bd47d::t_4ebe3f5b4ab6d7 68
+packages/cli/src/templates/arbor/scripts/check_report.py
+  s_f3feb1ad4bd47d::t_65867d58ed8a8d 1-31
+packages/cli/test/scripts/v2-report.integration.test.ts
+  s_f3feb1ad4bd47d::t_ecef2724c12394 1-64
+packages/cli/src/templates/arbor/index.ts
+  s_f3feb1ad4bd47d::t_65867d58ed8a8d 182
+packages/cli/src/templates/arbor/scripts/common/dispatch_context.py
+  s_f3feb1ad4bd47d::t_03cdd9b2331997 40
+  s_f3feb1ad4bd47d::t_65867d58ed8a8d 906-917
+.arbor/agents/review.md
+  s_f3feb1ad4bd47d::t_0a1cb5c1b91d27 5-6,109
+packages/cli/src/templates/arbor/agents/review.md
+  s_f3feb1ad4bd47d::t_03cdd9b2331997 5-6,109
+.arbor/.template-hashes.json
+  s_f3feb1ad4bd47d::t_e230d09d4e227d 25,28,76,82,93,99-100,103-104
+packages/cli/src/templates/arbor/scripts/common/driver/validate.py
+  s_f3feb1ad4bd47d::t_65867d58ed8a8d 16-18,90-92,115-118,120-124
+.arbor/scripts/common/driver/validate.py
+  s_f3feb1ad4bd47d::t_0a1cb5c1b91d27 16-18,90-92,115-118,120-124
+AGENTS.md
+  s_f3feb1ad4bd47d::t_4ebe3f5b4ab6d7 7
+.arbor/workflow.md
+  s_f3feb1ad4bd47d::t_4ebe3f5b4ab6d7 211
+.arbor/scripts/check_report.py
+  s_f3feb1ad4bd47d::t_0a1cb5c1b91d27 1-31
+.arbor/scripts/common/dispatch_context.py
+  s_f3feb1ad4bd47d::t_0a1cb5c1b91d27 40,906-917
+packages/cli/src/templates/arbor/agents/test.md
+  s_f3feb1ad4bd47d::t_03cdd9b2331997 37,58-65
+  s_f3feb1ad4bd47d::t_f11c7d1fd6f111 66
+.arbor/tasks/10-30-polyrepo-upgrade/report.md
+  s_f3feb1ad4bd47d::t_267fe66eb6d0cf 36-42
+packages/cli/src/templates/arbor/workflow.md
+  s_f3feb1ad4bd47d::t_4ebe3f5b4ab6d7 211
+packages/cli/test/scripts/v2-driver-contract.integration.test.ts
+  s_f3feb1ad4bd47d::t_ecef2724c12394 127-129
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "1f241daf5b2d9001165783347d773e010328d444",
+  "prompts": {},
+  "sessions": {
+    "s_f3feb1ad4bd47d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18f9f-5cf3-7b71-b867-31398ef7f748",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Mr tang <mytortoise18@sina.com~>"
+    }
+  }
+}

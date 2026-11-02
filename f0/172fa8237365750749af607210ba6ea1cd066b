@@ -1,0 +1,122 @@
+packages/cli/src/templates/arbor/scripts/common/driver/finish.py
+  s_239ff62966b981::t_486ee77c165cfd 328-330,398-423,427-428,481-494,507-508
+  s_239ff62966b981::t_eb996f29794534 613-614
+  s_239ff62966b981::t_124dc018de27ef 321-327,513,536-557
+.arbor/scripts/common/task_store.py
+  s_239ff62966b981::t_05fee49b938e57 329,341-342,344,348-354,532-533
+  s_239ff62966b981::t_1fb6448955f44c 1196-1201,1299-1300,1547-1548
+  s_239ff62966b981::t_e2928644c2282f 534
+.arbor/scripts/common/execution.py
+  s_239ff62966b981::t_1fb6448955f44c 1-51,55-159
+  s_239ff62966b981::t_05fee49b938e57 52-54
+.arbor/scripts/common/task_context.py
+  s_239ff62966b981::t_05fee49b938e57 235-236
+.arbor/.template-hashes.json
+  s_239ff62966b981::t_05fee49b938e57 30,33,64,103
+  s_f3feb1ad4bd47d::t_15ed63f9e9acce 28,99
+  s_239ff62966b981::t_1fb6448955f44c 25,58,76-77,79,97,101-102
+.arbor/scripts/common/driver/finish.py
+  s_239ff62966b981::t_1fb6448955f44c 321-330,398-423,427-428,481-494,507-508,513,536-557,613-614
+packages/cli/src/templates/arbor/index.ts
+  s_239ff62966b981::t_d30613a1bd2688 182-183
+  s_239ff62966b981::t_c5791e4b04c4f6 184-186
+packages/cli/src/templates/arbor/scripts/task.py
+  s_239ff62966b981::t_482e87e32fb988 336-337,526,977-979
+  s_239ff62966b981::t_2c1880f9a187db 352-358,371-389,411-412,448-449,527-528,1035-1037
+packages/cli/src/templates/arbor/workflow.md
+  s_239ff62966b981::t_3311d8b01b2c51 77-84,87-89,93-94,101-112,115-133
+  s_f3feb1ad4bd47d::t_5b141c8360d4c1 113-114,207,215,590
+  s_239ff62966b981::t_482e87e32fb988 85-86,90-92,95-96,99-100
+  s_f3feb1ad4bd47d::t_0280daccfac1df 97-98
+.arbor/scripts/arbor.py
+  s_f3feb1ad4bd47d::t_8104c7deeaee26 98,1262-1264
+  s_239ff62966b981::t_1fb6448955f44c 114-116,134-147,220-233,258-262,313-314,317,372-376,382,564,596-597,610,649-653,753,766,769-773,782,809,827,926-928,1072,1107,1261,1421,1459-1460
+.arbor/tasks/10-30-polyrepo-upgrade/report.md
+  s_f3feb1ad4bd47d::t_e41b72ba43901c 29-35
+  s_239ff62966b981::t_e45429f13b252a 1-28
+packages/cli/src/templates/arbor/scripts/common/dispatch_context.py
+  s_239ff62966b981::t_2c1880f9a187db 127,887
+packages/cli/test/templates/arbor.test.ts
+  s_239ff62966b981::t_d30613a1bd2688 3,304-313
+packages/cli/src/templates/arbor/scripts/arbor.py
+  s_f3feb1ad4bd47d::t_98746e7459f9ff 98,1262-1264
+  s_239ff62966b981::t_eb996f29794534 221,231,258-262,597,651,766,771,926-928
+  s_239ff62966b981::t_b373cc1e3c6ff1 782
+  s_239ff62966b981::t_2c1880f9a187db 114-116,134-147,220,232-233,313-314,317,372-376,382,564,596,649-650,652-653,769-770,772-773,809,827,1072,1107,1261,1459
+  s_239ff62966b981::t_486ee77c165cfd 1421
+  s_e714a1f6728d7f::t_c5659f54182262 222-230,610,753,1460
+.arbor/scripts/task.py
+  s_239ff62966b981::t_1fb6448955f44c 352-358,371-389,411-412,448-449,527-528,1035-1037
+  s_239ff62966b981::t_05fee49b938e57 336-337,526,977-979
+packages/cli/src/templates/arbor/scripts/common/execution.py
+  s_239ff62966b981::t_b373cc1e3c6ff1 15
+  s_239ff62966b981::t_482e87e32fb988 52-54
+  s_239ff62966b981::t_eb996f29794534 146,148-154,157-159
+  s_239ff62966b981::t_ff48a968f721a7 1-14,16-34,36-51,57-63,65-91,97-99,102-141,143-145,155-156
+  s_239ff62966b981::t_2c1880f9a187db 147
+  s_239ff62966b981::t_7bce3aa9fb2667 35,55-56,64,92-96,100-101,142
+packages/cli/test/scripts/v2-polyrepo.integration.test.ts
+  s_239ff62966b981::t_eb996f29794534 252-271
+  s_f3feb1ad4bd47d::t_4828e18448acdb 5-90,117,123,133,136,145,174,221,273
+  s_f3feb1ad4bd47d::t_88e9fe4ccfceb7 2-4
+  s_f3feb1ad4bd47d::t_c7111628e2e10f 91-93,114-116
+  s_f3feb1ad4bd47d::t_261efb3e4e70b4 118-122
+  s_f3feb1ad4bd47d::t_b5019e0745f5bd 124-126,130-132
+  s_f3feb1ad4bd47d::t_9df443a0988a6b 134-135
+  s_f3feb1ad4bd47d::t_728ec92b17feb4 137-139,142-144
+  s_f3feb1ad4bd47d::t_ec4588c705938f 146-148,171-173
+  s_f3feb1ad4bd47d::t_c35ef6e39dff76 175-177,218-220
+  s_f3feb1ad4bd47d::t_039edb1afc1fbd 274
+  s_f3feb1ad4bd47d::t_3659f9b77cbd4a 1,94-113,127-129,140-141,149-170,178-217,222-251,272
+.arbor/tasks/10-30-polyrepo-upgrade/contract.md
+  s_239ff62966b981::t_2adcc25682854f 1-37
+.arbor/scripts/common/dispatch_context.py
+  s_239ff62966b981::t_1fb6448955f44c 127,887
+packages/cli/test/scripts/v2-driver-contract.integration.test.ts
+  s_f3feb1ad4bd47d::t_3f42ab6a7cc5b0 87,95-96
+.arbor/workflow.md
+  s_f3feb1ad4bd47d::t_5b141c8360d4c1 113-114,207,215,590
+  s_239ff62966b981::t_1fb6448955f44c 77-84,87-89,93-94,101-112,115-133
+  s_239ff62966b981::t_05fee49b938e57 85-86,90-92,95-100
+packages/cli/src/templates/arbor/scripts/common/task_store.py
+  s_239ff62966b981::t_b373cc1e3c6ff1 1200,1547-1548
+  s_239ff62966b981::t_482e87e32fb988 329,341-342,344,348-354,532-533
+  s_239ff62966b981::t_3311d8b01b2c51 1299-1300
+  s_239ff62966b981::t_cb61cf281279ed 534,1196-1199,1201
+packages/cli/src/templates/arbor/scripts/common/task_context.py
+  s_239ff62966b981::t_2d3f4eb0b15514 235-236
+packages/cli/test/commands/update.integration.test.ts
+  s_239ff62966b981::t_af8e1f2ef15aad 112-125
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "f0172fa8237365750749af607210ba6ea1cd066b",
+  "prompts": {},
+  "sessions": {
+    "s_239ff62966b981": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18de9-510d-78b1-82fe-896197125c84",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Mr tang <mytortoise18@sina.com~>"
+    },
+    "s_e714a1f6728d7f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18d84-ec6e-78d3-bb65-ee76b56070d5",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Mr tang <mytortoise18@sina.com~>"
+    },
+    "s_f3feb1ad4bd47d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18f9f-5cf3-7b71-b867-31398ef7f748",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Mr tang <mytortoise18@sina.com~>"
+    }
+  }
+}
