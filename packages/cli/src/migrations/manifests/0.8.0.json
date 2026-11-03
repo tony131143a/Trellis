@@ -15,5 +15,5 @@
     }
   ],
   "configSectionsAdded": [],
-  "migrationGuide": "Finish or abandon any task still in POLISH, in a test step or running tests/impl lanes before updating; the v5 driver refuses them. Edit .arbor/config.yaml by hand: delete the test_paths: section, any codeg-cli (type: command) executor and the stop: lines under mandate:. Review .arbor/agents/implement.md, fix.md, simplify.md and review.md for local edits: implement now owns the tests. Contracts no longer need a Test paths section; Interface pins are optional."
+  "migrationGuide": "Finish or abandon any task still in POLISH, in a test step or running tests/impl lanes before updating; the v5 driver cannot drive them. Edit .arbor/config.yaml by hand: delete the test_paths: section, any codeg-cli (type: command) executor and the stop: lines under mandate:. Review .arbor/agents/implement.md, fix.md, simplify.md and review.md for local edits: implement now owns the tests. Contracts no longer need a Test paths section; Interface pins are optional."
 }
