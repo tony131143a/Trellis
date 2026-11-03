@@ -136,10 +136,14 @@ executors:
 # Project-wide checks the driver runs at GATE level 0 (`arbor.py gate`), in
 # the task worktree, before the contract's `auto` verification-map commands.
 # Each entry is one shell command; a non-zero exit turns the gate red. Empty
-# means only the verification map runs.
+# means only the verification map runs. Put the full test suite here: writer
+# roles (implement / fix / simplify) run only the contract's targeted `auto`
+# checks plus lint and typecheck before they commit, and GATE is the one place
+# the whole suite runs.
 #   commands:
 #     - "pnpm lint"
 #     - "pnpm typecheck"
+#     - "pnpm test"
 gate:
   commands: []
 

@@ -65,7 +65,7 @@ Afterwards confirm the code really is simpler and easier to maintain, and the be
 
 ## Step 3: verify
 
-Run the lint, typecheck and tests named in the brief or in the spec Quality Check section. Everything must pass, and the tests stay as they are: if a simplification needs a test change, skip it. If nothing was worth changing, change nothing and commit nothing.
+Run the contract's `auto` checks that cover the files you touched, the lint and typecheck, and any extra test the brief names. Do not run the full test suite: the driver's GATE runs it right after you commit. Everything must pass, and the tests stay as they are: if a simplification needs a test change, skip it. If nothing was worth changing, change nothing and commit nothing.
 
 ## Write boundary
 

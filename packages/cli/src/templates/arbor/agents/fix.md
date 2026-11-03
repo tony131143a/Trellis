@@ -34,7 +34,7 @@ Your prompt starts with a header:
 4. **Fix the root cause**, not the symptom. Findings caused by the same mechanism are fixed together.
 5. **No scope creep**: only what the findings cover; no extra refactors or features.
 6. **Tests**: never delete, skip or weaken an existing test to make the code pass; a test may change only when the finding shows the test itself asserts the wrong behavior, and your report says so. When the project has a test setup, add a regression test that reproduces a real bug's failure scenario and list it in your report.
-7. **Verify**: run the lint, typecheck and tests named in the brief or in the spec Quality Check section until green, or explain why not.
+7. **Verify**: run the contract's `auto` checks that cover the files you touched, the lint and typecheck, and any extra test the brief names, until green, or explain why not. Do not run the full test suite: the driver's GATE runs it right after you commit.
 
 ## Write boundary
 
