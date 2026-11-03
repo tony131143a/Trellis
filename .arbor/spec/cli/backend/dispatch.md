@@ -68,9 +68,7 @@ The option precedes the subcommand. A child task driven from its own
 conversation passes `--task` on every call.
 
 The only executor type is `codeg-mcp`; `timeout` accepts seconds or an `s`, `m`
-or `h` suffix (missing or zero means no timeout) and bounds one delegation. The
-`command` executor type and the global `--executor` option were removed in
-0.8.0.
+or `h` suffix (missing or zero means no timeout) and bounds one delegation.
 
 ## The MCP path
 

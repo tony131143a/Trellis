@@ -81,8 +81,7 @@ children [--json] [--cleanup]
   `mcp.arguments`, immediately `bind`, poll the bound task, save the complete
   terminal response at the returned `result_path` outside the task worktree, then
   `collect`. Resume bound requests after interruptions; never launch them twice.
-  The `codeg-cli` command executor, the `--executor` option and the probe
-  subcommand were removed in 0.8.0. See [dispatch.md](./dispatch.md).
+  See [dispatch.md](./dispatch.md).
 - **The loop.** After `task.py start` the main agent runs `next`, does the one
   thing it names (`brief` → write it, `run`; `delegation` → delegate, `bind`,
   `collect`; `run` → `gate` or wave merge; `decide`; `human`) and runs `next`

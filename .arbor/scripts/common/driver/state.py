@@ -99,7 +99,6 @@ DEFAULT_PARTITION = "default"
 PARTITION_BRIEF_STEPS = ("implement",)
 PARTITION_DONE = "done"
 REVIEW_ENTRY = "entry"  # after_gate step resolved per tier by on_gate
-V4_STEPS = {("BUILD", "test"), ("GATE", "test")}
 
 
 class StateError(RuntimeError):
@@ -129,9 +128,6 @@ class Step:
 
 
 def ensure_fields(data: dict) -> dict:
-    state, step = data.get("state"), data.get("step")
-    if state == "POLISH" or (state, step) in V4_STEPS or data.get("lanes"):
-        raise StateError("v4 task in flight (POLISH, a test step or lanes); finish it on arbor-v4 or abandon it")
     data.setdefault("state", "BUILD")
     counters = data.get("counters")
     if not isinstance(counters, dict):

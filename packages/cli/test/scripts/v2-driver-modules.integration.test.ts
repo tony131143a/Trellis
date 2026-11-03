@@ -264,12 +264,6 @@ assert (step.needs, step.role, step.range_from) == ("brief", "implement", "b")
 assert sm.plan({"state": "FINISH"}, "light").human == {"kind": "merge"}
 assert set(sm.DISPATCH_STEPS.values()) == {"implement", "fix", "review", "simplify", "verify"}
 assert "POLISH" not in sm.STATES and sm.DECIDE_CHOICES == ("impl", "contract")
-# a v4 task in flight is refused
-for v4 in ({"state": "POLISH"}, {"state": "BUILD", "step": "test"}, {"state": "GATE", "step": "test"},
-           {"state": "BUILD", "lanes": {"tests": {}}}):
-    try:
-        sm.ensure_fields(v4); raise SystemExit("v4 task accepted: %r" % (v4,))
-    except sm.StateError: pass
 print("ok")
 `);
     expect(out).toBe("ok");
