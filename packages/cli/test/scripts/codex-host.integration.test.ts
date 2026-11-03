@@ -59,27 +59,6 @@ print(json.dumps(dict(hook=hook, shell=shell, other=other, override=override)))
     expect(result.override).toBe("explicit-child");
   });
 
-  it("does not give an executor the parent Arbor or host session", () => {
-    const result = python(
-      `
-import json, os, shlex
-from pathlib import Path
-from common.driver.executor import Executor, run_executor
-code = 'import os,json; print(json.dumps({k:os.environ.get(k) for k in ("ARBOR_CONTEXT_ID","CODEX_THREAD_ID")}))'
-executor = Executor("probe", "python3 -c " + shlex.quote(code), 10)
-reply = run_executor(executor, role="review", prompt_path=Path("unused"), worktree=Path.cwd(), task="probe", dispatch="d-001")
-print(json.dumps(dict(ok=reply.ok, child=json.loads(reply.stdout), parent=os.environ.get("ARBOR_CONTEXT_ID"))))
-`,
-      { ARBOR_CONTEXT_ID: "parent-task", CODEX_THREAD_ID: "parent-thread" },
-    );
-    expect(result.ok).toBe(true);
-    expect(result.child).toEqual({
-      ARBOR_CONTEXT_ID: null,
-      CODEX_THREAD_ID: null,
-    });
-    expect(result.parent).toBe("parent-task");
-  });
-
   it("inlines role instructions while keeping the dispatch header first", () => {
     const instructions =
       "Role boundary: inspect only. Report: findings and essential files.";

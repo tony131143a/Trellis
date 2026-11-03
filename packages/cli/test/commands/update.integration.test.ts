@@ -814,7 +814,7 @@ describe("update() integration", () => {
     writeProjectFile(".arbor/.runtime/dispatch-target", "star\n");
     // A dispatch.py whose content matches no shipped version: kept.
     writeProjectFile(".arbor/scripts/dispatch.py", "# locally edited\n");
-    // A pre-v2 config.yaml without the gate / worktree / test_paths sections.
+    // A pre-v2 config.yaml without the gate / worktree sections.
     const configPath = ".arbor/config.yaml";
     const config = readProjectFile(configPath);
     const cut = config.indexOf(
@@ -832,9 +832,12 @@ describe("update() integration", () => {
       "# locally edited\n",
     );
     const updated = readProjectFile(configPath);
-    for (const key of ["gate:", "worktree:", "test_paths:"]) {
+    for (const key of ["gate:", "worktree:"]) {
       expect(updated).toContain(`\n${key}\n`);
     }
+    // 0.8.0 dropped test_paths: the 0.2.0 manifest still lists it, but the
+    // bundled config.yaml no longer has the section, so nothing is appended.
+    expect(updated).not.toContain("\ntest_paths:\n");
     expect(updated.match(/^executors:$/gm)).toHaveLength(1);
     expect(fs.readFileSync(versionFilePath(), "utf-8")).toBe(VERSION);
   });

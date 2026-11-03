@@ -249,16 +249,8 @@ def read_arbor_config(repo_root: Optional[Path] = None) -> dict:
 
 # Defaults for the v2 sections. Every value is a string, as the parser returns.
 DEFAULT_WORKTREE_CONFIG: dict = {"root": "../{repo}-wt", "setup": "", "branch_prefix": "arbor/"}
-DEFAULT_TEST_PATHS: tuple[str, ...] = ("packages/*/test/**", "**/*.test.ts")
 DEFAULT_EXECUTORS_CONFIG: dict = {
-    "default": "codeg-cli",
-    "codeg-cli": {
-        "type": "command",
-        "command": ("codeg-cli run -A arbor-{role} -w {worktree} --permissions allow --timeout 90m "
-                    "--title arbor-{role}-{task}-{dispatch} -q -p - < {prompt}"),
-        "timeout": "95m",
-        "max_parallel": "3",
-    },
+    "default": "codeg",
     "codeg": {
         "type": "codeg-mcp",
         "assistant": "arbor-{role}",
@@ -275,24 +267,12 @@ def get_worktree_config(config: dict) -> dict:
     return merged
 
 
-def get_test_paths(config: dict) -> list[str]:
-    """``test_paths:`` globs, or the defaults when the list is absent/empty."""
-    value = config.get("test_paths") if isinstance(config, dict) else None
-    if isinstance(value, list):
-        paths = [p.strip() for p in value if isinstance(p, str) and p.strip()]
-        if paths:
-            return paths
-    return list(DEFAULT_TEST_PATHS)
-
-
 def get_executors_config(config: dict) -> dict:
     """``executors:`` section merged over the defaults.
 
-    Built-in executors (``codeg-cli``, ``codeg``) stay available when the
-    section omits them, so ``--executor codeg-cli`` keeps resolving even if a
-    repo only configures ``codeg``. A configured executor overlays
-    its built-in fields key by key; ``default`` and new executors are taken
-    as written.
+    The built-in ``codeg`` executor stays available when the section omits
+    it. A configured executor overlays its built-in fields key by key;
+    ``default`` and new executors are taken as written.
     """
     merged = {
         key: dict(value) if isinstance(value, dict) else value

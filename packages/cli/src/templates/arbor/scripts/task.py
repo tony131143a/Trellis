@@ -233,7 +233,7 @@ def _tier_gate(task_dir: Path, task_input: str) -> bool:
     return True
 
 
-NEW_COUNTERS = {"gate": 0, "review": 0, "polish": 0, "no_progress": 0}
+NEW_COUNTERS = {"gate": 0, "review": 0, "no_progress": 0}
 
 
 def _point_session_at(task_dir: Path, repo_root: Path) -> int:

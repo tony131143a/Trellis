@@ -321,9 +321,7 @@ ${separator}
   function runAddSession(title: string, options?: { branch?: string }): void {
     const command = [
       "python3",
-      JSON.stringify(
-        path.join(tmpDir, ".arbor", "scripts", "add_session.py"),
-      ),
+      JSON.stringify(path.join(tmpDir, ".arbor", "scripts", "add_session.py")),
       "--title",
       JSON.stringify(title),
       "--summary",
@@ -634,9 +632,9 @@ describe("regression: resolve_task_dir containment chokepoint", () => {
     expect(r.status).not.toBe(0);
     expect(r.stderr).toContain("--slug must be a plain name");
     expect(fs.existsSync(path.join(tmpDir, ".arbor", "escaped"))).toBe(false);
-    expect(
-      fs.readdirSync(path.join(tmpDir, ".arbor", "tasks")).sort(),
-    ).toEqual(["08-09-real", "archive"]);
+    expect(fs.readdirSync(path.join(tmpDir, ".arbor", "tasks")).sort()).toEqual(
+      ["08-09-real", "archive"],
+    );
   });
 
   it("[audit] add-context rejects a traversal JSONL filename", () => {
@@ -663,9 +661,9 @@ describe("regression: resolve_task_dir containment chokepoint", () => {
     );
     expect(r.status).not.toBe(0);
     expect(r.stderr).toContain("invalid task name");
-    expect(
-      fs.existsSync(path.join(tmpDir, ".arbor", "implement.jsonl")),
-    ).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".arbor", "implement.jsonl"))).toBe(
+      false,
+    );
   });
 
   it("[audit] an ambiguous suffix name fails and lists every match", () => {
@@ -1186,7 +1184,10 @@ describe("regression: JSON read/write failure reporting", () => {
       ]).status,
     ).toBe(0);
     const name = `${datePrefix}-latin`;
-    fs.writeFileSync(taskJsonPath(name), Buffer.from([0x7b, 0x22, 0xff, 0x22, 0x7d]));
+    fs.writeFileSync(
+      taskJsonPath(name),
+      Buffer.from([0x7b, 0x22, 0xff, 0x22, 0x7d]),
+    );
 
     const r = runTask(["set-meta", name, "k", "v"]);
     expect(r.status).not.toBe(0);
@@ -1544,7 +1545,10 @@ describe("regression: JSON read/write failure reporting", () => {
     const name = `${datePrefix}-rot`;
     fs.writeFileSync(taskJsonPath(name), "{ not json");
 
-    const r = runTask(["start", name, "--no-worktree", "--allow-empty-context"], env);
+    const r = runTask(
+      ["start", name, "--no-worktree", "--allow-empty-context"],
+      env,
+    );
     // Tolerant: the session pointer is the point of the command.
     expect(r.status).toBe(0);
     expect(r.stdout).toContain("Current task set to");
@@ -1571,7 +1575,8 @@ describe("regression: JSON read/write failure reporting", () => {
     ).toBe(0);
     const name = `${datePrefix}-live`;
     expect(
-      runTask(["start", name, "--no-worktree", "--allow-empty-context"], env).status,
+      runTask(["start", name, "--no-worktree", "--allow-empty-context"], env)
+        .status,
     ).toBe(0);
 
     const healthy = runTask(["current", "--json"], env);
@@ -1633,8 +1638,15 @@ describe("regression: JSON read/write failure reporting", () => {
         ).status,
       ).toBe(0);
       expect(
-        runTask(["start", `${datePrefix}-one`, "--no-worktree", "--allow-empty-context"], env)
-          .status,
+        runTask(
+          [
+            "start",
+            `${datePrefix}-one`,
+            "--no-worktree",
+            "--allow-empty-context",
+          ],
+          env,
+        ).status,
       ).toBe(0);
 
       const sessionsDir = path.join(tmpDir, ".arbor", ".runtime", "sessions");
@@ -1647,7 +1659,12 @@ describe("regression: JSON read/write failure reporting", () => {
       fs.chmodSync(sessionsDir, 0o555);
       try {
         const r = runTask(
-          ["start", `${datePrefix}-two`, "--no-worktree", "--allow-empty-context"],
+          [
+            "start",
+            `${datePrefix}-two`,
+            "--no-worktree",
+            "--allow-empty-context",
+          ],
           env,
         );
         expect(r.status).not.toBe(0);
@@ -1669,9 +1686,7 @@ describe("regression: is_within_tasks_dir archive boundary (issue #428)", () => 
   const pythonCmd = process.platform === "win32" ? "python" : "python3";
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(
-      path.join(os.tmpdir(), "arbor-within-tasks-dir-"),
-    );
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-within-tasks-dir-"));
     const scriptsDir = path.join(tmpDir, ".arbor", "scripts");
     for (const [relativePath, content] of getAllScripts()) {
       const absPath = path.join(scriptsDir, relativePath);
@@ -2880,9 +2895,7 @@ describe("regression: current-task path normalization", () => {
     expect(fs.existsSync(path.join(tmpDir, ".arbor", ".current-task"))).toBe(
       false,
     );
-    expect(fs.existsSync(path.join(tmpDir, ".arbor", ".runtime"))).toBe(
-      false,
-    );
+    expect(fs.existsSync(path.join(tmpDir, ".arbor", ".runtime"))).toBe(false);
 
     // task.json.status remains in_progress (was already in_progress; degraded
     // mode preserves the existing status when not planning)
@@ -4559,9 +4572,7 @@ describe("regression: current-task path normalization", () => {
         expect(result.stderr.trim()).toBe("");
       }
       expect(
-        fs.existsSync(
-          path.join(tmpDir, ".arbor", ".runtime", "shell-tickets"),
-        ),
+        fs.existsSync(path.join(tmpDir, ".arbor", ".runtime", "shell-tickets")),
       ).toBe(false);
     });
   });
@@ -5147,7 +5158,9 @@ describe("regression: current-task path normalization", () => {
     };
     const context = parsed.hookSpecificOutput.additionalContext;
     expect(context).toContain("Task: issue-106 (task_error)");
-    expect(context).toContain("Repair the active task record before continuing.");
+    expect(context).toContain(
+      "Repair the active task record before continuing.",
+    );
     expect(context).not.toContain("Status: no_task");
   });
 
@@ -5191,7 +5204,9 @@ describe("regression: current-task path normalization", () => {
     };
     const context = parsed.hookSpecificOutput.additionalContext;
     expect(context).toContain("Task: issue-106 (task_error)");
-    expect(context).toContain("Repair the active task record before continuing.");
+    expect(context).toContain(
+      "Repair the active task record before continuing.",
+    );
     expect(context).not.toContain("Status: no_task");
   });
 
@@ -5213,9 +5228,7 @@ describe("regression: current-task path normalization", () => {
     );
     // Now .arbor/ exists only as a parent for the hook script — need to move
     // the hook out of .arbor/ so root-finding fails. Use a fully separate dir.
-    const nonArborDir = fs.mkdtempSync(
-      path.join(os.tmpdir(), "non-arbor-"),
-    );
+    const nonArborDir = fs.mkdtempSync(path.join(os.tmpdir(), "non-arbor-"));
     try {
       const hookPath = path.join(nonArborDir, "hook.py");
       fs.copyFileSync(
@@ -5337,8 +5350,12 @@ describe("regression: current-task path normalization", () => {
       .filter((d) => d.includes("plain-task"));
     expect(newDirs.length).toBeGreaterThan(0);
     const taskDir = path.join(tasksDir, newDirs[0]);
-    expect(fs.readFileSync(path.join(taskDir, "implement.jsonl"), "utf-8")).toBe("");
-    expect(fs.readFileSync(path.join(taskDir, "check.jsonl"), "utf-8")).toBe("");
+    expect(
+      fs.readFileSync(path.join(taskDir, "implement.jsonl"), "utf-8"),
+    ).toBe("");
+    expect(fs.readFileSync(path.join(taskDir, "check.jsonl"), "utf-8")).toBe(
+      "",
+    );
   });
 
   it("[validation-preflight] task.py create writes EMPTY jsonl when a sub-agent platform dir exists", () => {
@@ -5513,26 +5530,27 @@ print(len(entries))
     it("rejects a placeholder-only implement.jsonl with file, line, and remediation", () => {
       const result = validateWith(placeholderRow, curatedRow);
       expect(result.status).toBe(1);
-      expect(result.stdout).toContain("implement.jsonl:1: Placeholder `_example` row");
       expect(result.stdout).toContain(
-        '{"file": "<path>", "reason": "<why>"}',
+        "implement.jsonl:1: Placeholder `_example` row",
       );
+      expect(result.stdout).toContain('{"file": "<path>", "reason": "<why>"}');
       expect(result.stdout).toContain("Validation failed (1 errors)");
     });
 
     it("rejects a placeholder row in check.jsonl too", () => {
       const result = validateWith(curatedRow, placeholderRow);
       expect(result.status).toBe(1);
-      expect(result.stdout).toContain("check.jsonl:1: Placeholder `_example` row");
+      expect(result.stdout).toContain(
+        "check.jsonl:1: Placeholder `_example` row",
+      );
     });
 
     it("rejects a placeholder row that sits alongside curated entries", () => {
-      const result = validateWith(
-        `${placeholderRow}${curatedRow}`,
-        curatedRow,
-      );
+      const result = validateWith(`${placeholderRow}${curatedRow}`, curatedRow);
       expect(result.status).toBe(1);
-      expect(result.stdout).toContain("implement.jsonl:1: Placeholder `_example` row");
+      expect(result.stdout).toContain(
+        "implement.jsonl:1: Placeholder `_example` row",
+      );
       expect(result.stdout).toContain("Validation failed (1 errors)");
     });
 
@@ -5575,7 +5593,10 @@ print(len(entries))
     it("reports a non-object row instead of crashing on it", () => {
       // Valid JSON, wrong shape — the row must be an error with a line
       // number, not an AttributeError traceback out of `data.get`.
-      const result = validateWith('"just a string"\n[1, 2]\nnull\n', curatedRow);
+      const result = validateWith(
+        '"just a string"\n[1, 2]\nnull\n',
+        curatedRow,
+      );
       expect(result.status).toBe(1);
       expect(result.stderr).not.toContain("Traceback");
       for (const line of [1, 2, 3]) {
@@ -5640,7 +5661,9 @@ print(len(entries))
         { cwd: tmpDir, encoding: "utf-8", env: sessionEnv() },
       );
       expect(result.status).toBe(1);
-      expect(result.stdout).toContain("implement.jsonl:1: Placeholder `_example` row");
+      expect(result.stdout).toContain(
+        "implement.jsonl:1: Placeholder `_example` row",
+      );
     });
   });
 
@@ -5648,10 +5671,17 @@ print(len(entries))
     const curatedRow =
       '{"file":".arbor/spec/guides/index.md","reason":"guideline"}\n';
 
-    function writeManifests(implement: string | null, check: string | null): void {
+    function writeManifests(
+      implement: string | null,
+      check: string | null,
+    ): void {
       const taskDir = path.join(tmpDir, ".arbor", "tasks", "issue-106");
       if (implement !== null) {
-        fs.writeFileSync(path.join(taskDir, "implement.jsonl"), implement, "utf-8");
+        fs.writeFileSync(
+          path.join(taskDir, "implement.jsonl"),
+          implement,
+          "utf-8",
+        );
       }
       if (check !== null) {
         fs.writeFileSync(path.join(taskDir, "check.jsonl"), check, "utf-8");
@@ -5662,7 +5692,13 @@ print(len(entries))
       const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
       return spawnSync(
         pythonCmd,
-        [taskScriptPath, "start", ".arbor/tasks/issue-106", "--no-worktree", ...extra],
+        [
+          taskScriptPath,
+          "start",
+          ".arbor/tasks/issue-106",
+          "--no-worktree",
+          ...extra,
+        ],
         {
           cwd: tmpDir,
           encoding: "utf-8",
@@ -5916,10 +5952,7 @@ print(len(entries))
   it("[workflow-v2] get_context.py --mode phase returns compact Phase Index only", () => {
     writeArborScripts();
     writeProjectFile(path.join(".arbor", ".developer"), "name=test\n");
-    writeProjectFile(
-      path.join(".arbor", "workflow.md"),
-      templateWorkflowMd(),
-    );
+    writeProjectFile(path.join(".arbor", "workflow.md"), templateWorkflowMd());
 
     const contextScript = path.join(
       tmpDir,
@@ -5947,10 +5980,7 @@ print(len(entries))
   it("[workflow-v2] get_context.py --mode phase --step resolves v2 step ids", () => {
     writeArborScripts();
     writeProjectFile(path.join(".arbor", ".developer"), "name=test\n");
-    writeProjectFile(
-      path.join(".arbor", "workflow.md"),
-      templateWorkflowMd(),
-    );
+    writeProjectFile(path.join(".arbor", "workflow.md"), templateWorkflowMd());
     const contextScript = path.join(
       tmpDir,
       ".arbor",
@@ -5958,11 +5988,10 @@ print(len(entries))
       "get_context.py",
     );
     const step = (id: string) =>
-      spawnSync(
-        pythonCmd,
-        [contextScript, "--mode", "phase", "--step", id],
-        { cwd: tmpDir, encoding: "utf-8" },
-      );
+      spawnSync(pythonCmd, [contextScript, "--mode", "phase", "--step", id], {
+        cwd: tmpDir,
+        encoding: "utf-8",
+      });
 
     const loop = step("2.1");
     expect(loop.status, loop.stderr).toBe(0);
@@ -5987,10 +6016,7 @@ print(len(entries))
   it("[workflow-v2] session-start.py <arbor-workflow> block contains compact Phase Index", () => {
     writeArborScripts();
     writeProjectFile(path.join(".arbor", ".developer"), "name=test\n");
-    writeProjectFile(
-      path.join(".arbor", "workflow.md"),
-      templateWorkflowMd(),
-    );
+    writeProjectFile(path.join(".arbor", "workflow.md"), templateWorkflowMd());
     writeProjectFile(
       path.join(".claude", "hooks", "session-start.py"),
       expectTemplateContent(claudeSessionStart, "shared session-start"),
@@ -6004,8 +6030,9 @@ print(len(entries))
     };
     const ctx = payload.hookSpecificOutput.additionalContext;
 
-    const workflowMatch =
-      /<arbor-workflow>([\s\S]*?)<\/arbor-workflow>/.exec(ctx);
+    const workflowMatch = /<arbor-workflow>([\s\S]*?)<\/arbor-workflow>/.exec(
+      ctx,
+    );
     if (!workflowMatch) throw new Error("workflow block not found in payload");
     const workflowBlock = workflowMatch[1];
 
@@ -6027,10 +6054,7 @@ print(len(entries))
   it("[workflow-v2] session-start.py <guidelines> block lists context order and spec paths", () => {
     writeArborScripts();
     writeProjectFile(path.join(".arbor", ".developer"), "name=test\n");
-    writeProjectFile(
-      path.join(".arbor", "workflow.md"),
-      templateWorkflowMd(),
-    );
+    writeProjectFile(path.join(".arbor", "workflow.md"), templateWorkflowMd());
     // Guides are no longer inlined in compact SessionStart.
     writeProjectFile(
       path.join(".arbor", "spec", "guides", "index.md"),
@@ -6071,7 +6095,9 @@ print(len(entries))
 
   it("[workflow-v2] dispatch context sources do NOT contain update_current_phase function", () => {
     expect(
-      getSharedHookScripts().find((hook) => hook.name === "inject-delegation-context.py"),
+      getSharedHookScripts().find(
+        (hook) => hook.name === "inject-delegation-context.py",
+      ),
     ).toBeUndefined();
     const source = getAllScripts().get("common/dispatch_context.py");
     expect(source).toBeTruthy();
@@ -6403,7 +6429,11 @@ print(len(entries))
     setupTaskRepo();
     initTaskGitRepo("main");
     execSync("git checkout -q -b feature/record-me", { cwd: tmpDir });
-    patchIssue106Task({ status: "planning", branch: null, base_branch: "main" });
+    patchIssue106Task({
+      status: "planning",
+      branch: null,
+      base_branch: "main",
+    });
 
     const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     const result = spawnSync(
@@ -6452,7 +6482,11 @@ print(len(entries))
     setupTaskRepo();
     initTaskGitRepo("main");
     execSync("git checkout -q --detach", { cwd: tmpDir });
-    patchIssue106Task({ status: "planning", branch: null, base_branch: "main" });
+    patchIssue106Task({
+      status: "planning",
+      branch: null,
+      base_branch: "main",
+    });
 
     const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
     const result = spawnSync(
@@ -7007,9 +7041,7 @@ describe("regression: hook templates honor the ARBOR_HOOKS kill switch", () => {
       )?.content;
       expect(script, `shared-hooks/${name} should exist`).toBeTruthy();
       expect(script).toContain('os.environ.get("ARBOR_HOOKS") == "0"');
-      expect(script).toContain(
-        'os.environ.get("ARBOR_DISABLE_HOOKS") == "1"',
-      );
+      expect(script).toContain('os.environ.get("ARBOR_DISABLE_HOOKS") == "1"');
     }
   });
 });
@@ -7028,7 +7060,9 @@ describe("regression: session-start.py f-string Python <=3.11 compat (0.5.2)", (
   // asserts no f-string contains a backslash inside its `{...}` expression.
   const __dirname2 = path.dirname(fileURLToPath(import.meta.url));
   const repoRoot = path.resolve(__dirname2, "../../..");
-  const HOOK_FILES = ["packages/cli/src/templates/shared-hooks/session-start.py"];
+  const HOOK_FILES = [
+    "packages/cli/src/templates/shared-hooks/session-start.py",
+  ];
   // Match an f-string (f"..." or f'...') whose `{...}` body contains a `\`.
   // Backslash inside expression part is illegal under PEP 498.
   const F_STRING_BACKSLASH =
@@ -7109,7 +7143,7 @@ describe("regression: sub-agent context injection fallback (0.5.3)", () => {
       "Active task: <absolute path of .arbor/tasks/<task> inside the task worktree>",
     );
     expect(wf).toContain(
-      "Role: explore | architect | test | implement | review | verify | fix | simplify",
+      "Role: explore | architect | implement | review | verify | fix | simplify",
     );
     expect(wf).toContain("Range: <base>..<head>");
     expect(wf).toContain("Dispatch: d-NNN");
@@ -7361,10 +7395,7 @@ describe("regression: safe auto-commit when .arbor/ is gitignored (0.5.10 → 0.
       ".arbor/.template-hashes.json",
       '{"_": "should-not-be-committed"}\n',
     );
-    writeFile(
-      ".arbor/.runtime/sessions/should-not-be-committed.json",
-      "{}\n",
-    );
+    writeFile(".arbor/.runtime/sessions/should-not-be-committed.json", "{}\n");
 
     if (options?.gitignoreArbor) {
       writeFile(".gitignore", ".arbor/\n");
@@ -7379,12 +7410,7 @@ describe("regression: safe auto-commit when .arbor/ is gitignored (0.5.10 → 0.
   }
 
   function runAddSession(): { stdout: string; stderr: string } {
-    const scriptPath = path.join(
-      tmpDir,
-      ".arbor",
-      "scripts",
-      "add_session.py",
-    );
+    const scriptPath = path.join(tmpDir, ".arbor", "scripts", "add_session.py");
     const result = spawnSync(
       pyCmd,
       [scriptPath, "--title", "Test", "--summary", "Test"],
@@ -7892,7 +7918,9 @@ print(json.dumps({
     // Says what is left to do, so neither a user nor an agent reading the
     // log has to guess.
     expect(stderr).toContain("only the commit is pending");
-    expect(stderr).toContain(`git commit -m "chore(task): archive ${taskName}"`);
+    expect(stderr).toContain(
+      `git commit -m "chore(task): archive ${taskName}"`,
+    );
     expect(stderr).toContain("Archive moved on disk");
 
     // Consistent state: the move completed, nothing is half-moved.
@@ -8097,7 +8125,9 @@ describe("regression: task.py rename rewrites every reference in one pass", () =
 
   /** Every `<file>:<line>` under .arbor/tasks/ that still names `taskName`. */
   function scanForName(taskName: string): string[] {
-    const pattern = new RegExp(`(?<![0-9A-Za-z_-])${taskName}(?![0-9A-Za-z_-])`);
+    const pattern = new RegExp(
+      `(?<![0-9A-Za-z_-])${taskName}(?![0-9A-Za-z_-])`,
+    );
     const hits: string[] = [];
     const walk = (dir: string): void => {
       for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -8301,9 +8331,9 @@ describe("regression: task.py rename rewrites every reference in one pass", () =
     expect(r.status, r.stderr).toBe(0);
 
     const renamed = `${datePrefix}-renamed`;
-    expect(
-      JSON.parse(fs.readFileSync(sessionFile, "utf-8")).current_task,
-    ).toBe(`.arbor/tasks/${renamed}`);
+    expect(JSON.parse(fs.readFileSync(sessionFile, "utf-8")).current_task).toBe(
+      `.arbor/tasks/${renamed}`,
+    );
     // A session on a different task is left exactly as it was.
     expect(
       JSON.parse(fs.readFileSync(bystanderFile, "utf-8")).current_task,
@@ -8451,9 +8481,9 @@ describe("regression: a linked worktree inherits developer identity", () => {
     buildRepo("main-dev");
 
     // The premise: git did not carry the gitignored identity file across.
-    expect(
-      fs.existsSync(path.join(worktreeDir, ".arbor", ".developer")),
-    ).toBe(false);
+    expect(fs.existsSync(path.join(worktreeDir, ".arbor", ".developer"))).toBe(
+      false,
+    );
 
     const created = createTask(worktreeDir, "inherited");
     expect(created.status, created.stderr).toBe(0);
@@ -8478,9 +8508,9 @@ describe("regression: a linked worktree inherits developer identity", () => {
 
     // Inheritance is read-only: copying the file in would go stale and shadow
     // later changes made in the main checkout.
-    expect(
-      fs.existsSync(path.join(worktreeDir, ".arbor", ".developer")),
-    ).toBe(false);
+    expect(fs.existsSync(path.join(worktreeDir, ".arbor", ".developer"))).toBe(
+      false,
+    );
   });
 
   it("[worktree-identity] a later main-checkout change is picked up, because nothing was copied", () => {
@@ -8516,8 +8546,7 @@ describe("regression: a linked worktree inherits developer identity", () => {
 
     // 2. the env var wins over both files
     expect(
-      createTask(worktreeDir, "env", [], { ARBOR_DEVELOPER: "env-dev" })
-        .status,
+      createTask(worktreeDir, "env", [], { ARBOR_DEVELOPER: "env-dev" }).status,
     ).toBe(0);
     expect(assigneeOf(worktreeDir, "env")).toBe("env-dev");
 
@@ -8533,8 +8562,7 @@ describe("regression: a linked worktree inherits developer identity", () => {
   it("[worktree-identity] the env var alone is enough in the main checkout too", () => {
     buildRepo(null);
     expect(
-      createTask(mainDir, "envonly", [], { ARBOR_DEVELOPER: "env-dev" })
-        .status,
+      createTask(mainDir, "envonly", [], { ARBOR_DEVELOPER: "env-dev" }).status,
     ).toBe(0);
     expect(assigneeOf(mainDir, "envonly")).toBe("env-dev");
   });
@@ -8656,7 +8684,8 @@ describe("arbor: shipped templates carry no upstream Trellis identifiers", () =>
       const content = fs.readFileSync(file, "utf-8");
       const lines = content.split("\n");
       lines.forEach((line, idx) => {
-        if (/trellis/i.test(line)) offenders.push(`${rel}:${idx + 1}: ${line.trim()}`);
+        if (/trellis/i.test(line))
+          offenders.push(`${rel}:${idx + 1}: ${line.trim()}`);
       });
     }
     expect(offenders).toEqual([]);

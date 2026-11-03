@@ -56,7 +56,6 @@ describe("backend driver documentation", () => {
       "run",
       "gate",
       "decide",
-      "canary",
       "override",
       "status",
       "resume",
@@ -67,9 +66,9 @@ describe("backend driver documentation", () => {
       "finish",
       "children",
     ];
-    const options = ["--task", "--executor"];
+    const options = ["--task"];
     const retiredOptions = ["--as-conductor"];
-    const retiredCommands = ["conduct"];
+    const retiredCommands = ["conduct", "canary"];
     const missing: string[] = [];
     if (!doc.includes("arbor.py")) missing.push("arbor.py entry point");
     for (const command of commands) {
@@ -170,7 +169,9 @@ describe("backend driver documentation", () => {
           violations.push(`guard row missing ${header}`);
       }
       if (row.includes("Conductor:"))
-        violations.push("guard row still mentions the retired Conductor: header");
+        violations.push(
+          "guard row still mentions the retired Conductor: header",
+        );
     }
     expect(violations).toEqual([]);
   });

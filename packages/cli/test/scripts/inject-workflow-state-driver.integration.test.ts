@@ -26,7 +26,8 @@ const SHARED_HOOKS = path.resolve(
 const TASK = "10-30-foo";
 const SESSION_ID = "driver-session";
 const CONTEXT_KEY = `claude_${SESSION_ID}`;
-const SUMMARY = "BUILD wave 1: write brief for role test, then `arbor run`";
+const SUMMARY =
+  "BUILD wave 1: write brief for role implement, then `arbor run`";
 
 function hasPython(): boolean {
   try {
@@ -86,7 +87,10 @@ describe.skipIf(!hasPython())("hooks read `arbor.py next --json`", () => {
         meta: { tier: "light" },
       }),
     );
-    fs.writeFileSync(path.join(taskDir, "contract.md"), "# Foo\n\n## Goal\n\nFoo.\n");
+    fs.writeFileSync(
+      path.join(taskDir, "contract.md"),
+      "# Foo\n\n## Goal\n\nFoo.\n",
+    );
   });
 
   afterEach(() => {
@@ -98,7 +102,10 @@ describe.skipIf(!hasPython())("hooks read `arbor.py next --json`", () => {
     fs.mkdirSync(sessions, { recursive: true });
     fs.writeFileSync(
       path.join(sessions, `${CONTEXT_KEY}.json`),
-      JSON.stringify({ current_task: `.arbor/tasks/${TASK}`, platform: "claude" }),
+      JSON.stringify({
+        current_task: `.arbor/tasks/${TASK}`,
+        platform: "claude",
+      }),
     );
   }
 
@@ -117,10 +124,15 @@ describe.skipIf(!hasPython())("hooks read `arbor.py next --json`", () => {
   }
 
   function writeJsonStub(payload: Record<string, unknown>): void {
-    writeStub(`print(json.dumps(json.loads(${JSON.stringify(JSON.stringify(payload))})))`);
+    writeStub(
+      `print(json.dumps(json.loads(${JSON.stringify(JSON.stringify(payload))})))`,
+    );
   }
 
-  function runHook(script: string, extra: Record<string, unknown> = {}): string {
+  function runHook(
+    script: string,
+    extra: Record<string, unknown> = {},
+  ): string {
     const r = spawnSync("python3", [path.join(SHARED_HOOKS, script)], {
       cwd: tmp,
       encoding: "utf-8",
@@ -143,9 +155,12 @@ describe.skipIf(!hasPython())("hooks read `arbor.py next --json`", () => {
   }
 
   function sessionStartStatus(): string {
-    const out = runHook("session-start.py", { hook_event_name: "SessionStart" });
-    const ctx = (JSON.parse(out) as { hookSpecificOutput: { additionalContext: string } })
-      .hookSpecificOutput.additionalContext;
+    const out = runHook("session-start.py", {
+      hook_event_name: "SessionStart",
+    });
+    const ctx = (
+      JSON.parse(out) as { hookSpecificOutput: { additionalContext: string } }
+    ).hookSpecificOutput.additionalContext;
     const match = /<task-status>([\s\S]*?)<\/task-status>/.exec(ctx);
     if (!match) throw new Error("task-status block missing");
     return match[1];
@@ -160,7 +175,13 @@ describe.skipIf(!hasPython())("hooks read `arbor.py next --json`", () => {
 
   it("injects only the driver's one-line summary plus needs", () => {
     activate();
-    writeJsonStub({ task: TASK, state: "BUILD", needs: "brief", role: "test", summary: SUMMARY });
+    writeJsonStub({
+      task: TASK,
+      state: "BUILD",
+      needs: "brief",
+      role: "implement",
+      summary: SUMMARY,
+    });
     const ctx = breadcrumb();
     expect(ctx).toBe(
       [
@@ -176,15 +197,27 @@ describe.skipIf(!hasPython())("hooks read `arbor.py next --json`", () => {
 
   it("runs `next --json` with this session's context id", () => {
     activate();
-    writeJsonStub({ task: TASK, state: "GATE", needs: "run", summary: "GATE: run the gate" });
+    writeJsonStub({
+      task: TASK,
+      state: "GATE",
+      needs: "run",
+      summary: "GATE: run the gate",
+    });
     breadcrumb();
     expect(stubCall()).toEqual({ argv: ["next", "--json"], ctx: CONTEXT_KEY });
   });
 
   it("collapses a multi-line summary onto one line", () => {
     activate();
-    writeJsonStub({ task: TASK, state: "STOP", needs: "human", summary: "STOP (BUDGET):\n  review cap reached" });
-    expect(breadcrumb()).toContain("Next (needs=human): STOP (BUDGET): review cap reached\n");
+    writeJsonStub({
+      task: TASK,
+      state: "STOP",
+      needs: "human",
+      summary: "STOP (BUDGET):\n  review cap reached",
+    });
+    expect(breadcrumb()).toContain(
+      "Next (needs=human): STOP (BUDGET): review cap reached\n",
+    );
   });
 
   /** The template tree ships the real arbor.py; these cases want none at all. */
@@ -202,7 +235,13 @@ describe.skipIf(!hasPython())("hooks read `arbor.py next --json`", () => {
 
   it("falls back to the workflow.md block for a task the driver reports as not started", () => {
     activate();
-    writeJsonStub({ task: TASK, state: "CONTRACT", needs: "human", started: false, summary: SUMMARY });
+    writeJsonStub({
+      task: TASK,
+      state: "CONTRACT",
+      needs: "human",
+      started: false,
+      summary: SUMMARY,
+    });
     const ctx = breadcrumb();
     expect(ctx).toContain("FALLBACK_BODY");
     expect(ctx).not.toContain("Next (needs=");
@@ -211,7 +250,9 @@ describe.skipIf(!hasPython())("hooks read `arbor.py next --json`", () => {
 
   it("falls back silently when the driver exits non-zero", () => {
     activate();
-    writeStub('print(json.dumps({"task": "x", "state": "BUILD", "needs": "brief", "summary": "s"}))\nsys.exit(1)');
+    writeStub(
+      'print(json.dumps({"task": "x", "state": "BUILD", "needs": "brief", "summary": "s"}))\nsys.exit(1)',
+    );
     const ctx = breadcrumb();
     expect(ctx).toContain("FALLBACK_BODY");
     expect(fs.existsSync(marker)).toBe(true);
@@ -235,7 +276,12 @@ describe.skipIf(!hasPython())("hooks read `arbor.py next --json`", () => {
   });
 
   it("does not call the driver without an active task", () => {
-    writeJsonStub({ task: TASK, state: "BUILD", needs: "brief", summary: SUMMARY });
+    writeJsonStub({
+      task: TASK,
+      state: "BUILD",
+      needs: "brief",
+      summary: SUMMARY,
+    });
     const ctx = breadcrumb();
     expect(ctx).toContain("NO_TASK_BODY");
     expect(fs.existsSync(marker)).toBe(false);
@@ -243,7 +289,12 @@ describe.skipIf(!hasPython())("hooks read `arbor.py next --json`", () => {
 
   it("session-start puts the driver summary into Next-Action", () => {
     activate();
-    writeJsonStub({ task: TASK, state: "BUILD", needs: "brief", summary: SUMMARY });
+    writeJsonStub({
+      task: TASK,
+      state: "BUILD",
+      needs: "brief",
+      summary: SUMMARY,
+    });
     const status = sessionStartStatus();
     expect(status).toContain("Status: IN_PROGRESS");
     expect(status).toContain(`Next-Action: ${SUMMARY} (needs=brief).`);
@@ -255,7 +306,9 @@ describe.skipIf(!hasPython())("hooks read `arbor.py next --json`", () => {
     activate();
     removeDriver();
     const status = sessionStartStatus();
-    expect(status).toContain("Next-Action: Run `python3 ./.arbor/scripts/arbor.py next`");
+    expect(status).toContain(
+      "Next-Action: Run `python3 ./.arbor/scripts/arbor.py next`",
+    );
     expect(status).not.toContain("prd.md");
   });
 });

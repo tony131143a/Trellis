@@ -13,7 +13,6 @@ Sections (``## `` headings). Order is free; optional sections may be absent.
     ## Verification map     table: | id | kind | check | file |
                             kind = auto | manual; auto → check is a shell command
     ## Interface pins       bullets; may be the single line "existing interfaces"
-    ## Test paths           bullets of glob patterns (defaults come from config)
     ## Partitions           "- <name>: <glob>, <glob>"   (absent → one partition
                             "default" owning "**")
     ## Waves                "- 1: [name, name]"          (absent → one wave with
@@ -34,10 +33,6 @@ from typing import Literal, Sequence
 
 CONTRACT_FILE = "contract.md"
 LEGACY_CONTRACT_FILE = "prd.md"
-
-#: A pin line that exempts a task from naming new interfaces (light tasks on
-#: existing code). Case-insensitive match on the stripped bullet text.
-EXISTING_INTERFACES_PIN = "existing interfaces"
 
 DEFAULT_PARTITION = "default"
 
@@ -77,7 +72,6 @@ class Contract:
     criteria: tuple[Criterion, ...]
     verification_map: tuple[MapEntry, ...]
     interface_pins: tuple[str, ...]
-    test_paths: tuple[str, ...]
     partitions: tuple[Partition, ...]
     waves: tuple[tuple[str, ...], ...]
 
@@ -299,7 +293,6 @@ def parse_contract(text: str, path: Path) -> Contract:
         criteria=criteria,
         verification_map=_parse_map(sections.get("verification map", [])),
         interface_pins=tuple(_bullets(sections.get("interface pins", []))),
-        test_paths=tuple(_unquote(p) for p in _bullets(sections.get("test paths", []))),
         partitions=tuple(partitions),
         waves=waves,
     )
@@ -309,20 +302,15 @@ def load_contract(path: Path) -> Contract:
     return parse_contract(path.read_text(encoding="utf-8"), path)
 
 
-def validate_contract(
-    contract: Contract,
-    repo_root: Path,
-    default_test_paths: Sequence[str],
-) -> list[str]:
-    """Structural checks run before approval (design §5.1). Returns human
-    readable error strings; empty list = valid.
+def validate_contract(contract: Contract, repo_root: Path) -> list[str]:
+    """Structural checks run before approval. Returns human readable error
+    strings; empty list = valid.
 
     Rules:
       - at least one criterion; ids match CRITERION_ID_PATTERN and are unique
       - every criterion has >= 1 map entry; every map entry names a criterion
-      - auto entries have a non-empty check; when ``file`` is given it exists
-        under repo_root or matches the effective test paths
-      - interface pins non-empty, or exactly the EXISTING_INTERFACES_PIN line
+      - auto entries have a non-empty check (their ``file`` may not exist yet:
+        implement creates it)
       - partition names unique; partition path sets pairwise non-overlapping
         (compare literal prefixes before the first glob character)
       - every wave names existing partitions; every partition appears in
@@ -347,32 +335,11 @@ def validate_contract(
     for criterion_id in dict.fromkeys(ids):
         if criterion_id not in mapped:
             errors.append(f"Verification map: {criterion_id} has no entry")
-    test_paths = effective_test_paths(contract, default_test_paths)
     for entry in contract.verification_map:
         if entry.id not in seen:
             errors.append(f"Verification map: entry {entry.id} names no acceptance criterion")
-        if entry.kind != "auto":
-            continue
-        if not entry.check:
+        if entry.kind == "auto" and not entry.check:
             errors.append(f"Verification map: {entry.id} is auto but its check is empty")
-        if entry.file and not (
-            (repo_root / entry.file).exists() or path_matches(entry.file, test_paths)
-        ):
-            errors.append(
-                f"Verification map: {entry.id} file {entry.file} does not exist and is "
-                f"outside the test paths ({', '.join(test_paths) or 'none'})"
-            )
-
-    pins = [pin.strip().lower() for pin in contract.interface_pins]
-    if not pins:
-        errors.append(
-            f"Interface pins: empty (list the signatures tests will call, or the single line "
-            f"'- {EXISTING_INTERFACES_PIN}')"
-        )
-    elif EXISTING_INTERFACES_PIN in pins and len(pins) > 1:
-        errors.append(
-            f"Interface pins: '{EXISTING_INTERFACES_PIN}' must be the only pin when present"
-        )
 
     names = [p.name for p in contract.partitions]
     for name in dict.fromkeys(names):
@@ -423,11 +390,6 @@ def _normalize(rel: str) -> str:
 def contract_hash(path: Path) -> str:
     """sha256 hex digest of the file bytes (what task.json freezes)."""
     return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-def effective_test_paths(contract: Contract, default_test_paths: Sequence[str]) -> tuple[str, ...]:
-    """Contract ``Test paths`` when present, else the config defaults."""
-    return contract.test_paths or tuple(default_test_paths)
 
 
 def path_matches(rel_posix: str, patterns: Sequence[str]) -> bool:
@@ -495,11 +457,7 @@ CONTRACT_TEMPLATE = """# {title}
 
 ## Interface pins
 
-- existing interfaces
-
-## Test paths
-
-<!-- optional; defaults come from .arbor/config.yaml test_paths -->
+<!-- optional; signatures, paths, CLI / HTTP shapes the design fixes up front -->
 
 ## Partitions
 

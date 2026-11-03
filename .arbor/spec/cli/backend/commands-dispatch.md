@@ -20,24 +20,23 @@ contract is in [dispatch.md](./dispatch.md).
 `packages/cli/src/templates/arbor/scripts/arbor.py` ships as
 `.arbor/scripts/arbor.py`. Its helpers live under `common/driver/`; role context
 is assembled by `common/dispatch_context.py`. Run it from the repository or a
-task worktree. Select role executors under `executors:` in `.arbor/config.yaml`
-(`executors.default: codeg`, a `codeg-mcp` executor; `codeg-cli` is the command
-executor for terminal sessions).
+task worktree. Roles run through the codeg MCP executor configured under
+`executors:` in `.arbor/config.yaml` (`executors.default: codeg`, `type: codeg-mcp`;
+the only executor type).
 
 ## 2. Signatures
 
 All global options precede the subcommand:
 
 ```text
-python3 .arbor/scripts/arbor.py [--task DIR] [--executor NAME] COMMAND
+python3 .arbor/scripts/arbor.py [--task DIR] COMMAND
 
 next [--json] [--partition P] [--role explore|architect|review]
 run [--dispatch d-NNN] [--partition P] [--autopilot]
 run --role explore|architect|review [--mode plan|sweep] [--range BASE..HEAD] [--dispatch d-NNN]
 gate
-decide impl|tests|contract|fix|skip|accept|retry --reason TEXT
-       [--dispatch d-NNN] [--report FILE] [--partition P]
-canary [--role explore|review|verify]
+decide impl|contract|fix|skip|accept|retry --reason TEXT
+       [--dispatch d-NNN] [--report FILE]
 override --reason TEXT [--to STATE[/step]] [--role ROLE] [--mode MODE]
 status
 resume
@@ -52,15 +51,13 @@ children [--json] [--cleanup]
 | Global option | Contract |
 | --- | --- |
 | `--task DIR` | Explicit task directory; otherwise the session's active task. A child task driven from its own conversation passes it on every call. |
-| `--executor NAME` | Select `executors.<name>`; otherwise `executors.default`. |
 
 | Subcommand | Behavior |
 | --- | --- |
 | `next` | Print the single next step; `--json` includes `task`, `state`, `needs`, `summary` and step-specific fields such as `brief_path`. `--role` prepares an additional CONTRACT research/design angle. |
 | `run` | Execute the named brief, validate the report and advance. In GATE, run deterministic checks; at a completed partition wave, merge its branches. `--autopilot` continues until a decision, human gate, STOP, red gate or failed dispatch. Explicit `--role` is for CONTRACT research/design; parent sweep uses review plus an explicit merged range. |
 | `gate` | Run level 0 gate commands and contract `auto` checks; report failing AC ids. A parent runs its integration checks in the main checkout. |
-| `decide` | Record a reasoned decision: `impl`, `tests`, `contract` for a red gate; `fix`, `skip` for candidates; `accept`, `retry` for report judgment. `--report` supplies a structured interpretation while preserving the raw report. |
-| `canary` | Dispatch a small read-only probe to check executor reachability and report format. |
+| `decide` | Record a reasoned decision: `impl`, `contract` for a red gate; `fix`, `skip` for PLAUSIBLE findings; `accept`, `retry` for report judgment. `--report` supplies a structured interpretation while preserving the raw report. |
 | `override` | Record a justified state jump or one extra role dispatch without advancing the normal table. |
 | `status` | Show task state, observations and metrics. |
 | `resume` | Leave STOP with another round, or record approval of the revised contract. |
@@ -68,7 +65,7 @@ children [--json] [--cleanup]
 | `prompt` | Rebuild a dispatch prompt; `--print` prints its text. |
 | `bind` | Bind a prepared MCP request to the returned codeg task id. |
 | `collect` | Validate the complete terminal MCP JSON and advance; optional sibling-task acceptance requires `--reason`. |
-| `finish` | In FINISH, write the scorecard and print the merge command, or use `--pr` to push/open a PR with gh. After merge, clean up, archive and journal; repeated calls continue missing steps. |
+| `finish` | In FINISH, one run writes the scorecard and prints the merge command, opens a PR with `--pr`, or (`merge=auto`, a child of a parent) merges itself. After the merge, one more run cleans up, archives and journals; repeated calls continue missing steps. |
 | `children` | List each child's state and merge status and the parent's integration branch; `--json` emits structured output; `--cleanup`, after a human merged the integration branch into the baseline, writes the journal entry and removes its worktree and branch. |
 
 ## 3. Contracts
@@ -84,9 +81,8 @@ children [--json] [--cleanup]
   `mcp.arguments`, immediately `bind`, poll the bound task, save the complete
   terminal response at the returned `result_path` outside the task worktree, then
   `collect`. Resume bound requests after interruptions; never launch them twice.
-  Command executors (`codeg-cli`) substitute shell-quoted placeholders, run in
-  the task worktree and return stdout as the report. See
-  [dispatch.md](./dispatch.md).
+  The `codeg-cli` command executor, the `--executor` option and the probe
+  subcommand were removed in 0.8.0. See [dispatch.md](./dispatch.md).
 - **The loop.** After `task.py start` the main agent runs `next`, does the one
   thing it names (`brief` → write it, `run`; `delegation` → delegate, `bind`,
   `collect`; `run` → `gate` or wave merge; `decide`; `human`) and runs `next`
@@ -106,7 +102,7 @@ children [--json] [--cleanup]
   `blocked_on` when nothing is actionable. The driver computes it; the caller
   acts on every item, then waits.
 - **Merge checks.** Before a wave merge, a partition branch changing files
-  outside its paths, the test paths and the task directory becomes
+  outside its paths and the task directory becomes
   `human.kind=merge_conflict` with `reason: scope`. Before any automatic merge
   of a task branch, the same scope check holds and the last review PASS must
   cover every product commit (`common/driver/integration.py`).
@@ -147,8 +143,9 @@ resetting or deleting work.
 - **Good**: `python3 .arbor/scripts/arbor.py --task <task> next --json` names a
   brief; write it, invoke `run`, delegate the returned request once, `bind`,
   poll, `collect`, then `next` again.
-- **Base**: `python3 .arbor/scripts/arbor.py --task <task> --executor codeg-cli
-  run` lets the driver run and collect the role itself in a terminal session.
+- **Base**: `python3 .arbor/scripts/arbor.py --task <task> finish` in FINISH
+  writes the scorecard and prints the `--no-ff` merge command in one run; the
+  same command after the merge cleans up and archives.
 - **Bad**: delegating a bound request a second time, or treating an MCP
   delegation request as a completed role report.
 

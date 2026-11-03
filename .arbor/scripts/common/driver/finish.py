@@ -2,18 +2,20 @@
 FINISH: scorecard, pull request or local merge command, merge detection and
 cleanup.
 
-    before merge   ``arbor finish`` writes ``<task>/scorecard.md`` and commits it
-                   on the task branch (``arbor(<task>): scorecard``); with
-                   ``--pr`` and ``gh`` on PATH it pushes the branch and opens a
-                   PR (body = contract.md + scorecard.md), otherwise it prints
-                   the local ``merge --no-ff`` command. Nothing else pushes.
+    before merge   one ``arbor finish`` writes ``<task>/scorecard.md``, commits it
+                   on the task branch (``arbor(<task>): scorecard``) and decides
+                   the merge in the same run: with ``--pr`` and ``gh`` on PATH it
+                   pushes the branch and opens a PR (body = contract.md +
+                   scorecard.md), with ``merge=auto`` it merges a small clean
+                   branch itself, otherwise it prints the local ``merge --no-ff``
+                   command. Nothing else pushes.
     merge          a human merges the task branch into ``base_branch``
                    (``git merge-base --is-ancestor`` in the main checkout).
                    A child of a parent task targets the parent's integration
-                   branch instead: the second ``arbor finish`` catches the
-                   child up with it, runs the gate and the merge checks, and
-                   merges it ``--no-ff`` itself (``integration.py``); a failed
-                   check leaves a human merge with the reason.
+                   branch instead: the same ``arbor finish`` catches the child
+                   up with it, runs the gate and the merge checks, and merges
+                   it ``--no-ff`` itself (``integration.py``); a failed check
+                   leaves a human merge with the reason.
     after merge    ``arbor finish`` removes the task worktree and branch (never
                    forced: a dirty worktree stops it), sets ``state: DONE`` in
                    the merged copy of task.json (in the checkout of the target
@@ -40,6 +42,7 @@ from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
+from ..active_task import clear_task_from_sessions
 from ..contract import find_contract, load_contract
 from ..git import run_git
 from ..io import read_json_checked, write_json
@@ -54,8 +57,8 @@ from .state import Step
 SCORECARD = "scorecard.md"
 RUNTIME_FINISH = f"{DIR_WORKFLOW}/.runtime/finish"
 _REPORT_SPLIT = "\n---\n\n## Driver: "
-SPEC_REMINDER = ("before merging, update .arbor/spec/ (or add a lint) for any CONFIRMED finding "
-                 "category that recurred (scorecard.md, Recurring CONFIRMED categories)")
+SPEC_REMINDER = ("update .arbor/spec/ (or add a lint) for any CONFIRMED finding category that "
+                 "recurred (scorecard.md, Recurring CONFIRMED categories)")
 
 
 class FinishError(RuntimeError):
@@ -196,7 +199,7 @@ def _results_rows(main: Path, task: str) -> list[dict]:
             row = json.loads(line)
         except ValueError:
             continue
-        if isinstance(row, dict) and row.get("task") == task and row.get("dispatch") != "canary":
+        if isinstance(row, dict) and row.get("task") == task:
             rows.append(row)
     return rows
 
@@ -246,9 +249,8 @@ def scorecard_facts(main: Path, task_dir: Path, data: dict, tier: str) -> dict:
         "dispatch_s": sum(float(r.get("duration_s") or 0) for r in rows),
         "setup_s": float(setup) if isinstance(setup, (int, float)) else None,
         "gates": gate_rounds(task_dir, data),
-        "review_rounds": sum(1 for d in dispatches if d.get("role") == "review" and _level(d) == "2"),
+        "review_rounds": sum(1 for d in dispatches if d.get("role") == "review" and not d.get("phase")),
         "review_fail_rounds": int(counters.get("review", 0)),
-        "polish_rounds": int(counters.get("polish", 0)),
         "levels": levels,
         "recurring": sorted(a for a, n in confirmed_angles.items() if n >= 2),
         "auto": auto,
@@ -262,7 +264,7 @@ def summary_line(facts: dict) -> str:
     gates = facts["gates"]
     auto, total = facts["auto"], facts["map_total"]
     return (f"{facts['tier']} tier: {facts['dispatches']} dispatches, {len(gates)} gate round(s), "
-            f"{facts['review_rounds']} review / {facts['polish_rounds']} polish round(s), "
+            f"{facts['review_rounds']} review read(s) / {facts['review_fail_rounds']} fix round(s), "
             f"AC auto-coverage {auto}/{total}, {facts['overrides']} override(s), "
             f"{facts['violations']} invariant violation(s)")
 
@@ -287,9 +289,9 @@ def render_scorecard(name: str, data: dict, facts: dict) -> str:
     if facts["gates"]:
         lines += ["", "| round | result | failing |", "|---|---|---|"]
         lines += [f"| {n} | {result} | {failing} |" for n, result, failing in facts["gates"]]
-    lines += ["", "## REVIEW / POLISH", "",
-              f"- review rounds: {facts['review_rounds']} ({facts['review_fail_rounds']} failed)",
-              f"- polish rounds: {facts['polish_rounds']}",
+    lines += ["", "## REVIEW", "",
+              f"- review reads: {facts['review_rounds']}",
+              f"- fix rounds: {facts['review_fail_rounds']}",
               "", "## Findings by level", "",
               "| level | CONFIRMED | PLAUSIBLE | REFUTED |", "|---|---|---|---|"]
     names = {"2": "2 review", "3": "3 candidates + verify", "4": "4 sweep"}
@@ -485,18 +487,13 @@ def merge_no_ff(main: Path, branch: str) -> str | None:
 
 
 def merge_into_integration(main: Path, worktree: Path, task_dir: Path, task_rel: str, data: dict, *,
-                           scorecard_written: bool, save, scope: tuple[str, ...] | None, gate) -> int:
+                           save, scope: tuple[str, ...] | None, gate) -> int:
     """A child into its parent's integration branch, without a human: catch up
     with the integration branch, gate, merge checks, ``--no-ff`` merge. A failed
     check is recorded (``merge_blocked``) and leaves the merge to a human."""
     name, branch = task_dir.name, data["branch"]
     target = data["integration_target"]
     into, landing = target["branch"], Path(target["worktree"])
-    if scorecard_written:
-        print(f"merge deferred: {SPEC_REMINDER}; then `arbor finish` again merges {branch} into {into} "
-              "(integration branch, no human merge)")
-        return 0
-
     def blocked(reason: str, files: list[str] | None = None) -> int:
         data["merge_blocked"] = {"ts": utc_now(), "into": into, "reason": reason, "files": files or []}
         save()
@@ -558,8 +555,7 @@ def finish_before_merge(main: Path, worktree: Path, task_dir: Path, task_rel: st
         print(f"committed on {data['branch']}: arbor({name}): scorecard")
     base = base_branch_of(main, data)
     if data.get("integration_target") and not want_pr:
-        return merge_into_integration(main, worktree, task_dir, task_rel, data, scorecard_written=scorecard_written,
-                                      save=save, scope=scope, gate=gate)
+        return merge_into_integration(main, worktree, task_dir, task_rel, data, save=save, scope=scope, gate=gate)
     if data.get("pr_url"):
         print(f"PR: {data['pr_url']}")
     elif want_pr and shutil.which("gh"):
@@ -572,9 +568,6 @@ def finish_before_merge(main: Path, worktree: Path, task_dir: Path, task_rel: st
     elif want_pr:
         print("gh is not on PATH; merge locally instead")
     elif auto_merge_max_lines is not None:
-        if scorecard_written:
-            print(f"auto-merge deferred: {SPEC_REMINDER}; then `arbor finish` again merges (mandate merge=auto)")
-            return 0
         why, lines = auto_merge_blocked(main, data["branch"], base, auto_merge_max_lines)
         if why is None:
             why, files = merge_checks(worktree, task_rel, data, base, scope)
@@ -744,9 +737,8 @@ def cleanup(main: Path, record: dict) -> int:
         mark("archive")
 
     if "pointer" not in done:
-        rc, out = _script(main, "task.py", "finish")
-        if rc != 0:
-            raise FinishError(f"task.py finish failed:\n{out}")
+        for task_path in (Path(record["worktree_path"]) / DIR_WORKFLOW / DIR_TASKS / name, merged_copy):
+            clear_task_from_sessions(str(task_path), main)
         mark("pointer")
 
     if "journal" not in done and record.get("integration_parent"):

@@ -94,7 +94,7 @@ def envelope(path: Path, record: dict) -> dict:
             "Call codeg MCP delegate_to_agent once with mcp.arguments (its task text is the dispatch header plus "
             "a Prompt: pointer; the role reads that file itself). If assistant_id/agent_type is absent, "
             "resolve mcp.target.assistant_name from the tool's assistant roster and add its assistant_id; "
-            "if unavailable, stop and report the missing assistant. Never use codeg-cli or native Agent/Task. "
+            "if unavailable, stop and report the missing assistant. Never use native Agent/Task. "
             "Immediately bind its returned task_id with arbor.py bind --request <request_path> --task-id <id>. "
             "If setup fails before a task_id exists, collect the failed MCP acknowledgment directly. "
             "Poll get_delegation_status (wait_ms <= 60000); save its complete JSON response at result_path "

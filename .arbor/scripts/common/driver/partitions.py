@@ -34,7 +34,6 @@ from ..worktree import (
     remove_worktree,
     run_setup,
 )
-from .gate import auto_checks
 
 
 @dataclass(frozen=True)
@@ -44,11 +43,8 @@ class WaveMerge:
 
 
 def first_step(contract: Contract, partition: str) -> str:
-    """``test`` when the partition owns an auto check's file, else ``implement``."""
-    spec = contract.partition(partition)
-    if spec is None:
-        return "implement"
-    return "test" if auto_checks(contract, spec.paths) else "implement"
+    """Every partition starts with ``implement`` (code and tests together)."""
+    return "implement"
 
 
 def scope_line(worktree: Path, branch: str, paths) -> str:

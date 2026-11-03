@@ -52,7 +52,7 @@ from .tasks import WAVES_FILE, find_artifact
 
 # Every role a dispatch prompt can be built for.
 PROMPT_ROLES = (
-    "explore", "architect", "test", "implement", "review", "verify", "fix", "simplify",
+    "explore", "architect", "implement", "review", "verify", "fix", "simplify",
 )
 ROLES_REQUIRE_TASK = tuple(role for role in PROMPT_ROLES if role != "explore")
 # Roles that take a ``Range:`` header (everything that writes or reads a diff).
@@ -60,7 +60,6 @@ RANGE_ROLES = tuple(role for role in ROLES_REQUIRE_TASK if role != "architect")
 # Which task manifest feeds each task-bound role.
 ROLE_MANIFEST = {
     "architect": "implement",
-    "test": "implement",
     "implement": "implement",
     "review": "check",
     "verify": "check",

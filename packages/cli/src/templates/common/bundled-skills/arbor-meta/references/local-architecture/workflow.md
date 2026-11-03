@@ -6,7 +6,7 @@
 
 `.arbor/workflow.md` has three responsibilities:
 
-1. **Explain workflow phases and the state machine**: Plan (INTAKE, CONTRACT), Drive (BUILD, GATE, REVIEW, POLISH), Finish.
+1. **Explain workflow phases and the state machine**: Plan (INTAKE, CONTRACT), Drive (BUILD, GATE, REVIEW), Finish.
 2. **Define skill routing**: which skill or agent the AI should use when the user expresses a certain intent.
 3. **Provide workflow-state prompt blocks**: hooks can inject the prompt block for the current state into the conversation.
 
@@ -14,7 +14,7 @@
 
 ```text
 Phase 1: Plan    -> INTAKE (tier light / standard / full, consent) -> CONTRACT (explore, one question list, contract.md, + design.md for standard, + waves.md for full, seed-context, validation, plan review, human approval, task.py start)
-Phase 2: Drive   -> `arbor.py next` loop: BUILD (test red -> implement green) -> GATE -> REVIEW -> POLISH (standard / full)
+Phase 2: Drive   -> `arbor.py next` loop: BUILD (implement: code + tests) -> GATE -> REVIEW (light: self-check -> fix; standard / full: simplify -> candidates -> verify -> fix; full: + sweep)
 Phase 3: Finish  -> scorecard, spec update, PR, human --no-ff merge, cleanup
 ```
 
@@ -22,7 +22,7 @@ Each phase contains numbered steps, such as `1.5 Configure context`. These numbe
 
 ## Skill Routing
 
-`workflow.md` routes work by intent. Exploration, design, tests, implementation, review, verification, fixing, and simplification are roles (`explore`, `architect`, `test`, `implement`, `review`, `verify`, `fix`, `simplify`) that only the driver runs (see `dispatch.md`); the main agent writes their briefs. Simple changes (at most 2 files, cause known, no design choice) do not use Arbor. The task tier (light / standard / full) is stored in `task.json.meta.tier` (`task.py create --tier`, `task.py set-meta <task> tier <t>`); when absent it is inferred from the artifacts (`waves.md` is full, `design.md` is standard, otherwise light), and it decides how much contract work happens and how high the verification ladder climbs. Small steps such as reading skills like `before-dev` stay in the main session.
+`workflow.md` routes work by intent. Exploration, design, implementation (code and tests), review, verification, fixing, and simplification are roles (`explore`, `architect`, `implement`, `review`, `verify`, `fix`, `simplify`) that only the driver runs (see `dispatch.md`); the main agent writes their briefs. Simple changes (at most 2 files, cause known, no design choice) do not use Arbor. The task tier (light / standard / full) is stored in `task.json.meta.tier` (`task.py create --tier`, `task.py set-meta <task> tier <t>`); when absent it is inferred from the artifacts (`waves.md` is full, `design.md` is standard, otherwise light), and it decides how much contract work happens and how high the verification ladder climbs. Small steps such as reading skills like `before-dev` stay in the main session.
 
 When changing local AI behavior, update the routing descriptions in `workflow.md` first, then check whether the corresponding skill, command, or `.arbor/agents/*.md` file needs to stay in sync.
 

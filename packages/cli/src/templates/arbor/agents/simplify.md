@@ -69,7 +69,7 @@ Run the lint, typecheck and tests named in the brief or in the spec Quality Chec
 
 ## Write boundary
 
-- Anything in your worktree except the test paths: the contract's `## Test paths`, or `test_paths` in `.arbor/config.yaml` when the contract lists none.
+- Anything in your worktree except the tests: they stay as they are.
 - Under `.arbor/`, only inside `Active task:`.
 
 ## Commits

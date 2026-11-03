@@ -1,6 +1,6 @@
 # The Driver: arbor.py
 
-In Arbor the eight roles (`explore`, `architect`, `test`, `implement`, `review`, `verify`, `fix`, `simplify`) are not platform sub-agents. One script, `.arbor/scripts/arbor.py`, runs them. It owns three things: the task's state table, its counters, and validation (of replies, commits and git invariants). Judgment belongs to the **main agent** (the user's session, normally one codeg conversation per task): the tier proposal, the contract, child-task splitting, briefs, red-gate classification, finding dedup, retries inside the contract, the questions put to the user and the merge gate. Role instruction text lives in `.arbor/agents/<role>.md` (plain markdown, no frontmatter).
+In Arbor the seven roles (`explore`, `architect`, `implement`, `review`, `verify`, `fix`, `simplify`) are not platform sub-agents. One script, `.arbor/scripts/arbor.py`, runs them. It owns three things: the task's state table, its counters, and validation (of replies, commits and git invariants). Judgment belongs to the **main agent** (the user's session, normally one codeg conversation per task): the tier proposal, the contract, child-task splitting, briefs, red-gate classification, finding dedup, retries inside the contract, the questions put to the user and the merge gate. Role instruction text lives in `.arbor/agents/<role>.md` (plain markdown, no frontmatter).
 
 ## Commands
 
@@ -11,7 +11,6 @@ python3 ./.arbor/scripts/arbor.py run [--dispatch d-NNN]      # execute the pend
 python3 ./.arbor/scripts/arbor.py run --role explore|architect|review [--mode plan] [--dispatch d-NNN]   # CONTRACT phase, before task.py start
 python3 ./.arbor/scripts/arbor.py gate                        # GATE level 0; prints the failing AC ids
 python3 ./.arbor/scripts/arbor.py decide <choice> --reason "…"   # impl | tests | contract · fix | skip
-python3 ./.arbor/scripts/arbor.py canary [--role <role>]      # read-only probe of the executor and the reply format
 python3 ./.arbor/scripts/arbor.py override --reason "…" (--to STATE[/step] | --role <role> [--mode M])   # one step off the state table; recorded in the scorecard
 python3 ./.arbor/scripts/arbor.py status | resume | abandon [--reason "…"]
 python3 ./.arbor/scripts/arbor.py prompt --dispatch d-NNN --print   # the assembled prompt, rebuilt
@@ -25,7 +24,7 @@ Every command takes `--task <dir>` and `--executor <name>` before the command na
 
 ## State Machine
 
-`CONTRACT → BUILD → GATE → REVIEW → POLISH (standard / full) → FINISH → DONE`, with `STOP` reachable from any state. `task.py start` enters BUILD after the human approves the contract. BUILD runs `test` (red, checked by the driver) then `implement`; GATE runs `gate.commands` plus every `auto` Verification-map command; REVIEW runs one `review` `Mode: self-check` over `base..HEAD` and re-reviews fixes over `last_reviewed..HEAD`; POLISH runs `simplify`, N candidate reviews, a mechanical prefilter, `verify` (at most 8 per run), and for full a `sweep`. Caps: REVIEW fix rounds light 2, standard / full 1; POLISH 2; 4 consecutive red gates; 2 rounds without progress. A cap enters STOP (`BUDGET` / `NO_PROGRESS`); `next` answers `needs=human` with `human.kind: stop` and the main agent continues with `resume` (grants one more round), `override` or `abandon`. The task's mandate (`mandate:` in `.arbor/config.yaml` per tier, `task.py create --mandate`, resolved by `common/driver/mandate.py`) decides which human gates ask: with `auto` the driver records `decide skip` for PLAUSIBLE findings, resumes the first STOP (`task.json.mandate_resumed`) and `arbor.py finish` merges a branch under `auto_merge_max_lines` product lines itself (`task.json.auto_merge`, committed on the task branch before the merge). Reader batches: REVIEW review (light 1, standard / full 2 reviewers; PASS only when all pass, findings united), POLISH candidates and POLISH verify get every reader's dispatch id when the step opens (`task.json.batch.ids`, assigned in `save()` under the task lock); `run --dispatch <id>` starts any of them, concurrently, and `batch.running` tracks them. Lanes: a standard / full task without contract partitions whose Interface pins name real interfaces runs BUILD as the wave `[tests, impl]` (`task.json.lanes`), test and implement in parallel worktrees, merged into the task branch before GATE. Boundary observations stay advisory. Only the driver changes `task.json` `state`, `counters`, `dispatches`, `last_reviewed` and `stop`.
+`CONTRACT → BUILD → GATE → REVIEW → FINISH → DONE`, with `STOP` reachable from any state. `task.py start` enters BUILD after the human approves the contract. BUILD runs `implement` (code and tests together; the role runs the contract's `auto` checks green before committing); GATE runs `gate.commands` plus every `auto` Verification-map command; REVIEW for light runs one `review` `Mode: self-check` over `base..HEAD`, `fix`, and re-reviews over `last_reviewed..HEAD`; for standard / full it runs `simplify`, N `review` `Mode: candidates` (2 / 3), a mechanical prefilter, `verify` (at most 8 per reader), `fix` for CONFIRMED findings, and for full a `sweep` once a cycle is clean (`task.json.cycle`, `cycle_ids`). Caps: 2 review fix rounds in every tier; 4 consecutive red gates; 2 rounds without progress. A cap enters STOP (`BUDGET` / `NO_PROGRESS`); `next` answers `needs=human` with `human.kind: stop` and the main agent continues with `resume` (grants one more round), `override` or `abandon`. The task's mandate (`mandate:` in `.arbor/config.yaml` per tier, `task.py create --mandate`, resolved by `common/driver/mandate.py`; gates `contract`, `plausible`, `merge`) decides which human gates ask: with `auto` the driver records `decide skip` for PLAUSIBLE findings and `arbor.py finish` merges a branch under `auto_merge_max_lines` product lines itself (`task.json.auto_merge`, committed on the task branch before the merge). Reader batches: REVIEW candidates and REVIEW verify get every reader's dispatch id when the step opens (`task.json.batch.ids`, assigned in `save()` under the task lock); `run --dispatch <id>` starts any of them, concurrently, and `batch.running` tracks them. Boundary observations stay advisory. Only the driver changes `task.json` `state`, `counters`, `dispatches`, `last_reviewed` and `stop`.
 
 ## CONTRACT-Phase Dispatch
 
@@ -46,14 +45,14 @@ The driver starts every role prompt with:
 
 ```text
 Active task: <absolute path of .arbor/tasks/<task> inside the task worktree; the main checkout before start>
-Role: explore | architect | test | implement | review | verify | fix | simplify
+Role: explore | architect | implement | review | verify | fix | simplify
 Mode: self-check | candidates | sweep | plan   (review only)
 Range: <base>..<head>                          (roles that read or write a diff)
 Dispatch: d-NNN
 Prompt: <absolute path of .arbor/.runtime/prompts/<task>/d-NNN.md>   (codeg-mcp only)
 ```
 
-With the `codeg-mcp` executor the MCP `task` text is only this header: the `Prompt:` line names the assembled prompt file and the role reads it first. The older `Diff:`, `Target:` and `Workspace:` lines are gone. After the header comes the injected context, assembled by `common/dispatch_context.py`: the files listed in `implement.jsonl` (`architect`, `test`, `implement`) or `check.jsonl` (`review`, `verify`, `fix`, `simplify`), then `contract.md` (legacy `prd.md`), `design.md`, `waves.md` (legacy `implement.md`), then `git diff <Range>` run in the task worktree, marked `<!-- arbor-hook-injected -->`; `explore` gets the spec overview plus the contract and the research file list. Size caps come from `context_injection:` in `.arbor/config.yaml`. Last comes the main agent's brief, which is `tasks/<task>/briefs/d-NNN.md`. The assembled prompt is not committed: it is written to `.arbor/.runtime/prompts/<task>/d-NNN.md` in the main checkout, and `arbor.py prompt --dispatch d-NNN --print` rebuilds it. The reply plus the driver's verdict goes to `tasks/<task>/reports/d-NNN.md`; the driver commits the brief and the report on the task branch.
+With the `codeg-mcp` executor the MCP `task` text is only this header: the `Prompt:` line names the assembled prompt file and the role reads it first. The older `Diff:`, `Target:` and `Workspace:` lines are gone. After the header comes the injected context, assembled by `common/dispatch_context.py`: the files listed in `implement.jsonl` (`architect`, `implement`) or `check.jsonl` (`review`, `verify`, `fix`, `simplify`), then `contract.md` (legacy `prd.md`), `design.md`, `waves.md` (legacy `implement.md`), then `git diff <Range>` run in the task worktree, marked `<!-- arbor-hook-injected -->`; `explore` gets the spec overview plus the contract and the research file list. Size caps come from `context_injection:` in `.arbor/config.yaml`. Last comes the main agent's brief, which is `tasks/<task>/briefs/d-NNN.md`. The assembled prompt is not committed: it is written to `.arbor/.runtime/prompts/<task>/d-NNN.md` in the main checkout, and `arbor.py prompt --dispatch d-NNN --print` rebuilds it. The reply plus the driver's verdict goes to `tasks/<task>/reports/d-NNN.md`; the driver commits the brief and the report on the task branch.
 
 ## Executors
 
@@ -67,16 +66,11 @@ executors:
     assistant: "arbor-{role}"
     timeout: 90m
     max_parallel: 3
-  codeg-cli:
-    type: command
-    command: "codeg-cli run -A arbor-{role} -w {worktree} --permissions allow --timeout 90m --title arbor-{role}-{task}-{dispatch} -q -p - < {prompt}"
-    timeout: 95m
-    max_parallel: 3
 ```
 
-With the `codeg-cli` command executor (`--executor codeg-cli`) the driver starts the role, waits for the reply and validates it. With the default `codeg-mcp` executor (`codeg`), `arbor.py run` returns `needs=delegation`. Call codeg MCP `delegate_to_agent` with the returned `mcp.arguments` (resolve the named assistant from the MCP roster if no id is configured), then immediately run `arbor.py bind --request <request_path> --task-id <returned task_id>`. Poll `get_delegation_status`, save its complete JSON response at the returned `result_path` outside the task worktree, and run `arbor.py collect --request <request_path> --result <file>` before proceeding. The shared PostToolUse hook `sync-delegation.py` (matcher `^mcp__.+__(delegate_to_agent|get_delegation_status)$`) does both: it finds the pending request in `.arbor/.runtime/delegations/` by the call's `task` text (bind) or by the bound `task_id` (collect, saving the response as `<dispatch>.result.json` next to the request) and returns what it did as `additionalContext`; a request already bound or collected by hand is skipped. Resume/poll a bound task after interruptions; never start it again. If the configured timeout expires, cancel it through `cancel_delegation` and collect the terminal report. Claude Code and Codex both use this same MCP flow. Do not substitute native Agent/Task/spawn_agent for a role.
+Only `type: codeg-mcp` executors exist: `arbor.py run` returns `needs=delegation`. Call codeg MCP `delegate_to_agent` with the returned `mcp.arguments` (resolve the named assistant from the MCP roster if no id is configured), then immediately run `arbor.py bind --request <request_path> --task-id <returned task_id>`. Poll `get_delegation_status`, save its complete JSON response at the returned `result_path` outside the task worktree, and run `arbor.py collect --request <request_path> --result <file>` before proceeding. The shared PostToolUse hook `sync-delegation.py` (matcher `^mcp__.+__(delegate_to_agent|get_delegation_status)$`) does both: it finds the pending request in `.arbor/.runtime/delegations/` by the call's `task` text (bind) or by the bound `task_id` (collect, saving the response as `<dispatch>.result.json` next to the request) and returns what it did as `additionalContext`; a request already bound or collected by hand is skipped. Resume/poll a bound task after interruptions; never start it again. If the configured timeout expires, cancel it through `cancel_delegation` and collect the terminal report. Claude Code and Codex both use this same MCP flow. Do not substitute native Agent/Task/spawn_agent for a role.
 
-Model, effort and permissions belong to the selected codeg assistant. `arbor.py canary` uses the same prepare/bind/collect flow. CLI executors remain available only when explicitly configured with `command`; their shell-quoted placeholders are `{role}`, `{prompt}`, `{worktree}`, `{task}`, `{dispatch}`. `run --autopilot` stops at MCP handoffs; the host handles delegation and resumes the driver afterwards.
+Model, effort and permissions belong to the selected codeg assistant. `run --autopilot` stops at MCP handoffs; the host handles delegation and resumes the driver afterwards.
 
 ## Invariants And Commit Format
 
@@ -85,9 +79,8 @@ After every dispatch the driver checks, with git:
 | Who | Check |
 | --- | --- |
 | readers (`explore`, `architect`, `review`, `verify`) | worktree clean except the task's `research/`; HEAD unmoved |
-| writers (`test`, `implement`, `fix`, `simplify`) | only their own branch moved, at least one new commit, no merge commits, every commit well-formed |
-| `test` | changed files ⊆ test paths |
-| `implement` / `simplify` / `fix` | changed files ∩ test paths = ∅ (fix: regression tests listed in its report are allowed) |
+| writers (`implement`, `fix`, `simplify`) | only their own branch moved, at least one new commit, no merge commits, every commit well-formed |
+| partition writers | changed files within the partition's paths (the task directory aside); a change outside is a scope observation that stops the merge |
 | everyone | remote refs and other local branches unmoved; `.arbor/` changes only under `tasks/<task>/` |
 | contract | hash drift is recorded for contextual judgment, not an execution/collection gate |
 
@@ -113,13 +106,12 @@ Ambiguous reports are retained with status `judgment`, never silently counted as
 
 ## Measurement
 
-Every dispatch appends one line to `.arbor/.runtime/results.jsonl` (`task`, `dispatch`, `role`, `mode`, `state`, `wave`, `partition`, `executor`, timings, `exit_code`, `status`, `commit`, `violations`). FINISH writes `scorecard.md` into the task directory: dispatches per role, GATE / REVIEW / POLISH rounds, findings per rung, AC automation rate, overrides and violations.
+Every dispatch appends one line to `.arbor/.runtime/results.jsonl` (`task`, `dispatch`, `role`, `mode`, `state`, `wave`, `partition`, `executor`, timings, `exit_code`, `status`, `commit`, `violations`). FINISH writes `scorecard.md` into the task directory: dispatches per role, GATE / REVIEW rounds, findings per rung, AC automation rate, overrides and violations.
 
 ## Debugging
 
 - `arbor.py status`: state, counters, last dispatches, STOP reason.
 - `arbor.py prompt --dispatch d-NNN --print`: exactly what a role received.
-- `arbor.py canary --role review`: is the executor reachable and is the reply shaped right.
 - `.arbor/.runtime/results.jsonl`: per-dispatch exit code, status and violations.
 - Observed boundary changes: inspect the retained files and raw report in context; no branch reset has occurred. Use the ordinary next step or a reasoned override. Legacy STOP records require explicit resume/override after inspecting evidence.
 

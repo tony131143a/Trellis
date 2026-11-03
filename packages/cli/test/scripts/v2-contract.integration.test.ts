@@ -62,10 +62,6 @@ Widgets render.
 
 - \`export function render(w: Widget): string\` — src/widget.ts
 
-## Test paths
-
-- test/**
-
 ## Partitions
 
 - impl: src/**
@@ -102,12 +98,12 @@ describe.skipIf(!hasPython())("v2 contract", () => {
     return JSON.parse(r.stdout);
   }
 
-  /** validate_contract errors for a contract text, default test paths ["test/**"]. */
+  /** validate_contract errors for a contract text. */
   function validate(text: string): string[] {
     fs.writeFileSync(path.join(tmp, "c.md"), text);
     return py(`
 from common.contract import load_contract, validate_contract
-print(json.dumps(validate_contract(load_contract(Path("c.md")), Path("."), ["test/**"])))
+print(json.dumps(validate_contract(load_contract(Path("c.md")), Path("."))))
 `) as string[];
   }
 
@@ -119,14 +115,11 @@ print(json.dumps(validate_contract(load_contract(Path("c.md")), Path("."), ["tes
   }
 
   describe("parse_contract", () => {
-    it("round-trips the contract.md template and validates it once the placeholders are filled", () => {
+    it("round-trips the contract.md template; it validates as written (the auto file need not exist yet)", () => {
       const out = py(`
 from common.contract import default_contract_content, parse_contract, validate_contract
 text = default_contract_content("  My task ", "Ship the thing.")
 c = parse_contract(text, Path("contract.md"))
-filled = parse_contract(
-    text.replace("<test file path>", "test/a.test.ts"), Path("contract.md")
-)
 print(json.dumps({
     "title_line": text.splitlines()[0],
     "goal": c.goal,
@@ -135,11 +128,9 @@ print(json.dumps({
     "criteria": [[x.id, x.text] for x in c.criteria],
     "map": [[e.id, e.kind, e.check, e.file] for e in c.verification_map],
     "pins": c.interface_pins,
-    "test_paths": c.test_paths,
     "partitions": [[p.name, p.paths] for p in c.partitions],
     "waves": c.waves,
-    "template_errors": validate_contract(c, Path("."), ["test/**"]),
-    "filled_errors": validate_contract(filled, Path("."), ["test/**"]),
+    "errors": validate_contract(c, Path(".")),
 }))
 `);
       expect(out).toEqual({
@@ -161,14 +152,10 @@ print(json.dumps({
             "<test file path>",
           ],
         ],
-        pins: ["existing interfaces"],
-        test_paths: [],
+        pins: [],
         partitions: [["default", ["**"]]],
         waves: [["default"]],
-        template_errors: [
-          "Verification map: AC-1 file <test file path> does not exist and is outside the test paths (test/**)",
-        ],
-        filled_errors: [],
+        errors: [],
       });
     });
 
@@ -242,7 +229,7 @@ c = load_contract(legacy)
 print(json.dumps({
     "legacy": legacy.name,
     "goal": c.goal,
-    "empty": [c.criteria, c.verification_map, c.interface_pins, c.test_paths],
+    "empty": [c.criteria, c.verification_map, c.interface_pins],
     "partitions": [[p.name, p.paths] for p in c.partitions],
     "waves": c.waves,
     "preferred": find_contract(task).name,
@@ -255,7 +242,7 @@ print(json.dumps({
       expect(out).toEqual({
         legacy: "prd.md",
         goal: "Legacy description\nsecond line",
-        empty: [[], [], [], []],
+        empty: [[], [], []],
         partitions: [["default", ["**"]]],
         waves: [["default"]],
         preferred: "contract.md",
@@ -360,27 +347,6 @@ print(json.dumps(result))
         ["Verification map: AC-1 is auto but its check is empty"],
       ],
       [
-        "auto entry file outside test paths and missing",
-        VALID_CONTRACT.replace("| test/widget.test.ts |", "| src/nope.ts |"),
-        [
-          "Verification map: AC-1 file src/nope.ts does not exist and is outside the test paths (test/**)",
-        ],
-      ],
-      [
-        "empty interface pins",
-        withSection("Interface pins", ""),
-        [
-          "Interface pins: empty (list the signatures tests will call, or the single line '- existing interfaces')",
-        ],
-      ],
-      [
-        "existing-interfaces line mixed with pins",
-        withSection("Interface pins", "- Existing Interfaces\n- `foo()`"),
-        [
-          "Interface pins: 'existing interfaces' must be the only pin when present",
-        ],
-      ],
-      [
         "duplicate partition name",
         withSection(
           "Partitions",
@@ -415,24 +381,12 @@ print(json.dumps(result))
       expect(validate(text)).toEqual(expected);
     });
 
-    it("accepts an auto file that exists outside the test paths, and the single existing-interfaces pin", () => {
-      fs.mkdirSync(path.join(tmp, "scripts"));
-      fs.writeFileSync(path.join(tmp, "scripts", "check.sh"), "#!/bin/sh\n");
-      const text = withSection(
-        "Interface pins",
-        "- existing interfaces",
-      ).replace("| test/widget.test.ts |", "| scripts/check.sh |");
-      expect(validate(text)).toEqual([]);
-    });
-
-    it("uses the config defaults when the contract has no Test paths", () => {
-      const text = withSection("Test paths", "<!-- none -->").replace(
+    it("accepts a contract without Interface pins whose auto file does not exist yet", () => {
+      const text = withSection("Interface pins", "<!-- none -->").replace(
         "| test/widget.test.ts |",
         "| spec/widget.spec.ts |",
       );
-      expect(validate(text)).toEqual([
-        "Verification map: AC-1 file spec/widget.spec.ts does not exist and is outside the test paths (test/**)",
-      ]);
+      expect(validate(text)).toEqual([]);
     });
   });
 
@@ -631,8 +585,8 @@ except ValueError as exc:
 
       it("labels a legacy prd.md as contract.md and implement.md as waves.md", () => {
         const out = build(
-          `Active task: ${taskDir}\nRole: test\nDispatch: d-003\n\nWrite tests.`,
-          "test",
+          `Active task: ${taskDir}\nRole: implement\nDispatch: d-003\n\nWrite it.`,
+          "implement",
         );
         expect(out.ok, out.error).toBe(true);
         const rel = `.arbor/tasks/${TASK}`;

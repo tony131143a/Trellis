@@ -1,189 +1,642 @@
 /**
- * arbor.py driver: invariant violations, fail-closed replies, REVIEW and
- * POLISH, the contract-hash guard, canary, override / abandon / status.
+ * arbor.py driver: invariant observations, fail-closed replies, the REVIEW
+ * state (light self-check; standard / full simplify -> candidates -> verify
+ * -> fix -> candidates over the delta; the full sweep), the contract-hash
+ * guard, override / abandon / status.
  */
 
 import { afterEach, describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 
-import { FEATURE, RED_TEST, TASK, dispatch, git, hasPython, setupFixture, writeFile, type Fixture } from "./v2-driver-helpers";
+import {
+  IMPLEMENTED,
+  TASK,
+  dispatch,
+  git,
+  hasPython,
+  setupFixture,
+  writeFile,
+  type Fixture,
+} from "./v2-driver-helpers";
 
-/** Commit a source change on the task branch and jump to `state`. */
-function seedCode(f: Fixture, state: string): void {
-  writeFile(f.wt, "src/app.txt", "one\ntwo\nthree\n");
-  git(f.wt, "add", "src/app.txt");
-  git(f.wt, "commit", "-q", "-m", `implement(${TASK}): seed\n\nArbor-Dispatch: d-000`);
-  expect(f.run("override", "--reason", "test setup", "--to", state).status).toBe(0);
+const GREEN_CHECK = { path: "tests/ac1.sh", content: "true\n" };
+
+/** Commit a source change (plus `extra`) on the task branch and jump to `state` (STATE or STATE/step). */
+function seedCode(
+  f: Fixture,
+  state: string,
+  extra: { path: string; content: string }[] = [],
+): void {
+  for (const file of [
+    { path: "src/app.txt", content: "one\ntwo\nthree\n" },
+    ...extra,
+  ]) {
+    writeFile(f.wt, file.path, file.content);
+    git(f.wt, "add", file.path);
+  }
+  git(
+    f.wt,
+    "commit",
+    "-q",
+    "-m",
+    `implement(${TASK}): seed\n\nArbor-Dispatch: d-000`,
+  );
+  expect(
+    f.run("override", "--reason", "test setup", "--to", state).status,
+  ).toBe(0);
 }
 
-const finding = (file: string, line: number, verdict: string, summary = "off by one") =>
-  ({ file, line, angle: "A", summary, failure_scenario: "x -> y", verdict, evidence: "two", fix: "z" });
+const finding = (
+  file: string,
+  line: number,
+  verdict: string,
+  summary = "off by one",
+) => ({
+  file,
+  line,
+  angle: "A",
+  summary,
+  failure_scenario: "x -> y",
+  verdict,
+  evidence: "two",
+  fix: "z",
+});
 const reviewReply = (verdict: string, findings: object[]) =>
   `${verdict}\n\n\`\`\`json\n${JSON.stringify(findings)}\n\`\`\`\nMode: m; angles: A; single-context pass.\n`;
+const verifyReply = (
+  findings: object[],
+  confirmed: number,
+  plausible: number,
+) =>
+  `\`\`\`json\n${JSON.stringify(findings)}\n\`\`\`\nCONFIRMED ${confirmed}, PLAUSIBLE ${plausible}, REFUTED 0.\n`;
+const APP_FIX = { path: "src/app.txt", content: "one\nTWO\nthree\n" };
+const FINDING_ID = "src/app.txt:2:off by one";
 
-describe.skipIf(!hasPython())("arbor.py validators, REVIEW, POLISH", { timeout: 90_000 }, () => {
-  let f: Fixture;
-  afterEach(() => f?.cleanup());
+describe.skipIf(!hasPython())(
+  "arbor.py validators and REVIEW",
+  { timeout: 120_000 },
+  () => {
+    let f: Fixture;
+    afterEach(() => f?.cleanup());
 
-  it("records boundary observations without resetting commits, deleting files or stopping", () => {
-    f = setupFixture();
-    f.plan({
-      "d-001": { write: [RED_TEST] },
-      "d-002": { write: [FEATURE, { path: "tests/ac1.sh", content: "true\n" }], dirty: [{ path: "stray.txt", content: "x" }] },
+    it("records boundary observations without resetting commits, deleting files or stopping", () => {
+      f = setupFixture();
+      f.plan({
+        "d-001": {
+          write: IMPLEMENTED,
+          dirty: [{ path: "stray.txt", content: "x" }],
+        },
+      });
+      const before = git(f.wt, "rev-parse", "HEAD");
+      const r = dispatch(f, "d-001");
+      expect(r.status, r.stdout + r.stderr).toBe(0);
+      expect(git(f.wt, "log", "--format=%s", `${before}..HEAD`)).toContain(
+        `implement(${TASK})`,
+      );
+      expect(fs.existsSync(path.join(f.wt, "src/feature.txt"))).toBe(true);
+      expect(fs.readFileSync(path.join(f.wt, "stray.txt"), "utf-8")).toBe("x");
+      const data = f.taskJson();
+      expect(data.dispatches[0]).toMatchObject({ id: "d-001", status: "ok" });
+      expect(data.state).toBe("GATE");
+      expect(data.stop).toBeUndefined();
+      expect(data.dispatches[0].observations.join("\n")).toContain(
+        "implement left uncommitted changes: stray.txt",
+      );
+      expect(
+        fs.readFileSync(path.join(f.taskDir, "reports/d-001.md"), "utf-8"),
+      ).toContain("their author is not determined");
     });
-    expect(dispatch(f, "d-001").status).toBe(0);
-    const before = git(f.wt, "rev-parse", "HEAD");
-    const r = dispatch(f, "d-002");
-    expect(r.status, r.stdout + r.stderr).toBe(0);
-    expect(git(f.wt, "log", "--format=%s", `${before}..HEAD`)).toContain(`implement(${TASK})`);
-    expect(fs.existsSync(path.join(f.wt, "src/feature.txt"))).toBe(true);
-    expect(fs.readFileSync(path.join(f.wt, "stray.txt"), "utf-8")).toBe("x");
-    expect(fs.readFileSync(path.join(f.wt, "tests/ac1.sh"), "utf-8")).toBe("true\n");
-    const data = f.taskJson();
-    expect(data.dispatches[1]).toMatchObject({ id: "d-002", status: "ok" });
-    expect(data.state).toBe("GATE");
-    expect(data.stop).toBeUndefined();
-    expect(data.dispatches[1].observations.join("\n")).toContain("implement touched test paths");
-    expect(fs.readFileSync(path.join(f.taskDir, "reports/d-002.md"), "utf-8"))
-      .toContain("their author is not determined");
-  });
 
-  it("ambiguous reports require agent judgment without deleting work or entering STOP", () => {
-    f = setupFixture();
-    f.plan({ "d-001": { write: [RED_TEST], reply: "" } });
-    expect(dispatch(f, "d-001").status).toBe(0);
-    expect(f.next()).toMatchObject({ needs: "decide", decision: { kind: "report" } });
-    expect(fs.existsSync(path.join(f.wt, "tests/ac1.sh"))).toBe(true);
-    expect(f.run("decide", "retry", "--reason", "need actual report").status).toBe(0);
-    seedCode(f, "REVIEW");
-    f.plan({ "d-002": { reply: `Looks fine to me.\n\n${reviewReply("PASS", [])}` } });
-    expect(dispatch(f, "d-002").status).toBe(0);
-    expect(f.taskJson().dispatches[1]).toMatchObject({ role: "review", status: "judgment", confidence: "low" });
-    expect(f.taskJson().state).toBe("REVIEW");
-    expect(f.taskJson().stop).toBeUndefined();
-    expect(f.taskJson().counters.no_progress).toBe(0);
-  });
-
-  it("REVIEW: FAIL -> fix -> gate -> re-review of last_reviewed..HEAD -> PASS -> FINISH (light)", () => {
-    f = setupFixture();
-    seedCode(f, "REVIEW");
-    f.plan({
-      "d-001": { reply: reviewReply("FAIL", [finding("src/app.txt", 2, "CONFIRMED")]) },
-      "d-002": { write: [{ path: "src/app.txt", content: "one\nTWO\nthree\n" }], reply: "## Fix: Done\n" },
-      "d-003": { reply: reviewReply("PASS", []) },
+    it("ambiguous reports require agent judgment without deleting work or entering STOP", () => {
+      f = setupFixture();
+      // (an empty reply is refused at collect time; a reply without the status line is kept for judgment)
+      f.plan({ "d-001": { write: IMPLEMENTED, reply: "done, I think\n" } });
+      expect(dispatch(f, "d-001").status).toBe(0);
+      expect(f.next()).toMatchObject({
+        needs: "decide",
+        decision: { kind: "report" },
+      });
+      expect(fs.existsSync(path.join(f.wt, "tests/ac1.sh"))).toBe(true);
+      expect(f.taskJson().dispatches[0]).toMatchObject({
+        role: "implement",
+        status: "judgment",
+      });
+      expect(
+        f.run("decide", "retry", "--reason", "need actual report").status,
+      ).toBe(0);
+      expect(f.next()).toMatchObject({
+        state: "BUILD",
+        role: "implement",
+        dispatch: "d-002",
+      });
+      seedCode(f, "REVIEW");
+      f.plan({
+        "d-002": { reply: `Looks fine to me.\n\n${reviewReply("PASS", [])}` },
+      });
+      expect(dispatch(f, "d-002").status).toBe(0);
+      expect(f.taskJson().dispatches[1]).toMatchObject({
+        role: "review",
+        status: "judgment",
+        confidence: "low",
+      });
+      expect(f.taskJson().state).toBe("REVIEW");
+      expect(f.taskJson().stop).toBeUndefined();
+      expect(f.taskJson().counters.no_progress).toBe(0);
     });
-    expect(dispatch(f, "d-001").status).toBe(0);
-    let data = f.taskJson();
-    expect(data).toMatchObject({ state: "REVIEW", step: "fix", counters: { review: 1 } });
-    const reviewedTo = data.last_reviewed;
-    expect(data.review_ids).toEqual(["src/app.txt:2:off by one"]);
-    expect(f.next()).toMatchObject({ role: "fix", range: expect.stringMatching(new RegExp(`^${data.base}\\.\\.`)) });
 
-    expect(dispatch(f, "d-002").status).toBe(0);
-    expect(f.next()).toMatchObject({ state: "GATE", needs: "run" });
-    expect(f.run("gate").status).toBe(1); // AC-1's tests/ac1.sh does not exist on this branch
-    f.run("override", "--reason", "AC-1 is covered elsewhere in this test", "--to", "REVIEW");
-    const next = f.next();
-    expect(next).toMatchObject({ role: "review", mode: "self-check", range: expect.stringMatching(new RegExp(`^${reviewedTo}\\.\\.`)) });
+    it("REVIEW (light): FAIL -> fix -> gate -> re-review of last_reviewed..HEAD -> PASS -> FINISH", () => {
+      f = setupFixture();
+      seedCode(f, "REVIEW");
+      f.plan({
+        "d-001": {
+          reply: reviewReply("FAIL", [finding("src/app.txt", 2, "CONFIRMED")]),
+        },
+        "d-002": { write: [APP_FIX], reply: "## Fix: Done\n" },
+        "d-003": { reply: reviewReply("PASS", []) },
+      });
+      expect(f.next()).toMatchObject({
+        state: "REVIEW",
+        role: "review",
+        mode: "self-check",
+        dispatch: "d-001",
+      });
+      expect(f.next().batch).toBeUndefined(); // light: one reviewer
+      expect(dispatch(f, "d-001").status).toBe(0);
+      let data = f.taskJson();
+      expect(data).toMatchObject({
+        state: "REVIEW",
+        step: "fix",
+        counters: { review: 1 },
+      });
+      const reviewedTo = data.last_reviewed;
+      expect(data.review_ids).toEqual([FINDING_ID]);
+      expect(f.next()).toMatchObject({
+        role: "fix",
+        range: expect.stringMatching(new RegExp(`^${data.base}\\.\\.`)),
+      });
 
-    expect(dispatch(f, "d-003").status).toBe(0);
-    data = f.taskJson();
-    expect(data.state).toBe("FINISH");
-    expect(f.next()).toMatchObject({ state: "FINISH", needs: "run" }); // `arbor finish` writes the scorecard
-  });
+      expect(dispatch(f, "d-002").status).toBe(0);
+      expect(f.taskJson()).toMatchObject({
+        state: "GATE",
+        after_gate: { state: "REVIEW", step: "review" },
+      });
+      expect(f.next()).toMatchObject({ state: "GATE", needs: "run" });
+      expect(f.run("gate").status).toBe(1); // AC-1's tests/ac1.sh does not exist on this branch
+      f.run(
+        "override",
+        "--reason",
+        "AC-1 is covered elsewhere in this test",
+        "--to",
+        "REVIEW",
+      );
+      const next = f.next();
+      expect(next).toMatchObject({
+        role: "review",
+        mode: "self-check",
+        range: expect.stringMatching(new RegExp(`^${reviewedTo}\\.\\.`)),
+      });
 
-  it("POLISH (standard): simplify No Change -> 2 candidate reviews -> prefilter -> verify PLAUSIBLE -> decide skip -> FINISH", () => {
-    f = setupFixture({ tier: "standard" });
-    seedCode(f, "REVIEW");
-    f.plan({
-      "d-001": { reply: reviewReply("PASS", []) },
-      "d-002": { reply: reviewReply("PASS", []) },
-      "d-003": { reply: "## Simplify: No Change\n" },
-      "d-004": { reply: reviewReply("FAIL", [finding("src/app.txt", 2, "CANDIDATE"), finding("src/gone.txt", 1, "CANDIDATE")]) },
-      "d-005": { reply: reviewReply("FAIL", [finding("src/app.txt", 2, "CANDIDATE"), finding("README.md", 1, "CANDIDATE", "old")]) },
-      "d-006": { reply: `\`\`\`json\n${JSON.stringify([finding("src/app.txt", 2, "PLAUSIBLE")])}\n\`\`\`\nCONFIRMED 0, PLAUSIBLE 1, REFUTED 0.\n` },
+      expect(dispatch(f, "d-003").status).toBe(0);
+      data = f.taskJson();
+      expect(data.state).toBe("FINISH");
+      expect(f.next()).toMatchObject({ state: "FINISH", needs: "run" }); // `arbor finish` writes the scorecard
     });
-    expect(dispatch(f, "d-001").status).toBe(0);
-    expect(dispatch(f, "d-002").status).toBe(0); // standard: the second reviewer
-    expect(f.taskJson()).toMatchObject({ state: "POLISH", step: "simplify" });
-    expect(dispatch(f, "d-003").status).toBe(0);
-    expect(f.next()).toMatchObject({ state: "POLISH", role: "review", mode: "candidates" });
-    expect(dispatch(f, "d-004").status).toBe(0);
-    expect(f.taskJson().polish.candidates_done).toBe(1);
-    expect(dispatch(f, "d-005").status).toBe(0);
 
-    const data = f.taskJson();
-    expect(data).toMatchObject({ step: "verify", counters: { polish: 1 }, polish_ids: ["src/app.txt:2:off by one"] });
-    const filtered = JSON.parse(fs.readFileSync(path.join(f.taskDir, "reports/candidates-r1.json"), "utf-8"));
-    expect(filtered.kept.map((k: { id: string }) => k.id)).toEqual(["src/app.txt:2:off by one"]);
-    expect(filtered.dropped.map((d: { reason: string }) => d.reason).sort()).toEqual([
-      expect.stringContaining("README.md:1 is not within 5 lines"),
-      "file src/gone.txt does not exist",
-    ]);
-    expect(f.next()).toMatchObject({ role: "verify", summary: expect.stringContaining("candidates-r1.json") });
+    it("REVIEW (light): the third fix round passes the round cap -> STOP(BUDGET); resume grants one more", () => {
+      f = setupFixture();
+      seedCode(f, "REVIEW");
+      const fail = (line: number) => ({
+        reply: reviewReply("FAIL", [finding("src/app.txt", line, "CONFIRMED")]),
+      });
+      const fix = (content: string) => ({
+        write: [{ path: "src/app.txt", content }],
+      });
+      f.plan({
+        "d-001": fail(1),
+        "d-002": fix("ONE\ntwo\nthree\n"),
+        "d-003": fail(2),
+        "d-004": fix("ONE\nTWO\nthree\n"),
+        "d-005": fail(3),
+      });
+      for (const [review, fixId] of [
+        ["d-001", "d-002"],
+        ["d-003", "d-004"],
+      ]) {
+        expect(dispatch(f, review).status).toBe(0);
+        expect(f.taskJson()).toMatchObject({ state: "REVIEW", step: "fix" });
+        expect(dispatch(f, fixId).status).toBe(0);
+        f.run("override", "--reason", "skip the gate", "--to", "REVIEW");
+      }
+      expect(f.taskJson().counters).toMatchObject({
+        review: 2,
+        no_progress: 0,
+      }); // new findings each round: progress
+      expect(dispatch(f, "d-005").status).toBe(0);
+      let data = f.taskJson();
+      expect(data.state).toBe("STOP");
+      expect(data.stop).toMatchObject({
+        reason: "BUDGET",
+        counter: "review",
+        value: 3,
+        cap: 2,
+        prev: { state: "REVIEW", step: "fix" },
+      });
+      expect(f.next()).toMatchObject({
+        needs: "human",
+        human: { kind: "stop", mandate: "ask" },
+      });
+      expect(f.run("resume").status).toBe(0);
+      data = f.taskJson();
+      // The cap moves past the value that tripped it (3) plus one more round: 2 + 2 = 4.
+      expect(data).toMatchObject({
+        state: "REVIEW",
+        step: "fix",
+        caps_extra: { review: 2 },
+      });
+      expect(f.next()).toMatchObject({ role: "fix", dispatch: "d-006" });
+    });
 
-    expect(dispatch(f, "d-006").status).toBe(0);
-    expect(f.next()).toMatchObject({ needs: "human", human: { kind: "plausible" } });
-    expect(f.run("decide", "impl", "--reason", "x").status).toBe(1);
-    expect(f.run("decide", "skip", "--reason", "trigger is unrealistic").status).toBe(0);
-    expect(f.taskJson().state).toBe("FINISH");
-  });
+    it("REVIEW (standard): simplify No Change -> 2 candidate readers -> prefilter -> verify PLAUSIBLE -> decide skip -> FINISH", () => {
+      f = setupFixture({ tier: "standard" });
+      seedCode(f, "REVIEW/simplify");
+      f.plan({
+        "d-001": { reply: "## Simplify: No Change\n" },
+        "d-002": {
+          reply: reviewReply("FAIL", [
+            finding("src/app.txt", 2, "CANDIDATE"),
+            finding("src/gone.txt", 1, "CANDIDATE"),
+          ]),
+        },
+        "d-003": {
+          reply: reviewReply("FAIL", [
+            finding("src/app.txt", 2, "CANDIDATE"),
+            finding("README.md", 1, "CANDIDATE", "old"),
+          ]),
+        },
+        "d-004": {
+          reply: verifyReply([finding("src/app.txt", 2, "PLAUSIBLE")], 0, 1),
+        },
+      });
+      expect(f.next()).toMatchObject({
+        state: "REVIEW",
+        role: "simplify",
+        dispatch: "d-001",
+      });
+      expect(dispatch(f, "d-001").status).toBe(0);
+      expect(f.taskJson()).toMatchObject({
+        state: "REVIEW",
+        step: "candidates",
+        cycle: { candidates_done: 0 },
+      });
+      const next = f.next();
+      expect(next).toMatchObject({
+        state: "REVIEW",
+        role: "review",
+        mode: "candidates",
+        dispatch: "d-002",
+      });
+      expect(next.batch.map((b: { dispatch: string }) => b.dispatch)).toEqual([
+        "d-002",
+        "d-003",
+      ]);
+      expect(dispatch(f, "d-002").status).toBe(0);
+      expect(f.taskJson().cycle.candidates_done).toBe(1);
+      expect(dispatch(f, "d-003").status).toBe(0);
 
-  it("contract edits are observations, not a frozen-hash execution gate", () => {
-    f = setupFixture();
-    const frozen = f.taskJson().contract_hash;
-    fs.appendFileSync(path.join(f.taskDir, "contract.md"), "\nUpdated planning explanation.\n");
-    expect(f.next()).toMatchObject({ state: "BUILD", needs: "brief", observations: expect.any(Array) });
-    f.plan({ "d-001": { write: [RED_TEST] } });
-    const r = dispatch(f, "d-001");
-    expect(r.status, r.stdout + r.stderr).toBe(0);
-    expect(r.stderr).toContain("contract.md differs");
-    expect(f.taskJson().stop).toBeUndefined();
-    expect(f.taskJson().contract_hash).toBe(frozen);
-    expect(f.next()).toMatchObject({ state: "BUILD", role: "implement" });
-  });
+      const data = f.taskJson();
+      expect(data).toMatchObject({
+        step: "verify",
+        counters: { review: 1 },
+        cycle_ids: [FINDING_ID],
+      });
+      expect(data.cycle).toMatchObject({
+        candidates: 1,
+        verify_batches: 1,
+        verify_done: 0,
+        candidates_file: `.arbor/tasks/${TASK}/reports/candidates-r1.json`,
+      });
+      const filtered = JSON.parse(
+        fs.readFileSync(
+          path.join(f.taskDir, "reports/candidates-r1.json"),
+          "utf-8",
+        ),
+      );
+      expect(filtered.kept.map((k: { id: string }) => k.id)).toEqual([
+        FINDING_ID,
+      ]);
+      expect(
+        filtered.dropped.map((d: { reason: string }) => d.reason).sort(),
+      ).toEqual([
+        expect.stringContaining("README.md:1 is not within 5 lines"),
+        "file src/gone.txt does not exist",
+      ]);
+      expect(
+        fs.readFileSync(path.join(f.taskDir, "reports/d-003.md"), "utf-8"),
+      ).toContain("- kept 1, dropped 2 -> reports/candidates-r1.json");
+      expect(f.next()).toMatchObject({
+        role: "verify",
+        dispatch: "d-004",
+        summary: expect.stringContaining("candidates-r1.json"),
+      });
 
-  it("canary checks the executor and the reply's first line without touching state", () => {
-    f = setupFixture();
-    const before = fs.readFileSync(path.join(f.taskDir, "task.json"), "utf-8");
-    const ok = f.run("canary");
-    expect(ok.status, ok.stdout + ok.stderr).toBe(0);
-    expect(ok.stdout).toContain("canary explore via fake: ok");
-    expect(fs.readFileSync(path.join(f.tmp, "received/canary.md"), "utf-8")).toContain("Role: explore");
-    const review = f.run("canary", "--role", "review");
-    expect(review.status, review.stdout).toBe(0);
-    f.plan({ canary: { reply: "sure, done\n" } });
-    const bad = f.run("canary", "--role", "review");
-    expect(bad.status).toBe(1);
-    expect(bad.stdout).toContain("does not start with PASS or FAIL");
-    f.plan({ canary: { exit: 4, stderr: "boom\n" } });
-    const crashed = f.run("canary");
-    expect(crashed.status).toBe(1);
-    expect(crashed.stdout).toContain("executor exited 4");
-    expect(fs.readFileSync(path.join(f.taskDir, "task.json"), "utf-8")).toBe(before);
-    expect(f.results().map((r) => [r.dispatch, r.status])).toEqual([
-      ["canary", "ok"], ["canary", "ok"], ["canary", "fail"], ["canary", "fail"],
-    ]);
-  });
+      expect(dispatch(f, "d-004").status).toBe(0);
+      expect(f.taskJson()).toMatchObject({
+        state: "REVIEW",
+        step: "plausible",
+        decision: { kind: "plausible", failing: [FINDING_ID] },
+      });
+      expect(f.next()).toMatchObject({
+        needs: "human",
+        human: { kind: "plausible", mandate: "ask" },
+      });
+      expect(f.run("decide", "impl", "--reason", "x").status).toBe(1);
+      expect(
+        f.run("decide", "skip", "--reason", "trigger is unrealistic").status,
+      ).toBe(0);
+      const done = f.taskJson();
+      expect(done.state).toBe("FINISH");
+      expect(done.cycle).toBeUndefined();
+      expect(done.decisions.at(-1)).toMatchObject({
+        kind: "plausible",
+        choice: "skip",
+      });
+    });
 
-  it("override --role dispatches once without advancing; abandon stops; status prints", () => {
-    f = setupFixture();
-    expect(f.run("override", "--reason", "need a second opinion", "--role", "explore").status).toBe(0);
-    expect(f.next()).toMatchObject({ state: "BUILD", role: "explore", dispatch: "d-001" });
-    expect(dispatch(f, "d-001").status).toBe(0);
-    let data = f.taskJson();
-    expect(data).toMatchObject({ state: "BUILD" });
-    expect(data.dispatches[0]).toMatchObject({ role: "explore", override: true });
-    expect(data.overrides[0]).toMatchObject({ role: "explore", reason: "need a second opinion" });
-    expect(f.next()).toMatchObject({ role: "test", dispatch: "d-002" });
+    it("REVIEW (standard): simplify commit -> GATE -> candidates -> verify CONFIRMED -> fix -> GATE -> candidates over the delta -> FINISH", () => {
+      f = setupFixture({ tier: "standard" });
+      seedCode(f, "REVIEW/simplify", [GREEN_CHECK]);
+      const base = f.taskJson().base;
+      f.plan({
+        "d-001": {
+          write: [{ path: "src/app.txt", content: "one\ntwo\nthree\nfour\n" }],
+          reply: "## Simplify: Changed\n",
+        },
+        "d-002": {
+          reply: reviewReply("FAIL", [finding("src/app.txt", 2, "CANDIDATE")]),
+        },
+        "d-003": { reply: reviewReply("PASS", []) },
+        "d-004": {
+          reply: verifyReply([finding("src/app.txt", 2, "CONFIRMED")], 1, 0),
+        },
+        "d-005": { write: [APP_FIX] },
+        "d-006": { reply: reviewReply("PASS", []) },
+        "d-007": { reply: reviewReply("PASS", []) },
+      });
+      // A simplify commit goes through the gate before the candidate readers.
+      expect(dispatch(f, "d-001").status).toBe(0);
+      expect(f.taskJson()).toMatchObject({
+        state: "GATE",
+        after_gate: { state: "REVIEW", step: "candidates" },
+      });
+      expect(f.run("gate").status).toBe(0);
+      expect(f.taskJson()).toMatchObject({
+        state: "REVIEW",
+        step: "candidates",
+        cycle: { range_from: base },
+      });
+      expect(f.next()).toMatchObject({
+        role: "review",
+        mode: "candidates",
+        dispatch: "d-002",
+        range: expect.stringMatching(new RegExp(`^${base}\\.\\.`)),
+      });
+      expect(dispatch(f, "d-002").status).toBe(0);
+      expect(dispatch(f, "d-003").status).toBe(0);
+      expect(f.taskJson()).toMatchObject({
+        step: "verify",
+        counters: { review: 1 },
+        cycle_ids: [FINDING_ID],
+      });
 
-    expect(f.run("abandon", "--reason", "scope moved").status).toBe(0);
-    data = f.taskJson();
-    expect(data.stop).toMatchObject({ reason: "HUMAN", detail: "abandoned: scope moved" });
-    const status = f.run("status");
-    expect(status.status).toBe(0);
-    expect(status.stdout).toContain("STOP/stop");
-    expect(status.stdout).toContain("d-001 explore");
-  });
-});
+      expect(dispatch(f, "d-004").status).toBe(0);
+      let data = f.taskJson();
+      expect(data).toMatchObject({
+        state: "REVIEW",
+        step: "fix",
+        cycle: { confirmed: [FINDING_ID], fix: [FINDING_ID] },
+      });
+      const reviewedTo = data.last_reviewed;
+      expect(f.next()).toMatchObject({
+        role: "fix",
+        dispatch: "d-005",
+        range: expect.stringMatching(new RegExp(`^${base}\\.\\.`)),
+      });
+      expect(dispatch(f, "d-005").status).toBe(0);
+      expect(f.taskJson()).toMatchObject({
+        state: "GATE",
+        after_gate: { state: "REVIEW", step: "candidates" },
+      });
+      expect(f.run("gate").status).toBe(0);
+
+      // The second cycle reads only the delta since the last review.
+      data = f.taskJson();
+      expect(data).toMatchObject({
+        state: "REVIEW",
+        step: "candidates",
+        cycle: { range_from: reviewedTo, candidates_done: 0 },
+      });
+      const next = f.next();
+      expect(next).toMatchObject({
+        role: "review",
+        mode: "candidates",
+        dispatch: "d-006",
+        range: expect.stringMatching(new RegExp(`^${reviewedTo}\\.\\.`)),
+      });
+      expect(next.batch.map((b: { dispatch: string }) => b.dispatch)).toEqual([
+        "d-006",
+        "d-007",
+      ]);
+      expect(dispatch(f, "d-006").status).toBe(0);
+      expect(dispatch(f, "d-007").status).toBe(0);
+      data = f.taskJson();
+      expect(data).toMatchObject({
+        state: "FINISH",
+        counters: { gate: 2, review: 1, no_progress: 0 },
+        cycle_ids: [],
+      });
+      expect(data.cycle).toBeUndefined();
+      expect(
+        fs.existsSync(path.join(f.taskDir, "reports/candidates-r2.json")),
+      ).toBe(true);
+      expect(
+        data.dispatches.map(
+          (d: { id: string; role: string; mode: string | null }) => [
+            d.id,
+            d.role,
+            d.mode,
+          ],
+        ),
+      ).toEqual([
+        ["d-001", "simplify", null],
+        ["d-002", "review", "candidates"],
+        ["d-003", "review", "candidates"],
+        ["d-004", "verify", null],
+        ["d-005", "fix", null],
+        ["d-006", "review", "candidates"],
+        ["d-007", "review", "candidates"],
+      ]);
+    });
+
+    it("REVIEW (full): 3 candidate readers, a clean cycle -> one sweep over base..HEAD -> verify -> fix -> GATE -> FINISH", () => {
+      f = setupFixture({ tier: "full" });
+      seedCode(f, "REVIEW/simplify", [GREEN_CHECK]);
+      const base = f.taskJson().base;
+      f.plan({
+        "d-001": { reply: "## Simplify: No Change\n" },
+        "d-002": { reply: reviewReply("PASS", []) },
+        "d-003": { reply: reviewReply("PASS", []) },
+        "d-004": { reply: reviewReply("PASS", []) },
+        "d-005": {
+          reply: reviewReply("FAIL", [finding("src/app.txt", 2, "CANDIDATE")]),
+        },
+        "d-006": {
+          reply: verifyReply([finding("src/app.txt", 2, "CONFIRMED")], 1, 0),
+        },
+        "d-007": { write: [APP_FIX] },
+      });
+      expect(dispatch(f, "d-001").status).toBe(0);
+      const next = f.next();
+      expect(next).toMatchObject({
+        role: "review",
+        mode: "candidates",
+        dispatch: "d-002",
+      });
+      expect(next.batch.map((b: { dispatch: string }) => b.dispatch)).toEqual([
+        "d-002",
+        "d-003",
+        "d-004",
+      ]);
+      for (const id of ["d-002", "d-003", "d-004"])
+        expect(dispatch(f, id).status).toBe(0);
+
+      let data = f.taskJson();
+      expect(data).toMatchObject({
+        state: "REVIEW",
+        step: "sweep",
+        cycle: { sweep: true, range_from: base },
+        counters: { review: 0 },
+      });
+      expect(data.sweep_done).toBeUndefined();
+      expect(f.next()).toMatchObject({
+        role: "review",
+        mode: "sweep",
+        dispatch: "d-005",
+        range: expect.stringMatching(new RegExp(`^${base}\\.\\.`)),
+      });
+      expect(f.next().batch).toBeUndefined();
+      expect(dispatch(f, "d-005").status).toBe(0);
+      data = f.taskJson();
+      expect(data).toMatchObject({
+        step: "verify",
+        sweep_done: true,
+        sweep_ids: [FINDING_ID],
+        cycle: { sweep: true, candidates: 1 },
+      });
+      expect(
+        JSON.parse(
+          fs.readFileSync(path.join(f.taskDir, "reports/sweep.json"), "utf-8"),
+        ).kept.map((k: { id: string }) => k.id),
+      ).toEqual([FINDING_ID]);
+      expect(f.next()).toMatchObject({
+        role: "verify",
+        dispatch: "d-006",
+        summary: expect.stringContaining("sweep.json"),
+      });
+
+      expect(dispatch(f, "d-006").status).toBe(0);
+      expect(f.taskJson()).toMatchObject({
+        state: "REVIEW",
+        step: "fix",
+        cycle: { sweep: true, fix: [FINDING_ID] },
+      });
+      expect(f.next()).toMatchObject({
+        role: "fix",
+        dispatch: "d-007",
+        range: expect.stringMatching(new RegExp(`^${base}\\.\\.`)),
+      });
+      expect(dispatch(f, "d-007").status).toBe(0);
+      expect(f.taskJson()).toMatchObject({
+        state: "GATE",
+        after_gate: { state: "FINISH" },
+      });
+      expect(f.run("gate").status).toBe(0);
+      data = f.taskJson();
+      expect(data.state).toBe("FINISH"); // the sweep never repeats
+      expect(data.sweep_done).toBe(true);
+      expect(f.taskJson().counters.gate).toBe(1);
+    });
+
+    it("contract edits are observations, not a frozen-hash execution gate", () => {
+      f = setupFixture();
+      const frozen = f.taskJson().contract_hash;
+      fs.appendFileSync(
+        path.join(f.taskDir, "contract.md"),
+        "\nUpdated planning explanation.\n",
+      );
+      expect(f.next()).toMatchObject({
+        state: "BUILD",
+        needs: "brief",
+        observations: expect.any(Array),
+      });
+      f.plan({ "d-001": { write: IMPLEMENTED } });
+      const r = dispatch(f, "d-001");
+      expect(r.status, r.stdout + r.stderr).toBe(0);
+      expect(r.stderr).toContain("contract.md differs");
+      expect(f.taskJson().stop).toBeUndefined();
+      expect(f.taskJson().contract_hash).toBe(frozen);
+      expect(f.taskJson().dispatches[0].observations).toContain(
+        "contract.md differs from the recorded approval",
+      );
+      expect(f.next()).toMatchObject({
+        state: "GATE",
+        needs: "run",
+        observations: expect.any(Array),
+      });
+    });
+
+    it("override --role dispatches once without advancing; abandon stops; status prints", () => {
+      f = setupFixture();
+      expect(
+        f.run(
+          "override",
+          "--reason",
+          "need a second opinion",
+          "--role",
+          "explore",
+        ).status,
+      ).toBe(0);
+      expect(f.next()).toMatchObject({
+        state: "BUILD",
+        role: "explore",
+        dispatch: "d-001",
+      });
+      expect(dispatch(f, "d-001").status).toBe(0);
+      let data = f.taskJson();
+      expect(data).toMatchObject({ state: "BUILD" });
+      expect(data.dispatches[0]).toMatchObject({
+        role: "explore",
+        override: true,
+      });
+      expect(data.overrides[0]).toMatchObject({
+        role: "explore",
+        reason: "need a second opinion",
+      });
+      expect(f.next()).toMatchObject({ role: "implement", dispatch: "d-002" });
+
+      expect(f.run("abandon", "--reason", "scope moved").status).toBe(0);
+      data = f.taskJson();
+      expect(data.stop).toMatchObject({
+        reason: "HUMAN",
+        detail: "abandoned: scope moved",
+      });
+      const status = f.run("status");
+      expect(status.status).toBe(0);
+      expect(status.stdout).toContain("STOP/stop");
+      expect(status.stdout).toContain("d-001 explore");
+      expect(status.stdout).toContain(
+        "mandate: contract=ask, plausible=ask, merge=ask",
+      );
+    });
+  },
+);

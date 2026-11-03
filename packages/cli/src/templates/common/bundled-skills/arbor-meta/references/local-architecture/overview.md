@@ -5,7 +5,7 @@
 Therefore, when an AI uses this skill, the default customization target is local files inside the user project:
 
 - `.arbor/`: workflow, tasks, specs, journals, scripts, and runtime state.
-- `.arbor/agents/`: role instruction sources for the eight roles (explore, architect, test, implement, review, verify, fix, simplify).
+- `.arbor/agents/`: role instruction sources for the seven roles (explore, architect, implement, review, verify, fix, simplify).
 - Platform directories: `.claude/` (Claude Code) and `.starFactory/` (StarFactory, a Claude Code fork).
 - Root files `CLAUDE.md` and `AGENTS.md`, which contain a managed block between `<!-- ARBOR:START -->` and `<!-- ARBOR:END -->`.
 

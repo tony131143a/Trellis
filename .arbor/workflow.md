@@ -5,9 +5,9 @@
 ## Core Principles
 
 1. **The contract is the spine** — `contract.md` says what "done" looks like and how it is checked; the human approves the scope; the main agent judges later edits in context and seeks approval only for material scope changes
-2. **The driver owns control, you own judgment and the plan** — `arbor.py` records state, counters, executable checks and observations; you (the main agent, the user's session) propose the tier, write the contract, split work into child tasks, curate context, write the briefs, classify red gates, dedup findings and retry within the contract
-3. **Verification is a ladder** — deterministic checks → independent tests → one reader review → candidate reviews + verify → sweep; a red rung never climbs
-4. **Many readers, one writer** — read-only roles may run in parallel; each branch has one writer at a time
+2. **The driver owns control, you own judgment** — `arbor.py` records state, counters, executable checks and observations; you (the main agent, the user's session) propose the tier, write the contract, split work into child tasks, curate context, write the briefs, classify red gates and retry within the contract
+3. **Verification is a ladder** — deterministic checks → review (candidates + independent verify in standard / full) → sweep (full); a red rung never climbs
+4. **Many readers, one writer** — read-only roles run in parallel; each branch has one writer at a time
 5. **Git-native** — a task is a worktree plus a branch; writers commit; a diff is a commit range; merges are `--no-ff`
 6. **Persist everything** — research, decisions and lessons go to files; conversations get compacted, files don't
 
@@ -17,132 +17,37 @@
 
 ### Developer Identity
 
-On first use, initialize your identity:
-
 ```bash
-python3 ./.arbor/scripts/init_developer.py <your-name>
+python3 ./.arbor/scripts/init_developer.py <your-name>   # once; creates .arbor/.developer + .arbor/workspace/<name>/
 ```
-
-Creates `.arbor/.developer` (gitignored) + `.arbor/workspace/<your-name>/`.
 
 ### Spec System
 
-`.arbor/spec/` holds coding guidelines organized by package and layer.
-
-- `.arbor/spec/<package>/<layer>/index.md` — entry point with **Pre-Development Checklist** + **Quality Check**. Actual guidelines live in the `.md` files it points to.
-- `.arbor/spec/guides/index.md` — cross-package thinking guides.
-
-```bash
-python3 ./.arbor/scripts/get_context.py --mode packages   # list packages / layers
-```
-
-**When to update spec**: new pattern/convention found · bug-fix prevention to codify · new technical decision.
+`.arbor/spec/<package>/<layer>/index.md` holds the coding guidelines per package and layer (Pre-Development Checklist + Quality Check); `.arbor/spec/guides/index.md` the cross-package thinking guides. `python3 ./.arbor/scripts/get_context.py --mode packages` lists them. Update the spec when a new pattern, a bug-fix prevention or a technical decision deserves to outlive the task.
 
 ### Task System
 
 Every task has its own directory `.arbor/tasks/{MM-DD-name}/` holding `task.json`, `contract.md`, optional `design.md` and `waves.md`, optional `research/`, `briefs/`, `reports/`, and the context manifests `implement.jsonl` / `check.jsonl`.
 
 ```bash
-# Task lifecycle
-python3 ./.arbor/scripts/task.py create "<title>" --description "<one-line summary>" [--slug <name>] [--tier light|standard|full] [--parent <dir>]
+python3 ./.arbor/scripts/task.py create "<title>" --description "<one-line summary>" [--slug <name>] [--tier light|standard|full] [--parent <dir>] [--mandate "contract=auto,merge=ask"]
 python3 ./.arbor/scripts/task.py start <name>          # contract approved: record its hash, create the task worktree + branch, commit
 python3 ./.arbor/scripts/task.py current --source      # show active task and source
-python3 ./.arbor/scripts/task.py finish                # clear active task (triggers after_finish hooks)
-python3 ./.arbor/scripts/task.py archive <name>        # move to archive/{year-month}/
-python3 ./.arbor/scripts/task.py list [--mine] [--status <s>]
-python3 ./.arbor/scripts/task.py list-archive
-
-# Code-spec context (inlined into every role prompt by the driver).
-# `seed-context` fills both manifests with the package's spec indexes, the shared guides
-# index and the task's research files; then add or drop entries. `start` refuses while a
-# manifest is still empty; pass `start --allow-empty-context` when that is intentional.
-python3 ./.arbor/scripts/task.py seed-context <name> [--package <pkg> ...]
-python3 ./.arbor/scripts/task.py add-context <name> <action> <file> <reason>
-python3 ./.arbor/scripts/task.py list-context <name> [action]
-python3 ./.arbor/scripts/task.py validate <name>
-
-# Task metadata
-python3 ./.arbor/scripts/task.py set-base-branch <name> <branch>    # branch the PR merges into
-python3 ./.arbor/scripts/task.py set-meta <name> <key> <value>      # e.g. tier standard
-
-# Hierarchy (parent/child)
-python3 ./.arbor/scripts/task.py add-subtask <parent> <child>
-python3 ./.arbor/scripts/task.py remove-subtask <parent> <child>
+python3 ./.arbor/scripts/task.py archive <name>        # move to archive/{year-month}/ (arbor.py finish does this for a merged task)
+python3 ./.arbor/scripts/task.py list [--mine] [--status <s>] | list-archive
+python3 ./.arbor/scripts/task.py seed-context <name> [--package <pkg> ...]   # fill both manifests: spec indexes, guides index, research/
+python3 ./.arbor/scripts/task.py add-context <name> <implement|check> <file> <reason>
+python3 ./.arbor/scripts/task.py list-context <name> [action] | validate <name>
+python3 ./.arbor/scripts/task.py set-base-branch <name> <branch> | set-meta <name> <key> <value>   # e.g. tier standard
+python3 ./.arbor/scripts/task.py add-subtask <parent> <child> | remove-subtask <parent> <child>
+python3 ./.arbor/scripts/task.py finish                # only to clear a stale session pointer
 ```
 
-> Run `python3 ./.arbor/scripts/task.py --help` to see the authoritative, up-to-date list.
-
-**Current-task mechanism**: `task.py create` creates the task directory in this checkout and (when session identity is available) points this session at it. `task.py start` records `contract_hash`, creates branch `arbor/<task>` and its worktree `<worktree.root>/<task>` from the current HEAD, moves the task directory into that worktree, commits it as `contract(<task>): approve contract`, sets `state=BUILD`, and points the session at the task directory inside the worktree. State is stored under `.arbor/.runtime/sessions/` in the main checkout. Without a context key (hook input or `ARBOR_CONTEXT_ID`) there is no active task and `task.py start` fails with a session identity hint. `task.py finish` clears this session's pointer. `task.py archive <task>` writes `status=completed` and moves the directory to `archive/`.
-
-### Central polyrepo tasks
-
-When this repository stores tasks/specs for independent `packages.<name>.git: true`
-repositories, the package decides the execution repository. Fetch the desired
-product ref before starting; start resolves the base ref to a full commit and never
-silently follows later remote changes.
-
-```bash
-# Naming a git: true package means working in it (execution package).
-python3 .arbor/scripts/task.py create "Product task" --description "..." --package app
-# base ref / merge target: flags, else packages.app.execution.base_ref / merge_target.
-python3 .arbor/scripts/task.py start <task> --base-ref origin/dev --merge-target dev
-# No --package: the task belongs to the control repo (execution control); a git: true
-# default_package is never inherited.
-python3 .arbor/scripts/task.py create "Control task" --description "..."
-python3 .arbor/scripts/task.py start <task>
-# Edit only the control repo while still selecting app's specs:
-python3 .arbor/scripts/task.py create "Spec task" --description "..." --package app --execution control
-# Tasks created before this rule (package set, no execution_mode) still need an explicit choice:
-python3 .arbor/scripts/task.py start <task> --execution control
-```
-
-`execution_mode` is saved at create; `start` inherits it and an explicit
-`start --execution` overrides it. A control task without a package seeds shared
-guides/research only. `--execution package` requires a configured independent Git package.
-
-A product task owns two worktrees. Its task directory, contract, manifests, specs,
-briefs, reports and scorecard live in the **control** worktree. Writer commits,
-Range diffs, test paths, GATE commands, partition worktrees and merges operate in
-the **product** worktree. Product code and verification paths in the contract are
-relative to the product root (for example `backend/tests`, without the meta-repo
-package prefix). Context manifests continue to reference control-repo specs;
-roles read product sources from the explicit execution directory in their prompt.
-The product repo does not need an Arbor installation.
-
-Package-specific `execution.worktree` and `execution.gate` settings may be placed
-under the package configuration. They replace the control project's setup/GATE
-settings for product execution. A product GATE with neither commands nor contract `auto` checks
-is rejected with `GATE-EMPTY`; add executable verification before advancing. Execution repository identity, source commit,
-merge target and package policy are frozen in `task.json.execution_binding`;
-changing that binding or the package policy after start is refused.
-
-Product execution dispatches are serialized, including within a multi-partition wave. CONTRACT research/design readers can run concurrently in the control worktree. MCP
-uses the normal prepare/bind/collect protocol. Control and main-checkout snapshots
-record drift as observations for the main agent, not proof that the child wrote
-those files. Collection preserves files and commits; repository identity and
-execution binding checks remain enforced.
-A failed/interrupted product setup retains a start journal under
-`.arbor/.runtime/starts/` and owned worktrees; inspect those before retrying rather
-than deleting them automatically. Already-started tasks without a binding keep
-legacy single-repository behavior.
-
-Finish uses two explicit local merge boundaries: `arbor finish` first prints the
-product merge command; after that `--no-ff` merge, run it again to record product
-merge evidence and obtain the control merge command. After the control `--no-ff`
-merge, run it again for cleanup/archive. Cleanup checks both repos and refuses
-dirty or changed product worktrees. Automatic product PR creation is not supported;
-use the printed local merge flow. A control merge alone never completes a product task.
+`task.py create` creates the task directory in this checkout and points this session at it. `task.py start` records `contract_hash`, creates branch `arbor/<task>` and its worktree `<worktree.root>/<task>` from the current HEAD, moves the task directory into that worktree, commits it as `contract(<task>): approve contract`, sets `state=BUILD` and points the session at the task directory inside the worktree. Session state lives under `.arbor/.runtime/sessions/` in the main checkout; without a context key (hook input or `ARBOR_CONTEXT_ID`) there is no active task and `start` fails with a session identity hint. Central polyrepo tasks (`packages.<name>.git: true`) are described in the appendix.
 
 ### Workspace System
 
-Records every AI session for cross-session tracking under `.arbor/workspace/<developer>/`.
-
-- `journal-N.md` — session log. **Max 2000 lines per file**; a new `journal-(N+1).md` is auto-created when exceeded.
-- `index.md` — personal index (total sessions, last active).
-
-```bash
-python3 ./.arbor/scripts/add_session.py --title "Title" --commit "hash" --summary "Summary"
-```
+`.arbor/workspace/<developer>/journal-N.md` records every session (2000 lines per file, then `journal-(N+1).md`); `index.md` is the personal index. `arbor.py finish` writes the entry of a merged task; `python3 ./.arbor/scripts/add_session.py --title "…" --commit "<hash>" --summary "…"` records anything else.
 
 ### Context Script
 
@@ -152,162 +57,93 @@ python3 ./.arbor/scripts/get_context.py --mode packages            # available p
 python3 ./.arbor/scripts/get_context.py --mode phase --step <X.Y>  # detailed guide for a workflow step
 ```
 
-### Driver
+---
+
+## Driver
 
 `arbor.py` owns role preparation, task state, deterministic checks, report parsing, Git observations, metrics and state transitions. Two kinds of agent talk to it:
 
-- **Main agent** — the user's session, normally one codeg conversation per task (Claude Code or Codex). Phase 1, task creation and start, the Phase 2 loop (`arbor.py next` → brief → `arbor.py run` → …), the questions it puts to the user, the merge gate.
-- **Roles** — dispatched by `arbor.py run` through the executor (`executors:`). The default `codeg` executor (`type: codeg-mcp`) hands every role to codeg MCP `delegate_to_agent` as a sub-agent session of its own; the driver prepares the prompt and validates the reply. The `codeg-cli` command executor (`executors.default: codeg-cli` or `arbor.py --executor codeg-cli`) stays available for terminal sessions: there the driver starts the child, waits for its reply and validates it itself, so nobody carries results by hand.
-
-With the `codeg` executor (`type: codeg-mcp`, the default; or `arbor.py --executor codeg`), `arbor.py run` returns `needs=delegation`. The returned `mcp.arguments.task` carries only the dispatch header plus a `Prompt:` line naming the assembled prompt file (`.arbor/.runtime/prompts/<task>/d-NNN.md` in the main checkout); the role reads that file first, so you never copy the prompt into the tool call. Call codeg MCP `delegate_to_agent` with the returned `mcp.arguments` (resolve the named assistant from the MCP roster if no id is configured), then immediately run `arbor.py bind --request <request_path> --task-id <returned task_id>`. Poll `get_delegation_status`, save its complete JSON response at the returned `result_path` outside the task worktree, and run `arbor.py collect --request <request_path> --result <file>` before proceeding. With the Arbor PostToolUse hook installed (`.claude/hooks/sync-delegation.py` / `.codex/hooks/sync-delegation.py`, registered by `arbor init` and `arbor update`), the bind and the collect happen by themselves after each `delegate_to_agent` call and each terminal `get_delegation_status` reply, and the hook's note tells you what it did; run `bind` / `collect` by hand only when the note says so or no hook is installed. Resume/poll a bound task after interruptions; never start it again. If the configured timeout expires, cancel it through `cancel_delegation` and collect the terminal report. Claude Code and Codex both use this same MCP flow. Request and snapshot records live in `.arbor/.runtime/delegations/<task>/<dispatch>.json`; a collected request cannot be collected twice. Never substitute native Agent/Task/spawn_agent for a role.
-
-Product control drift is advisory and does not block collection. The legacy
-`--accept-new-control-task <name> --reason "..."` option remains available to record
-a narrowly checked sibling-task acceptance; it is no longer required for ordinary
-collection. Binding identity, task-id matching and replay checks still apply.
-
-**Judgment, not automation.** File/role/commit observations never automatically STOP a
-task or reset/delete work. The main agent inspects the diff, raw
-report and concurrent activity; observed changes alone do not establish authorship.
-Contract hash drift is an observation, including during CONTRACT plan reviews: never
-restore a different contract merely to collect a result. Scope/acceptance changes
-still require the user's authorization; editorial or already-authorized changes do not.
-
-An ambiguous report is collected with status `judgment`. For a started task,
-`next` returns `needs=decide`, not a human gate. The driver's caller may run
-`arbor.py decide retry --reason "..."`, or interpret the existing result and run
-`arbor.py decide accept --report <file> --reason "..."` (`--dispatch d-NNN` selects
-one of several reports). The interpretation uses the role's structured format so
-the state machine can route it; no implicit PASS is allowed. The raw report is
-retained separately from `reports/d-NNN-interpreted.md`, and the decision is
-recorded. A reasoned `override` is also available. For pre-start planning reports,
-review the raw result and revise the plan/brief normally; there is no execution
-state to advance. Do not ask the user to approve routine report interpretation.
-
-Round caps are escalation gates: when a GATE / REVIEW / POLISH round repeats without progress (`NO_PROGRESS`) or exceeds its budget (`BUDGET`: 4 consecutive red gates, review fix rounds light 2 / standard 1 / full 1, polish rounds 2), the driver enters STOP; the main agent inspects the evidence and continues with `arbor.py resume` (grants one more round), `override --reason "…"`, a re-plan, or `abandon`.
-
-Which of these human gates you actually put to the user is the task's **mandate**: `next --json` carries `human.mandate` (`ask` or `auto`) for `approve_contract`, `plausible`, `stop` and `merge`, resolved from `mandate:` in `.arbor/config.yaml` per tier (light: everything `auto` except merge; standard: contract and merge `ask`; full: everything `ask`; merge into the base branch is `ask` in every tier unless the user opts in) and overridden per task with `task.py create --mandate "<gate>=<ask|auto>,…"` (or `task.py set-meta <task> mandate …`). `auto` means proceed without asking, and the driver already does what it can by itself: it records `decide skip` for PLAUSIBLE findings, resumes the first STOP of a task, and, with `merge=auto`, `arbor.py finish` merges the branch `--no-ff` when it changes fewer than `auto_merge_max_lines` product lines, stays within the contract's partition paths and test paths, has no product commit after the last review PASS, the main checkout is on the base branch and clean, and the merge applies cleanly. A child of a parent task merges into the parent's integration branch without any gate (see Parent / Child Task Trees). Scope changes are always asked.
+- **Main agent** — the user's session, normally one codeg conversation per task (Claude Code or Codex): Phase 1, task creation and start, the Phase 2 loop, the questions it puts to the user, the merge gate.
+- **Roles** — dispatched by `arbor.py run` and executed through codeg MCP as a sub-agent session of its own; the driver prepares the prompt and validates the reply. Never perform a role yourself and never use native Agent/Task/spawn_agent for one.
 
 ```bash
-python3 ./.arbor/scripts/arbor.py next [--json]               # the single next step
-python3 ./.arbor/scripts/arbor.py children [--json]           # a parent task: every child's state and merge status, its integration branch
-python3 ./.arbor/scripts/arbor.py children --cleanup          # a parent task, after the human merged its integration branch: journal, remove worktree + branch
-python3 ./.arbor/scripts/arbor.py run [--dispatch d-NNN]      # execute the dispatch whose brief you just wrote
-python3 ./.arbor/scripts/arbor.py run --role explore|architect|review [--mode plan] [--dispatch d-NNN]   # CONTRACT phase only, before task.py start
-python3 ./.arbor/scripts/arbor.py run --role review --mode sweep --range <before>..<base>   # a parent task reviewing its merged children
-python3 ./.arbor/scripts/arbor.py gate                        # run GATE level 0; prints the failing AC ids (a parent: its auto checks in the main checkout)
-python3 ./.arbor/scripts/arbor.py decide <choice> --reason "…"   # impl | tests | contract (red gate) · fix | skip (PLAUSIBLE)
-python3 ./.arbor/scripts/arbor.py canary [--role <role>]      # small read-only dispatch: is the executor reachable, is the reply well-formed
+python3 ./.arbor/scripts/arbor.py next [--json] [--partition P] [--role explore|architect|review]   # the single next step; the ready set
+python3 ./.arbor/scripts/arbor.py run [--dispatch d-NNN] [--partition P]                             # dispatch the brief you just wrote
+python3 ./.arbor/scripts/arbor.py run --role explore|architect|review [--mode plan] [--dispatch d-NNN]   # CONTRACT phase, before task.py start
+python3 ./.arbor/scripts/arbor.py run --role review --mode sweep --range <before>..<base>             # a parent task reviewing its merged children
+python3 ./.arbor/scripts/arbor.py gate                        # GATE: gate.commands + the contract's auto checks (a parent: in the integration worktree)
+python3 ./.arbor/scripts/arbor.py decide <choice> --reason "…"   # impl | contract (red gate) · fix | skip (PLAUSIBLE) · accept --report <file> | retry (ambiguous report)
+python3 ./.arbor/scripts/arbor.py finish [--pr]               # FINISH: scorecard + PR / merge command; after the merge: cleanup
+python3 ./.arbor/scripts/arbor.py children [--json] [--cleanup]   # a parent task: every child's state and merge status; cleanup after the integration merge
 python3 ./.arbor/scripts/arbor.py override --reason "…" (--to STATE[/step] | --role <role> [--mode M])   # one step off the state table; recorded in the scorecard
 python3 ./.arbor/scripts/arbor.py status | resume | abandon [--reason "…"]
-python3 ./.arbor/scripts/arbor.py prompt --dispatch d-NNN --print   # the assembled prompt of a dispatch
+python3 ./.arbor/scripts/arbor.py prompt --dispatch d-NNN --print   # rebuild the assembled prompt of a dispatch
 ```
 
-Every command takes `--task <dir>` and `--executor <name>` before the command name (`--task` defaults to this session's active task; pass it when this session has no active-task pointer, for example a child task driven from a conversation of its own). Exit codes: 0 ok, 1 refused / failed dispatch / red gate, 2 usage error.
+Every command takes `--task <dir>` before the command name (default: this session's active task; pass it for a child task driven from a conversation of its own). Exit codes: 0 ok, 1 refused / failed dispatch / red gate, 2 usage error.
 
-`arbor.py next --json` always carries `task`, `state`, `needs` and `summary`; depending on `needs` it adds `role`, `mode`, `range`, `dispatch`, `brief_path`, `batch`, `decision`, `human` and `touched_files`. `batch` lists the readers of the current step that may run concurrently (`dispatch` + `brief_path` each): the REVIEW reviewers (light 1, standard / full 2), the POLISH candidate readers (standard 2, full 3) and the verify batches. Their ids are assigned when the step opens; write every brief, then start each with `arbor.py run --dispatch <id>` without waiting for the others (with codeg MCP: delegate each, the sync hook binds and collects them in any order). `readers_running` lists the readers still in flight. After start `next --json` also carries the task's **ready set**, computed by the driver from its state: `items` (every step you can act on now: the current step, every other reader of its `batch`, every other partition that needs a brief, every prepared MCP delegation not yet sent; each with its own `needs`, `partition`, `role`, `dispatch` and `brief_path`), `running` (dispatches in flight: bound MCP delegations, partition commands and readers) and, when `items` is empty, `blocked_on` (what the task waits for). Act on every item in one turn (write each brief, dispatch them all), then wait once for what is running; never add items of your own. Before `task.py start` it answers `state: CONTRACT`, `needs: human` with `human.kind: approve_contract`, plus the next `dispatch` id, its `brief_path` and `contract_roles` (explore, architect, review).
+### `next --json`
 
-| `needs` | Meaning | Who | Do |
-|---|---|---|---|
-| `delegation` | a prepared codeg MCP task is pending (`codeg-mcp` executor only) | main agent | read `request_path`; delegate once and bind, or poll/resume `task_id`; collect its terminal JSON before advancing |
-| `brief` | a role must run | main agent | write the brief for that `role` at `brief_path`, then `arbor.py run` |
-| `run` | the driver has deterministic work: GATE, or merging a finished wave back into the task branch | main agent | `arbor.py gate` for GATE (`arbor.py run` does the same there); `arbor.py run` for the wave merge |
-| `wait` | multi-partition wave or reader batch: every ready partition or reader is running and nothing can advance yet | main agent | wait for the running `arbor.py run --partition <p>` / `run --dispatch <id>` calls (or poll their delegations), then `arbor.py next` again |
-| `decide` | a judgment the driver cannot make | main agent | `arbor.py decide <choice> --reason "…"` with one of the listed options; `contract` → fix the contract with the user, then `arbor.py resume` |
-| `human` | `human.kind` says which: `approve_contract`, `plausible`, `stop`, `merge_conflict` or `merge` | main agent + user | `approve_contract`: before start, finish the contract (research with `arbor.py run --role`, see CONTRACT-phase dispatch), ask for approval, then `task.py start`; after start, the user re-approves the edited `contract.md` and you run `arbor.py resume`. `plausible`: ask the user, `decide fix\|skip --reason "…"`. `stop`: inspect the reason and evidence, then `resume`, `override`, re-plan or `abandon`. `merge_conflict`: merge the named branch into the task branch by hand in the task worktree, commit, then `arbor.py resume`. `merge`: Phase 3. `human.mandate` says whether to ask the user (`ask`) or proceed yourself (`auto`) |
-| `done` | nothing left | main agent | stop |
+Always carries `task`, `state`, `needs` and `summary`; depending on `needs` also `role`, `mode`, `range`, `dispatch`, `brief_path`, `batch`, `decision`, `human` and `touched_files` (what the task changed so far: read it instead of re-exploring). `batch` lists the readers of the current step that run concurrently (REVIEW candidates: standard 2, full 3; the verify batches of 8 candidates): write every brief, then start each with `arbor.py run --dispatch <id>`. After start it also carries the **ready set**: `items` (every step you can act on now: the current step, every other reader of its batch, every other partition that needs a brief, every prepared delegation not yet sent), `running` (delegations and readers in flight) and, when `items` is empty, `blocked_on`. Act on every item in one turn, then wait once for what is running; never add items yourself. Before `task.py start` it answers `state: CONTRACT`, `needs: human` (`approve_contract`) plus the next `dispatch` id and its `brief_path`.
 
-**Multi-partition waves.** When the contract's current wave names more than one partition, the driver gives each partition its own branch `arbor/<task>--<p>` and worktree `<worktree.root>/<task>-<p>`, and `next --json` carries `partition` plus `partitions_pending` (the other partitions that also need a brief right now). Write each brief at its `brief_path`, then start one `arbor.py run --partition <p>` per partition — they may run at the same time (the driver serialises task.json under `<task>/.lock`; keep to `executors.<name>.max_parallel`). A partition's writer must stay within its assigned paths; the driver prepends the scope line, and before the merge it checks each partition branch: a change outside the partition's paths, the test paths and the task directory stops the merge as `human` / `merge_conflict` with `reason: scope` and the files listed. Ask the user whether to revert them on the partition branch (then `arbor.py resume` merges) or to merge by hand. When every partition is done, `next` says `run` and `arbor.py run` merges the branches back `--no-ff` in wave order; a conflict becomes `human` / `merge_conflict`.
+| `needs` | Meaning | Do |
+|---|---|---|
+| `brief` | a role must run | write the brief for `role` at `brief_path`, then `arbor.py run` |
+| `delegation` | a prepared codeg MCP request is pending | delegate once and bind, or poll/resume `task_id`; collect its terminal JSON (the sync hook does both) |
+| `run` | deterministic driver work | `arbor.py gate` for GATE; `arbor.py run` for a wave start or wave merge |
+| `wait` | every ready partition or reader is running | wait for the running delegations, then `next` again |
+| `decide` | a judgment the driver cannot make | `arbor.py decide <choice> --reason "…"`; `contract` → fix the contract with the user, then `arbor.py resume` |
+| `human` | `human.kind`: `approve_contract` · `plausible` · `stop` · `merge_conflict` · `merge` | see Human Gates; `human.mandate` says `ask` or `auto` |
+| `done` | nothing left | stop |
 
-**Dispatch header.** The driver writes it; you never type it. Every role prompt starts with:
+### Dispatch protocol (codeg MCP)
+
+`arbor.py run` assembles the prompt at `.arbor/.runtime/prompts/<task>/d-NNN.md` and returns `needs=delegation` with `mcp.arguments`: call codeg MCP `delegate_to_agent` once with them (the `task` text is the dispatch header plus a `Prompt:` line; the role reads that file first; resolve the named assistant from the MCP roster when no id is configured). The Arbor PostToolUse hook (`.claude/hooks/sync-delegation.py` / `.codex/hooks/sync-delegation.py`) then runs `arbor.py bind --request <request_path> --task-id <id>` and, after each terminal `get_delegation_status` reply, saves the complete JSON and runs `arbor.py collect --request <request_path> --result <file>`; its note tells you what it did. Run them by hand only when the note says so or no hook is installed. Claude Code and Codex both use this same MCP flow. Resume/poll a bound task after interruptions; never delegate it again. If `timeout_s` expires, `cancel_delegation` and collect the terminal report. Request records live in `.arbor/.runtime/delegations/<task>/<dispatch>.json`; a collected request cannot be collected twice.
+
+**Dispatch header.** The driver writes it; you never type it:
 
 ```
 Active task: <absolute path of .arbor/tasks/<task> inside the task worktree>
-Role: explore | architect | test | implement | review | verify | fix | simplify
+Role: explore | architect | implement | review | verify | fix | simplify
 Mode: self-check | candidates | sweep | plan        (review only)
 Range: <base>..<head>                               (roles that read or write a diff)
 Dispatch: d-NNN
-Prompt: <absolute path of .arbor/.runtime/prompts/<task>/d-NNN.md>   (codeg MCP only)
+Prompt: <absolute path of .arbor/.runtime/prompts/<task>/d-NNN.md>
 ```
 
-Before `task.py start` the task directory still sits in the main checkout, so `Active task:` points there. Started CONTRACT replanning uses the existing control worktree. With the `codeg` executor the MCP `task` text is this header alone; the `Prompt:` file holds everything below and the role reads it first. Then the injected context (the role's manifest — `implement.jsonl` for architect / test / implement, `check.jsonl` for review / verify / fix / simplify — then `contract.md`, `design.md`, `waves.md`, and `git diff <Range>`), then your brief. Your brief is committed as `briefs/d-NNN.md` on the task branch, and the reply plus the driver's verdict as `reports/d-NNN.md`; the assembled prompt is kept at `.arbor/.runtime/prompts/<task>/d-NNN.md` in the main checkout (`arbor.py prompt --dispatch d-NNN --print` rebuilds it).
+Then the injected context (`implement.jsonl` for architect / implement, `check.jsonl` for review / verify / fix / simplify; `contract.md`, `design.md`, `waves.md`, `git diff <Range>`), then your brief. The brief is committed as `briefs/d-NNN.md`, the reply plus the driver's verdict as `reports/d-NNN.md`.
 
-**CONTRACT-phase dispatch.** Before `task.py start` the state table does not run yet, but you can still dispatch `explore`, `architect` and `review` (`Mode: plan`, the default for review):
+**Briefs.** The role cannot see your conversation. A brief carries what the artifacts do not: the essential files to read first, decisions already made, known pitfalls, files to stay out of; for review the `Angles:` line; for verify and fix the findings JSON. Do not paste the contract or the diff; the driver injects them. Never ask a role to dispatch another role.
 
-1. `arbor.py next --json` names the next `dispatch` id and its `brief_path` (`<task>/briefs/d-NNN.md`).
-2. Write the brief there (body only; the driver adds the header and context).
-3. `arbor.py run --role explore|architect|review [--mode plan] [--dispatch d-NNN]`.
+**Judgment, not automation.** File / role / commit observations never automatically STOP a task or reset work: the main agent inspects the diff, the raw report and concurrent activity. An ambiguous report is collected with status `judgment` and `next` returns `needs=decide`: `arbor.py decide retry --reason "…"`, or interpret it yourself and `arbor.py decide accept --report <file> --reason "…"` (the interpretation uses the role's structured format; no implicit PASS). Contract drift is an observation; scope and acceptance changes still need the user. Round caps are escalation gates: `NO_PROGRESS` (two rounds without progress) or `BUDGET` (4 consecutive red gates, 2 review fix rounds) enter STOP.
 
-It runs in the main checkout with no `Range:` and commits nothing. `explore` and `architect` may write only `<task>/research/`; `review` writes nothing. Other observed changes are reported to the main agent for contextual judgment. The driver retains files and commits for inspection and reports a moved HEAD for you to undo by hand; it never resets the main checkout. Each run is recorded in `task.json` (`dispatches`, `phase: CONTRACT`), in `reports/d-NNN.md` and in `results.jsonl`; `task.py start` later commits the task directory with the briefs, reports and research. Dispatch ids continue after start: with d-001 and d-002 used here, the first BUILD dispatch is d-003. Started tasks in CONTRACT can also use `run --role` for parallel replanning; outside CONTRACT, extra roles use `override --role`. With no task at all only `run --role explore` works: pipe the brief on stdin; the reply comes back on stdout and nothing is recorded in a task.
+**CONTRACT-phase dispatch.** Before `task.py start` you can dispatch `explore`, `architect` and `review` (`Mode: plan`): `arbor.py next --role <role> --json` names the next `dispatch` id and its `brief_path`; write the brief; `arbor.py run --role <role> [--mode plan] --dispatch <id>`. It runs in the main checkout with no `Range:` and commits nothing; `explore` / `architect` may write only `<task>/research/`, `review` nothing. Independent angles run concurrently with no quota (prepare and delegate each one; `next --json` lists `pending_delegations`); dependent questions wait for their prerequisites; the plan review and `task.py start` wait until every reader is collected. Each reader owns `research/<dispatch>-*.md`; you consolidate the evidence into `design.md`, `contract.md`, `waves.md` and the manifests. Dispatch ids continue after start.
 
-**Parallel research and design.** The main agent splits questions, source scopes and
-architecture perspectives. There is no total or simultaneous explore/architect
-quota at any tier. The main agent decides how many independent angles to dispatch;
-these roles do not consult `executors.<name>.max_parallel`. Independent explore and architect roles
-may overlap; dependent questions wait for their prerequisite results. A final
-plan review and task start/resume wait until all pending readers are collected.
+**Multi-partition waves.** When the contract's current wave names more than one partition, `arbor.py run` gives each partition its own branch `arbor/<task>--<p>` and worktree `<worktree.root>/<task>-<p>`; `next --json` carries `partition` and `partitions_pending`. Write each brief at its `brief_path`, then `arbor.py run --partition <p>` for each (they run at the same time; keep to `executors.codeg.max_parallel`). A partition's writer must stay within its paths; a change outside them (the task directory aside) stops the merge as `human` / `merge_conflict` with `reason: scope`: ask the user whether to revert it on the partition branch (then `resume` merges) or to merge by hand. When every partition is done, `arbor.py run` merges the branches `--no-ff` in wave order; a conflict becomes `human` / `merge_conflict`: merge by hand in the task worktree, commit, `arbor.py resume`.
 
-For each additional angle, including while earlier readers are running:
-
-```bash
-python3 .arbor/scripts/arbor.py --task <task> next --role explore --json
-# Write the brief at brief_path; use the returned id, for example d-002:
-python3 .arbor/scripts/arbor.py --task <task> run --role explore --dispatch d-002
-# For a design perspective use --role architect in both commands.
-```
-
-Prepare requests one by one, then delegate/bind each immediately; child execution
-is concurrent. `next --json` lists `pending_delegations` so interrupted sessions
-can resume every bound reader. Repeating an explicit pending id returns the same
-request; a completed id cannot be reused. Calling `run --role` without a new id
-resumes the existing reader rather than accidentally launching a duplicate.
-The main agent can add independent angles while earlier readers are running.
-Results can be collected in any order. Command executors also reserve ids
-under the task lock and run outside it; dead command readers can be retried under
-new ids. MCP readers keep their bound task ids and are polled/resumed.
-
-Each reader owns `research/<dispatch>-*.md`; brief, prompt and report paths also
-use that dispatch id. Automatic architecture context excludes uncollected or
-failed sibling outputs. The main agent reviews completed evidence, resolves
-contradictions and consolidates `design.md`, `contract.md`, `waves.md` and manifests.
-Context byte/file budgets still apply; use curated manifests and summaries for
-large studies. Research/architecture parallelism does not enable parallel product
-writers or parallel final plan reviews.
-
-**Briefs.** The role cannot see your conversation. A brief carries what the artifacts do not: the essential files to read first, decisions already made, known pitfalls, files to stay out of, and for review the `Angles:` line; for verify and fix, the findings JSON. Do not paste the contract or the diff; the driver injects them.
-
-**Sub-agent self-exemption.** If your own first prompt starts with `Active task:` + `Role:`, you are a dispatched role: do that role's work directly, never run `arbor.py` or `task.py start/current/finish`, never dispatch anything, never push, merge or rebase. You have no `ARBOR_CONTEXT_ID`. The test role may run Git lifecycle operations in test-owned disposable repositories under `.arbor/agents/test.md`; real project repositories remain protected.
+**Sub-agent self-exemption.** If your own first prompt starts with `Active task:` + `Role:`, you are a dispatched role: do that role's work directly, never run `arbor.py` or `task.py start/current/finish`, never dispatch anything, never push, merge or rebase.
 
 ### Roles
 
-Role instructions live in `.arbor/agents/<role>.md`. They define responsibilities; the driver's caller judges compliance. The driver records boundary observations after dispatch and preserves all files and commits, including after execution failure. There is no automatic dispatch rollback.
+Role instructions live in `.arbor/agents/<role>.md`.
 
 | Role | Writes | Commits | Output |
 |---|---|---|---|
-| `explore` | `.arbor/tasks/<task>/research/**` | no (the driver commits research) | findings + 5–10 essential files |
+| `explore` | `.arbor/tasks/<task>/research/**` | no | findings + 5–10 essential files |
 | `architect` | `.arbor/tasks/<task>/research/**` | no | one blueprint + partition / wave suggestion |
-| `test` | the contract's test paths only | yes, own branch | criterion → test map; the red run |
-| `implement` | anything except test paths and `.arbor/` outside the task dir | yes, own branch | Complete / Partial / Blocked + verification |
-| `fix` | as implement; regression tests only when listed in its report | yes, own branch | fixed / skipped per finding |
-| `simplify` | as implement | yes, own branch | behavior-preserving cleanup, or "no change" |
+| `implement` | anything (code and tests) | yes, own branch | Complete / Partial / Blocked + verification (every auto check green) |
+| `fix` | as implement; never weakens a test to pass | yes, own branch | fixed / skipped per finding |
+| `simplify` | as implement, tests untouched | yes, own branch | behavior-preserving cleanup, or "no change" |
 | `review` | nothing | no | first line `PASS` / `FAIL` + findings JSON |
 | `verify` | nothing | no | CONFIRMED / PLAUSIBLE / REFUTED per candidate |
 
-Every role: no push, no merge, no rebase, no checkout of other branches, no writes under `.arbor/` except `tasks/<task>/`. Test paths are the contract's `## Test paths`, else `test_paths:` in `.arbor/config.yaml`.
+Every role: no push, no merge, no rebase, no checkout of other branches, no writes under `.arbor/` except `tasks/<task>/`. Commit format: `<role>(<task-dir-name>): <summary>` with trailer `Arbor-Dispatch: d-NNN`.
 
-**Single-repository check boundary.** Started task dispatches observe files in their execution worktree and the task branch. Other local branches and remote-tracking refs are shared Git metadata: another task may create, advance, merge or delete its branch without invalidating this dispatch. Role, path and commit differences are advisory. Branch changes are reported without checkout/reset; driver metadata commits are skipped when the checkout is no longer on the intended task branch. Partition dispatches use their partition worktree and branch.
+### Parent / Child Task Trees
 
-Before start, tasks share the main checkout. Planning and task-bound canary checks cover the current task directory and commits that touch its artifacts or explicitly name this task. Sibling task files and unrelated source commits do not establish a violation. Unattributed edits elsewhere in the shared checkout cannot be assigned to a planning agent by comparing Git snapshots alone; this check is not a filesystem sandbox. Product repository identity and safe merge/cleanup checks remain enforced; control-artifact drift is advisory.
+Use a parent task when one user request contains several independently verifiable deliverables. The parent owns the requirement set, the task map, the cross-child acceptance criteria and a `## Children` list (deliverable, paths it owns, depends-on); it normally has no implementation work of its own. Children are created with `task.py create … --parent <parent-dir>` (or linked with `task.py add-subtask <parent> <child>`). Parent/child structure is not a dependency system: ordering between children is written in the child contracts, not implied by the tree; start the child that owns the next independently verifiable deliverable. Do not start the parent.
 
-**Commit format** (recommended for traceability; differences are advisory):
-
-```
-<role>(<task-dir-name>): <summary>
-
-<optional body>
-
-Arbor-Dispatch: d-NNN
-```
+**Children run in parallel on the parent's integration branch.** Starting the first child of an unstarted parent creates `arbor/<parent>` (cut from the checked-out branch, worktree `<worktree.root>/<parent>`, recorded in the parent's `task.json.integration`); every child is cut from it and merges back into it. Each started child is driven from a session of its own (every `arbor.py` call with `--task <child>`); `arbor.py --task <parent> children` shows every child's state, merge status and whether it is behind the integration branch. A child's FINISH needs no human: `arbor.py finish` merges the integration branch into the child when it is behind, runs the gate, checks the scope (partition paths) and that no product commit came after the last review PASS, then merges the child `--no-ff` into the integration branch and archives it there; a failed check prints why and leaves a human merge (`human.kind: merge`). When every child is merged, the parent's session runs the integration review (`arbor.py --task <parent> run --role review --mode sweep --range <sweep_range>` from `children --json`, brief at the `brief_path` from `next --role review --json`), dedups the findings, fixes them as a light child (or directly when ≤ 2 files), runs `arbor.py --task <parent> gate`, then asks the user to merge the integration branch into the baseline with the printed `--no-ff` command (always the user's). Afterwards `arbor.py --task <parent> children --cleanup` writes the journal entry and removes the integration worktree and branch, then `task.py archive <parent>`. A child created with `--base-branch <b>` opts out and merges into `<b>` by a human like any task.
 
 ---
 
@@ -318,19 +154,13 @@ Arbor-Dispatch: d-NNN
   inject-workflow-state.py) has two sources:
 
   1. Active task: the hook runs `.arbor/scripts/arbor.py next --json` and
-     injects its one-line `summary` plus `needs`. The driver owns the state,
-     so nothing here can drift from it.
+     injects its one-line `summary` plus `needs`.
   2. No active task, an unreadable task record, or a driver that is missing
      or fails: the [workflow-state:STATUS] blocks below. They are the single
      source of that text; the hook has no fallback dict.
 
-  STATUS charset: [A-Za-z0-9_-]+. When the hook can't find a tag, it
-  degrades to a generic "Refer to workflow.md for current step." line —
-  intentionally visible so users notice and fix a broken workflow.md.
-
-  KEY SELECTION (inject-workflow-state.py, resolve_breadcrumb_key): the
-  first block that exists of <status>-<tier>, then <status>. No tier
-  variants ship; the driver summary replaces them.
+  STATUS charset: [A-Za-z0-9_-]+. KEY SELECTION: the first block that exists
+  of <status>-<tier>, then <status>.
 
   PARSER TRAP: a line that ENDS with a `[workflow-state:X]` token opens a
   block for the parser and swallows the real one. Never end a prose or
@@ -343,18 +173,16 @@ Arbor-Dispatch: d-NNN
     in_progress  → Phase 2 / 3 when the driver summary is unavailable
     completed    → archived task (normally unreachable: archive moves the dir)
 
-  Editing checklist:
-    - Keep each block short; it is injected on every turn
-    - Run `arbor update` after editing to push the new bodies to
-      downstream projects (block-level managed replacement)
+  SessionStart injects `## Phase Index` up to `## Phase 1: Plan` (tag blocks
+  stripped): keep that region short; it is loaded into every session.
 -->
 
 ## Phase Index
 
 ```
-Phase 1: Plan    → INTAKE (tier, consent) → CONTRACT (explore, one question list, contract.md, design, seed-context, validation, plan review, approval, task.py start)
-Phase 2: Drive   → you run the `arbor.py next` loop from this session: BUILD (test red → implement green) → GATE → REVIEW → POLISH (standard / full); roles are codeg MCP delegations, the user is asked only at the human gates
-Phase 3: Finish  → scorecard, spec update, PR, human `--no-ff` merge, cleanup; child: automatic merge into the parent's integration branch; parent: sweep review, gate, human merge, children --cleanup, archive
+Phase 1: Plan    → INTAKE (tier, consent) → CONTRACT (explore, one question list, contract.md, design, seed-context, validation, full: plan review, approval, task.py start)
+Phase 2: Drive   → the `arbor.py next` loop: BUILD (implement: code + tests) → GATE → REVIEW (light: self-check → fix; standard / full: simplify → candidates → verify → fix → re-review the delta; full: + sweep) → FINISH
+Phase 3: Finish  → spec update → `arbor.py finish` (scorecard + PR / merge command) → human `--no-ff` merge → `/arbor:finish-work` (cleanup, archive, journal); child: automatic merge into the parent's integration branch; parent: sweep review, gate, human merge, children --cleanup
 ```
 
 ### State Machine
@@ -362,66 +190,38 @@ Phase 3: Finish  → scorecard, spec update, PR, human `--no-ff` merge, cleanup;
 | State | Entered when | Who | What happens | Leaves to |
 |---|---|---|---|---|
 | INTAKE | `/arbor:workflow <request>` | you → human | propose a tier with a one-line reason; the human answers ok / light / standard / full | consent → `task.py create` → CONTRACT |
-| CONTRACT | task directory exists | you + explore / architect + human | explore → one question list → `contract.md` (+ `design.md`; full: main-agent-selected architecture perspectives → consolidated → `waves.md`) → `seed-context` → structural validation → standard / full: review `Mode: plan` → human approves | `task.py start` → BUILD |
-| BUILD | a wave is pending | you + driver + writers | `test` commits failing tests (the driver checks they fail for the right reason) → `implement` makes them pass | GATE |
-| GATE | the task branch has new commits | driver → you | level 0: `gate.commands` + every `auto` row of the Verification map. Green → next wave or REVIEW. Red → you classify: impl (`fix`, tests frozen) / tests (`test` again) / contract (edit the contract; the human re-approves) | `counters.gate++`; 4 consecutive reds → STOP |
-| REVIEW | GATE green, all waves done | review + fix | one review `Mode: self-check` over `base..HEAD`; findings → `fix` → GATE → re-review only `last_reviewed..HEAD`; caps: light 2 rounds, standard / full 1 | PASS → light: FINISH; standard / full: POLISH; cap → STOP |
-| POLISH | standard / full, REVIEW passed | simplify, review, verify, fix, human | `simplify` → GATE → N reviews `Mode: candidates` → mechanical prefilter → `verify` (≤ 8 per run) → full: `sweep` → verify → CONFIRMED fixed; PLAUSIBLE escalated once → `fix` → GATE → re-review the delta (≤ 2 rounds) | FINISH; cap → STOP |
-| FINISH | REVIEW / POLISH done | you (`arbor.py finish`) + human | `scorecard.md`, spec update, PR (body = contract + scorecard), human `--no-ff` merge | merged → worktree removed, archive, journal → DONE |
-| STOP | a round cap (`BUDGET`), no progress (`NO_PROGRESS`), explicit abandon (`HUMAN`) | you + human | inspect the reason and evidence; no automatic recovery | `arbor.py resume` (BUDGET: grants one more round), `override --reason`, a re-plan, or `abandon` |
+| CONTRACT | task directory exists | you + explore / architect + human | explore → one question list → `contract.md` (+ `design.md`; full: architecture perspectives → `waves.md`) → `seed-context` → structural validation → full: review `Mode: plan` → human approves | `task.py start` → BUILD |
+| BUILD | a wave is pending | you + driver + implement | `implement` delivers code and tests and runs every `auto` check green before committing; a wave of several partitions runs one implement per partition in parallel | GATE |
+| GATE | the task branch has new commits | driver → you | `gate.commands` + every `auto` row of the Verification map. Green → next wave or REVIEW. Red → you classify: `impl` (`fix`) / `contract` (edit the contract; the human re-approves) | 4 consecutive reds → STOP |
+| REVIEW | GATE green, all waves done | simplify, review, verify, fix, human | light: one `review` `Mode: self-check` over `last_reviewed..HEAD` → findings → `fix` → GATE → re-review the delta. standard / full: `simplify` → GATE → N `review` `Mode: candidates` (2 / 3, in parallel) → mechanical prefilter → `verify` (≤ 8 per reader, in parallel) → CONFIRMED → `fix`, PLAUSIBLE per mandate → GATE → next cycle over the delta; full: one `sweep` over the whole range once the cycle is clean, its candidates verified too | PASS / clean → FINISH; 2 fix rounds or no progress → STOP |
+| FINISH | REVIEW done | you (`arbor.py finish`) + human | one `arbor.py finish`: `scorecard.md`, then the PR (`--pr`) or the printed `--no-ff` merge command (`merge=auto`: merges a small clean branch itself; a child: merges into the integration branch itself); after the human merge `arbor.py finish` again cleans up: worktree, archive, journal | DONE |
+| STOP | a round cap (`BUDGET`), no progress (`NO_PROGRESS`), explicit abandon (`HUMAN`) | you + human | inspect the reason and evidence; no automatic recovery | `arbor.py resume` (BUDGET: one more round), `override --reason`, a re-plan, or `abandon` |
 
-Progress (only the driver changes counters): a GATE round progresses when the set of failing AC ids shrinks or a previously failing check passes; a REVIEW / POLISH round when its set of finding ids changes. Two rounds without progress, or a round past its cap, enter STOP; `resume` grants one more round (`caps_extra`).
+Progress (only the driver changes counters): a GATE round progresses when the set of failing AC ids shrinks; a REVIEW round when its set of finding ids changes.
 
 ### Tiers
 
-The tier decides how much contract work happens and how high the verification ladder climbs. Simple changes (at most 2 files, cause known, no design choice) do not use Arbor at all.
+Simple changes (at most 2 files, cause known, no design choice) do not use Arbor at all.
 
 | | light | standard | full |
 |---|---|---|---|
 | Fits | one deliverable, a few files, existing patterns suffice | a feature or refactor across files or layers that needs a written design | several deliverables, contested design, risky migration |
-| Contract artifacts | `contract.md` | + `design.md` + review `Mode: plan` | + architecture perspectives as needed + `waves.md` |
-| Explore / architect angles | Main agent chooses; no total quota | Main agent chooses; no total quota | Main agent chooses; no total quota |
-| BUILD | one partition, serial | partitions per the contract | partitions + waves |
-| Ladder climbs to | rung 2 | rung 3 (2 candidate readers) | rung 4 (3 candidate readers + sweep) |
-| Human gates | tier · contract · merge | + PLAUSIBLE | + PLAUSIBLE |
+| Contract artifacts | `contract.md` | + `design.md` | + architecture perspectives → `waves.md`; review `Mode: plan` |
+| BUILD | one implement | partitions per the contract | partitions + waves |
+| REVIEW | 1 self-check reviewer → fix | simplify → 2 candidate readers → verify → fix | simplify → 3 candidate readers → verify → fix → sweep |
+| Human gates | tier · merge | + contract | + contract · PLAUSIBLE |
 | Sessions | one | one | one per child task, concurrently |
 
-The tier lives in `task.json.meta.tier` (`task.py create --tier <t>`, later `task.py set-meta <task> tier <t>`); without it the tier is inferred from the artifacts (`waves.md` → full, `design.md` → standard, else light). Reader counts are starting values, tuned from the scorecards.
-
-### Verification Ladder
-
-| Rung | What | Who runs it | Cost |
-|---|---|---|---|
-| 0 | `gate.commands` + the contract's `auto` checks | driver | no tokens |
-| 1 | independent tests: `test` commits them red, `implement` turns them green | one dispatch each | low |
-| 2 | one clean-context review + Verification-map coverage | one dispatch | medium |
-| 3 | N candidate reviews → prefilter → verify | standard / full | high |
-| 4 | sweep | full | high |
+The tier lives in `task.json.meta.tier` (`task.py create --tier <t>`, later `task.py set-meta <task> tier <t>`); without it the tier is inferred from the artifacts (`waves.md` → full, `design.md` → standard, else light).
 
 ### Human Gates
 
 1. **Tier** (INTAKE): the human agrees to the proposed tier.
-2. **Contract** (end of CONTRACT): the human approves `contract.md`; material changes to scope or acceptance need approval; the main agent judges editorial and already-authorized changes.
-3. **PLAUSIBLE** (POLISH, only when PLAUSIBLE findings survive): fix or skip, asked once.
-4. **Merge** (FINISH): the human merges the PR with `--no-ff`.
+2. **Contract** (end of CONTRACT): the human approves `contract.md`; material changes to scope or acceptance need approval; editorial changes do not.
+3. **PLAUSIBLE** (REVIEW, only when PLAUSIBLE findings survive verify): fix or skip, asked once, most severe first with your recommendation.
+4. **Merge** (FINISH): the human merges with `--no-ff`.
 
-Procedural observations and report interpretation belong to you, not an additional human approval loop: classify red gates, dedup findings and retry within the contract yourself, and involve the user only for gates 2–4 and for STOP.
-
-### Request Triage
-
-- Classify first. A simple change (at most 2 files, cause known, no design choice) is done in this session without Arbor: read, edit, run the project's checks, propose one commit message and ask once. Unsure whether it is simple: treat it as light.
-- Anything larger: in one message propose a tier (light / standard / full) with a one-line reason and ask whether to create a task. The user answers ok / light / standard / full / no. `/arbor:workflow <request>` already counts as consent to the task, not to the tier.
-- Consent to create a task is not approval of the contract. Contract approval (1.7) is the only start gate.
-- If the user declines a task for non-simple work, do not implement broadly inline: explain, clarify scope, or suggest a smaller split. Plain questions need no task.
-
-### Active Task Routing
-
-When a user request matches one of these intents inside an active task, route first, then load the detailed phase step if needed.
-
-- Planning or unclear requirements -> `arbor-brainstorm`.
-- Questions about existing code or external libraries -> read the files yourself, or write a brief and run `arbor.py run --role explore` (before start) / the explore the driver schedules.
-- A started task, whatever its state -> `arbor.py next`: do the one thing it names (brief, run, decide, or a question to the user); never perform a role in this session.
-- Repeated debugging -> `arbor-break-loop`; spec updates -> `arbor-update-spec`.
+`next --json` names each gate's mandate (`human.mandate`: `ask` or `auto`, from `mandate:` in `.arbor/config.yaml` per tier — light: contract auto; standard: plausible auto; full: everything ask; merge is `ask` in every tier unless the user opts in — or per task with `task.py create --mandate "contract=auto,merge=ask"`). With `auto` you proceed without asking; the driver itself skips PLAUSIBLE findings and, with `merge=auto`, merges a small clean, in-scope, reviewed branch. STOP, `merge_conflict` and scope changes are always put to the user. Everything else (red-gate classification, finding dedup, report interpretation, retries within the contract) is yours.
 
 ### Task Artifacts
 
@@ -432,32 +232,29 @@ When a user request matches one of these intents inside an active task, route fi
 | `## Goal` | one paragraph |
 | `## Scope` | in / out |
 | `## Acceptance criteria` | `AC-n: Given <precondition> When <action> Then <observable result>` |
-| `## Verification map` | table `id \| kind \| check \| file`; `kind` is `auto` (a command that fails before and passes after) or `manual` |
-| `## Interface pins` | signatures, paths, CLI / HTTP shapes the tests will call; light may say "existing interfaces" |
-| `## Test paths` | globs the `test` role owns (optional; defaults to `test_paths:` in config) |
+| `## Verification map` | table `id \| kind \| check \| file`; `kind` is `auto` (a command that passes once the criterion holds; implement creates the test file) or `manual` |
+| `## Interface pins` | optional: signatures, paths, CLI / HTTP shapes the design fixes up front (needed when partitions build against each other) |
 | `## Partitions` | `name: globs`, non-overlapping (optional; absent = one `default` partition) |
 | `## Waves` | `n: [partitions]` (optional; absent = one wave) |
 
-Structural validation (before approval): every AC has a map row; every `auto` row has a command and a file that exists or sits inside the test paths; Interface pins are not empty; partitions do not overlap; waves name existing partitions.
+Structural validation (before approval): every AC has a map row; every `auto` row has a command; partitions do not overlap; waves name existing partitions.
 
-Other artifacts:
+Other artifacts: `design.md` (standard / full: boundaries, contracts, data flow, trade-offs, rollback) · `waves.md` (full: the chosen partitions and wave order with the reasoning) · `research/` (explore findings `<dispatch>-<topic>.md`, architect blueprints `<dispatch>-design-<perspective>.md`) · `implement.jsonl` / `check.jsonl` (spec and research manifests the driver inlines; never code files) · `briefs/`, `reports/` · `scorecard.md` (FINISH: dispatches per role, GATE / REVIEW rounds, findings per rung, AC automation rate, overrides, violations, recurring CONFIRMED categories).
 
-- `design.md` — standard / full: boundaries, contracts, data flow, trade-offs, rollback.
-- `waves.md` — full: the chosen architect's partitions and wave order with the reasoning.
-- `research/` — explore findings (`<dispatch>-<topic>.md`) and architect blueprints (`<dispatch>-design-<perspective>.md`).
-- `implement.jsonl` / `check.jsonl` — spec and research manifests the driver inlines into role prompts.
-- `briefs/d-NNN.md` — the brief you wrote for every dispatch; `reports/d-NNN.md` — the reply plus the driver's verdict. Both are committed by the driver, or by `task.py start` for CONTRACT-phase dispatches. The assembled prompt is not committed: it stays at `.arbor/.runtime/prompts/<task>/d-NNN.md` in the main checkout.
-- `scorecard.md` — written at FINISH: dispatches per role, GATE / REVIEW / POLISH rounds, findings per rung, AC automation rate, overrides, violations.
+### Request Triage
 
-### Parent / Child Task Trees
+- Classify first. A simple change (at most 2 files, cause known, no design choice) is done in this session without Arbor: read, edit, run the project's checks, propose one commit message and ask once. Unsure: treat it as light.
+- Anything larger: in one message propose a tier (light / standard / full) with a one-line reason and ask whether to create a task. The user answers ok / light / standard / full / no. `/arbor:workflow <request>` already counts as consent to the task, not to the tier. Task consent is not contract approval.
+- If the user declines a task for non-simple work, do not implement broadly inline: explain, clarify scope, or suggest a smaller split. Plain questions need no task.
 
-Use a parent task when one user request contains several independently verifiable deliverables. The parent task owns the source requirement set, the task map, cross-child acceptance criteria, and final integration review; it normally has no implementation work of its own.
+### Active Task Routing
 
-Use child tasks for deliverables that can be contracted, built, checked, and archived independently. Parent/child structure is not a dependency system: if one child must wait for another, write that ordering in the child's `contract.md` and keep each child's acceptance criteria testable.
+Inside an active task, route first, then load the phase step if needed.
 
-Create new children with `task.py create "<title>" --description "<one-line summary>" --slug <name> --parent <parent-dir>`. Link existing tasks with `task.py add-subtask <parent> <child>`, and unlink mistakes with `task.py remove-subtask <parent> <child>`. Do not start the parent just because children exist; start the child that owns the next independently verifiable deliverable.
-
-**Children run in parallel, on the parent's integration branch.** Starting the first child of an unstarted parent creates the parent's integration branch `arbor/<parent>` (cut from the checked-out branch, worktree `<worktree.root>/<parent>`, recorded in the parent's `task.json.integration`); every child is cut from it and merges back into it. Each started child has its own worktree and branch and is driven from a session of its own (one codeg conversation per child, every `arbor.py` call with `--task <child>`); start every child whose dependencies are merged, and watch them from the parent's session with `arbor.py --task <parent> children` (state, merge status, whether a child is behind the integration branch). A child's FINISH needs no human: the second `arbor.py finish` (after the scorecard and the spec update) merges the integration branch into the child's worktree when the child is behind, runs the gate, checks the scope (partition paths, test paths) and that no product commit came after the last review PASS, then merges the child `--no-ff` into the integration branch and archives it there; the baseline is untouched. When a check fails it prints why and the merge command, and the merge becomes a human gate (`human.kind: merge`, `mandate: ask`). The parent's contract holds the cross-child acceptance criteria and a `## Children` list (deliverable, paths it owns, depends-on). When every child is merged, the parent's session runs the integration review — `arbor.py --task <parent> run --role review --mode sweep --range <sweep_range>` (from `children --json`) with a brief at the `brief_path` from `next --role review --json` — dedups the findings, fixes them as a light child (or directly when ≤ 2 files), runs `arbor.py --task <parent> gate` (in the integration worktree), then asks the user to merge the integration branch into the baseline with the printed `--no-ff` command. That merge is always the user's. Afterwards `arbor.py --task <parent> children --cleanup` writes the journal entry and removes the integration worktree and branch, then `task.py archive <parent>`. A child created with `--base-branch <b>` opts out: it is cut from the checked-out branch and merged into `<b>` by a human like any task.
+- Planning or unclear requirements → `arbor-brainstorm`.
+- Questions about code → read the files yourself, or an `explore` brief through `arbor.py run --role explore`.
+- A started task → `arbor.py next`: do the one thing it names; never perform a role in this session.
+- Repeated debugging → `arbor-break-loop`; spec updates → `arbor-update-spec`.
 
 <!-- Per-turn breadcrumb: shown when there is no active task (before Phase 1) -->
 
@@ -481,44 +278,42 @@ Preserve existing task fields and artifacts. If the correct status cannot be det
 - 1.1 Explore `[repeatable]`
 - 1.2 Questions `[required · once]` (one numbered list, then wait)
 - 1.3 Write the contract `[required · repeatable]` (`contract.md`)
-- 1.4 Design `[required · once; standard / full]` (standard: `design.md`; full: main-agent-selected architecture perspectives → consolidated → `design.md` + `waves.md`)
+- 1.4 Design `[required · once; standard / full]` (standard: `design.md`; full: architecture perspectives → `design.md` + `waves.md`)
 - 1.5 Configure context `[required · once]` (`task.py seed-context`, then adjust the manifests)
-- 1.6 Validate & plan review `[required · once]` (structural validation; standard / full: review `Mode: plan`)
+- 1.6 Validate & plan review `[required · once]` (structural validation; full: review `Mode: plan`)
 - 1.7 Approve & start `[required · once]` (planning summary → human approves the contract → `task.py start`)
 
 <!-- Per-turn breadcrumb: shown throughout Phase 1 (status='planning'), every tier -->
 
 [workflow-state:planning]
 Phase 1, CONTRACT. The tier is in the header; change it with `task.py set-meta <task> tier <tier>`.
-Explore (1.1) → ask every open question as ONE numbered list and wait (1.2) → write `contract.md`: Goal, Scope, Acceptance criteria (Given/When/Then), Verification map, Interface pins, Test paths (1.3) → standard: `design.md`; full: main-agent-selected architecture perspectives → consolidated → `design.md` + `waves.md` (1.4) → `task.py seed-context <task>` (1.5) → structural validation; standard / full: one review `Mode: plan` (1.6).
-Roles here: write the brief at the `brief_path` from `arbor.py next --json`, then `arbor.py run --role explore|architect|review [--mode plan]`; it runs in the main checkout and commits nothing.
-Multi-deliverable scope: consider a parent task plus independently verifiable child tasks (`task.py create --parent`); dependencies must be written in child contracts, not implied by tree position.
+Explore (1.1) → ask every open question as ONE numbered list and wait (1.2) → write `contract.md`: Goal, Scope, Acceptance criteria (Given/When/Then), Verification map, optional Interface pins / Partitions / Waves (1.3) → standard: `design.md`; full: architecture perspectives → `design.md` + `waves.md` (1.4) → `task.py seed-context <task>` (1.5) → structural validation; full: one review `Mode: plan` (1.6).
+Roles here: write the brief at the `brief_path` from `arbor.py next --role <role> --json`, then `arbor.py run --role explore|architect|review [--mode plan] --dispatch <id>`; it runs in the main checkout through codeg MCP and commits nothing; independent angles run concurrently.
+Multi-deliverable scope: a parent task plus independently verifiable child tasks (`task.py create --parent`); dependencies are written in child contracts, not implied by tree position.
 Approve (1.7): end the planning summary with the approval question; run `task.py start <task>` only after a later user message approves the contract.
 [/workflow-state:planning]
 
 ### Phase 2: Drive
 - 2.1 The loop `[required · repeatable]` (`arbor.py next` → do the one thing it names)
 - 2.2 Write a brief `[required · repeatable]`
-- 2.3 BUILD (test red → implement green)
+- 2.3 BUILD (implement: code + tests, auto checks green)
 - 2.4 GATE and decide `[on demand]`
-- 2.5 REVIEW
-- 2.6 POLISH (standard / full; PLAUSIBLE escalated once)
-- 2.7 STOP, resume, override `[on demand]`
+- 2.5 REVIEW (light: self-check; standard / full: simplify → candidates → verify → fix; full: + sweep)
+- 2.6 STOP, resume, override `[on demand]`
 
 <!-- Per-turn breadcrumb: fallback only. Normally the hook shows the driver's
      own one-line next step instead of this block. -->
 
 [workflow-state:in_progress]
-The driver did not answer. Run `python3 ./.arbor/scripts/arbor.py next` and do the one thing it names: `brief` → write the brief at its path, then `arbor.py run`; `delegation` → `delegate_to_agent` with the returned `mcp.arguments`, `arbor.py bind`, poll, `arbor.py collect`; `run` → `arbor.py gate` / `arbor.py run`; `decide` → `arbor.py decide <choice> --reason "…"`; `human` → `approve_contract` / `plausible` / `stop` / `merge_conflict`: ask the user, then `decide` or `resume`; `merge` → Phase 3; `done` → Phase 3. If `arbor.py` is missing, run `arbor update`.
-Roles run only through `arbor.py run` (with the default `codeg` executor they are executed through codeg MCP `delegate_to_agent`; `--executor codeg-cli` lets the driver run them itself); never use the built-in Agent/Task tool or perform a role in this session.
-Sub-agent self-exemption: if you are already a dispatched sub-agent (your prompt starts with `Active task:` / `Role:`), perform that role directly; do not run arbor.py or task.py start/current/finish. Driving the loop and dispatching roles is main session only.
+The driver did not answer. Run `python3 ./.arbor/scripts/arbor.py next` and do the one thing it names: `brief` → write it at its path, then `arbor.py run`; `delegation` → `delegate_to_agent` with the returned `mcp.arguments` (the sync hook binds and collects); `run` → `arbor.py gate` / `arbor.py run`; `decide` → `arbor.py decide <choice> --reason "…"`; `human` → `approve_contract` / `plausible` / `stop` / `merge_conflict`: ask the user, then `decide` or `resume`; `merge` → Phase 3. If `arbor.py` is missing, run `arbor update`.
+Roles run only through `arbor.py run` and codeg MCP from the main session only; never use the built-in Agent/Task tool or perform a role in this session. Sub-agent self-exemption: if you are a dispatched sub-agent (your prompt starts with `Active task:` / `Role:`), perform that role directly and do not run arbor.py.
 [/workflow-state:in_progress]
 
 ### Phase 3: Finish
-- 3.1 Scorecard & spec update `[required · once]`
+- 3.1 Spec update `[required · once]`
 - 3.2 Debug retrospective `[on demand]`
-- 3.3 PR and merge `[required · once]` (human merges with `--no-ff`)
-- 3.4 Cleanup, archive, journal `[required · once]`
+- 3.3 Scorecard, PR and merge `[required · once]` (`arbor.py finish`; the human merges with `--no-ff`)
+- 3.4 Cleanup, archive, journal `[required · once]` (`/arbor:finish-work`)
 
 <!-- Per-turn breadcrumb: shown while status='completed'. Normally unreachable:
      `task.py archive` writes the status and moves the directory in one call,
@@ -531,17 +326,14 @@ Task archived. Run `/arbor:finish-work` to record the session.
 ### Rules
 
 1. `arbor.py next` is the source of truth for where a started task is; do the one step it names
-2. Only the driver changes `task.json` state and counters, prepares and validates roles, and runs the gate; the executor (or, with codeg-mcp, the host) executes prepared requests
+2. Only the driver changes `task.json` state and counters, prepares and validates roles, and runs the gate
 3. You review contract changes against the user's authorization; substantive replanning goes back to the user for re-approval before `arbor.py resume`
 4. Steps tagged `[once]` are skipped when their output already exists
-5. Inside an Arbor task, never perform a role in this session and never use the built-in Agent/Task tool for one; every role goes through `arbor.py run` and the configured executor
+5. Inside an Arbor task, never perform a role in this session and never use the built-in Agent/Task tool for one; every role goes through `arbor.py run` and codeg MCP
 
 ### Loading Step Detail
 
-```bash
-python3 ./.arbor/scripts/get_context.py --mode phase --step <step>
-# e.g. python3 ./.arbor/scripts/get_context.py --mode phase --step 1.3
-```
+`python3 ./.arbor/scripts/get_context.py --mode phase --step <X.Y>` (e.g. `--step 1.3`) prints one step's full instructions from Phase 1 / 2 / 3 below.
 
 ---
 
@@ -551,136 +343,71 @@ Goal: an approved contract that says what done looks like and how each criterion
 
 #### 1.0 Intake & create task `[required · once]`
 
-Propose a tier with a one-line reason (see Tiers) and wait for the user's answer. `/arbor:workflow <request>` counts as consent to create a task. Then:
-
-```bash
-python3 ./.arbor/scripts/task.py create "<task title>" --description "<one-line summary>" --slug <name> --tier <light|standard|full>
-```
-
-`create` sets status `planning`, writes `task.json` and a `contract.md` skeleton, and points this session at the task. Title and `--description` must be non-empty; `--slug` has no `MM-DD-` prefix (added automatically). For task trees, create the parent first, then each child with `--parent <parent-dir>`.
-
-Run only `create` here. Skip when `task.py current --source` already points to a task.
+Propose a tier with a one-line reason (see Tiers) and wait for the user's answer. `/arbor:workflow <request>` counts as consent to create a task. Then `python3 ./.arbor/scripts/task.py create "<task title>" --description "<one-line summary>" --slug <name> --tier <light|standard|full>` (status `planning`, `task.json`, a `contract.md` skeleton, the session pointer; `--slug` has no `MM-DD-` prefix). For task trees, create the parent first, then each child with `--parent <parent-dir>`. Skip when `task.py current --source` already points to a task.
 
 #### 1.1 Explore `[repeatable]`
 
-Facts first. Answer small questions by reading a few files yourself. Otherwise run `explore` roles, one aspect each, as CONTRACT-phase dispatches (write the brief at the `brief_path` from `arbor.py next --role explore --json`, then `arbor.py run --role explore --dispatch <id>`). The main agent chooses the scopes and angles with no total quota; independent readers can execute concurrently. Each writes `research/<dispatch>-<topic>.md` and returns 5–10 essential files. Read only the 2–3 files you need for the next step; the research files are injected into later roles.
+Facts first. Answer small questions by reading a few files yourself. Otherwise run `explore` roles, one aspect each, as CONTRACT-phase dispatches (`arbor.py next --role explore --json` → brief → `arbor.py run --role explore --dispatch <id>`; independent angles run concurrently, no total quota); each writes `research/<dispatch>-<topic>.md` and returns 5–10 essential files. Read only the 2–3 files you need for the next step; the research files are injected into later roles.
 
 #### 1.2 Questions `[required · once]`
 
-Compare the findings with the request and list what is still open: product intent, scope edges, error handling, compatibility, interfaces. Put every open question to the user **as one numbered list**, each with the decision, why it matters, your recommendation and the trade-off, and wait for one round of answers. Follow up only on new decisions the answers raise. "Your call" → state your choice and get it confirmed.
+Compare the findings with the request and list what is still open: product intent, scope edges, error handling, compatibility, interfaces. Put every open question to the user **as one numbered list**, each with the decision, why it matters, your recommendation and the trade-off, and wait for one round of answers. "Your call" → state your choice and get it confirmed.
 
 #### 1.3 Write the contract `[required · repeatable]`
 
-Fill `contract.md` (sections in Task Artifacts). Rules of thumb:
-
-- Every acceptance criterion is observable: Given / When / Then, no "works correctly".
-- Every criterion has a Verification map row; prefer `auto` rows whose command fails before the change and passes after (`-t AC-n` filters work well).
-- Interface pins name what the tests will call, so `test` and `implement` cannot drift apart.
-- Test paths are the only paths the `test` role may write and the paths `implement` may not.
-
-Return here whenever an answer, a design choice or a red gate changes what done means.
+Fill `contract.md` (sections in Task Artifacts). Every acceptance criterion is observable (Given / When / Then, no "works correctly"); every criterion has a Verification map row, preferably `auto` with a command that selects its tests (`-t AC-n` filters work well) and names the test file implement will create; Interface pins only when partitions or a design need them fixed up front. Return here whenever an answer, a design choice or a red gate changes what done means.
 
 #### 1.4 Design `[required · once; standard / full]`
 
-- **Standard**: write `design.md` yourself (boundaries, contracts, data flow, trade-offs, rollback). Choose architecture questions and perspectives based on uncertainty; independent `architect` angles can run in parallel with no fixed count.
-- **Full**: choose independent `architect` roles as needed, with no fixed count or mandatory three-perspective set. Run independent questions concurrently; sequence questions that depend on earlier evidence. Consolidate the designs, conflicts, trade-offs and proposed partitions / waves. After the necessary user decisions, write `design.md`, add `## Partitions` / `## Waves` to the contract, and record the reasoning in `waves.md`.
+- **Standard**: write `design.md` yourself (boundaries, contracts, data flow, trade-offs, rollback); run `architect` angles when uncertainty warrants it.
+- **Full**: choose independent `architect` angles as needed (no fixed count); run independent questions concurrently, sequence dependent ones. Consolidate the designs, conflicts, trade-offs and proposed partitions / waves; after the necessary user decisions write `design.md`, add `## Partitions` / `## Waves` to the contract, and record the reasoning in `waves.md`.
 
 #### 1.5 Configure context `[required · once]`
 
-```bash
-python3 ./.arbor/scripts/task.py seed-context "$TASK_DIR" [--package <pkg> ...]
-```
-
-`seed-context` writes the packages' spec `index.md` files, `.arbor/spec/guides/index.md` and every `research/*.md` into **both** manifests. Then add specific guideline files with `task.py add-context "$TASK_DIR" implement|check "<path>" "<reason>"` and drop lines that do not apply to a side (`implement.jsonl` → architect, test, implement; `check.jsonl` → review, verify, fix, simplify). Never add code files; roles read those themselves.
-
-Ready gate: both `implement.jsonl` and `check.jsonl` must contain at least one real `{"file": "...", "reason": "..."}` entry before `task.py start`. The seed `_example` row alone is not ready; `start` refuses it.
+`python3 ./.arbor/scripts/task.py seed-context <task> [--package <pkg> ...]` writes the packages' spec `index.md` files, `.arbor/spec/guides/index.md` and every `research/*.md` into **both** manifests. Then add specific guideline files with `task.py add-context <task> implement|check "<path>" "<reason>"` and drop lines that do not apply to a side (`implement.jsonl` → architect, implement; `check.jsonl` → review, verify, fix, simplify). Never add code files. Ready gate: both `implement.jsonl` and `check.jsonl` must contain at least one real `{"file": "...", "reason": "..."}` entry before `task.py start`. The seed `_example` row alone is not ready; `start` refuses it (`--allow-empty-context` when intentional).
 
 #### 1.6 Validate & plan review `[required · once]`
 
-Structural validation runs on the contract (see Task Artifacts); fix every error it reports. Standard / full: run one `review` with `Mode: plan` (`arbor.py run --role review --mode plan`; goal-backward: what must be true for the goal, which criterion covers it, is it wired, does it fit the context budget) and revise the contract with its findings.
+Structural validation runs on the contract (see Task Artifacts); fix every error it reports. Full: run one `review` with `Mode: plan` (goal-backward: what must be true for the goal, which criterion covers it, is it wired, does it fit the context budget) and revise the contract with its findings. Standard may run one when the design is contested.
 
 #### 1.7 Approve & start `[required · once]`
 
-End the planning summary (goal, scope, criteria with their checks, key decisions, risks, tier) with the question whether to approve the contract. Only a later user message that approves it authorizes:
-
-```bash
-python3 ./.arbor/scripts/task.py start <task-dir>
-```
-
-`start` checks the tier's artifacts (light `contract.md`; standard + `design.md`; full + `waves.md`) and the manifests, records `contract_hash` as the approval baseline, creates the task worktree and branch, commits the task directory (with the CONTRACT-phase briefs, reports and research), and sets `state=BUILD`. From here on the driver leads (2.1). All state is on disk.
-
-If `start` reports a session-identity problem, follow its hint and retry.
+End the planning summary (goal, scope, criteria with their checks, key decisions, risks, tier) with the question whether to approve the contract. Only a later user message that approves it authorizes `python3 ./.arbor/scripts/task.py start <task-dir>`: it checks the tier's artifacts (light `contract.md`; standard + `design.md`; full + `waves.md`) and the manifests, records `contract_hash`, creates the task worktree and branch, commits the task directory (with the CONTRACT-phase briefs, reports and research) and sets `state=BUILD`. From here on the driver leads (2.1). If `start` reports a session-identity problem, follow its hint and retry.
 
 ---
 
 ## Phase 2: Drive
 
-Goal: the driver walks BUILD → GATE → REVIEW → POLISH; you supply judgment and briefs from this session and ask the user only at the human gates whose mandate is `ask`.
+Goal: the driver walks BUILD → GATE → REVIEW; you supply judgment and briefs from this session and ask the user only at the human gates whose mandate is `ask`.
 
 #### 2.1 The loop `[required · repeatable]`
 
-```bash
-python3 ./.arbor/scripts/arbor.py next
-```
-
-Do exactly what it names (see the `needs` table in Driver), then run `next` again. Do not edit `task.json`, do not run roles yourself, do not commit on behalf of a role. `touched_files` in `next --json` lists what the task changed so far; read from it instead of re-exploring. A child task driven from its own conversation passes `--task <child>` on every call. With the default `codeg` executor each `run` ends in `needs=delegation`: delegate, bind, poll and collect as described in Driver (the sync hook does the bind and the collect for you), then `next` again; the pending request survives an interrupted session, so resume or poll it instead of delegating twice.
+`python3 ./.arbor/scripts/arbor.py next`: do exactly what it names (the `needs` table in Driver), then `next` again. Do not edit `task.json`, do not run roles yourself, do not commit on behalf of a role. A child task driven from its own conversation passes `--task <child>` on every call. Each `run` ends in `needs=delegation`: the sync hook binds and collects; then `next` again. A pending request survives an interrupted session: resume or poll it instead of delegating twice.
 
 #### 2.2 Write a brief `[required · repeatable]`
 
-Write the brief at `brief_path` for the role `next` names, then `arbor.py run`. The driver adds the header and the injected context. A good brief is short and specific:
+Write the brief at `brief_path` for the role `next` names, then `arbor.py run`. Short and specific:
 
-- **test**: which criteria to cover, the Interface pins to call, fixtures or helpers to reuse.
-- **implement / fix / simplify**: the essential files, the part of the design this run covers, pitfalls, files to stay out of; for fix, the findings JSON.
-- **review**: `Angles:` — REVIEW self-check: `A, B, Acceptance` (standard / full, two reviewers: `A, Acceptance` / `B, Conventions`) (light: `A, B, C, D, E, Conventions, Acceptance, Cleanup-lite`); POLISH candidates: one angle group per reader (`A, D` / `B, Conventions` / `C, E, Acceptance`).
+- **implement**: the essential files, the part of the design this run covers, the criteria and their test files, pitfalls, files to stay out of.
+- **fix / simplify**: the essential files, pitfalls; for fix the findings JSON.
+- **review**: `Angles:` — light self-check: `A, B, C, D, E, Conventions, Acceptance, Cleanup-lite`; candidates, one angle group per reader (standard: `A, D, Acceptance` / `B, C, E, Conventions`; full: `A, D` / `B, Conventions` / `C, E, Acceptance`); sweep: the verified list.
 - **verify**: the deduplicated candidates JSON, at most 8.
-
-Never ask a role to dispatch another role.
 
 #### 2.3 BUILD
 
-`test` commits failing tests for the criteria. The driver checks the red run: the map commands must fail on an assertion; a collection or import error is not red. Then `implement` makes them pass without touching the test paths.
-
-**test ∥ implement.** A standard / full task whose contract has no partitions and whose Interface pins name real interfaces (not only `existing interfaces`) runs BUILD as one wave of two lanes in their own worktrees: `tests` (role test, then the red check of every auto check) and `impl` (role implement against the pins), started together with `arbor.py run --partition tests` and `arbor.py run --partition impl`. The driver tells each lane that the other works at the same time; the wave merge brings both into the task branch, then GATE. A red-check decision in the tests lane: `impl` accepts the tests as written, `tests` reruns them, `contract` goes back to the contract. Write `existing interfaces` as the only pin to keep BUILD sequential. A Partial or Blocked report comes back to you through `next`; add the missing information to the next brief or return to the contract.
+`implement` reads the contract and design, writes the tests the Verification map names and the code that satisfies the criteria, runs every `auto` check green and commits. Writing a test first is the role's habit, not a gate: the driver checks the result at GATE. A Partial or Blocked report comes back through `next`; add the missing information to the next brief or return to the contract. A multi-partition wave runs one `implement` per partition in its own worktree, then merges them `--no-ff` (see Driver).
 
 #### 2.4 GATE and decide `[on demand]`
 
-The driver runs `gate.commands` and every `auto` check. Red → `next` asks you to classify the failure:
-
-- `impl` — the code is wrong; `fix` runs with the tests frozen.
-- `tests` — the tests are wrong; `test` runs again.
-- `contract` — the contract is wrong; edit `contract.md`, get the user's approval, then `arbor.py resume`.
-
-```bash
-python3 ./.arbor/scripts/arbor.py decide impl|tests|contract --reason "<one line of evidence>"
-```
+The driver runs `gate.commands` and every `auto` check. Red → `next` asks you to classify the failure with `arbor.py decide impl|contract --reason "<one line of evidence>"`: `impl` — the code or its tests are wrong; `fix` runs. `contract` — the contract is wrong; edit `contract.md`, get the user's approval, then `arbor.py resume`.
 
 #### 2.5 REVIEW
 
-One `review` `Mode: self-check` over `base..HEAD` (standard / full: two reviewers in parallel, the angles split between them; the round passes only when both pass and their findings are united), including "does the Verification map cover every criterion". Findings go to `fix`, back through GATE, and only `last_reviewed..HEAD` is reviewed again. Review fix-round caps: light 2, standard / full 1; past the cap the driver enters STOP (2.7). Invalid findings may stay unfixed; list them in the final summary.
+**Light**: one `review` `Mode: self-check` over `last_reviewed..HEAD` (including "does the Verification map cover every criterion"); findings go to `fix`, back through GATE, and only the delta is reviewed again. **Standard / full**: `simplify` first (behavior-preserving cleanup; GATE after a commit), then N `review` `Mode: candidates` in parallel from the `batch` of `next --json` → you dedup → the driver prefilters mechanically (file exists, line within ±5 of a change, cited rule exists) → `verify` (one reader per batch of 8, in parallel) → CONFIRMED findings are fixed without asking; PLAUSIBLE ones follow the mandate (`plausible=auto`: the driver records `decide skip` and lists them in the scorecard; `ask`: put them to the user once, then `arbor.py decide fix|skip --reason "…"`) → `fix` → GATE → the next cycle reviews only the delta. Full: once a cycle is clean, one `review` `Mode: sweep` over the whole range with the verified list; its new candidates are verified too. Two fix rounds, or a cycle without progress, enter STOP. Invalid findings may stay unfixed; list them in the final summary.
 
-#### 2.6 POLISH
+#### 2.6 STOP, resume, override `[on demand]`
 
-Standard / full only. `simplify` → GATE → N reviews `Mode: candidates` (standard 2, full 3, run in parallel from the `batch` of `next --json`) → you dedup → the driver prefilters mechanically (file exists, quoted code within ±5 lines, line inside the range, cited rule exists) → `verify` (one reader per batch of 8 candidates, in parallel) → full: one review `Mode: sweep` with the verified list, its new candidates verified too. CONFIRMED findings are fixed without asking. When PLAUSIBLE findings survive and the mandate says `plausible=auto` (standard default), the driver records `decide skip` itself and lists them in the scorecard; with `ask`, present them to the user once, most severe first, with your recommendation, and record the answer with `arbor.py decide fix|skip --reason "…"`. Fix rounds are re-reviewed on the delta; after two rounds the driver enters STOP (BUDGET) and you reassess the approach.
-
-#### 2.7 STOP, resume, override `[on demand]`
-
-STOP comes from a round cap (`BUDGET`), two rounds without progress (`NO_PROGRESS`)
-or an explicit `abandon` (`HUMAN`); procedural observations and report-format
-problems do not create it. Executor failures remain failures and executable red
-checks remain red; all work is preserved. `next` answers `needs=human` with
-`human.kind: stop` and the driver's reason and evidence; inspect the result,
-tighten the brief or change the plan, tell the user what happened, then
-`arbor.py resume` (BUDGET: grants one more round). With `stop=auto` (light and
-standard default) the driver resumes the first STOP of a task by itself and says
-so; every later STOP is yours. `arbor.py override --reason
-"..." --to STATE[/step]` records a contextual state decision; `--role <role>
-[--mode M]` runs an extra role inside the contract. `arbor.py abandon --reason
-"..."` explicitly stops a task.
-
-Existing STOP records are not silently cleared on upgrade. Inspect their evidence,
-then use `arbor.py resume` or a reasoned override when authorized. Actual merge
-conflicts and merge/cleanup safety checks remain enforced.
-
+STOP comes from a round cap (`BUDGET`), two rounds without progress (`NO_PROGRESS`) or an explicit `abandon` (`HUMAN`); all work is preserved. `next` answers `needs=human` with `human.kind: stop`, the reason and the evidence: inspect the result, tighten the brief or change the plan, tell the user what happened, then `arbor.py resume` (BUDGET: grants one more round), `arbor.py override --reason "…" --to STATE[/step]` (a recorded state decision) or `--role <role> [--mode M]` (an extra role inside the contract), or `arbor.py abandon --reason "…"`.
 
 ---
 
@@ -688,71 +415,50 @@ conflicts and merge/cleanup safety checks remain enforced.
 
 Goal: a merged branch with its evidence, the lessons captured, the session recorded.
 
-#### 3.1 Scorecard & spec update `[required · once]`
+#### 3.1 Spec update `[required · once]`
 
-The driver writes `scorecard.md`. Load `arbor-update-spec` and decide what this task taught: recurring CONFIRMED categories belong in `.arbor/spec/` (or a lint rule). Edit spec files in the task worktree and commit them on the task branch. After editing a spec doc, `python3 ./.arbor/scripts/spec.py verify <doc>`; `spec.py lint` lists stale or unlisted docs (advisory).
+Load `arbor-update-spec` and decide what this task taught: recurring CONFIRMED categories from the review reports belong in `.arbor/spec/` (or a lint rule). Edit spec files in the task worktree and commit them on the task branch before `arbor.py finish`; afterwards `python3 ./.arbor/scripts/spec.py verify <doc>` (`spec.py lint` lists stale or unlisted docs, advisory).
 
 #### 3.2 Debug retrospective `[on demand]`
 
 If the same issue was fixed more than once, load `arbor-break-loop`: classify the root cause, explain why earlier fixes failed, propose prevention.
 
-#### 3.3 PR and merge `[required · once]`
+#### 3.3 Scorecard, PR and merge `[required · once]`
 
-The driver opens the PR (`gh pr create`; body = contract + scorecard) or prints the local merge command when `gh` is unavailable. The human merges with `--no-ff`; never merge or push yourself. Merging into the base branch is the user's call in every tier unless they opted in with `merge=auto` (config `mandate:` or `task.py create --mandate merge=auto`): then the second `arbor.py finish`, after the spec update of 3.1, merges the branch `--no-ff` itself when the auto-merge rule holds (fewer than `auto_merge_max_lines` product lines, changes within the partition and test paths, no product commit after the last review PASS, main checkout on the base branch and clean, no conflict) and goes straight on to the cleanup; otherwise it prints the merge command as usual. A child of a parent merges into the parent's integration branch instead (see Parent / Child Task Trees).
+`python3 ./.arbor/scripts/arbor.py finish [--pr]` writes and commits `scorecard.md` (read its "Recurring CONFIRMED categories" against 3.1), then opens the PR (`--pr` with `gh`; body = contract + scorecard) or prints the local `--no-ff` merge command. The human merges; never merge or push yourself. With `merge=auto` (the user opted in) the same run merges a branch that changes fewer than `auto_merge_max_lines` product lines, stays within the partition paths, has no product commit after the last review PASS, with a clean main checkout on the base branch and no conflict, and goes straight on to the cleanup. A child of a parent merges into the parent's integration branch instead (see Parent / Child Task Trees).
 
 #### 3.4 Cleanup, archive, journal `[required · once]`
 
-Once the merge is detected, the driver removes the task worktree, archives the task and writes the journal entry in the main checkout. Then run `/arbor:finish-work` to record the session.
+Once the branch is merged, `/arbor:finish-work` runs `arbor.py finish` again: it removes the task worktree and branch, archives the task, clears the session pointer and writes the journal entry (DONE), then records anything else the session did.
 
 ---
 
 ## Customizing Arbor (for forks)
 
-This section is for developers who want to modify the Arbor workflow itself.
+Edit a step's body in the Phase 1 / 2 / 3 sections above; the state machine, counters and caps live in the driver (`.arbor/scripts/common/driver/state.py`): change them there and keep this document's tables in sync. The per-turn prompt text is the body of the corresponding `[workflow-state:STATUS]` block (`no_task`, `task_error`, `planning`, `in_progress`, `completed`); after editing run `arbor update` (template maintainers) or restart the AI session. A custom status needs a new `[workflow-state:my-status]` block (charset `[A-Za-z0-9_-]+`) and a lifecycle hook that writes `task.json.status` to that value: add `"hooks": {"after_finish": ["<command>"]}` to `task.json` (events `after_create / after_start / after_finish / after_archive`; `after_finish` only clears the session pointer, use `after_archive` for "task is done").
 
-### Changing what a step means
+---
 
-Edit the step's body in the Phase 1 / 2 / 3 sections above. The state machine, counters and caps live in the driver (`.arbor/scripts/arbor.py`); change them there, not here, and keep this document's tables in sync.
+## Appendix: Central polyrepo tasks
 
-| Scope | Tag |
-|---|---|
-| No active task (before Phase 1) | `[workflow-state:no_task]` |
-| Active task record unreadable | `[workflow-state:task_error]` |
-| Phase 1, every tier | `[workflow-state:planning]` |
-| Phase 2 / 3 when the driver gives no summary | `[workflow-state:in_progress]` |
-| Archived (normally unreachable) | `[workflow-state:completed]` |
+When this repository stores tasks/specs for independent `packages.<name>.git: true` repositories, the package decides the execution repository. Fetch the desired product ref before starting; start resolves the base ref to a full commit and never silently follows later remote changes.
 
-### Changing the per-turn prompt text
-
-Edit the body of the corresponding `[workflow-state:STATUS]` block, then run `arbor update` (template maintainers) or restart the AI session (your own project). For a started task the text comes from the driver's `summary`.
-
-### Adding a custom status
-
-Add a new block:
-
-```
-[workflow-state:my-status]
-your per-turn prompt text
-[/workflow-state:my-status]
+```bash
+# Naming a git: true package means working in it (execution package).
+python3 .arbor/scripts/task.py create "Product task" --description "..." --package app
+# base ref / merge target: flags, else packages.app.execution.base_ref / merge_target.
+python3 .arbor/scripts/task.py start <task> --base-ref origin/dev --merge-target dev
+# No --package: the task belongs to the control repo (execution control); a git: true
+# default_package is never inherited.
+python3 .arbor/scripts/task.py create "Control task" --description "..."
+# Edit only the control repo while still selecting app's specs:
+python3 .arbor/scripts/task.py create "Spec task" --description "..." --package app --execution control
 ```
 
-Constraints:
-- STATUS charset: `[A-Za-z0-9_-]+` (underscores and hyphens allowed, e.g. `in-review`, `blocked-by-team`)
-- A lifecycle hook must write `task.json.status` to your custom value, otherwise the tag is never read
-- Lifecycle hooks live in `task.json.hooks.after_*` and bind to one of `after_create / after_start / after_finish / after_archive`
+`execution_mode` is saved at create; `start` inherits it and an explicit `start --execution` overrides it. A control task without a package seeds shared guides/research only. `--execution package` requires a configured independent Git package.
 
-### Adding a lifecycle hook
+A product task owns two worktrees. Its task directory, contract, manifests, specs, briefs, reports and scorecard live in the **control** worktree. Writer commits, Range diffs, GATE commands, partition worktrees and merges operate in the **product** worktree. Product code and verification paths in the contract are relative to the product root. Context manifests continue to reference control-repo specs; roles read product sources from the explicit execution directory in their prompt. The product repo does not need an Arbor installation. Package-specific `execution.worktree` and `execution.gate` settings under the package configuration replace the control project's setup/GATE settings for product execution; a product GATE with neither commands nor contract `auto` checks is rejected with `GATE-EMPTY`. Execution repository identity, source commit, merge target and package policy are frozen in `task.json.execution_binding`; changing that binding or the package policy after start is refused.
 
-Add a `hooks` field to your `task.json`:
+Product execution dispatches are serialized, including within a multi-partition wave; CONTRACT readers can run concurrently in the control worktree. Control and main-checkout snapshots record drift as observations for the main agent, not proof that the child wrote those files (`arbor.py collect --accept-new-control-task <name> --reason "..."` records a narrowly checked sibling-task acceptance). A failed/interrupted product setup retains a start journal under `.arbor/.runtime/starts/` and owned worktrees; inspect those before retrying.
 
-```json
-{
-  "hooks": {
-    "after_finish": [
-      "your-script-or-command-here"
-    ]
-  }
-}
-```
-
-Supported events: `after_create / after_start / after_finish / after_archive`. Note that `after_finish` ≠ a status change (it only clears the active-task pointer); use `after_archive` for "task is done" notifications.
+Finish uses two explicit local merge boundaries: `arbor.py finish` first prints the product merge command; after that `--no-ff` merge, run it again to record product merge evidence and obtain the control merge command; after the control `--no-ff` merge, run it again for cleanup/archive. Cleanup checks both repos and refuses dirty or changed product worktrees. Automatic product PR creation is not supported. A control merge alone never completes a product task.

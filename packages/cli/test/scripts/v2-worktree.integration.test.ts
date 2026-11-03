@@ -56,13 +56,20 @@ describe.skipIf(!hasPython())("common/worktree.py", () => {
   let repo: string;
 
   beforeEach(() => {
-    tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "arbor-v2-wt-")));
+    tmp = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), "arbor-v2-wt-")),
+    );
     repo = path.join(tmp, "proj");
     initRepo(repo);
   });
 
   afterEach(() => {
-    fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    fs.rmSync(tmp, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 100,
+    });
   });
 
   it("names branches arbor/<task> and arbor/<task>--<partition>; root defaults to ../<repo>-wt", () => {
@@ -143,7 +150,9 @@ print(json.dumps({"refused": refused, "gone": not wt.exists()}))
 `,
       wt,
     );
-    expect((out as { refused: string }).refused).toContain("git worktree remove");
+    expect((out as { refused: string }).refused).toContain(
+      "git worktree remove",
+    );
     expect((out as { gone: boolean }).gone).toBe(true);
     expect(git(repo, "branch", "--list", "arbor/a")).toContain("arbor/a");
   });
@@ -179,12 +188,18 @@ print(json.dumps({"ok": r.ok, "conflicts": r.conflicts, "sha": r.sha}))
       git(repo, "commit", "-q", "-m", "part work");
       git(repo, "checkout", "-q", "main");
 
-      const out = py(repo, MERGE, "part") as { ok: boolean; sha: string; conflicts: string[] };
+      const out = py(repo, MERGE, "part") as {
+        ok: boolean;
+        sha: string;
+        conflicts: string[];
+      };
       expect(out.ok).toBe(true);
       expect(out.conflicts).toEqual([]);
       expect(out.sha).toBe(git(repo, "rev-parse", "HEAD"));
       expect(git(repo, "log", "-1", "--format=%s")).toBe("merge part");
-      expect(git(repo, "rev-list", "--parents", "-n", "1", "HEAD").split(" ")).toHaveLength(3);
+      expect(
+        git(repo, "rev-list", "--parents", "-n", "1", "HEAD").split(" "),
+      ).toHaveLength(3);
     });
 
     it("aborts a conflicted merge and reports the conflicting paths", () => {
@@ -213,7 +228,10 @@ print(json.dumps([run_setup(wt, None), run_setup(wt, "  "), run_setup(wt, "touch
 `;
     const r = spawnSync(
       "python3",
-      ["-c", `import json, sys\nsys.path.insert(0, ${JSON.stringify(TEMPLATE_SCRIPTS)})\nfrom pathlib import Path\n${code}`],
+      [
+        "-c",
+        `import json, sys\nsys.path.insert(0, ${JSON.stringify(TEMPLATE_SCRIPTS)})\nfrom pathlib import Path\n${code}`,
+      ],
       { cwd: repo, encoding: "utf-8" },
     );
     expect(r.status, r.stderr).toBe(0);
@@ -252,19 +270,15 @@ describe.skipIf(!hasPython())("common/arbor_config.py v2 accessors", () => {
     const out = py(
       os.tmpdir(),
       `
-from common.arbor_config import (
-    get_executors_config, get_test_paths, get_worktree_config, parse_simple_yaml,
-)
+from common.arbor_config import get_executors_config, get_worktree_config, parse_simple_yaml
 cfg = parse_simple_yaml("""
 worktree:
   setup: "pnpm install --offline"
-test_paths:
-  - "tests/**"
 executors:
   default: claude
   claude:
-    type: command
-    command: "claude -p"
+    type: codeg-mcp
+    assistant: "claude-{role}"
   codeg:
     timeout: 30m
 """)
@@ -278,46 +292,60 @@ executors:
 print(json.dumps({
     "wt_default": get_worktree_config({}),
     "wt": get_worktree_config(cfg),
-    "tp_default": get_test_paths({}),
-    "tp": get_test_paths(cfg),
-    "ex_default": get_executors_config({})["default"],
+    "ex_default": get_executors_config({}),
     "ex": get_executors_config(cfg),
-    "ex_partial_keys": sorted(get_executors_config(partial)),
-    "ex_partial_cli": get_executors_config(partial)["codeg-cli"]["type"],
+    "ex_partial": get_executors_config(partial),
 }))
 `,
     );
+    const codeg = {
+      type: "codeg-mcp",
+      assistant: "arbor-{role}",
+      timeout: "90m",
+      max_parallel: "3",
+    };
     expect(out).toEqual({
       wt_default: { root: "../{repo}-wt", setup: "", branch_prefix: "arbor/" },
-      wt: { root: "../{repo}-wt", setup: "pnpm install --offline", branch_prefix: "arbor/" },
-      tp_default: ["packages/*/test/**", "**/*.test.ts"],
-      tp: ["tests/**"],
-      ex_default: "codeg-cli",
+      wt: {
+        root: "../{repo}-wt",
+        setup: "pnpm install --offline",
+        branch_prefix: "arbor/",
+      },
+      ex_default: { default: "codeg", codeg },
       ex: {
         default: "claude",
-        claude: { type: "command", command: "claude -p" },
-        "codeg-cli": expect.objectContaining({ type: "command", timeout: "95m" }),
-        codeg: { type: "codeg-mcp", assistant: "arbor-{role}", timeout: "30m", max_parallel: "3" },
+        claude: { type: "codeg-mcp", assistant: "claude-{role}" },
+        codeg: { ...codeg, timeout: "30m" },
       },
-      ex_partial_keys: ["codeg", "codeg-cli", "default"],
-      ex_partial_cli: "command",
+      ex_partial: { default: "codeg", codeg },
     });
   });
 
-  it("the shipped config.yaml template parses to the documented worktree/test_paths defaults", () => {
-    const template = path.resolve(__dirname, "../../src/templates/arbor/config.yaml");
+  it("the shipped config.yaml template parses to the documented worktree/executor defaults", () => {
+    const template = path.resolve(
+      __dirname,
+      "../../src/templates/arbor/config.yaml",
+    );
     const out = py(
       os.tmpdir(),
       `
-from common.arbor_config import get_test_paths, get_worktree_config, parse_simple_yaml
+from common.arbor_config import get_executors_config, get_worktree_config, parse_simple_yaml
 cfg = parse_simple_yaml(Path(sys.argv[1]).read_text())
-print(json.dumps([get_worktree_config(cfg), get_test_paths(cfg)]))
+print(json.dumps([get_worktree_config(cfg), get_executors_config(cfg)]))
 `,
       template,
     );
     expect(out).toEqual([
       { root: "../{repo}-wt", setup: "", branch_prefix: "arbor/" },
-      ["packages/*/test/**", "**/*.test.ts"],
+      {
+        default: "codeg",
+        codeg: {
+          type: "codeg-mcp",
+          assistant: "arbor-{role}",
+          timeout: "90m",
+          max_parallel: "3",
+        },
+      },
     ]);
   });
 });

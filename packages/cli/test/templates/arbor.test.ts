@@ -39,7 +39,7 @@ describe("arbor template constants", () => {
     commonTaskQueue,
     commonTaskUtils,
     commonActiveTask,
-      getDeveloperScript,
+    getDeveloperScript,
     initDeveloperScript,
     taskScript,
     getContextScript,
@@ -94,9 +94,9 @@ describe("arbor template constants", () => {
     for (const script of pyScripts) {
       expect(
         script.includes("import") ||
-        script.includes("def ") ||
-        script.includes("class ") ||
-        script.includes("#"),
+          script.includes("def ") ||
+          script.includes("class ") ||
+          script.includes("#"),
       ).toBe(true);
     }
   });
@@ -112,7 +112,8 @@ describe("arbor template constants", () => {
   it("[workflow-create-description] every task.py create template passes --description", () => {
     // task.py create exits 1 without a non-empty --description; an agent
     // copying a [required] step template verbatim must not hit that.
-    const templates = workflowMdTemplate.match(/task\.py create "[^\n`]*/g) ?? [];
+    const templates =
+      workflowMdTemplate.match(/task\.py create "[^\n`]*/g) ?? [];
     expect(templates.length).toBeGreaterThanOrEqual(4);
     for (const line of templates) {
       expect(line).toContain("--description");
@@ -129,17 +130,36 @@ describe("arbor template constants", () => {
   });
 
   it("workflow.md has no platform branch blocks or inline breadcrumbs", () => {
-    expect(workflowMdTemplate).not.toMatch(/^\[\/?[A-Za-z][^\]\n]*,[^\]\n]*\]\s*$/m);
+    expect(workflowMdTemplate).not.toMatch(
+      /^\[\/?[A-Za-z][^\]\n]*,[^\]\n]*\]\s*$/m,
+    );
     expect(workflowMdTemplate).not.toContain("workflow-state:planning-inline");
-    expect(workflowMdTemplate).not.toContain("workflow-state:in_progress-inline");
+    expect(workflowMdTemplate).not.toContain(
+      "workflow-state:in_progress-inline",
+    );
   });
 
   it("workflow.md documents the driver, the dispatch header and the roles", () => {
-    expect(workflowMdTemplate).toContain("### Driver");
-    for (const cmd of ["next", "run", "gate", "decide", "canary", "override", "status | resume | abandon"]) {
+    expect(workflowMdTemplate).toContain("## Driver");
+    for (const cmd of [
+      "next",
+      "run",
+      "gate",
+      "decide",
+      "finish",
+      "children",
+      "override",
+      "status | resume | abandon",
+    ]) {
       expect(workflowMdTemplate).toContain(`arbor.py ${cmd}`);
     }
-    for (const line of ["Active task:", "Role:", "Mode:", "Range:", "Dispatch: d-NNN"]) {
+    for (const line of [
+      "Active task:",
+      "Role:",
+      "Mode:",
+      "Range:",
+      "Dispatch: d-NNN",
+    ]) {
       expect(workflowMdTemplate).toContain(line);
     }
     expect(workflowMdTemplate).toContain("Arbor-Dispatch: d-NNN");
@@ -161,11 +181,16 @@ describe("arbor template constants", () => {
       "#### 2P.",
       "#### 2F.",
     ]) {
-      expect(workflowMdTemplate, `workflow.md must not mention ${gone}`).not.toContain(gone);
+      expect(
+        workflowMdTemplate,
+        `workflow.md must not mention ${gone}`,
+      ).not.toContain(gone);
     }
     expect(workflowMdTemplate).toContain("delegate_to_agent");
     expect(workflowMdTemplate).toContain("arbor.py collect --request");
-    expect(workflowMdTemplate).toContain("Claude Code and Codex both use this same MCP flow");
+    expect(workflowMdTemplate).toContain(
+      "Claude Code and Codex both use this same MCP flow",
+    );
     expect(workflowMdTemplate).not.toContain("codeg-cli run -A");
   });
 
@@ -173,7 +198,6 @@ describe("arbor template constants", () => {
     for (const heading of [
       "### State Machine",
       "### Tiers",
-      "### Verification Ladder",
       "### Human Gates",
       "### Request Triage",
       "### Task Artifacts",
@@ -181,16 +205,24 @@ describe("arbor template constants", () => {
     ]) {
       expect(workflowMdTemplate).toContain(heading);
     }
-    for (const state of ["INTAKE", "CONTRACT", "BUILD", "GATE", "REVIEW", "POLISH", "FINISH", "STOP"]) {
+    for (const state of [
+      "INTAKE",
+      "CONTRACT",
+      "BUILD",
+      "GATE",
+      "REVIEW",
+      "FINISH",
+      "STOP",
+    ]) {
       expect(workflowMdTemplate).toContain(`| ${state} |`);
     }
+    expect(workflowMdTemplate).not.toContain("| POLISH |");
     for (const section of [
       "## Goal",
       "## Scope",
       "## Acceptance criteria",
       "## Verification map",
       "## Interface pins",
-      "## Test paths",
       "## Partitions",
       "## Waves",
     ]) {
@@ -207,7 +239,17 @@ describe("arbor template constants", () => {
 
   it("[required · once] planning steps appear in the planning breadcrumb", () => {
     const steps = requiredOnceSteps();
-    expect(steps).toEqual(["1.0", "1.2", "1.4", "1.5", "1.6", "1.7", "3.1", "3.3", "3.4"]);
+    expect(steps).toEqual([
+      "1.0",
+      "1.2",
+      "1.4",
+      "1.5",
+      "1.6",
+      "1.7",
+      "3.1",
+      "3.3",
+      "3.4",
+    ]);
     expect(workflowStateBreadcrumb("no_task")).toContain("1.0");
     for (const step of steps.filter((s) => s.startsWith("1.") && s !== "1.0")) {
       expect(
@@ -220,11 +262,14 @@ describe("arbor template constants", () => {
 
   it("workflow.md ships exactly the v2 block set with no nested or dangling tags", () => {
     // Same regex as inject-workflow-state.py (backreference on STATUS).
-    const re = /\[workflow-state:([A-Za-z0-9_-]+)\]\s*\n([\s\S]*?)\n\s*\[\/workflow-state:\1\]/g;
+    const re =
+      /\[workflow-state:([A-Za-z0-9_-]+)\]\s*\n([\s\S]*?)\n\s*\[\/workflow-state:\1\]/g;
     const names: string[] = [];
     for (const m of workflowMdTemplate.matchAll(re)) {
       names.push(m[1]);
-      expect(m[2], `${m[1]} must not swallow another block`).not.toContain("[workflow-state:");
+      expect(m[2], `${m[1]} must not swallow another block`).not.toContain(
+        "[workflow-state:",
+      );
     }
     // `my-status` is the example block inside the Customizing section.
     expect(names.filter((n) => n !== "my-status")).toEqual([
@@ -254,13 +299,17 @@ describe("arbor template constants", () => {
     expect(stepSection("2.1")).toContain("arbor.py next");
     expect(stepSection("2.2")).toContain("brief_path");
     expect(stepSection("2.2")).toContain("`Angles:`");
-    expect(stepSection("2.2")).toContain("`A, B, Acceptance`");
-    expect(stepSection("2.4")).toContain("decide impl|tests|contract");
-    expect(stepSection("2.6")).toContain("PLAUSIBLE");
-    expect(stepSection("2.6")).toContain("Mode: sweep");
+    expect(stepSection("2.2")).toContain("`A, D, Acceptance`");
+    expect(stepSection("2.3")).toContain("code that satisfies the criteria");
+    expect(stepSection("2.4")).toContain("decide impl|contract");
+    expect(stepSection("2.5")).toContain("PLAUSIBLE");
+    expect(stepSection("2.5")).toContain("Mode: sweep");
+    expect(stepSection("2.6")).toContain("arbor.py resume");
     expect(stepSection("3.3")).toContain("--no-ff");
     expect(workflowStateBreadcrumb("no_task")).toContain("Simple");
-    expect(workflowStateBreadcrumb("planning")).toContain("set-meta <task> tier");
+    expect(workflowStateBreadcrumb("planning")).toContain(
+      "set-meta <task> tier",
+    );
   });
 
   it("workflow.md documents parent child task tree responsibilities", () => {
@@ -272,7 +321,9 @@ describe("arbor template constants", () => {
       "Parent/child structure is not a dependency system",
     );
     expect(workflowMdTemplate).toContain("--parent <parent-dir>");
-    expect(workflowMdTemplate).toContain("task.py add-subtask <parent> <child>");
+    expect(workflowMdTemplate).toContain(
+      "task.py add-subtask <parent> <child>",
+    );
     expect(workflowMdTemplate).toContain(
       "start the child that owns the next independently verifiable deliverable",
     );
@@ -281,7 +332,9 @@ describe("arbor template constants", () => {
   it("workflow.md planning breadcrumbs mention parent child split guidance", () => {
     const planning = workflowStateBreadcrumb("planning");
     expect(planning).toContain("Multi-deliverable scope");
-    expect(planning).toContain("parent task plus independently verifiable child tasks");
+    expect(planning).toContain(
+      "parent task plus independently verifiable child tasks",
+    );
     expect(planning).toContain("not implied by tree position");
   });
 
@@ -306,11 +359,17 @@ describe("getAllScripts", () => {
   it("updates every Python script installed by init with the shipped content", () => {
     const root = path.resolve(__dirname, "../../src/templates/arbor/scripts");
     const scripts = getAllScripts();
-    const files = fs.readdirSync(root, { recursive: true }).map(String)
+    const files = fs
+      .readdirSync(root, { recursive: true })
+      .map(String)
       .filter((file) => file.endsWith(".py"));
-    expect([...scripts.keys()].sort()).toEqual(files.map((file) => file.split(path.sep).join("/")).sort());
+    expect([...scripts.keys()].sort()).toEqual(
+      files.map((file) => file.split(path.sep).join("/")).sort(),
+    );
     for (const file of files) {
-      expect(scripts.get(file.split(path.sep).join("/"))).toBe(fs.readFileSync(path.join(root, file), "utf8"));
+      expect(scripts.get(file.split(path.sep).join("/"))).toBe(
+        fs.readFileSync(path.join(root, file), "utf8"),
+      );
     }
   });
   it("returns a Map", () => {
@@ -350,7 +409,9 @@ describe("getAllScripts", () => {
   it("does not contain multi_agent entries", () => {
     const scripts = getAllScripts();
     for (const [key] of scripts) {
-      expect(key, `${key} should not be a multi_agent script`).not.toContain("multi_agent");
+      expect(key, `${key} should not be a multi_agent script`).not.toContain(
+        "multi_agent",
+      );
     }
   });
 });
@@ -363,14 +424,13 @@ describe("getAllScripts", () => {
 // =============================================================================
 
 describe("getAllAgents", () => {
-  it("ships exactly the eight role agents", () => {
+  it("ships exactly the seven role agents", () => {
     expect([...getAllAgents().keys()].sort()).toEqual(
       AGENT_ROLES.map((role) => `${role}.md`).sort(),
     );
     expect(AGENT_ROLES).toEqual([
       "explore",
       "architect",
-      "test",
       "implement",
       "review",
       "verify",
@@ -391,7 +451,10 @@ describe("getAllAgents", () => {
 
   it("assistant instructions have no frontmatter or provider/model fields", () => {
     for (const [file, content] of getAllAgents()) {
-      expect(content.startsWith("---"), `${file} must not start with frontmatter`).toBe(false);
+      expect(
+        content.startsWith("---"),
+        `${file} must not start with frontmatter`,
+      ).toBe(false);
       expect(content, file).not.toContain("provider:");
       expect(content, file).toContain("Active task:");
       expect(content, file).toContain("arbor-hook-injected");
@@ -425,7 +488,10 @@ describe("configYamlTemplate: context_injection section", () => {
 // =============================================================================
 
 describe("configYamlTemplate: executors and gate", () => {
-  const scriptsDir = path.resolve(__dirname, "../../src/templates/arbor/scripts");
+  const scriptsDir = path.resolve(
+    __dirname,
+    "../../src/templates/arbor/scripts",
+  );
 
   function parseTemplate(): Record<string, unknown> {
     const out = execFileSync(
@@ -437,23 +503,23 @@ describe("configYamlTemplate: executors and gate", () => {
           "print(json.dumps(parse_simple_yaml(sys.stdin.read())))",
         scriptsDir,
       ],
-      { input: configYamlTemplate, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
+      {
+        input: configYamlTemplate,
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "pipe"],
+      },
     );
     return JSON.parse(out) as Record<string, unknown>;
   }
 
   it("ships executors + gate instead of the dispatch section", () => {
     expect(configYamlTemplate).not.toMatch(/^dispatch:/m);
-    expect(configYamlTemplate).not.toMatch(/default_target|codeg-setup|ARBOR_DISPATCH_TARGET/);
+    expect(configYamlTemplate).not.toMatch(
+      /default_target|codeg-setup|ARBOR_DISPATCH_TARGET/,
+    );
     const parsed = parseTemplate();
     expect(parsed.executors).toEqual({
       default: "codeg",
-      "codeg-cli": {
-        type: "command",
-        command: "codeg-cli run -A arbor-{role} -w {worktree} --permissions allow --timeout 90m --title arbor-{role}-{task}-{dispatch} -q -p - < {prompt}",
-        timeout: "95m",
-        max_parallel: "3",
-      },
       codeg: {
         type: "codeg-mcp",
         assistant: "arbor-{role}",
@@ -463,8 +529,12 @@ describe("configYamlTemplate: executors and gate", () => {
     });
     expect(parsed).not.toHaveProperty("conductor");
     expect(parsed.gate).toEqual({ commands: [] });
-    expect(parsed.worktree).toEqual({ root: "../{repo}-wt", setup: "", branch_prefix: "arbor/" });
-    expect(parsed.test_paths).toEqual(["packages/*/test/**", "**/*.test.ts"]);
+    expect(parsed.worktree).toEqual({
+      root: "../{repo}-wt",
+      setup: "",
+      branch_prefix: "arbor/",
+    });
+    expect(parsed).not.toHaveProperty("test_paths");
     expect(parsed).not.toHaveProperty("dispatch");
   });
 
@@ -483,8 +553,9 @@ describe("configYamlTemplate: executors and gate", () => {
     expect(r.stderr).toBe("");
   });
 
-  it("documents the other executors only as comments", () => {
-    expect(configYamlTemplate).toContain('#     command: "claude -p < {prompt}"');
-    expect(configYamlTemplate).toContain('#     command: "codex exec --cd {worktree} --sandbox workspace-write - < {prompt}"');
+  it("ships only the codeg MCP executor", () => {
+    expect(configYamlTemplate).not.toContain("type: command");
+    expect(configYamlTemplate).not.toContain("codeg-cli");
+    expect(configYamlTemplate).toContain("type: codeg-mcp");
   });
 });

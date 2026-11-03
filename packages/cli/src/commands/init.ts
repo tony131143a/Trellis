@@ -366,8 +366,8 @@ interface ContractCriterion {
  * The v2 contract sections (mirrors `CONTRACT_TEMPLATE` in
  * `common/contract.py`): Goal, Scope, Acceptance criteria, Verification map,
  * Interface pins. Every criterion is a `manual` row; the onboarding tasks
- * change no code, so the pin is "existing interfaces" and Test paths /
- * Partitions / Waves are left to their defaults.
+ * change no code, so Interface pins / Partitions / Waves are left to their
+ * defaults.
  */
 function renderContractSections(opts: {
   goal: string;

@@ -8,10 +8,8 @@ stayed inside its boundary.
 
     role                 writes                          commits
     explore, architect   .arbor/tasks/<task>/research/** no
-    test                 test paths only                 yes, own branch
-    implement, simplify  anything but test paths         yes, own branch
-    fix                  as implement (regression tests  yes, own branch
-                         only when listed in its report)
+    implement, fix,      anything (code and tests)       yes, own branch
+    simplify
     review, verify       nothing                         no
 
 Every role: no push, merge, rebase or checkout of another branch; no writes
@@ -37,10 +35,10 @@ from .git import run_git
 
 READ_ONLY_ROLES: frozenset[str] = frozenset({"review", "verify"})
 RESEARCH_ROLES: frozenset[str] = frozenset({"explore", "architect"})
-WRITER_ROLES: frozenset[str] = frozenset({"test", "implement", "fix", "simplify"})
+WRITER_ROLES: frozenset[str] = frozenset({"implement", "fix", "simplify"})
 
 COMMIT_SUBJECT_RE = re.compile(
-    r"^(explore|architect|test|implement|review|verify|fix|simplify)\(([^)]+)\): \S.*$"
+    r"^(explore|architect|implement|review|verify|fix|simplify)\(([^)]+)\): \S.*$"
 )
 TRAILER_RE = re.compile(r"^Arbor-Dispatch: d-\d{3,}$", re.MULTILINE)
 
@@ -145,9 +143,6 @@ def _glob_regex(pattern: str) -> str:
 
 
 # Private stand-in for contract.path_matches; swap for it once that is implemented.
-def _glob_match(rel_posix: str, patterns: Sequence[str]) -> bool:
-    return any(re.fullmatch(_glob_regex(p), rel_posix) for p in patterns if p.strip())
-
 
 def validate_commit(
     worktree,
@@ -252,7 +247,6 @@ def check_after_dispatch(
     worktree,
     *,
     own_branch: str,
-    test_paths: Sequence[str],
     task_rel_dir: str,
     dispatch_id: str | None = None,
     scope: Literal["worktree", "task", "repository"] = "worktree",
@@ -327,15 +321,6 @@ def check_after_dispatch(
             violations += validate_commit(
                 worktree, sha, role=role, task_name=task_name, dispatch_id=dispatch_id
             )
-        if role == "test":
-            outside = [p for p in touched if not _glob_match(p, test_paths)]
-            if outside:
-                violations.append(f"test touched non-test paths: {', '.join(outside)}")
-        else:
-            inside = [p for p in touched if _glob_match(p, test_paths)]
-            if inside:
-                note = " (allowed only if listed in the fix report)" if role == "fix" else ""
-                violations.append(f"{role} touched test paths{note}: {', '.join(inside)}")
     else:
         violations.append(f"unknown role '{role}'")
 

@@ -1,18 +1,17 @@
 """Mandate: which human gates the main agent must put to the user.
 
-The driver stops at four human gates: contract approval, PLAUSIBLE findings,
-STOP (a round cap or no progress) and the merge. A mandate says, per gate,
-whether the main agent asks the user (``ask``) or proceeds on its own
-(``auto``). Scope changes are always asked; they are not a gate here.
+The driver stops at three human gates: contract approval, PLAUSIBLE findings
+and the merge. A mandate says, per gate, whether the main agent asks the user
+(``ask``) or proceeds on its own (``auto``). STOP (a round cap or no progress)
+and scope changes are always asked; they are not gates here.
 
 Resolution: the built-in default for the task's tier, then the ``mandate:``
 section of ``.arbor/config.yaml`` (per tier), then ``meta.mandate`` in
 task.json (``"contract=auto,merge=ask"``, set with ``task.py create
 --mandate`` or ``task.py set-meta <task> mandate``).
 
-Two gates the driver can act on by itself when they are ``auto``:
-``plausible`` (record ``decide skip``) and ``stop`` (``resume`` once per
-counter). ``contract`` only tells the main agent whether to ask; ``merge``
+One gate the driver can act on by itself when it is ``auto``: ``plausible``
+(record ``decide skip``). ``contract`` only tells the main agent whether to ask; ``merge``
 lets ``arbor.py finish`` merge a small, clean branch into its baseline
 itself. ``merge`` is ``ask`` in every tier by default: the baseline is only
 merged automatically when the user opts in. A child's merge into its
@@ -23,15 +22,15 @@ from __future__ import annotations
 from . import state as sm
 from .executor import utc_now
 
-GATES = ("contract", "plausible", "stop", "merge")
+GATES = ("contract", "plausible", "merge")
 CHOICES = ("ask", "auto")
 AUTO_MERGE_MAX_LINES = 200
-HUMAN_KIND_GATE = {"approve_contract": "contract", "plausible": "plausible", "stop": "stop", "merge": "merge"}
+HUMAN_KIND_GATE = {"approve_contract": "contract", "plausible": "plausible", "merge": "merge"}
 
 DEFAULTS: dict[str, dict[str, str]] = {
-    "light": {"contract": "auto", "plausible": "auto", "stop": "auto", "merge": "ask"},
-    "standard": {"contract": "ask", "plausible": "auto", "stop": "auto", "merge": "ask"},
-    "full": {"contract": "ask", "plausible": "ask", "stop": "ask", "merge": "ask"},
+    "light": {"contract": "auto", "plausible": "auto", "merge": "ask"},
+    "standard": {"contract": "ask", "plausible": "auto", "merge": "ask"},
+    "full": {"contract": "ask", "plausible": "ask", "merge": "ask"},
 }
 
 
@@ -40,7 +39,7 @@ class MandateError(ValueError):
 
 
 def parse_spec(text: str | None) -> dict[str, str]:
-    """``"contract=auto, stop=ask"`` -> ``{"contract": "auto", "stop": "ask"}``."""
+    """``"contract=auto, merge=ask"`` -> ``{"contract": "auto", "merge": "ask"}``."""
     out: dict[str, str] = {}
     for item in (text or "").replace(";", ",").split(","):
         item = item.strip()
@@ -92,21 +91,10 @@ def apply(data: dict, mandate: dict, tier: str) -> list[dict]:
     """Take the automatic decisions the mandate allows on the current state;
     returns the decision records it appended to ``data['decisions']``.
 
-    - STOP(BUDGET / NO_PROGRESS) with ``stop=auto``: ``resume`` once per
-      task (every later STOP stays a human gate).
     - PLAUSIBLE findings with ``plausible=auto``: ``decide skip``; the
       findings stay listed in the verify report and the scorecard.
     """
     taken: list[dict] = []
-    if data.get("state") == "STOP" and mandate.get("stop") == "auto":
-        info = data.get("stop") or {}
-        counter = info.get("counter")
-        if info.get("reason") in ("BUDGET", "NO_PROGRESS") and counter and not data.get("mandate_resumed"):
-            data["mandate_resumed"] = {"ts": utc_now(), "reason": info.get("reason"), "counter": counter}
-            message = sm.resume(data)
-            taken.append({"ts": utc_now(), "kind": "stop", "choice": "resume",
-                          "reason": f"mandate stop=auto: {info.get('reason')} on {counter}, one extra round",
-                          "mandate": True, "detail": message})
     if sm.step_of(data) == "plausible" and mandate.get("plausible") == "auto":
         decision = sm.decide(data, "skip", tier)
         taken.append({"ts": utc_now(), "kind": decision.get("kind"), "choice": "skip",

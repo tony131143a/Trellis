@@ -1,13 +1,13 @@
 ---
 name: arbor-meta
-description: "Understand and customize the local Arbor architecture inside a user project. Use when modifying .arbor (workflow, config, tasks, spec, scripts), the .claude/ or .starFactory/ hooks, settings, skills, and commands, CLAUDE.md / AGENTS.md managed blocks, the arbor.py driver that runs the eight roles (explore, architect, test, implement, review, verify, fix, simplify) through a configured executor, contract.md, task worktrees, role instruction sources under .arbor/agents/, or the bundled skills including arbor-spec-bootstrap."
+description: "Understand and customize the local Arbor architecture inside a user project. Use when modifying .arbor (workflow, config, tasks, spec, scripts), the .claude/ or .starFactory/ hooks, settings, skills, and commands, CLAUDE.md / AGENTS.md managed blocks, the arbor.py driver that runs the seven roles (explore, architect, implement, review, verify, fix, simplify) through codeg MCP, contract.md, task worktrees, role instruction sources under .arbor/agents/, or the bundled skills including arbor-spec-bootstrap."
 ---
 
 # Arbor Meta
 
 This skill is for local Arbor users who have already run `arbor init` in a project. After reading it, an AI should understand the Arbor architecture, operating model, and customization entry points inside that user project, then modify the generated files according to the user's request.
 
-In Arbor the eight roles (explore, architect, test, implement, review, verify, fix, simplify) are not platform sub-agents. The driver, `.arbor/scripts/arbor.py`, runs them through the executor configured under `executors:` in `.arbor/config.yaml`; the main agent writes the contract and the briefs and follows `arbor.py next`. Role instruction text lives in `.arbor/agents/*.md`.
+In Arbor the seven roles (explore, architect, implement, review, verify, fix, simplify) are not platform sub-agents. The driver, `.arbor/scripts/arbor.py`, runs them as codeg MCP delegations configured under `executors:` in `.arbor/config.yaml`; the main agent writes the contract and the briefs and follows `arbor.py next`. Role instruction text lives in `.arbor/agents/*.md`.
 
 The default operating scope is local files in the user project:
 
@@ -61,7 +61,7 @@ Do not assume the user has the Arbor source repository. Do not default to modify
 ## Current Rules
 
 - `.arbor/workflow.md` is the local workflow source of truth.
-- `.arbor/config.yaml` is the project-level configuration entry point: task lifecycle hooks (`hooks.after_*`), journal shape, packages, `context_injection` limits, `prompt_injection.skip_keyword`, `executors:` (how the driver runs a role: command, timeout, `max_parallel`), `gate.commands` (project-wide GATE checks), `worktree:` (task worktree root and setup command), and `test_paths:`.
+- `.arbor/config.yaml` is the project-level configuration entry point: task lifecycle hooks (`hooks.after_*`), journal shape, packages, `context_injection` limits, `prompt_injection.skip_keyword`, `executors:` (the codeg MCP assistant per role, timeout, `max_parallel`), `mandate:` (which human gates ask per tier), `gate.commands` (project-wide GATE checks), and `worktree:` (task worktree root and setup command).
 - `.arbor/spec/` stores project-specific coding conventions and design constraints.
 - `.arbor/tasks/` stores task contracts (`contract.md`), design notes, `waves.md`, research files (written by `explore` / `architect` or the main agent), briefs, scorecards, and JSONL context. A started task's directory lives in its worktree on branch `arbor/<task>`. Tasks form parent/child trees (`task.py create --parent <slug>`).
 - `.arbor/workspace/` stores deliberately written developer journals.

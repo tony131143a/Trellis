@@ -76,8 +76,12 @@ export const commonDriverState = readTemplate("scripts/common/driver/state.py");
 export const commonDriverExecutor = readTemplate(
   "scripts/common/driver/executor.py",
 );
-export const commonDriverMandate = readTemplate("scripts/common/driver/mandate.py");
-export const commonDriverIntegration = readTemplate("scripts/common/driver/integration.py");
+export const commonDriverMandate = readTemplate(
+  "scripts/common/driver/mandate.py",
+);
+export const commonDriverIntegration = readTemplate(
+  "scripts/common/driver/integration.py",
+);
 export const commonDriverMcp = readTemplate("scripts/common/driver/mcp.py");
 export const commonDriverValidate = readTemplate(
   "scripts/common/driver/validate.py",
@@ -116,7 +120,6 @@ export const gitattributesTemplate = readTemplate("gitattributes.txt");
 export const AGENT_ROLES = [
   "explore",
   "architect",
-  "test",
   "implement",
   "review",
   "verify",

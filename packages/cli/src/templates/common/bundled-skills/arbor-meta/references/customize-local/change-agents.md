@@ -1,11 +1,11 @@
 # Change Local Agents (Role Instructions)
 
-When the user wants to change the behavior of one of the eight roles (`explore`, `architect`, `test`, `implement`, `review`, `verify`, `fix`, `simplify`), edit the role instruction sources in `.arbor/agents/`. These roles run through the driver and its executor, not as platform sub-agents, so there are no `.claude/agents/` or `.starFactory/agents/` files to edit.
+When the user wants to change the behavior of one of the seven roles (`explore`, `architect`, `implement`, `review`, `verify`, `fix`, `simplify`), edit the role instruction sources in `.arbor/agents/`. These roles run through the driver as codeg MCP delegations, not as platform sub-agents, so there are no `.claude/agents/` or `.starFactory/agents/` files to edit.
 
 ## Read These Files First
 
 1. `.arbor/agents/<role>.md` for the role in question (plain markdown, no frontmatter)
-2. `.arbor/workflow.md` Driver and Roles sections, Phase 1 (contract), and Phase 2 (BUILD, GATE, REVIEW, POLISH)
+2. `.arbor/workflow.md` Driver and Roles sections, Phase 1 (contract), and Phase 2 (BUILD, GATE, REVIEW)
 3. `.arbor/config.yaml` `executors:` section
 4. Current task `contract.md`, `implement.jsonl` (feeds architect, test and implement) / `check.jsonl` (feeds review, verify, fix, simplify)
 5. `../local-architecture/dispatch.md`
@@ -14,7 +14,7 @@ When the user wants to change the behavior of one of the eight roles (`explore`,
 
 1. Edit the relevant `.arbor/agents/<role>.md`.
 2. If the executor keeps its own copy of the instructions (the default codeg executor uses one `arbor-<role>` assistant per role), update that copy.
-3. Run `python3 ./.arbor/scripts/arbor.py canary --role <role>` to check that the executor still answers in the expected format.
+3. Run one dispatch of that role on a scratch task and read `reports/<dispatch>.md` to check that the reply still has the expected format.
 
 ## Common Needs
 

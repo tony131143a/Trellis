@@ -1,14 +1,16 @@
 /**
- * Shared fixture for the v2 driver tests: a tmp repo with the arbor scripts,
- * a started task in its own worktree, and a fake executor configured in
- * `.arbor/config.yaml`.
+ * Shared fixture for the driver tests: a tmp repo with the arbor scripts,
+ * a started task in its own worktree, and the codeg MCP executor configured
+ * in `.arbor/config.yaml`.
  *
- * The fake (`fake_exec.py`) saves the prompt it received to
+ * `dispatch()` plays the host: `arbor.py run` prepares the delegation, the
+ * fake role (`fake_exec.py`) saves the prompt it received to
  * `<tmp>/received/<dispatch>.md`, then follows `<tmp>/fake.json`
  * (keyed by dispatch id): `sleep` seconds first, `write` files and commit
  * them with the pinned format (or `message`), leave `dirty` files
  * uncommitted, print `reply` (default: a valid report for the role), exit
- * with `exit`.
+ * with `exit`; a non-zero exit becomes a failed MCP report. The helper then
+ * binds a task id, saves the terminal report and runs `arbor.py collect`.
  */
 
 import { execFileSync, spawn, spawnSync } from "node:child_process";
@@ -16,7 +18,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-export const TEMPLATE_SCRIPTS = path.resolve(__dirname, "../../src/templates/arbor/scripts");
+export const TEMPLATE_SCRIPTS = path.resolve(
+  __dirname,
+  "../../src/templates/arbor/scripts",
+);
 export const TASK = "10-30-feat";
 export const SESSION = { ARBOR_CONTEXT_ID: "v2-driver-session" };
 
@@ -39,7 +44,8 @@ export function writeFile(root: string, rel: string, content: string): void {
   fs.writeFileSync(full, content, "utf-8");
 }
 
-const FAKE_EXEC = String.raw`import json, pathlib, subprocess, sys, time
+const FAKE_EXEC =
+  String.raw`import json, pathlib, subprocess, sys, time
 role, prompt, worktree, task, dispatch = sys.argv[1:6]
 here = pathlib.Path(__file__).resolve().parent
 (here / "received").mkdir(exist_ok=True)
@@ -48,12 +54,15 @@ plan_file = here / "fake.json"
 plan = json.loads(plan_file.read_text()) if plan_file.exists() else {}
 spec = plan.get(dispatch, {})
 DEFAULT = {
-    "test": "## Tests Written\n\n### Red run\n$ sh tests/ac1.sh\nexit 1\n",
     "implement": "## Implementation Complete\n",
     "fix": "## Fix: Done\n\n### Findings\n1. a.txt:1 x -> fixed: y\n",
     "simplify": "## Simplify: No Change\n",
-    "review": "PASS\n\n` + "```json\\n[]\\n```" + String.raw`\nMode: self-check; angles: A; single-context pass.\n",
-    "verify": "` + "```json\\n[]\\n```" + String.raw`\nCONFIRMED 0, PLAUSIBLE 0, REFUTED 0.\n",
+    "review": "PASS\n\n` +
+  "```json\\n[]\\n```" +
+  String.raw`\nMode: self-check; angles: A; single-context pass.\n",
+    "verify": "` +
+  "```json\\n[]\\n```" +
+  String.raw`\nCONFIRMED 0, PLAUSIBLE 0, REFUTED 0.\n",
     "explore": "## Explore Results\n\n### Conclusion\ncanary ok\n",
 }
 def git(*args):
@@ -91,29 +100,33 @@ Add the feature file.
 |------|------|-------------------|--------------|
 | AC-1 | auto | \`sh tests/ac1.sh\` | tests/ac1.sh |
 
-## Interface pins
-
-- existing interfaces
-
-## Test paths
-
-- tests/**
 `;
 
-/** A test commit that is red until src/feature.txt exists. */
-export const RED_TEST = { path: "tests/ac1.sh", content: "test -f src/feature.txt\n" };
+/** The AC-1 check; red until src/feature.txt exists. */
+export const RED_TEST = {
+  path: "tests/ac1.sh",
+  content: "test -f src/feature.txt\n",
+};
 export const FEATURE = { path: "src/feature.txt", content: "feature\n" };
+/** What implement commits by default: the check and the feature it proves. */
+export const IMPLEMENTED = [RED_TEST, FEATURE];
 
 /** Loose JSON view for assertions on task.json, `next --json` and results rows. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Json = Record<string, any>;
+
+export interface RunResult {
+  status: number | null;
+  stdout: string;
+  stderr: string;
+}
 
 export interface Fixture {
   tmp: string;
   repo: string;
   wt: string;
   taskDir: string;
-  run: (...args: string[]) => { status: number | null; stdout: string; stderr: string };
+  run: (...args: string[]) => RunResult;
   next: () => Json;
   taskJson: () => Json;
   plan: (spec: Record<string, unknown>) => void;
@@ -124,13 +137,23 @@ export interface Fixture {
 
 /** `start: false` leaves the task in planning, in the main checkout (CONTRACT phase). */
 export function setupFixture(
-  opts: { tier?: string; gate?: string[]; executor?: string; start?: boolean; contract?: string; mandate?: "ask" | "default" } = {},
+  opts: {
+    tier?: string;
+    gate?: string[];
+    start?: boolean;
+    contract?: string;
+    mandate?: "ask" | "default";
+  } = {},
 ): Fixture {
-  const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "arbor-v2-driver-")));
+  const tmp = fs.realpathSync(
+    fs.mkdtempSync(path.join(os.tmpdir(), "arbor-v2-driver-")),
+  );
   const repo = path.join(tmp, "proj");
   const wt = path.join(tmp, "proj-wt", TASK);
   const started = opts.start ?? true;
-  const taskDir = started ? path.join(wt, ".arbor", "tasks", TASK) : path.join(repo, ".arbor", "tasks", TASK);
+  const taskDir = started
+    ? path.join(wt, ".arbor", "tasks", TASK)
+    : path.join(repo, ".arbor", "tasks", TASK);
   fs.mkdirSync(repo, { recursive: true });
   git(repo, "init", "-q", "-b", "main");
   git(repo, "config", "user.email", "t@example.com");
@@ -141,82 +164,201 @@ export function setupFixture(
   writeFile(repo, "README.md", "hi\n");
   git(repo, "add", "README.md");
   git(repo, "commit", "-q", "-m", "init");
-  fs.cpSync(TEMPLATE_SCRIPTS, path.join(repo, ".arbor", "scripts"), { recursive: true });
+  fs.cpSync(TEMPLATE_SCRIPTS, path.join(repo, ".arbor", "scripts"), {
+    recursive: true,
+  });
   writeFile(tmp, "fake_exec.py", FAKE_EXEC);
-  const command =
-    opts.executor ?? `python3 ${path.join(tmp, "fake_exec.py")} {role} {prompt} {worktree} {task} {dispatch}`;
   const gate = opts.gate?.length
     ? `gate:\n  commands:\n${opts.gate.map((c) => `    - "${c}"`).join("\n")}\n`
     : "";
   // Every human gate asks by default, so the driver tests see the gates themselves;
   // `mandate: "default"` keeps the shipped per-tier defaults (the mandate tests).
-  const gatesAsk = "    contract: ask\n    plausible: ask\n    stop: ask\n    merge: ask\n";
-  const mandate = opts.mandate === "default" ? "" : `mandate:\n  light:\n${gatesAsk}  standard:\n${gatesAsk}  full:\n${gatesAsk}`;
+  const gatesAsk = "    contract: ask\n    plausible: ask\n    merge: ask\n";
+  const mandate =
+    opts.mandate === "default"
+      ? ""
+      : `mandate:\n  light:\n${gatesAsk}  standard:\n${gatesAsk}  full:\n${gatesAsk}`;
   writeFile(
     repo,
     ".arbor/config.yaml",
-    `executors:\n  default: fake\n  fake:\n    command: "${command}"\n    timeout: 30s\n${gate}${mandate}`,
+    `executors:\n  default: fake\n  fake:\n    type: codeg-mcp\n    assistant: "arbor-{role}"\n    timeout: 30s\n${gate}${mandate}`,
   );
   const rel = `.arbor/tasks/${TASK}`;
   writeFile(
     repo,
     `${rel}/task.json`,
     JSON.stringify({
-      id: "feat", name: "feat", title: "Feat", status: "planning", children: [],
+      id: "feat",
+      name: "feat",
+      title: "Feat",
+      status: "planning",
+      children: [],
       meta: { tier: opts.tier ?? "light" },
     }) + "\n",
   );
   writeFile(repo, `${rel}/contract.md`, opts.contract ?? CONTRACT);
-  if ((opts.tier ?? "light") !== "light") writeFile(repo, `${rel}/design.md`, "# Design\n");
+  if ((opts.tier ?? "light") !== "light")
+    writeFile(repo, `${rel}/design.md`, "# Design\n");
   if (opts.tier === "full") writeFile(repo, `${rel}/waves.md`, "# Waves\n");
   writeFile(repo, ".arbor/spec/guides/index.md", "# Guides\n");
-  const curated = JSON.stringify({ file: ".arbor/spec/guides/index.md", reason: "guides" }) + "\n";
+  const curated =
+    JSON.stringify({ file: ".arbor/spec/guides/index.md", reason: "guides" }) +
+    "\n";
   writeFile(repo, `${rel}/implement.jsonl`, curated);
   writeFile(repo, `${rel}/check.jsonl`, curated);
   const env = { ...process.env, ...SESSION };
-  let r = spawnSync("python3", [".arbor/scripts/init_developer.py", "tester"], { cwd: repo, encoding: "utf-8" });
+  let r = spawnSync("python3", [".arbor/scripts/init_developer.py", "tester"], {
+    cwd: repo,
+    encoding: "utf-8",
+  });
   if (r.status !== 0) throw new Error(`init_developer failed: ${r.stderr}`);
   if (started) {
-    r = spawnSync("python3", [".arbor/scripts/task.py", "start", TASK], { cwd: repo, encoding: "utf-8", env });
+    r = spawnSync("python3", [".arbor/scripts/task.py", "start", TASK], {
+      cwd: repo,
+      encoding: "utf-8",
+      env,
+    });
     if (r.status !== 0) throw new Error(`start failed: ${r.stdout}${r.stderr}`);
   }
 
   const run = (...args: string[]) => {
-    const res = spawnSync("python3", [path.join(repo, ".arbor/scripts/arbor.py"), ...args], {
-      cwd: repo, encoding: "utf-8", env,
-    });
+    const res = spawnSync(
+      "python3",
+      [path.join(repo, ".arbor/scripts/arbor.py"), ...args],
+      {
+        cwd: repo,
+        encoding: "utf-8",
+        env,
+      },
+    );
     return { status: res.status, stdout: res.stdout, stderr: res.stderr };
   };
   return {
-    tmp, repo, wt, taskDir, run,
+    tmp,
+    repo,
+    wt,
+    taskDir,
+    run,
     next: () => {
       const res = run("next", "--json");
       if (res.status !== 0) throw new Error(`next failed: ${res.stderr}`);
       return JSON.parse(res.stdout);
     },
-    taskJson: () => JSON.parse(fs.readFileSync(path.join(taskDir, "task.json"), "utf-8")),
-    plan: (spec) => fs.writeFileSync(path.join(tmp, "fake.json"), JSON.stringify(spec)),
+    taskJson: () =>
+      JSON.parse(fs.readFileSync(path.join(taskDir, "task.json"), "utf-8")),
+    plan: (spec) =>
+      fs.writeFileSync(path.join(tmp, "fake.json"), JSON.stringify(spec)),
     brief: (dispatch, text = `Brief for ${dispatch}.`) =>
       writeFile(taskDir, `briefs/${dispatch}.md`, text + "\n"),
     results: () =>
-      fs.readFileSync(path.join(repo, ".arbor/.runtime/results.jsonl"), "utf-8")
-        .trim().split("\n").map((l) => JSON.parse(l)),
-    cleanup: () => fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }),
+      fs
+        .readFileSync(path.join(repo, ".arbor/.runtime/results.jsonl"), "utf-8")
+        .trim()
+        .split("\n")
+        .map((l) => JSON.parse(l)),
+    cleanup: () =>
+      fs.rmSync(tmp, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 200,
+      }),
   };
 }
 
-/** Brief + run one dispatch; returns the run result. */
-export function dispatch(f: Fixture, id: string) {
+/** The pending request `arbor.py run` printed (`needs=delegation`). */
+export function delegation(res: RunResult): Json {
+  if (res.status !== 0)
+    throw new Error(`run failed: ${res.stdout}${res.stderr}`);
+  const out = JSON.parse(res.stdout);
+  if (out.needs !== "delegation")
+    throw new Error(`expected a delegation: ${res.stdout}`);
+  return out;
+}
+
+/**
+ * Play the role of a prepared delegation: run the fake, bind a task id,
+ * save the terminal MCP report at `result_path`, collect. The MCP task id
+ * is `codeg-<dispatch>`. Returns the collect result (status 1 when the
+ * driver marked the dispatch failed).
+ */
+export function complete(
+  f: Fixture,
+  res: RunResult,
+  extraArgs: string[] = [],
+): RunResult {
+  const env = delegation(res);
+  const record = JSON.parse(fs.readFileSync(env.request_path, "utf-8"));
+  const taskId = `codeg-${record.dispatch}`;
+  const fake = spawnSync(
+    "python3",
+    [
+      path.join(f.tmp, "fake_exec.py"),
+      record.role,
+      env.prompt_path,
+      record.worktree,
+      record.task ?? TASK,
+      record.dispatch,
+    ],
+    { cwd: f.repo, encoding: "utf-8" },
+  );
+  if (fake.status === null)
+    throw new Error(`fake role did not run: ${fake.stderr}`);
+  const bound = f.run(
+    "bind",
+    "--request",
+    env.request_path,
+    "--task-id",
+    taskId,
+  );
+  if (bound.status !== 0)
+    throw new Error(`bind failed: ${bound.stdout}${bound.stderr}`);
+  const report =
+    fake.status === 0
+      ? { task_id: taskId, status: "completed", text: fake.stdout }
+      : {
+          task_id: taskId,
+          status: "failed",
+          text: fake.stdout,
+          message: fake.stderr || `exit ${fake.status}`,
+        };
+  fs.writeFileSync(
+    env.result_path,
+    JSON.stringify({ structuredContent: { tasks: [report] } }),
+  );
+  return f.run(
+    "collect",
+    "--request",
+    env.request_path,
+    "--result",
+    env.result_path,
+    ...extraArgs,
+  );
+}
+
+/** Brief + run one dispatch and play its role; returns the collect result (or the refused run). */
+export function dispatch(
+  f: Fixture,
+  id: string,
+  ...runArgs: string[]
+): RunResult {
   f.brief(id);
-  return f.run("run", "--dispatch", id);
+  const res = f.run("run", "--dispatch", id, ...runArgs);
+  if (res.status !== 0) return res;
+  return complete(f, res);
 }
 
 /** `arbor.py <args>` as a child process that runs alongside others. */
-export function runAsync(f: Fixture, ...args: string[]): Promise<{ status: number | null; stdout: string; stderr: string }> {
+export function runAsync(f: Fixture, ...args: string[]): Promise<RunResult> {
   return new Promise((resolve) => {
-    const child = spawn("python3", [path.join(f.repo, ".arbor/scripts/arbor.py"), ...args], {
-      cwd: f.repo, env: { ...process.env, ...SESSION },
-    });
+    const child = spawn(
+      "python3",
+      [path.join(f.repo, ".arbor/scripts/arbor.py"), ...args],
+      {
+        cwd: f.repo,
+        env: { ...process.env, ...SESSION },
+      },
+    );
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (d) => (stdout += d));

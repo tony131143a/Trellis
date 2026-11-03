@@ -4,15 +4,10 @@ of the contract's Verification map, run in the task worktree.
 
 Gate commands come from ``gate.commands`` in ``.arbor/config.yaml`` and are
 reported as ``GATE-1``, ``GATE-2``, ...; map checks keep their criterion id.
-The same runner serves the red check after the ``test`` dispatch, where every
-check must fail and a collection / import error is not a valid red. A
-partition's red check runs only the auto checks whose ``file`` lies inside
-the partition's paths (checks without a file wait for GATE).
 """
 
 from __future__ import annotations
 
-import re
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -23,15 +18,6 @@ from ..contract import Contract, path_matches
 #: Upper bound for one check; a hung test runner must not hang the driver.
 CHECK_TIMEOUT_S = 30 * 60
 OUTPUT_TAIL_LINES = 30
-
-# Output that means the checks never ran (collection/import/syntax errors),
-# as opposed to an assertion failing.
-_COLLECTION_ERROR_RE = re.compile(
-    r"(ModuleNotFoundError|ImportError|SyntaxError|IndentationError"
-    r"|ERROR collecting|errors? during collection|no tests ran|collected 0 items"
-    r"|No test files found|Failed to load|Cannot find module|Transform failed)",
-    re.IGNORECASE,
-)
 
 
 @dataclass(frozen=True)
@@ -44,10 +30,6 @@ class CheckResult:
     @property
     def passed(self) -> bool:
         return self.exit_code == 0
-
-    @property
-    def collection_error(self) -> bool:
-        return not self.passed and bool(_COLLECTION_ERROR_RE.search(self.output))
 
 
 @dataclass(frozen=True)
@@ -102,31 +84,6 @@ def run_gate(gate_commands: list[str], contract: Contract, worktree: Path) -> Ga
     ]
     checks += [run_check(cid, command, worktree) for cid, command in auto_checks(contract)]
     return GateResult(checks)
-
-
-@dataclass(frozen=True)
-class RedResult:
-    checks: list[CheckResult]
-
-    @property
-    def passing(self) -> list[str]:
-        """Checks that already pass: they prove nothing yet."""
-        return [c.id for c in self.checks if c.passed]
-
-    @property
-    def errored(self) -> list[str]:
-        """Checks that fail for a collection/import reason, not an assertion."""
-        return [c.id for c in self.checks if c.collection_error]
-
-    @property
-    def valid(self) -> bool:
-        return not self.passing and not self.errored
-
-
-def run_red_check(contract: Contract, worktree: Path, paths: Sequence[str] | None = None) -> RedResult:
-    """After ``test``: every auto check (of the partition owning ``paths``)
-    must fail, and for the right reason."""
-    return RedResult([run_check(cid, command, worktree) for cid, command in auto_checks(contract, paths)])
 
 
 def format_checks(checks: list[CheckResult]) -> str:

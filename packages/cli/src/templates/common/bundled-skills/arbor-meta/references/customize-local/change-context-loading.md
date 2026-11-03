@@ -20,7 +20,7 @@ Context loading determines when AI reads workflow, task, spec, research, workspa
 | `.arbor/tasks/<task>/contract.md` | The approved contract: goal, scope, acceptance criteria, Verification map, Interface pins. |
 | `.arbor/tasks/<task>/design.md` | Technical design for standard and full tasks. |
 | `.arbor/tasks/<task>/waves.md` | Partitions and wave order for full tasks. |
-| `.arbor/tasks/<task>/implement.jsonl` | Spec/research for the `architect`, `test` and `implement` roles. |
+| `.arbor/tasks/<task>/implement.jsonl` | Spec/research for the `architect` and `implement` roles. |
 | `.arbor/tasks/<task>/check.jsonl` | Spec/research for the `review`, `verify`, `fix`, and `simplify` roles. |
 | `.arbor/spec/` | Project specs. |
 | `.arbor/workspace/` | Session records. |

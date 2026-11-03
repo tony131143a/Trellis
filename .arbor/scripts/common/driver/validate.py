@@ -6,10 +6,9 @@ Report formats come from ``.arbor/agents/<role>.md``:
     review     first line PASS | FAIL, then a JSON array of findings
     verify     a JSON array, one verdict per candidate (CONFIRMED | PLAUSIBLE |
                REFUTED), last line "CONFIRMED x, PLAUSIBLE y, REFUTED z."
-    test       "## Tests Written | Partial | Blocked"
     implement  "## Implementation Complete | Partial | Blocked"
     fix        "## Fix: Done | Partial | Blocked"; no commit is fine only when
-               every finding was skipped; regression tests are listed
+               every finding was skipped
     simplify   "## Simplify: Changed | No Change"; No Change needs no commit
     explore    "## Explore Results"
 
@@ -41,7 +40,6 @@ _VERIFY_SUMMARY_RE = re.compile(
 )
 _JSON_BLOCK_RE = re.compile(r"```(?:json)?\s*\n(.*?)\n\s*```", re.DOTALL)
 _STATUS_LINE_RE = {
-    "test": re.compile(r"^##\s*Tests\s+(Written|Partial|Blocked)\b", re.IGNORECASE),
     "implement": re.compile(r"^##\s*Implementation\s+(Complete|Partial|Blocked)\b", re.IGNORECASE),
     "fix": re.compile(r"^##\s*Fix:\s*(Done|Partial|Blocked)\b", re.IGNORECASE),
     "simplify": re.compile(r"^##\s*Simplify:\s*(Changed|No Change)\b", re.IGNORECASE),
@@ -173,29 +171,9 @@ def no_commit_allowed(role: str, reply: str, check: ReplyCheck) -> bool:
     return False
 
 
-def listed_regression_tests(reply: str) -> list[str]:
-    """Test files named under ``### Regression Tests Added`` of a fix report."""
-    files: list[str] = []
-    for line in _section(reply, "Regression Tests Added"):
-        item = line.lstrip("-* ").strip().strip("`")
-        if item and item.lower() != "none":
-            files.append(item.split("::", 1)[0].split(" ", 1)[0].strip("`"))
-    return files
-
-
 def adjust_violations(role: str, violations: list[str], reply: str, check: ReplyCheck) -> list[str]:
     """Drop the invariant hits the role file explicitly allows."""
-    kept: list[str] = []
-    allowed_tests = set(listed_regression_tests(reply)) if role == "fix" else set()
-    for v in violations:
-        if _NO_COMMIT_VIOLATION in v and no_commit_allowed(role, reply, check):
-            continue
-        if role == "fix" and v.startswith("fix touched test paths"):
-            paths = [p.strip() for p in v.split(": ", 1)[-1].split(",") if p.strip()]
-            if paths and all(p in allowed_tests for p in paths):
-                continue
-        kept.append(v)
-    return kept
+    return [v for v in violations if not (_NO_COMMIT_VIOLATION in v and no_commit_allowed(role, reply, check))]
 
 
 def only_missing_commit(violations: list[str]) -> bool:
@@ -204,7 +182,7 @@ def only_missing_commit(violations: list[str]) -> bool:
 
 
 # =============================================================================
-# Mechanical prefilter (POLISH, before verify)
+# Mechanical prefilter (REVIEW, before verify)
 # =============================================================================
 
 

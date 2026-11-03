@@ -44,7 +44,7 @@ The `Mode:` header line selects how you filter. Without it, use `self-check`.
 
 | Mode | What you do | What happens next |
 |---|---|---|
-| `self-check` | Find candidates, dedup, then re-check each against the code and keep only those with a concrete failure scenario you can defend. Give each a verdict. | Your list goes straight to the fix role. |
+| `self-check` | Light tier, one reviewer. Find candidates, dedup, then re-check each against the code and keep only those with a concrete failure scenario you can defend. Give each a verdict. | Your list goes straight to the fix role. |
 | `candidates` | Find candidates and pass every one with a nameable failure scenario through. Do **not** filter on doubt; dedup only. Up to 8 per angle. | The main agent dedups across reviewers and sends the list to an independent verify role. |
 | `sweep` | The brief carries an already-verified list. Re-read the diff and enclosing functions as a fresh reviewer looking **only** for defects not on that list. Do not re-derive or re-confirm listed items. Up to 8 new candidates; return an empty list rather than padding. | The verify role. |
 | `plan` | Review the planning artifacts before any code exists. Work backward from the Goal: what must be true for it to hold, which acceptance criterion covers each of those, whether each criterion has a Verification map row whose check would really fail without the change, whether the interface pins and partitions wire the pieces together, and whether the work fits the context the roles will get. Report each gap as a finding against `contract.md` or `design.md` with a verdict, as in `self-check`. Run the Plan angle only. | The main agent revises the contract before a human approves it. |

@@ -18,9 +18,10 @@ Parent / Child Task Trees). The command surface is in
 
 ## Roles and executors
 
-Roles are `explore`, `architect`, `test`, `implement`, `review`, `verify`, `fix`
-and `simplify`. Their instructions live in `.arbor/agents/<role>.md`.
-`arbor.py run` selects an executor from `executors:` in `.arbor/config.yaml`.
+Roles are `explore`, `architect`, `implement`, `review`, `verify`, `fix` and
+`simplify` (`implement` writes code and tests together). Their instructions live
+in `.arbor/agents/<role>.md`. `arbor.py run` uses the executor named by
+`executors.default` in `.arbor/config.yaml`.
 The main agent (the user's session, normally one codeg conversation per task)
 writes the briefs and runs the loop; roles are its depth-1 codeg delegations.
 
@@ -34,7 +35,7 @@ The driver, rather than the brief author, writes the role header:
 
 ```text
 Active task: <absolute task directory in the execution checkout>
-Role: explore | architect | test | implement | review | verify | fix | simplify
+Role: explore | architect | implement | review | verify | fix | simplify
 Mode: self-check | candidates | sweep | plan
 Range: <base>..<head>
 Dispatch: d-NNN
@@ -53,7 +54,7 @@ executors receive the assembled file directly and carry no `Prompt:` line.
 
 Role context carries `<!-- arbor-hook-injected -->`. The normal artifact order
 is jsonl entries → `contract.md` → `design.md` if present → `waves.md` if present,
-then `git diff <Range>` when supplied, followed by the brief. Architect, test and
+then `git diff <Range>` when supplied, followed by the brief. Architect and
 implement use `implement.jsonl`; review, verify, fix and simplify use
 `check.jsonl`. Architect also receives task research. Explore receives the spec
 overview and, when a task is supplied, its contract and research file list.
@@ -62,21 +63,18 @@ by reading the `Prompt:` file first).
 
 ## Resolution order
 
-The global `--executor NAME` selects `executors.<name>`; otherwise the driver uses
-`executors.default`. `--task DIR` selects the task, otherwise the session's active
-task is resolved. These options precede the subcommand. A child task driven from
-its own conversation passes `--task` on every call.
+`--task DIR` selects the task, otherwise the session's active task is resolved.
+The option precedes the subcommand. A child task driven from its own
+conversation passes `--task` on every call.
 
-Executor types are `command` and `codeg-mcp`. For a command executor, `command`
-is required; `timeout` accepts seconds or an `s`, `m` or `h` suffix. Missing or
-zero timeout means no timeout. Role command placeholders are `{role}`, `{prompt}`
-(the assembled prompt file), `{worktree}`, `{task}` and `{dispatch}`. Values are
-shell-quoted; the process runs in the assigned worktree, stdout is the report
-and stderr is retained. A non-zero exit or timeout fails the dispatch.
+The only executor type is `codeg-mcp`; `timeout` accepts seconds or an `s`, `m`
+or `h` suffix (missing or zero means no timeout) and bounds one delegation. The
+`command` executor type and the global `--executor` option were removed in
+0.8.0.
 
-## Two paths
+## The MCP path
 
-- **codeg MCP (default)**: `type: codeg-mcp` (`executors.default: codeg`)
+- **codeg MCP**: `type: codeg-mcp` (`executors.default: codeg`)
   returns `needs=delegation` with durable request metadata and `mcp.arguments`
   (`task` = header plus `Prompt:` pointer). Call `delegate_to_agent` once,
   then `arbor.py bind --request <request_path> --task-id <returned id>`. Poll
@@ -88,10 +86,6 @@ and stderr is retained. A non-zero exit or timeout fails the dispatch.
   outcome as `additionalContext`; the manual commands stay valid. Resume bound
   ids after interruption. If timeout expires, cancel through `cancel_delegation`
   and collect the terminal report; never replace this flow with a native agent.
-- **Command executor**: `arbor.py --executor codeg-cli run` invokes the
-  configured command, waits, validates the report and records the result. The
-  shipped command executor is named `codeg-cli`; it suits terminal sessions
-  without codeg MCP.
 
 ## Executor configuration
 

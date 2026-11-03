@@ -56,7 +56,7 @@ TASK_DIR=$(python3 ./.arbor/scripts/task.py create "<short task title>" --descri
    - likely out-of-scope items
 4. If user-owned decisions remain, ask all of them as ONE numbered list, each with your recommendation and trade-off, then stop. Do not perform implementation work in the same turn.
 5. After the user's answers, update `contract.md` and ask again only about decisions the answers raised; recompute the decision inventory and repeat from step 2.
-6. When no user-owned decision remains: write the acceptance criteria, the Verification map, the Interface pins and the Test paths. Light needs only `contract.md`. Standard: write `design.md` yourself (one `architect` with `Perspective: pragmatic` only if unfamiliar or asked). Full: run 3 `architect` roles, one `arbor.py run --role architect` each (workflow step 1.4), present their trade-offs with your recommendation, and after the user picks a design write `design.md`, the contract's Partitions / Waves, and `waves.md`.
+6. When no user-owned decision remains: write the acceptance criteria, the Verification map and, when a design or partitions need them, the Interface pins. Light needs only `contract.md`. Standard: write `design.md` yourself (one `architect` with `Perspective: pragmatic` only if unfamiliar or asked). Full: run 3 `architect` roles, one `arbor.py run --role architect` each (workflow step 1.4), present their trade-offs with your recommendation, and after the user picks a design write `design.md`, the contract's Partitions / Waves, and `waves.md`.
 7. Light: check that every acceptance criterion is testable and mapped. Standard / full: run the requirement convergence gate, then the contract convergence pass, then one review `Mode: plan` with `arbor.py run --role review --mode plan` (workflow step 1.6). These CONTRACT-phase dispatches run in the main checkout and commit nothing; read each reply in `reports/<id>.md`.
 8. Present the final planning summary and stop. Do not run `task.py start` or edit product code in the same turn.
 9. Only a subsequent user message that explicitly approves the latest contract authorizes `task.py start`. If the contract changes materially after approval, repeat the final review.
@@ -147,9 +147,8 @@ The final planning summary must show Goal, In Scope, Out of Scope, Acceptance Cr
 - `## Goal` — one paragraph: the user outcome and its value
 - `## Scope` — in / out
 - `## Acceptance criteria` — `AC-n: Given <precondition> When <action> Then <observable result>`
-- `## Verification map` — one row per criterion: `id | kind | check | file`; `auto` rows carry a command that fails before the change and passes after
-- `## Interface pins` — the signatures, paths and CLI / HTTP shapes the tests will call ("existing interfaces" is fine for light)
-- `## Test paths` — optional; the globs the `test` role owns
+- `## Verification map` — one row per criterion: `id | kind | check | file`; `auto` rows carry a command that passes once the criterion holds (implement writes the test it runs)
+- `## Interface pins` — optional; the signatures, paths and CLI / HTTP shapes the design fixes up front
 - `## Partitions` / `## Waves` — optional; full tasks that split the work
 
 Open questions do not belong in the contract; ask them and fold the answers in.
@@ -166,7 +165,7 @@ Open questions do not belong in the contract; ask them and fold the answers in.
 
 Light tasks have only `contract.md`. Standard tasks add `design.md`; full tasks add `waves.md`. `task.py start` checks this.
 
-The roles receive only what the driver injects: the manifest entries (`implement.jsonl` feeds `architect`, `test` and `implement`; `check.jsonl` feeds `review`, `verify`, `fix`, and `simplify`), the contract, the design and the diff, so `implement.jsonl` and `check.jsonl` must each contain at least one real spec/research entry before `task.py start`; an empty manifest, or one holding only a legacy `_example` placeholder row, does not count. Fill them with `task.py seed-context <task> [--package <pkg> ...]` (spec layer index files, the guides index, and the task's research files; idempotent), then add or drop entries per side.
+The roles receive only what the driver injects: the manifest entries (`implement.jsonl` feeds `architect` and `implement`; `check.jsonl` feeds `review`, `verify`, `fix`, and `simplify`), the contract, the design and the diff, so `implement.jsonl` and `check.jsonl` must each contain at least one real spec/research entry before `task.py start`; an empty manifest, or one holding only a legacy `_example` placeholder row, does not count. Fill them with `task.py seed-context <task> [--package <pkg> ...]` (spec layer index files, the guides index, and the task's research files; idempotent), then add or drop entries per side.
 
 ## Contract Convergence Pass (standard / full)
 

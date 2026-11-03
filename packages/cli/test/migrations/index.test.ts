@@ -67,7 +67,9 @@ describe("getAllMigrations", () => {
   it("each migration has required type and from fields", () => {
     const migrations = getAllMigrations();
     for (const m of migrations) {
-      expect(["rename", "rename-dir", "delete", "safe-file-delete"]).toContain(m.type);
+      expect(["rename", "rename-dir", "delete", "safe-file-delete"]).toContain(
+        m.type,
+      );
       expect(typeof m.from).toBe("string");
       expect(m.from.length).toBeGreaterThan(0);
     }
@@ -91,7 +93,10 @@ describe("getAllMigrations", () => {
 
 describe("getMigrationsForVersion", () => {
   it("returns empty array when from === to", () => {
-    const migrations = getMigrationsForVersion("0.3.0-beta.16", "0.3.0-beta.16");
+    const migrations = getMigrationsForVersion(
+      "0.3.0-beta.16",
+      "0.3.0-beta.16",
+    );
     expect(migrations).toEqual([]);
   });
 
@@ -121,7 +126,6 @@ describe("getMigrationsForVersion", () => {
     const migrations = getMigrationsForVersion("0.3.0-rc.6", "0.3.0");
     expect(migrations).toEqual([]);
   });
-
 });
 
 // =============================================================================
@@ -248,7 +252,7 @@ describe("0.2.0 manifest", () => {
     expect(target?.allowed_hashes).toContain(computeHash("pi\n"));
   });
 
-  it("every added config section exists in the bundled config.yaml", () => {
+  it("every added config section still shipped exists in the bundled config.yaml", () => {
     const sections = getConfigSectionsAddedBetween("0.1.0", "0.2.0");
     expect(sections.map((s) => s.sentinel)).toEqual([
       "executors:",
@@ -258,6 +262,11 @@ describe("0.2.0 manifest", () => {
     ]);
     for (const s of sections) {
       const body = extractConfigSection(configYamlTemplate, s.sectionHeading);
+      if (s.sentinel === "test_paths:") {
+        // 0.8.0 dropped the test role and with it the test_paths section.
+        expect(body).toBeNull();
+        continue;
+      }
       expect(body, s.sectionHeading).not.toBeNull();
       expect(body).toContain(s.sentinel);
     }
@@ -278,7 +287,9 @@ describe("0.3.0 manifest", () => {
   it("recorded the conductor config section, which 0.4.0 no longer ships", () => {
     const sections = getConfigSectionsAddedBetween("0.2.0", "0.3.0");
     expect(sections.map((s) => s.sentinel)).toEqual(["conductor:"]);
-    expect(extractConfigSection(configYamlTemplate, sections[0].sectionHeading)).toBeNull();
+    expect(
+      extractConfigSection(configYamlTemplate, sections[0].sectionHeading),
+    ).toBeNull();
   });
 });
 
@@ -312,7 +323,11 @@ describe("0.5.0 manifest", () => {
     expect(getMigrationMetadata("0.4.0", "0.5.0").breaking).toBe(false);
     const sections = getConfigSectionsAddedBetween("0.4.0", "0.5.0");
     expect(sections).toEqual([
-      { file: ".arbor/config.yaml", sentinel: "mandate:", sectionHeading: "Mandate" },
+      {
+        file: ".arbor/config.yaml",
+        sentinel: "mandate:",
+        sectionHeading: "Mandate",
+      },
     ]);
     const section = extractConfigSection(configYamlTemplate, "Mandate");
     expect(section).toContain("mandate:");
@@ -338,14 +353,38 @@ describe("0.6.0 manifest", () => {
 // =============================================================================
 
 describe("0.7.0 manifest", () => {
-  it("is the package version, reached from 0.6.0 without migrations, and the light mandate asks before merging", () => {
-    expect(VERSION).toBe("0.7.0");
+  it("is reached from 0.6.0 without migrations, and the light mandate asks before merging", () => {
     expect(getAllMigrationVersions()).toContain("0.7.0");
     expect(getMigrationsForVersion("0.6.0", "0.7.0")).toEqual([]);
     expect(getMigrationMetadata("0.6.0", "0.7.0").breaking).toBe(false);
     expect(getConfigSectionsAddedBetween("0.6.0", "0.7.0")).toEqual([]);
     const section = extractConfigSection(configYamlTemplate, "Mandate");
     expect(section).toMatch(/light:\n(?: {4}\w+: \w+\n)*? {4}merge: ask\n/);
-    expect(section.split("\n").filter((l) => !l.startsWith("#")).join("\n")).not.toContain("merge: auto");
+    expect(
+      section
+        .split("\n")
+        .filter((l) => !l.startsWith("#"))
+        .join("\n"),
+    ).not.toContain("merge: auto");
+  });
+});
+
+// =============================================================================
+// 0.8.0 — v5: no test role, one REVIEW stage, codeg MCP only
+// =============================================================================
+
+describe("0.8.0 manifest", () => {
+  it("is the package version, reached from 0.7.0, and retires the test role", () => {
+    expect(VERSION).toBe("0.8.0");
+    expect(getAllMigrationVersions()).toContain("0.8.0");
+    expect(
+      getMigrationsForVersion("0.7.0", "0.8.0").map((m) => [m.type, m.from]),
+    ).toEqual([["safe-file-delete", ".arbor/agents/test.md"]]);
+    expect(getMigrationMetadata("0.7.0", "0.8.0").breaking).toBe(true);
+    expect(getConfigSectionsAddedBetween("0.7.0", "0.8.0")).toEqual([]);
+    expect(configYamlTemplate).not.toMatch(/^test_paths:/m);
+    expect(configYamlTemplate).not.toContain("codeg-cli");
+    const mandate = extractConfigSection(configYamlTemplate, "Mandate");
+    expect(mandate).not.toMatch(/^ {4}stop:/m);
   });
 });

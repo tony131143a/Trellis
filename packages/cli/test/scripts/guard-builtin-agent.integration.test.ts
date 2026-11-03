@@ -76,7 +76,11 @@ describe.skipIf(!hasPython())("guard-builtin-agent.py", () => {
     return { status: r.status, stdout: r.stdout, stderr: r.stderr };
   }
 
-  function expectDeny(result: { status: number | null; stdout: string; stderr: string }): void {
+  function expectDeny(result: {
+    status: number | null;
+    stdout: string;
+    stderr: string;
+  }): void {
     expect(result.status, result.stderr).toBe(0);
     const out = JSON.parse(result.stdout) as {
       hookSpecificOutput: {
@@ -108,7 +112,6 @@ describe.skipIf(!hasPython())("guard-builtin-agent.py", () => {
     for (const role of [
       "explore",
       "architect",
-      "test",
       "implement",
       "review",
       "verify",

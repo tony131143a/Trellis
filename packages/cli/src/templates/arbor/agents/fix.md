@@ -33,12 +33,12 @@ Your prompt starts with a header:
    - reading the code shows the finding is a false positive: quote the line that proves it.
 4. **Fix the root cause**, not the symptom. Findings caused by the same mechanism are fixed together.
 5. **No scope creep**: only what the findings cover; no extra refactors or features.
-6. **Tests are fixed**: do not edit, delete, skip or weaken existing tests. When the project has a test setup, you may add a regression test that reproduces a real bug's failure scenario; list every such test in your report, because the driver rejects test-path changes it does not see there.
+6. **Tests**: never delete, skip or weaken an existing test to make the code pass; a test may change only when the finding shows the test itself asserts the wrong behavior, and your report says so. When the project has a test setup, add a regression test that reproduces a real bug's failure scenario and list it in your report.
 7. **Verify**: run the lint, typecheck and tests named in the brief or in the spec Quality Check section until green, or explain why not.
 
 ## Write boundary
 
-- Anything in your worktree except the test paths: the contract's `## Test paths`, or `test_paths` in `.arbor/config.yaml` when the contract lists none. Exception: the regression tests your report lists.
+- Anything in your worktree, code and tests alike.
 - Under `.arbor/`, only inside `Active task:`.
 
 ## Commits

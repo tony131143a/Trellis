@@ -43,10 +43,14 @@ Ignore paths under `.arbor/workspace/` in this checkout; `add_session.py` and `t
 - **Unrelated dirty paths** (another window's work) — report them once and continue.
 - **Genuinely unsure** — ask the user once, then route per their answer.
 
-## Step 3: Archive task(s)
+## Step 3: Clean up and archive
 
-- Driver state `DONE` (the user merged the PR): the driver has already removed the worktree, archived the task and written its journal entry. Nothing to archive.
-- Driver state before `DONE`: do not archive. Tell the user what the task waits for (`arbor.py next` names it; usually the PR merge) and skip to Step 4.
+- Driver state `FINISH` and the task branch merged (`arbor.py next` says "merged: `arbor finish` to clean up"): run it once; it removes the worktree and branch, archives the task and writes its journal entry (state `DONE`):
+  ```bash
+  python3 ./.arbor/scripts/arbor.py finish
+  ```
+- Driver state `DONE`: the cleanup already ran. Nothing to archive.
+- Driver state before `FINISH`, or `FINISH` with the branch not merged yet: do not archive. Tell the user what the task waits for (`arbor.py next` names it; usually the PR merge) and skip to Step 4.
 - Tasks started with `task.py start --no-worktree`, or extra tasks the user confirmed in Step 1:
   ```bash
   python3 ./.arbor/scripts/task.py archive <task-name>

@@ -150,12 +150,12 @@ def record_merged(parent: Path, entry: dict) -> None:
 # =============================================================================
 
 
-def scope_globs(paths: Sequence[str], test_paths: Sequence[str], task_rel: str) -> tuple[str, ...] | None:
+def scope_globs(paths: Sequence[str], task_rel: str) -> tuple[str, ...] | None:
     """The globs a branch may change; None when ``paths`` declares no scope."""
     declared = tuple(p.strip() for p in paths if p and p.strip())
     if not declared or any(p.removeprefix("./") in UNSCOPED for p in declared):
         return None
-    return (*declared, *test_paths, f"{task_rel}/**", f"{SPEC_PREFIX}**")
+    return (*declared, f"{task_rel}/**", f"{SPEC_PREFIX}**")
 
 
 def changed_paths(repo: Path, range_spec: str) -> list[str]:

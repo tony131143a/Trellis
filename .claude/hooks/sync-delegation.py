@@ -52,8 +52,8 @@ TOOL_RE = re.compile(r"(?:^|__)(delegate_to_agent|get_delegation_status)$")
 TASK_ID_RE = re.compile(r"task_id=([A-Za-z0-9_:-]+(?:\.[A-Za-z0-9_:-]+)*)")
 PROMPT_RE = re.compile(r"^Prompt:\s*(.+?)\s*$", re.MULTILINE)
 TERMINAL = ("completed", "failed", "canceled")
-# `arbor.py collect` validates the reply and may run the contract's red check.
-COLLECT_TIMEOUT_S = 540
+# `arbor.py collect` validates the reply and runs git checks on the worktree.
+COLLECT_TIMEOUT_S = 180
 
 
 def _find_root(start: str) -> Path | None:
