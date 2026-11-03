@@ -117,11 +117,13 @@ driver; it never performs a role itself.
 
 Independent deliverables use child tasks created with `task.py create --parent`.
 Each ready child has its own worktree and branch and is driven from its own
-session (`--task <child>` on every call). The parent's session watches
-`arbor.py --task <parent> children`, merges children in dependency order, then
-prepares the parent's review brief and invokes
-`run --role review --mode sweep --range <before-first-merge>..<base>`.
-The parent's `gate` runs cross-child `auto` checks before archive.
+session (`--task <child>` on every call). A child skips REVIEW
+(`review_deferred`): BUILD -> GATE -> automatic merge into the integration
+branch. The parent's session watches `arbor.py --task <parent> children`; once
+every child is merged, `task.py integrate <parent>` turns the parent into a
+started task on the integration worktree in REVIEW/candidates, and the ordinary
+`next` loop reviews and fixes all children at once; the parent's `gate` runs
+the cross-child `auto` checks in the integration worktree.
 
 Within a task, named wave partitions receive separate branches and worktrees;
 `next` identifies pending partitions and `run --partition <name>` executes each.

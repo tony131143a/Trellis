@@ -6,7 +6,7 @@
 
 1. **The contract is the spine** — `contract.md` says what "done" looks like and how it is checked; the human approves the scope; the main agent judges later edits in context and seeks approval only for material scope changes
 2. **The driver owns control, you own judgment** — `arbor.py` records state, counters, executable checks and observations; you (the main agent, the user's session) propose the tier, write the contract, split work into child tasks, curate context, write the briefs, classify red gates and retry within the contract
-3. **Verification is a ladder** — deterministic checks → review (candidates + independent verify in standard / full) → sweep (full); a red rung never climbs
+3. **Verification is a ladder** — deterministic checks → review (candidates + independent verify in standard / full) → sweep (full); a red rung never climbs. Writers run only the contract's targeted checks; GATE runs the whole suite (`gate.commands`)
 4. **Many readers, one writer** — read-only roles run in parallel; each branch has one writer at a time
 5. **Git-native** — a task is a worktree plus a branch; writers commit; a diff is a commit range; merges are `--no-ff`
 6. **Persist everything** — research, decisions and lessons go to files; conversations get compacted, files don't
@@ -70,7 +70,6 @@ python3 ./.arbor/scripts/get_context.py --mode phase --step <X.Y>  # detailed gu
 python3 ./.arbor/scripts/arbor.py next [--json] [--partition P] [--role explore|architect|review]   # the single next step; the ready set
 python3 ./.arbor/scripts/arbor.py run [--dispatch d-NNN] [--partition P]                             # dispatch the brief you just wrote
 python3 ./.arbor/scripts/arbor.py run --role explore|architect|review [--mode plan] [--dispatch d-NNN]   # CONTRACT phase, before task.py start
-python3 ./.arbor/scripts/arbor.py run --role review --mode sweep --range <before>..<base>             # a parent task reviewing its merged children
 python3 ./.arbor/scripts/arbor.py gate                        # GATE: gate.commands + the contract's auto checks (a parent: in the integration worktree)
 python3 ./.arbor/scripts/arbor.py decide <choice> --reason "…"   # impl | contract (red gate) · fix | skip (PLAUSIBLE) · accept --report <file> | retry (ambiguous report)
 python3 ./.arbor/scripts/arbor.py finish [--pr]               # FINISH: scorecard + PR / merge command; after the merge: cleanup
@@ -133,7 +132,7 @@ Role instructions live in `.arbor/agents/<role>.md`.
 | `architect` | `.arbor/tasks/<task>/research/**` | no | one blueprint + partition / wave suggestion |
 | `implement` | anything (code and tests) | yes, own branch | Complete / Partial / Blocked + verification (every auto check green) |
 | `fix` | as implement; never weakens a test to pass | yes, own branch | fixed / skipped per finding |
-| `simplify` | as implement, tests untouched | yes, own branch | behavior-preserving cleanup, or "no change" |
+| `simplify` | as implement, tests untouched | yes, own branch | behavior-preserving cleanup, or "no change"; not a step of the loop, run it with `arbor.py override --role simplify` |
 | `review` | nothing | no | first line `PASS` / `FAIL` + findings JSON |
 | `verify` | nothing | no | CONFIRMED / PLAUSIBLE / REFUTED per candidate |
 
@@ -143,7 +142,7 @@ Every role: no push, no merge, no rebase, no checkout of other branches, no writ
 
 Use a parent task when one user request contains several independently verifiable deliverables. The parent owns the requirement set, the task map, the cross-child acceptance criteria and a `## Children` list (deliverable, paths it owns, depends-on); it normally has no implementation work of its own. Children are created with `task.py create … --parent <parent-dir>` (or linked with `task.py add-subtask <parent> <child>`). Parent/child structure is not a dependency system: ordering between children is written in the child contracts, not implied by the tree; start the child that owns the next independently verifiable deliverable. Do not start the parent.
 
-**Children run in parallel on the parent's integration branch.** Starting the first child of an unstarted parent creates `arbor/<parent>` (cut from the checked-out branch, worktree `<worktree.root>/<parent>`, recorded in the parent's `task.json.integration`); every child is cut from it and merges back into it. Each started child is driven from a session of its own (every `arbor.py` call with `--task <child>`); `arbor.py --task <parent> children` shows every child's state, merge status and whether it is behind the integration branch. A child's FINISH needs no human: `arbor.py finish` merges the integration branch into the child when it is behind, runs the gate, checks the scope (partition paths) and that no product commit came after the last review PASS, then merges the child `--no-ff` into the integration branch and archives it there; a failed check prints why and leaves a human merge (`human.kind: merge`). When every child is merged, the parent's session runs the integration review (`arbor.py --task <parent> run --role review --mode sweep --range <sweep_range>` from `children --json`, brief at the `brief_path` from `next --role review --json`), dedups the findings, fixes them as a light child (or directly when ≤ 2 files), runs `arbor.py --task <parent> gate`, then asks the user to merge the integration branch into the baseline with the printed `--no-ff` command (always the user's). Afterwards `arbor.py --task <parent> children --cleanup` writes the journal entry and removes the integration worktree and branch, then `task.py archive <parent>`. A child created with `--base-branch <b>` opts out and merges into `<b>` by a human like any task.
+**Children run in parallel on the parent's integration branch; the parent reviews them all at once.** Starting the first child of an unstarted parent creates `arbor/<parent>` (cut from the checked-out branch, worktree `<worktree.root>/<parent>`, recorded in the parent's `task.json.integration`); every child is cut from it and merges back into it. Each started child is driven from a session of its own (every `arbor.py` call with `--task <child>`); `arbor.py --task <parent> children` shows every child's state, merge status and whether it is behind the integration branch. **A child skips REVIEW** (`task.json.review_deferred`): BUILD → GATE → FINISH. Its FINISH needs no human: `arbor.py finish` merges the integration branch into the child when it is behind, runs the gate, checks the scope (partition paths), then merges the child `--no-ff` into the integration branch and archives it there; a failed check prints why and leaves a human merge (`human.kind: merge`). When every child is merged (`next --json` of the parent says so), `python3 ./.arbor/scripts/task.py integrate <parent> [--tier standard|full]` starts the **integration review**: the parent takes the integration worktree and branch as its own (its task directory moves there, as `start` does), enters REVIEW/candidates over the whole integration range, and from there `arbor.py --task <parent> next` drives the ordinary loop: candidates → verify → `fix` on the integration branch (the only writer left) → GATE (`gate.commands` + the parent contract's `auto` checks, in the integration worktree) → recheck of the delta → FINISH. `arbor.py --task <parent> finish` writes the scorecard and prints the `--no-ff` merge command for the integration branch into the baseline (always the user's); after the merge, `finish` again removes the integration worktree and branch, archives the parent and writes one journal entry listing every child. Seed the parent's `check.jsonl` (`task.py seed-context <parent>`) before `integrate` so the readers get spec context. A child created with `--base-branch <b>` opts out: it reviews itself and merges into `<b>` by a human like any task.
 
 ---
 
@@ -181,8 +180,8 @@ Use a parent task when one user request contains several independently verifiabl
 
 ```
 Phase 1: Plan    → INTAKE (tier, consent) → CONTRACT (explore, one question list, contract.md, design, seed-context, validation, full: plan review, approval, task.py start)
-Phase 2: Drive   → the `arbor.py next` loop: BUILD (implement: code + tests) → GATE → REVIEW (light: self-check → fix; standard / full: simplify → candidates → verify → fix → re-review the delta; full: + sweep) → FINISH
-Phase 3: Finish  → spec update → `arbor.py finish` (scorecard + PR / merge command) → human `--no-ff` merge → `/arbor:finish-work` (cleanup, archive, journal); child: automatic merge into the parent's integration branch; parent: sweep review, gate, human merge, children --cleanup
+Phase 2: Drive   → the `arbor.py next` loop: BUILD (implement: code + tests) → GATE → REVIEW (light: self-check → fix; standard / full: candidates → verify → fix; full: + sweep; after every fix: GATE → one self-check over the delta, or a new candidate cycle when the delta is large) → FINISH; an integration child: BUILD → GATE → FINISH
+Phase 3: Finish  → spec update → `arbor.py finish` (scorecard + PR / merge command) → human `--no-ff` merge → `/arbor:finish-work` (cleanup, archive, journal); child: automatic merge into the parent's integration branch; parent: `task.py integrate` → the REVIEW loop on the integration branch → `arbor.py finish` → human merge → `finish` again (cleanup)
 ```
 
 ### State Machine
@@ -191,9 +190,9 @@ Phase 3: Finish  → spec update → `arbor.py finish` (scorecard + PR / merge c
 |---|---|---|---|---|
 | INTAKE | `/arbor:workflow <request>` | you → human | propose a tier with a one-line reason; the human answers ok / light / standard / full | consent → `task.py create` → CONTRACT |
 | CONTRACT | task directory exists | you + explore / architect + human | explore → one question list → `contract.md` (+ `design.md`; full: architecture perspectives → `waves.md`) → `seed-context` → structural validation → full: review `Mode: plan` → human approves | `task.py start` → BUILD |
-| BUILD | a wave is pending | you + driver + implement | `implement` delivers code and tests and runs every `auto` check green before committing; a wave of several partitions runs one implement per partition in parallel | GATE |
-| GATE | the task branch has new commits | driver → you | `gate.commands` + every `auto` row of the Verification map. Green → next wave or REVIEW. Red → you classify: `impl` (`fix`) / `contract` (edit the contract; the human re-approves) | 4 consecutive reds → STOP |
-| REVIEW | GATE green, all waves done | simplify, review, verify, fix, human | light: one `review` `Mode: self-check` over `last_reviewed..HEAD` → findings → `fix` → GATE → re-review the delta. standard / full: `simplify` → GATE → N `review` `Mode: candidates` (2 / 3, in parallel) → mechanical prefilter → `verify` (≤ 8 per reader, in parallel) → CONFIRMED → `fix`, PLAUSIBLE per mandate → GATE → next cycle over the delta; full: one `sweep` over the whole range once the cycle is clean, its candidates verified too | PASS / clean → FINISH; 2 fix rounds or no progress → STOP |
+| BUILD | a wave is pending | you + driver + implement | `implement` delivers code and tests and runs the contract's `auto` checks, lint and typecheck green before committing (GATE runs the full suite); a wave of several partitions runs one implement per partition in parallel | GATE |
+| GATE | the task branch has new commits | driver → you | `gate.commands` + every `auto` row of the Verification map. Green → next wave or REVIEW (an integration child: FINISH). Red → you classify: `impl` (`fix`) / `contract` (edit the contract; the human re-approves) | 4 consecutive reds → STOP |
+| REVIEW | GATE green, all waves done | review, verify, fix, human | light: one `review` `Mode: self-check` over `last_reviewed..HEAD` → findings → `fix`. standard / full: N `review` `Mode: candidates` (2 / 3, in parallel) → mechanical prefilter → `verify` (≤ 8 per reader, in parallel) → CONFIRMED → `fix`, PLAUSIBLE per mandate; full: one `sweep` over the whole range once the cycle is clean, its candidates verified too. After every `fix`: GATE → **recheck**: a delta of at most `mandate.auto_merge_max_lines` lines gets one `review` `Mode: self-check` over `last_reviewed..HEAD`, a larger one a new candidate cycle over it | PASS / clean → FINISH; 2 fix rounds or no progress → STOP |
 | FINISH | REVIEW done | you (`arbor.py finish`) + human | one `arbor.py finish`: `scorecard.md`, then the PR (`--pr`) or the printed `--no-ff` merge command (`merge=auto`: merges a small clean branch itself; a child: merges into the integration branch itself); after the human merge `arbor.py finish` again cleans up: worktree, archive, journal | DONE |
 | STOP | a round cap (`BUDGET`), no progress (`NO_PROGRESS`), explicit abandon (`HUMAN`) | you + human | inspect the reason and evidence; no automatic recovery | `arbor.py resume` (BUDGET: one more round), `override --reason`, a re-plan, or `abandon` |
 
@@ -208,9 +207,9 @@ Simple changes (at most 2 files, cause known, no design choice) do not use Arbor
 | Fits | one deliverable, a few files, existing patterns suffice | a feature or refactor across files or layers that needs a written design | several deliverables, contested design, risky migration |
 | Contract artifacts | `contract.md` | + `design.md` | + architecture perspectives → `waves.md`; review `Mode: plan` |
 | BUILD | one implement | partitions per the contract | partitions + waves |
-| REVIEW | 1 self-check reviewer → fix | simplify → 2 candidate readers → verify → fix | simplify → 3 candidate readers → verify → fix → sweep |
+| REVIEW | 1 self-check reviewer → fix | 2 candidate readers → verify → fix | 3 candidate readers → verify → fix → sweep |
 | Human gates | tier · merge | + contract | + contract · PLAUSIBLE |
-| Sessions | one | one | one per child task, concurrently |
+| Sessions | one | one | one per child task, concurrently; the parent's for the integration review |
 
 The tier lives in `task.json.meta.tier` (`task.py create --tier <t>`, later `task.py set-meta <task> tier <t>`); without it the tier is inferred from the artifacts (`waves.md` → full, `design.md` → standard, else light).
 
@@ -298,7 +297,7 @@ Approve (1.7): end the planning summary with the approval question; run `task.py
 - 2.2 Write a brief `[required · repeatable]`
 - 2.3 BUILD (implement: code + tests, auto checks green)
 - 2.4 GATE and decide `[on demand]`
-- 2.5 REVIEW (light: self-check; standard / full: simplify → candidates → verify → fix; full: + sweep)
+- 2.5 REVIEW (light: self-check; standard / full: candidates → verify → fix; full: + sweep; after a fix: recheck of the delta)
 - 2.6 STOP, resume, override `[on demand]`
 
 <!-- Per-turn breadcrumb: fallback only. Normally the hook shows the driver's
@@ -388,14 +387,14 @@ Goal: the driver walks BUILD → GATE → REVIEW; you supply judgment and briefs
 
 Write the brief at `brief_path` for the role `next` names, then `arbor.py run`. Short and specific:
 
-- **implement**: the essential files, the part of the design this run covers, the criteria and their test files, pitfalls, files to stay out of.
-- **fix / simplify**: the essential files, pitfalls; for fix the findings JSON.
-- **review**: `Angles:` — light self-check: `A, B, C, D, E, Conventions, Acceptance, Cleanup-lite`; candidates, one angle group per reader (standard: `A, D, Acceptance` / `B, C, E, Conventions`; full: `A, D` / `B, Conventions` / `C, E, Acceptance`); sweep: the verified list.
+- **implement**: the essential files, the part of the design this run covers, the criteria and their test files, pitfalls, files to stay out of. Name only targeted tests: writers run the contract's `auto` checks, lint and typecheck; the full suite is GATE's (`gate.commands`).
+- **fix** (and `simplify` via override): the essential files, pitfalls; for fix the findings JSON.
+- **review**: `Angles:` — self-check (light entry, and the recheck of a fix delta in every tier): `A, B, C, D, E, Conventions, Acceptance, Cleanup-lite`; candidates, one angle group per reader (standard: `A, D, Acceptance` / `B, C, E, Conventions, Cleanup-lite`; full: `A, D` / `B, Conventions, Cleanup-lite` / `C, E, Acceptance`); sweep: the verified list.
 - **verify**: the deduplicated candidates JSON, at most 8.
 
 #### 2.3 BUILD
 
-`implement` reads the contract and design, writes the tests the Verification map names and the code that satisfies the criteria, runs every `auto` check green and commits. Writing a test first is the role's habit, not a gate: the driver checks the result at GATE. A Partial or Blocked report comes back through `next`; add the missing information to the next brief or return to the contract. A multi-partition wave runs one `implement` per partition in its own worktree, then merges them `--no-ff` (see Driver).
+`implement` reads the contract and design, writes the tests the Verification map names and the code that satisfies the criteria, runs every `auto` check plus lint and typecheck green and commits (the full suite runs at GATE). Writing a test first is the role's habit, not a gate: the driver checks the result at GATE. A Partial or Blocked report comes back through `next`; add the missing information to the next brief or return to the contract. A multi-partition wave runs one `implement` per partition in its own worktree, then merges them `--no-ff` (see Driver).
 
 #### 2.4 GATE and decide `[on demand]`
 
@@ -403,7 +402,7 @@ The driver runs `gate.commands` and every `auto` check. Red → `next` asks you 
 
 #### 2.5 REVIEW
 
-**Light**: one `review` `Mode: self-check` over `last_reviewed..HEAD` (including "does the Verification map cover every criterion"); findings go to `fix`, back through GATE, and only the delta is reviewed again. **Standard / full**: `simplify` first (behavior-preserving cleanup; GATE after a commit), then N `review` `Mode: candidates` in parallel from the `batch` of `next --json` → you dedup → the driver prefilters mechanically (file exists, line within ±5 of a change, cited rule exists) → `verify` (one reader per batch of 8, in parallel) → CONFIRMED findings are fixed without asking; PLAUSIBLE ones follow the mandate (`plausible=auto`: the driver records `decide skip` and lists them in the scorecard; `ask`: put them to the user once, then `arbor.py decide fix|skip --reason "…"`) → `fix` → GATE → the next cycle reviews only the delta. Full: once a cycle is clean, one `review` `Mode: sweep` over the whole range with the verified list; its new candidates are verified too. Two fix rounds, or a cycle without progress, enter STOP. Invalid findings may stay unfixed; list them in the final summary.
+**Light**: one `review` `Mode: self-check` over `last_reviewed..HEAD` (including "does the Verification map cover every criterion"); findings go to `fix`. **Standard / full**: N `review` `Mode: candidates` in parallel from the `batch` of `next --json` → you dedup → the driver prefilters mechanically (file exists, line within ±5 of a change, cited rule exists) → `verify` (one reader per batch of 8, in parallel) → CONFIRMED findings are fixed without asking; PLAUSIBLE ones follow the mandate (`plausible=auto`: the driver records `decide skip` and lists them in the scorecard; `ask`: put them to the user once, then `arbor.py decide fix|skip --reason "…"`) → `fix`. Full: once a cycle is clean, one `review` `Mode: sweep` over the whole range with the verified list; its new candidates are verified too. **After every fix** (every tier): GATE, then the driver measures the fix delta `last_reviewed..HEAD`: at most `mandate.auto_merge_max_lines` lines → one `review` `Mode: self-check` over it (PASS → FINISH, or the sweep in full); larger → a new candidate cycle over the delta. Two fix rounds, or a cycle without progress, enter STOP. Invalid findings may stay unfixed; list them in the final summary. Cleanup is an angle of the readers (`Cleanup-lite`), not a stage: run `simplify` only on demand with `arbor.py override --role simplify`.
 
 #### 2.6 STOP, resume, override `[on demand]`
 
@@ -429,7 +428,7 @@ If the same issue was fixed more than once, load `arbor-break-loop`: classify th
 
 #### 3.4 Cleanup, archive, journal `[required · once]`
 
-Once the branch is merged, `/arbor:finish-work` runs `arbor.py finish` again: it removes the task worktree and branch, archives the task, clears the session pointer and writes the journal entry (DONE), then records anything else the session did.
+Once the branch is merged, `/arbor:finish-work` runs `arbor.py finish` again: it removes the task worktree and branch, archives the task, clears the session pointer and writes the journal entry (DONE), then records anything else the session did. An integrated parent is cleaned up the same way: its journal entry lists every child the integration branch carried.
 
 ---
 

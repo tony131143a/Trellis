@@ -374,8 +374,7 @@ describe("0.7.0 manifest", () => {
 // =============================================================================
 
 describe("0.8.0 manifest", () => {
-  it("is the package version, reached from 0.7.0, and retires the test role", () => {
-    expect(VERSION).toBe("0.8.0");
+  it("is reached from 0.7.0 and retires the test role", () => {
     expect(getAllMigrationVersions()).toContain("0.8.0");
     expect(
       getMigrationsForVersion("0.7.0", "0.8.0").map((m) => [m.type, m.from]),
@@ -386,5 +385,22 @@ describe("0.8.0 manifest", () => {
     expect(configYamlTemplate).not.toContain("codeg-cli");
     const mandate = extractConfigSection(configYamlTemplate, "Mandate");
     expect(mandate).not.toMatch(/^ {4}stop:/m);
+  });
+});
+
+// =============================================================================
+// 0.9.0 — lean REVIEW (no simplify step, recheck after a fix), task.py integrate
+// =============================================================================
+
+describe("0.9.0 manifest", () => {
+  it("is the package version, reached from 0.8.0, with no file migrations", () => {
+    expect(VERSION).toBe("0.9.0");
+    expect(getAllMigrationVersions()).toContain("0.9.0");
+    expect(getMigrationsForVersion("0.8.0", "0.9.0")).toEqual([]);
+    const metadata = getMigrationMetadata("0.8.0", "0.9.0");
+    expect(metadata.breaking).toBe(true);
+    expect(metadata.changelog.join("\n")).toContain("task.py integrate");
+    expect(getConfigSectionsAddedBetween("0.8.0", "0.9.0")).toEqual([]);
+    expect(configYamlTemplate).toContain('#     - "pnpm test"');
   });
 });

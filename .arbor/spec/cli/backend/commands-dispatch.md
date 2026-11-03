@@ -116,11 +116,15 @@ children [--json] [--cleanup]
   child's second `finish` merges it back `--no-ff` without a human after a
   catch-up merge, the gate and the merge checks. A failed check records
   `merge_blocked` and prints the merge command (`human.kind=merge`, mandate
-  `ask`). A child created with `--base-branch` opts out. After all children
-  merge, use the parent's `next --role review --json` brief, then
-  `run --role review --mode sweep --range <sweep_range>`, run the parent's
-  `gate` (in the integration worktree), let the user merge the integration
-  branch into the baseline, then `children --cleanup` and archive the parent.
+  `ask`). An integration child carries `review_deferred` and skips REVIEW
+  (BUILD -> GATE -> FINISH); the review-binding merge check does not apply to
+  it. A child created with `--base-branch` opts out. After all children merge,
+  `task.py integrate <parent>` moves the parent's task dir into the integration
+  worktree, adopts its branch and base, and opens REVIEW/candidates over the
+  whole integration range; `next` then drives candidates -> verify -> fix (on
+  the integration branch) -> `gate` (in the integration worktree) -> recheck
+  -> FINISH, and `finish` prints the human merge command, then cleans up and
+  archives the parent after the merge (its journal entry lists every child).
   Tree position alone does not encode dependencies; write them in child
   contracts.
 

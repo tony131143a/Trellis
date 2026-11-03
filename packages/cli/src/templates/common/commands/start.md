@@ -41,7 +41,7 @@ From Step 1 you know the current task and status:
   ```bash
   {{PYTHON_CMD}} ./.arbor/scripts/arbor.py next
   ```
-  Roles (explore / architect / test / implement / review / verify / fix / simplify) run only through `arbor.py run`, never in this session.
+  Roles (explore / architect / implement / review / verify / fix / simplify) run only through `arbor.py run`, never in this session.
 - **No active task** → classify first. A simple change (at most 2 files, cause known, no design choice) is done here without Arbor. Otherwise propose a tier (light / standard / full) with a one-line reason and ask for consent to create an Arbor task. If the user says no, skip Arbor for this session.
 
 ---
