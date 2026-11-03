@@ -302,7 +302,7 @@ def load_contract(path: Path) -> Contract:
     return parse_contract(path.read_text(encoding="utf-8"), path)
 
 
-def validate_contract(contract: Contract, repo_root: Path) -> list[str]:
+def validate_contract(contract: Contract) -> list[str]:
     """Structural checks run before approval. Returns human readable error
     strings; empty list = valid.
 

@@ -32,7 +32,7 @@ class ExecutorError(ValueError):
 class Executor:
     name: str
     timeout: float | None
-    kind: str = "codeg-mcp"
+    max_parallel: int | None = None  # simultaneous delegations of one task
     assistant: str = "arbor-{role}"
     assistant_ids: dict | None = None
     agent_type: str | None = None
@@ -70,10 +70,10 @@ def parse_timeout(value: object) -> float | None:
     return seconds if seconds > 0 else None
 
 
-def resolve_executor(config: dict, name: str | None = None) -> Executor:
-    """The executor named ``name`` (default: ``executors.default``)."""
+def resolve_executor(config: dict) -> Executor:
+    """The executor ``executors.default`` names."""
     section = get_executors_config(config)
-    chosen = name or str(section.get("default") or "").strip()
+    chosen = str(section.get("default") or "").strip()
     if not chosen:
         raise ExecutorError("executors.default is not set in .arbor/config.yaml")
     spec = section.get(chosen)
@@ -84,6 +84,8 @@ def resolve_executor(config: dict, name: str | None = None) -> Executor:
         raise ExecutorError(f"executor {chosen!r}: unknown type {kind!r} (v5 runs roles through codeg MCP only)")
     if spec.get("assistant_ids") is not None and not isinstance(spec["assistant_ids"], dict):
         raise ExecutorError("assistant_ids must map role names to codeg assistant ids")
-    return Executor(chosen, parse_timeout(spec.get("timeout")), kind,
+    limit = spec.get("max_parallel")
+    max_parallel = int(limit) if isinstance(limit, int) or (isinstance(limit, str) and limit.isdigit()) else None
+    return Executor(chosen, parse_timeout(spec.get("timeout")), max_parallel,
                     str(spec.get("assistant") or "arbor-{role}"), spec.get("assistant_ids"),
                     str(spec["agent_type"]) if spec.get("agent_type") else None)

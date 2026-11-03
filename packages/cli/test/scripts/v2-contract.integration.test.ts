@@ -103,7 +103,7 @@ describe.skipIf(!hasPython())("v2 contract", () => {
     fs.writeFileSync(path.join(tmp, "c.md"), text);
     return py(`
 from common.contract import load_contract, validate_contract
-print(json.dumps(validate_contract(load_contract(Path("c.md")), Path("."))))
+print(json.dumps(validate_contract(load_contract(Path("c.md")))))
 `) as string[];
   }
 
@@ -130,7 +130,7 @@ print(json.dumps({
     "pins": c.interface_pins,
     "partitions": [[p.name, p.paths] for p in c.partitions],
     "waves": c.waves,
-    "errors": validate_contract(c, Path(".")),
+    "errors": validate_contract(c),
 }))
 `);
       expect(out).toEqual({

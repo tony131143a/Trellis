@@ -576,8 +576,8 @@ assert sm.plan(d, "full", W).action == "merge"
 sm.on_merge_conflict(d, {"partition": "tests", "files": ["a"], "branch": "x--tests", "into": "x"})
 assert sm.plan(d, "full", W).human["kind"] == "merge_conflict"
 assert sm.on_conflict_resolved(d, "s") == "tests" and "merge_conflict" not in d
-sm.on_wave_merged(d, 1)
-assert (d["state"], d["after_gate"]) == ("GATE", {"state": "REVIEW", "step": "entry"})
+sm.on_wave_merged(d, 1, "full")
+assert (d["state"], d["after_gate"]) == ("GATE", {"state": "REVIEW", "step": "simplify"})
 assert d["wave_history"][0]["partitions"]["tests"]["merge"] == "s"
 
 # the review cap never stops a green gate: the next candidates cycle opens

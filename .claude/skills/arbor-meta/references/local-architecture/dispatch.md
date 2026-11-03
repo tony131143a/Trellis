@@ -18,7 +18,7 @@ python3 ./.arbor/scripts/arbor.py bind --request <request_path> --task-id <id>  
 python3 ./.arbor/scripts/arbor.py collect --request <request_path> --result <file>   # codeg-mcp: validate the terminal JSON (both run by the sync-delegation hook)
 ```
 
-Every command takes `--task <dir>` and `--executor <name>` before the command name (`--task` defaults to the session's active task; a child task driven from its own conversation passes it on every call). Exit codes: 0 ok, 1 refused / failed dispatch / red gate, 2 usage error.
+Every command takes `--task <dir>` before the command name (`--task` defaults to the session's active task; a child task driven from its own conversation passes it on every call). Exit codes: 0 ok, 1 refused / failed dispatch / red gate, 2 usage error.
 
 `next --json` always has `task`, `state`, `needs` (`delegation | brief | run | wait | decide | human | done`) and `summary`; it adds `tier`, `wave`, `partition`, `role`, `mode`, `range`, `dispatch`, `brief_path`, `batch` (readers of the step that may run concurrently, each `dispatch` + `brief_path`), `readers_running`, `decision` (`kind`, `options`, `failing`), `human` (`kind`: `approve_contract | plausible | stop | merge_conflict | merge`; `mandate`: `ask | auto`, the task's mandate for that gate) and `touched_files` when they apply. On a task that is not started yet it returns `state: CONTRACT`, `needs: human` with `human.kind: approve_contract`, plus `dispatch` (the next id), `brief_path` and `contract_roles` (`explore`, `architect`, `review`). The SessionStart and per-turn hooks show only `summary` and `needs`.
 

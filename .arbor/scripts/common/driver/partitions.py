@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..arbor_config import get_worktree_config
-from ..contract import Contract, path_matches
+from ..contract import path_matches
 from ..git import run_git
 from ..invariants import changed_files
 from ..worktree import (
@@ -40,11 +40,6 @@ from ..worktree import (
 class WaveMerge:
     merged: list[tuple[str, str]]  # (partition, sha of HEAD after its merge)
     conflict: dict | None  # {partition, files, branch, into}
-
-
-def first_step(contract: Contract, partition: str) -> str:
-    """Every partition starts with ``implement`` (code and tests together)."""
-    return "implement"
 
 
 def scope_line(worktree: Path, branch: str, paths) -> str:

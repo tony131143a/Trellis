@@ -114,36 +114,6 @@ def changed_files(worktree, range_spec: str) -> list[str]:
     return sorted({line for line in out.splitlines() if line.strip()})
 
 
-def _glob_regex(pattern: str) -> str:
-    pattern = pattern.strip().removeprefix("./")
-    if pattern.endswith("/"):
-        pattern += "**"
-    out: list[str] = []
-    i = 0
-    while i < len(pattern):
-        if pattern.startswith("**/", i):
-            out.append("(?:.*/)?")
-            i += 3
-        elif pattern.startswith("/**", i) and i + 3 == len(pattern):
-            out.append("(?:/.*)?")
-            i += 3
-        elif pattern.startswith("**", i):
-            out.append(".*")
-            i += 2
-        elif pattern[i] == "*":
-            out.append("[^/]*")
-            i += 1
-        elif pattern[i] == "?":
-            out.append("[^/]")
-            i += 1
-        else:
-            out.append(re.escape(pattern[i]))
-            i += 1
-    return "".join(out)
-
-
-# Private stand-in for contract.path_matches; swap for it once that is implemented.
-
 def validate_commit(
     worktree,
     sha: str,

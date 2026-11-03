@@ -98,7 +98,6 @@ NEW_COUNTERS = {"gate": 0, "review": 0, "no_progress": 0}
 DEFAULT_PARTITION = "default"
 PARTITION_BRIEF_STEPS = ("implement",)
 PARTITION_DONE = "done"
-REVIEW_ENTRY = "entry"  # after_gate step resolved per tier by on_gate
 
 
 class StateError(RuntimeError):
@@ -438,10 +437,10 @@ def on_violation(data: dict, role: str, dispatch: str, violations: list[str]) ->
     data.setdefault("observations", []).append({"dispatch": dispatch, "role": role, "changes": violations})
 
 
-def on_writer_done(data: dict, state: str, step: str, committed: bool) -> None:
+def on_writer_done(data: dict, state: str, step: str, committed: bool, tier: str | None) -> None:
     """After an ok writer dispatch."""
     if state == "BUILD" and step == "implement":
-        data["after_gate"] = {"state": "REVIEW", "step": REVIEW_ENTRY}
+        data["after_gate"] = {"state": "REVIEW", "step": review_entry(tier)}
         goto(data, "GATE")
     elif state == "GATE":
         goto(data, "GATE")
@@ -452,10 +451,9 @@ def on_writer_done(data: dict, state: str, step: str, committed: bool) -> None:
         else:
             _start_cycle(data)
     elif state == "REVIEW" and step == "fix":
-        cycle = data.get("cycle")
-        if not cycle:
-            data["after_gate"] = {"state": "REVIEW", "step": "review"}  # light: re-review the delta
-        elif cycle.get("sweep"):
+        if tier == "light":
+            data["after_gate"] = {"state": "REVIEW", "step": "review"}  # re-review the delta
+        elif (data.get("cycle") or {}).get("sweep"):
             data["after_gate"] = {"state": "FINISH"}
         else:
             data["after_gate"] = {"state": "REVIEW", "step": "candidates"}
@@ -471,14 +469,11 @@ def on_gate(data: dict, failing: list[str], tier: str | None = None) -> None:
     if not failing:
         data["gate_reds"] = 0
         counters["no_progress"] = 0
-        dest = data.pop("after_gate", None) or {"state": "REVIEW", "step": REVIEW_ENTRY}
-        step = dest.get("step")
-        if dest.get("state") == "REVIEW" and step == REVIEW_ENTRY:
-            step = review_entry(tier)
-        if step == "candidates":
+        dest = data.pop("after_gate", None) or {"state": "REVIEW", "step": review_entry(tier)}
+        if dest.get("step") == "candidates":
             _start_cycle(data)
-            return
-        goto(data, dest["state"], step)
+        else:
+            goto(data, dest["state"], dest.get("step"))
         return
 
     data["gate_reds"] = int(data.get("gate_reds", 0)) + 1
@@ -491,7 +486,7 @@ def on_gate(data: dict, failing: list[str], tier: str | None = None) -> None:
     _budget(data, "gate", data["gate_reds"], GATE_RED_CAP, "consecutive red gates")
 
 
-def on_review(data: dict, tier: str, verdict: str, finding_ids: list[str], range_from: str, range_to: str) -> None:
+def on_review(data: dict, verdict: str, finding_ids: list[str], range_from: str, range_to: str) -> None:
     """An ok review dispatch in REVIEW review (self-check, light)."""
     counters = data["counters"]
     data["last_reviewed"] = range_to
@@ -563,8 +558,7 @@ def on_sweep_filtered(data: dict, kept_ids: list[str], candidates_file: str, ran
     data["sweep_ids"] = sorted(kept_ids)
     data["counters"]["no_progress"] = 0
     if not kept_ids:
-        data.pop("cycle", None)
-        goto(data, "FINISH")
+        _cycle_done(data, None)  # sweep_done: FINISH
         return
     _start_verify(data, kept_ids, candidates_file)
 
@@ -601,8 +595,14 @@ def on_verify(data: dict, confirmed: list[str], plausible: list[str], tier: str 
         data["step"] = "plausible"
         data["decision"] = {"kind": "plausible", "options": list(PLAUSIBLE_CHOICES),
                             "failing": list(cycle["plausible"])}
-    elif cycle["confirmed"]:
-        cycle["fix"] = list(cycle["confirmed"])
+    else:
+        _fix_or_done(data, list(cycle["confirmed"]), tier)
+
+
+def _fix_or_done(data: dict, fix: list[str], tier: str | None) -> None:
+    """Fix the verified findings, or close the cycle when there are none."""
+    data["cycle"]["fix"] = fix
+    if fix:
         goto(data, "REVIEW", "fix")
     else:
         _cycle_done(data, tier)
@@ -619,11 +619,7 @@ def decide(data: dict, choice: str, tier: str | None = None) -> dict:
         fix = list(cycle.get("confirmed", []))
         if choice == "fix":
             fix += cycle.get("plausible", [])
-        cycle["fix"] = fix
-        if fix:
-            goto(data, "REVIEW", "fix")
-        else:
-            _cycle_done(data, tier)
+        _fix_or_done(data, fix, tier)
         return decision
     if step != "decide" or not isinstance(decision, dict):
         raise StateError(f"nothing to decide in {state}/{step}")
@@ -707,10 +703,6 @@ def reap_stale(data: dict, alive) -> list[str]:
     """Clear ``running`` markers whose run process is gone (``alive(pid)`` is
     False); their dispatch entries become ``aborted``. Returns their ids."""
     reaped: list[str] = []
-    for entry in data.get("dispatches") or []:
-        if (entry.get("phase") == "CONTRACT" and entry.get("status") == "running"
-                and entry.get("pid") and not alive(int(entry["pid"]))):
-            reaped.append(str(entry["id"]))
     for rec in (data.get("partitions") or {}).values():
         running = rec.get("running")
         if isinstance(running, dict) and not running.get("external") and not alive(int(running.get("pid") or 0)):
@@ -755,7 +747,7 @@ def on_conflict_resolved(data: dict, sha: str) -> str:
     return conflict["partition"]
 
 
-def on_wave_merged(data: dict, wave_count: int) -> None:
+def on_wave_merged(data: dict, wave_count: int, tier: str | None) -> None:
     """Every partition of the wave is merged and its worktree removed."""
     wave = data.get("wave", 1)
     data.setdefault("wave_history", []).append({
@@ -772,5 +764,5 @@ def on_wave_merged(data: dict, wave_count: int) -> None:
         data["wave"] = wave + 1
         goto(data, "BUILD")
     else:
-        data["after_gate"] = {"state": "REVIEW", "step": REVIEW_ENTRY}
+        data["after_gate"] = {"state": "REVIEW", "step": review_entry(tier)}
         goto(data, "GATE")

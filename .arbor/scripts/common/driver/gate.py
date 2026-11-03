@@ -11,9 +11,8 @@ from __future__ import annotations
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Sequence
 
-from ..contract import Contract, path_matches
+from ..contract import Contract
 
 #: Upper bound for one check; a hung test runner must not hang the driver.
 CHECK_TIMEOUT_S = 30 * 60
@@ -67,13 +66,9 @@ def run_check(check_id: str, command: str, worktree: Path) -> CheckResult:
     return CheckResult(check_id, command, proc.returncode, tail)
 
 
-def auto_checks(contract: Contract, paths: Sequence[str] | None = None) -> list[tuple[str, str]]:
-    """``(id, command)`` of the auto checks; with ``paths``, only those whose
-    ``file`` matches one of them."""
-    return [
-        (e.id, e.check) for e in contract.auto_checks()
-        if e.check.strip() and (paths is None or (e.file and path_matches(e.file, paths)))
-    ]
+def auto_checks(contract: Contract) -> list[tuple[str, str]]:
+    """``(id, command)`` of the auto checks."""
+    return [(e.id, e.check) for e in contract.auto_checks() if e.check.strip()]
 
 
 def run_gate(gate_commands: list[str], contract: Contract, worktree: Path) -> GateResult:

@@ -65,14 +65,13 @@ import os
 import re
 import sys
 from dataclasses import asdict
-from uuid import uuid4
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
 from common.active_task import resolve_active_task, resolve_task_ref
-from common.arbor_config import get_executors_config, get_gate_commands, read_arbor_config
+from common.arbor_config import get_gate_commands, read_arbor_config
 from common.contract import (
     Contract,
     ContractError,
@@ -113,7 +112,6 @@ from common.worktree import (WorktreeError, branch_prefix, is_ancestor, main_che
 RUNTIME = f"{DIR_WORKFLOW}/.runtime"
 CONTRACT_ROLES = ("explore", "architect", "review")
 PARALLEL_RESEARCH_ROLES = ("explore", "architect")
-STDERR_TAIL_LINES = 40
 
 
 from common import execution as ex
@@ -416,26 +414,14 @@ def build_prompt(worktree: Path, task_dir: Path | None, role: str, mode: str | N
 # =============================================================================
 
 
-def _max_parallel(config: dict) -> int | None:
-    section = get_executors_config(config)
-    spec = section.get(str(section.get("default") or ""))
-    value = spec.get("max_parallel") if isinstance(spec, dict) else None
-    return int(value) if isinstance(value, int) or (isinstance(value, str) and value.isdigit()) else None
-
-
 def planning_runs(ctx: Ctx) -> list[dict]:
-    """Uncollected MCP requests and live command planning dispatches."""
+    """Uncollected MCP requests."""
     runs = []
     for path in (ctx.data.get("mcp_pending") or {}).values():
         _, record = mcp.load(ctx.main, path)
         runs.append({"dispatch": record["dispatch"], "role": record["role"],
                      "kind": record["kind"], "request_path": str(path),
                      "task_id": record.get("task_id"), "started": record["started"]})
-    for entry in ctx.data.get("dispatches") or []:
-        if (entry.get("phase") == "CONTRACT" and entry.get("status") == "running"
-                and entry.get("pid") and pid_alive(int(entry["pid"]))):
-            runs.append({"dispatch": entry["id"], "role": entry["role"], "kind": "contract",
-                         "pid": entry["pid"], "started": entry["started"]})
     return sorted(runs, key=lambda r: r["dispatch"])
 
 
@@ -467,13 +453,6 @@ def next_payload(ctx: Ctx | None, partition: str | None = None, role: str | None
             raise DriverError("next --role requires a task and cannot be combined with --partition")
         return planning_next(ctx, role)
     if ctx is None:
-        external = mcp.find_pending(_main())
-        if external:
-            path, record = external
-            return {"task": None, "state": record["state"], "needs": "delegation",
-                    "dispatch": record["dispatch"], "request_path": str(path),
-                    "task_id": record.get("task_id"),
-                    "summary": f"MCP delegation pending: read {path}, bind/poll its task_id, then collect"}
         pending = fin.pending_records(_main())
         if pending:
             return {"task": pending[0], "state": "FINISH", "needs": "run",
@@ -543,7 +522,7 @@ def next_payload(ctx: Ctx | None, partition: str | None = None, role: str | None
     out.update(ready)
     summary = step.summary
     if step.pending:
-        limit = _max_parallel(ctx.config)
+        limit = resolve_executor(ctx.config).max_parallel
         summary += (f"; also ready: {', '.join(step.pending)} (brief each from `next --partition P`, then "
                     f"`arbor run --partition P` in parallel{f', at most {limit} at once' if limit else ''})")
     if len(ready["items"]) > 1:
@@ -607,14 +586,6 @@ def ready_set(ctx: Ctx, step: sm.Step | None) -> dict:
                                      f"(arguments in {path}), then bind its task_id"})
         # a reader of the current batch runs alongside the rest of its batch
         default_busy = default_busy or not (record.get("partition") or record["dispatch"] in readers)
-    listed = {r["dispatch"] for r in running} | {i["dispatch"] for i in items}
-    running += [{"dispatch": d, "kind": "command", "partition": "default"} for d in sorted(readers) if d not in listed]
-    for name, rec in (ctx.data.get("partitions") or {}).items():
-        run = rec.get("running")
-        if isinstance(run, dict) and not run.get("external"):
-            running.append({"dispatch": run.get("dispatch"), "partition": name, "kind": "command"})
-    running += [{"dispatch": r["dispatch"], "role": r["role"], "kind": "command", "partition": "default"}
-                for r in planning_runs(ctx) if r.get("kind") == "contract"]
     if step is not None and step.needs != "wait" and not (default_busy and step.partition is None):
         items.append(_item(ctx, step))
         for dispatch in step.batch[1:]:  # the other readers of a reader batch, each with its own brief
@@ -732,6 +703,24 @@ def _pending(ctx: Ctx, partition: str | None = None, dispatch: str | None = None
     return None
 
 
+def _upsert_dispatch(data: dict, entry: dict) -> None:
+    """Add ``entry`` to ``dispatches`` or replace the entry with its id."""
+    entries = data.setdefault("dispatches", [])
+    slot = next((i for i, d in enumerate(entries) if d.get("id") == entry["id"]), None)
+    if slot is None:
+        entries.append(entry)
+    else:
+        entries[slot] = entry
+
+
+def _read_brief(ctx: Ctx, dispatch: str) -> str:
+    brief_file = brief_path(ctx, dispatch)
+    brief = brief_file.read_text(encoding="utf-8") if brief_file.is_file() else ""
+    if not brief.strip():
+        raise DriverError(f"write the brief first: {brief_file}")
+    return brief
+
+
 def require_report_decision(ctx: Ctx) -> None:
     if ctx.data.get("report_pending"):
         raise DriverError("report needs main-agent judgment: use `arbor decide retry` or "
@@ -739,63 +728,47 @@ def require_report_decision(ctx: Ctx) -> None:
 
 
 def require_collected(ctx: Ctx) -> None:
-    if any(d.get("phase") == "CONTRACT" and d.get("status") == "running"
-           and d.get("pid") and pid_alive(int(d["pid"])) for d in ctx.data.get("dispatches") or []):
-        raise DriverError("planning commands are still running; finish them before advancing")
     if ctx.data.get("mcp_pending"):
         raise DriverError("an MCP dispatch is pending; cancel/finish it and collect its terminal report first")
 
 
-def prepare_mcp(ctx: Ctx | None, main: Path, executor, role: str, mode: str | None, dispatch: str,
-                kind: str, worktree: Path, branch: str, prompt: str, before, prompt_path: Path | None = None,
+def prepare_mcp(ctx: Ctx, main: Path, executor, role: str, mode: str | None, dispatch: str,
+                kind: str, worktree: Path, branch: str, prompt: str, prompt_path: Path | None = None,
                 **extra) -> int:
     """Caller holds the task lock. Persist the handoff before returning to the host."""
-    if ctx is None:
-        pending = mcp.find_pending(main)
-        if pending:
-            print(json.dumps(mcp.envelope(*pending), ensure_ascii=False))
-            return 0
-    if ctx and kind == "contract":
+    if kind == "contract":
         blocked = planning_blocker(role, planning_runs(ctx))
         if blocked:
             raise DriverError(blocked)
-    elif ctx and _pending(ctx, None if ctx.data.get("execution_binding") else extra.get("partition"), dispatch):
+    elif _pending(ctx, None if ctx.data.get("execution_binding") else extra.get("partition"), dispatch):
         raise DriverError("an MCP dispatch is already pending; poll/collect it before starting another")
-    if ctx is None:
-        dispatch = f"{dispatch}-{uuid4().hex[:8]}"
-    path = mcp.pending_path(main, ctx.name if ctx else "_intake", dispatch)
+    path = mcp.pending_path(main, ctx.name, dispatch)
     record = {
-        "schema": 1, "main": str(main), "task_dir": str(ctx.task_dir) if ctx else None,
-        "task": ctx.name if ctx else None, "dispatch": dispatch, "role": role, "mode": mode,
-        "kind": kind, "state": ctx.data.get("state", "CONTRACT") if ctx else "INTAKE",
+        "schema": 1, "main": str(main), "task_dir": str(ctx.task_dir),
+        "task": ctx.name, "dispatch": dispatch, "role": role, "mode": mode,
+        "kind": kind, "state": ctx.data.get("state", "CONTRACT"),
         "worktree": str(worktree), "branch": branch, "executor": executor.name,
         "timeout_s": executor.timeout, "started": utc_now(), "task_id": None, "status": "pending",
         "prompt_path": str(prompt_path) if prompt_path else None,
-        "before": mcp.snapshot_dict(before), "mcp": mcp.request(executor, role, prompt, worktree, prompt_path),
+        "before": None, "mcp": mcp.request(executor, role, prompt, worktree, prompt_path),
         **extra,
     }
     mcp.store(path, record)
-    if ctx:
-        ctx.data.setdefault("mcp_pending", {})[dispatch] = str(path)
-        entry = {"id": dispatch, "role": role, "mode": mode, "status": "running",
-                 "started": record["started"], "ended": None, "commit": None,
-                 **({"phase": "CONTRACT"} if kind == "contract" else {}),
-                 **({"partition": extra["partition"]} if extra.get("partition") else {})}
-        entries = ctx.data.setdefault("dispatches", [])
-        slot = next((i for i, d in enumerate(entries) if d.get("id") == dispatch), None)
-        if slot is None:
-            entries.append(entry)
-        else:
-            entries[slot] = entry
-        if extra.get("partition"):
-            ctx.data["partitions"][extra["partition"]]["running"]["external"] = True
-        reader = (sm.batch_of(ctx.data).get("running") or {}).get(dispatch)
-        if isinstance(reader, dict):
-            reader["external"] = True
-        save(ctx)
-    # Driver-created metadata must not be mistaken for the child's writes.
+    ctx.data.setdefault("mcp_pending", {})[dispatch] = str(path)
+    _upsert_dispatch(ctx.data, {
+        "id": dispatch, "role": role, "mode": mode, "status": "running",
+        "started": record["started"], "ended": None, "commit": None,
+        **({"phase": "CONTRACT"} if kind == "contract" else {}),
+        **({"partition": extra["partition"]} if extra.get("partition") else {})})
+    if extra.get("partition"):
+        ctx.data["partitions"][extra["partition"]]["running"]["external"] = True
+    reader = (sm.batch_of(ctx.data).get("running") or {}).get(dispatch)
+    if isinstance(reader, dict):
+        reader["external"] = True
+    save(ctx)
+    # Snapshot after the driver's own writes so they are not mistaken for the child's.
     record["before"] = mcp.snapshot_dict(snapshot_refs(worktree))
-    if ctx and ctx.started and ctx.data.get("execution_binding"):
+    if ctx.started and ctx.data.get("execution_binding"):
         record["control_before"] = ex.snapshot_control(ctx.main, ctx.control_worktree, ctx.task_rel, ctx.execution_main)
     mcp.store(path, record)
     print(json.dumps(mcp.envelope(path, record), ensure_ascii=False))
@@ -808,24 +781,31 @@ def prepare_run(ctx: Ctx, job: Job, executor) -> int:
     range_spec = f"{job.range_from}..{base}" if job.range_from and job.role in RANGE_ROLES else None
     contract = require_contract(ctx)
     paths = _partition_paths(contract, unit.partition)
-    brief = pt.scope_line(unit.worktree, unit.branch, paths) + "\n\n" + job.brief if unit.partition else job.brief
+    brief = _partition_brief(ctx, unit.partition, job.brief)
     prompt = build_prompt(ctx.control_worktree, ctx.task_dir, job.role, job.mode, range_spec, job.dispatch, brief, unit.worktree if ctx.data.get("execution_binding") else None)
     prompt_file = runtime_dir(ctx.main, "prompts", ctx.name) / f"{job.dispatch}.md"
     prompt_file.write_text(prompt, encoding="utf-8")
     job_data = {**asdict(job), "unit": {"partition": unit.partition, "worktree": str(unit.worktree),
                                       "branch": unit.branch}}
     return prepare_mcp(ctx, ctx.main, executor, job.role, job.mode, job.dispatch, "run", unit.worktree,
-                       unit.branch, prompt, snapshot_refs(unit.worktree), prompt_path=prompt_file, job=job_data,
+                       unit.branch, prompt, prompt_path=prompt_file, job=job_data,
                        partition=unit.partition, range_spec=range_spec, head_before=base, paths=paths)
+
+
+def _request_ctx(record: dict) -> Ctx:
+    ctx = load_ctx(record["task_dir"])
+    if ctx is None:
+        raise DriverError(f"the task of MCP request {record['dispatch']} is gone")
+    return ctx
 
 
 def cmd_bind(args: argparse.Namespace) -> int:
     main = _main()
     path, record = mcp.load(main, args.request)
-    ctx = load_ctx(record["task_dir"]) if record.get("task_dir") else None
+    ctx = _request_ctx(record)
     if not args.task_id.strip():
         raise DriverError("task_id cannot be empty")
-    with editing(ctx) if ctx else task_lock(runtime_dir(main, "mcp-intake")):
+    with editing(ctx):
         path, record = mcp.load(main, args.request)
         if record["status"] != "pending":
             raise DriverError("this MCP dispatch has already been collected")
@@ -840,20 +820,20 @@ def cmd_bind(args: argparse.Namespace) -> int:
 def cmd_collect(args: argparse.Namespace) -> int:
     main = _main()
     path, record = mcp.load(main, args.request)
-    ctx = load_ctx(record["task_dir"]) if record.get("task_dir") else None
+    ctx = _request_ctx(record)
     payload = json.loads(Path(args.result).read_text(encoding="utf-8"))
-    with editing(ctx) if ctx else task_lock(runtime_dir(main, "mcp-intake")):
+    with editing(ctx):
         path, record = mcp.load(main, args.request)
         if record["status"] != "pending":
             raise DriverError("this MCP dispatch has already been collected")
-        if ctx and (ctx.data.get("mcp_pending") or {}).get(record["dispatch"]) != str(path):
+        if (ctx.data.get("mcp_pending") or {}).get(record["dispatch"]) != str(path):
             raise DriverError("MCP request is no longer pending in this task")
         acceptance = None
         control_observations: list[str] = []
         sibling = getattr(args, "accept_new_control_task", None)
-        if sibling and (not ctx or not record.get("control_before") or not (args.reason or "").strip()):
+        if sibling and (not record.get("control_before") or not (args.reason or "").strip()):
             raise DriverError("--accept-new-control-task requires a product dispatch and a non-empty --reason")
-        if record.get("control_before") and ctx:
+        if record.get("control_before"):
             try:
                 if sibling:
                     additions = ex.accept_new_control_task(ctx.main, ctx.control_worktree, ctx.task_rel,
@@ -870,7 +850,6 @@ def cmd_collect(args: argparse.Namespace) -> int:
         before = mcp.snapshot_from(record["before"])
         role, mode, dispatch = record["role"], record["mode"], record["dispatch"]
         if record["kind"] == "run":
-            assert ctx is not None
             guard_contract(ctx)
             data = record["job"]
             unit = Unit(data["unit"]["partition"], Path(data["unit"]["worktree"]), data["unit"]["branch"])
@@ -886,14 +865,11 @@ def cmd_collect(args: argparse.Namespace) -> int:
             rc = 0 if out.status in ("ok", "judgment") else 1
             print(f"{dispatch} {role}: {out.status}; report: {ctx.task_dir / 'reports' / (dispatch + '.md')}")
         elif record["kind"] == "contract":
-            if ctx is None:
-                raise DriverError("CONTRACT dispatch without a task; its task directory is gone")
-            if ctx:
-                if ctx.started != bool(record.get("planning_started")):
-                    raise DriverError("task was started before its pending CONTRACT dispatch was collected")
-                if ctx.started and ctx.data.get("state") != "CONTRACT":
-                    raise DriverError("task left CONTRACT before its pending research was collected")
-                ctx.data["mcp_pending"].pop(dispatch)
+            if ctx.started != bool(record.get("planning_started")):
+                raise DriverError("task was started before its pending CONTRACT dispatch was collected")
+            if ctx.started and ctx.data.get("state") != "CONTRACT":
+                raise DriverError("task left CONTRACT before its pending research was collected")
+            ctx.data["mcp_pending"].pop(dispatch)
             rc = finish_contract(ctx, main, role, mode, dispatch, record["branch"],
                                  record["task_rel"], before, result, Path(record["worktree"]))
         else:
@@ -1015,7 +991,7 @@ def _advance(ctx: Ctx, state: str, step: str, role: str, dispatch: str, out: Out
     if (state, step) == ("REVIEW", "review"):
         ids = [rv.finding_id(f) for f in out.check.findings
                if str(f.get("verdict", "")).upper() in ("CONFIRMED", "PLAUSIBLE")]
-        sm.on_review(data, ctx.tier, out.check.verdict or "FAIL", ids, out.range_spec.split("..")[0], out.head_before)
+        sm.on_review(data, out.check.verdict or "FAIL", ids, out.range_spec.split("..")[0], out.head_before)
     elif (state, step) == ("REVIEW", "candidates"):
         cycle = data.setdefault("cycle", {})
         cycle.setdefault("candidate_findings", []).extend(out.check.findings)
@@ -1023,28 +999,20 @@ def _advance(ctx: Ctx, state: str, step: str, role: str, dispatch: str, out: Out
             number = data["counters"].get("review", 0) + 1
             rel = f"reports/candidates-r{number}.json"
             findings = cycle.pop("candidate_findings", [])
-            kept, dropped = _prefilter_report(ctx, findings, f"{cycle.get('range_from')}..{out.head_before}", rel)
+            kept, dropped = _prefilter_report(ctx, findings, str(out.range_spec), rel)
             sm.on_candidates_filtered(data, [rv.finding_id(f) for f in kept], f"{ctx.task_rel}/{rel}", ctx.tier)
             notes.append(f"### Prefilter\n- kept {len(kept)}, dropped {dropped} -> {rel}")
     elif (state, step) == ("REVIEW", "sweep"):
         rel = "reports/sweep.json"
-        range_from = (data.get("cycle") or {}).get("range_from") or data.get("base")
-        kept, dropped = _prefilter_report(ctx, out.check.findings, f"{range_from}..{out.head_before}", rel)
+        kept, dropped = _prefilter_report(ctx, out.check.findings, str(out.range_spec), rel)
         sm.on_sweep_filtered(data, [rv.finding_id(f) for f in kept], f"{ctx.task_rel}/{rel}", out.head_before)
         notes.append(f"### Prefilter\n- kept {len(kept)}, dropped {dropped} -> {rel}")
     elif (state, step) == ("REVIEW", "verify"):
         by = lambda v: [rv.finding_id(f) for f in out.check.findings if str(f.get("verdict", "")).upper() == v]
         sm.on_verify(data, by("CONFIRMED"), by("PLAUSIBLE"), ctx.tier)
     elif role in WRITER_ROLES:
-        sm.on_writer_done(data, state, step, out.head_after != out.head_before)
+        sm.on_writer_done(data, state, step, out.head_after != out.head_before, ctx.tier)
     return notes
-
-
-def _advance_partition(ctx: Ctx, job: Job) -> list[str]:
-    name = job.unit.partition
-    assert name is not None
-    sm.on_partition_implemented(ctx.data, name)
-    return []
 
 
 def _write_report(ctx: Ctx, dispatch: str, role: str, out: Outcome, notes: list[str],
@@ -1064,9 +1032,6 @@ def _write_report(ctx: Ctx, dispatch: str, role: str, out: Outcome, notes: list[
                   *[f"- {v}" for v in out.violations]]
     if notes:
         lines += ["", *notes]
-    if res is not None and res.stderr.strip():
-        tail = res.stderr.rstrip().splitlines()[-STDERR_TAIL_LINES:]
-        lines += ["", "### Executor stderr (tail)", "```", *tail, "```"]
     path = ctx.task_dir / "reports" / f"{dispatch}.md"
     path.parent.mkdir(exist_ok=True)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -1086,10 +1051,7 @@ def _begin(ctx: Ctx, step: sm.Step, requested: str | None) -> Job:
         readers = f" (or one of {', '.join(step.batch)})" if len(step.batch) > 1 else ""
         raise DriverError(f"the next dispatch{' of ' + step.partition if step.partition else ''} is "
                           f"{dispatch}{readers}, not {requested}")
-    brief_file = brief_path(ctx, dispatch)
-    brief = brief_file.read_text(encoding="utf-8") if brief_file.is_file() else ""
-    if not brief.strip():
-        raise DriverError(f"write the brief first: {brief_file}")
+    brief = _read_brief(ctx, dispatch)
     unit = ctx.unit(step.partition)
     rc, dirty, _ = run_git(["diff", "--name-only", "HEAD", "--", ".", f":(exclude){ctx.task_rel}"],
                            cwd=unit.worktree)
@@ -1151,7 +1113,7 @@ def _finish(ctx: Ctx, job: Job, out: Outcome) -> None:
         else:
             sm.on_dispatch_failed(data, role)
     elif name:
-        notes = _advance_partition(ctx, job)
+        sm.on_partition_implemented(data, name)
     elif not job.override and not late:
         notes = _advance(ctx, job.state, job.step, role, dispatch, out)
 
@@ -1165,11 +1127,7 @@ def _finish(ctx: Ctx, job: Job, out: Outcome) -> None:
         **({"override": True} if job.override else {}),
         "observations": out.violations,
     }
-    slot = next((i for i, d in enumerate(data["dispatches"]) if d.get("id") == dispatch), None)
-    if slot is None:
-        data["dispatches"].append(entry)
-    else:
-        data["dispatches"][slot] = entry
+    _upsert_dispatch(data, entry)
     _write_report(ctx, dispatch, role, out, notes, name)
     apply_mandate(ctx)
     save(ctx)
@@ -1212,7 +1170,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             print(colored(step.summary, Colors.YELLOW))
             return 1
         executor = resolve_executor(ctx.config)
-        limit = _max_parallel(ctx.config)
+        limit = executor.max_parallel
         if limit and len(ctx.data.get("mcp_pending") or {}) >= limit:
             raise DriverError(f"MCP max_parallel={limit} reached; collect an existing delegation first")
         job = _begin(ctx, step, args.dispatch)
@@ -1236,7 +1194,7 @@ def start_wave(ctx: Ctx) -> int:
             rec = pt.create_partition(ctx.execution_main, ctx.execution_config, ctx.name, name, start)
         except WorktreeError as e:
             raise DriverError(f"wave {wave}: {e}") from None
-        rec["step"] = pt.first_step(contract, name)
+        rec["step"] = "implement"
         records[name] = rec
         print(colored(f"  {name}: {rec['worktree']} ({rec['branch']}), first step {rec['step']}", Colors.GREEN))
     sm.on_wave_started(data, records)
@@ -1280,7 +1238,7 @@ def _merge_remaining(ctx: Ctx) -> int:
         print(colored(f"  warning: {warning}", Colors.YELLOW))
     if warnings:
         data.setdefault("leftovers", []).extend(warnings)
-    sm.on_wave_merged(data, len(waves))
+    sm.on_wave_merged(data, len(waves), ctx.tier)
     save(ctx)
     commit_task_dir(ctx, f"arbor({ctx.name}): wave {wave} merged")
     print(colored(f"wave {wave} merged: {plan_for(ctx).summary}", Colors.GREEN))
@@ -1364,10 +1322,7 @@ def cmd_run_contract(args: argparse.Namespace) -> int:
         used = any(d.get("id") == dispatch for d in ctx.data.get("dispatches") or [])
         if used or (ctx.task_dir / "reports" / f"{dispatch}.md").exists():
             raise DriverError(f"dispatch {dispatch} has already been used; obtain a new id with next --role")
-        brief_file = brief_path(ctx, dispatch)
-        brief = brief_file.read_text(encoding="utf-8") if brief_file.is_file() else ""
-        if not brief.strip():
-            raise DriverError(f"write the brief first: {brief_file}")
+        brief = _read_brief(ctx, dispatch)
         record = _live_integration(ctx) if mode == "sweep" else None
         if record:
             brief = (f"The merged children are checked out at {record['worktree']} (branch {record['branch']}); "
@@ -1384,18 +1339,16 @@ def cmd_run_contract(args: argparse.Namespace) -> int:
         prompt_file = runtime_dir(main, "prompts", ctx.name) / f"{dispatch}.md"
         if not write_text_atomic(prompt_file, prompt):
             raise DriverError(f"cannot write {prompt_file}")
-        before = snapshot_refs(worktree)
         return prepare_mcp(ctx, main, executor, role, mode, dispatch, "contract", worktree, branch,
-                           prompt, before, prompt_path=prompt_file, task_rel=task_rel,
+                           prompt, prompt_path=prompt_file, task_rel=task_rel,
                            planning_started=ctx.started)
 
 
 def finish_contract(ctx: Ctx, main: Path, role: str, mode: str | None, dispatch: str,
-                    branch: str, task_rel: str | None, before, result: ExecResult, worktree: Path | None = None) -> int:
-    worktree = worktree or main
+                    branch: str, task_rel: str, before, result: ExecResult, worktree: Path) -> int:
     violations = check_after_dispatch(
         role, before, worktree, own_branch=branch,
-        task_rel_dir=task_rel or f"{DIR_WORKFLOW}/{DIR_TASKS}/-", dispatch_id=None, scope="task",
+        task_rel_dir=task_rel, dispatch_id=None, scope="task",
     )
     after = snapshot_refs(worktree)
     check = rv.check_reply(role, result.stdout)
@@ -1416,20 +1369,12 @@ def finish_contract(ctx: Ctx, main: Path, role: str, mode: str | None, dispatch:
     color = Colors.GREEN if status == "ok" else Colors.RED
     out = Outcome(status, result.stdout, check, result, violations, problem, None, before.head, after.head)
     _write_report(ctx, dispatch, role, out, [])
-    if not isinstance(ctx.data.get("dispatches"), list):
-        ctx.data["dispatches"] = []
-    entry = {
+    _upsert_dispatch(ctx.data, {
         "id": dispatch, "role": role, "mode": mode, "commit": None, "status": status,
         "started": result.started, "ended": result.ended, "range": None,
         "confidence": check.confidence, "phase": "CONTRACT",
         **({"verdict": check.verdict, "findings": len(check.findings)} if role == "review" else {}),
-    }
-    entries = ctx.data["dispatches"]
-    slot = next((i for i, old in enumerate(entries) if old.get("id") == dispatch), None)
-    if slot is None:
-        entries.append(entry)
-    else:
-        entries[slot] = entry
+    })
     save(ctx)
     print(colored(f"{dispatch} {role}: {status}" + (f" ({problem})" if problem else ""), color))
     print(f"  report: {ctx.task_dir / 'reports' / (dispatch + '.md')}")
@@ -1525,7 +1470,7 @@ def decide_report(ctx: Ctx, args: argparse.Namespace) -> int:
                          "exec_result": ExecResult(**raw["exec_result"]) if raw["exec_result"] else None})
         notes = []
         if job.unit.partition:
-            notes = _advance_partition(ctx, job)
+            sm.on_partition_implemented(ctx.data, job.unit.partition)
         elif not job.override:
             notes = _advance(ctx, job.state, job.step, job.role, dispatch, out)
         rel = f"reports/{dispatch}-interpreted.md"
@@ -1635,7 +1580,7 @@ def _resume(ctx: Ctx) -> int:
         if path is None:
             raise DriverError(f"{ctx.name} has no contract.md")
         try:
-            errors = validate_contract(load_contract(path), ctx.worktree)
+            errors = validate_contract(load_contract(path))
         except ContractError as e:
             errors = [str(e)]
         if errors:

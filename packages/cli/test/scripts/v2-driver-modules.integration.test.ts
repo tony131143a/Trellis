@@ -32,13 +32,12 @@ try:
     parse_timeout("soon"); raise SystemExit("bad timeout accepted")
 except ExecutorError: pass
 ex = resolve_executor({})
-assert (ex.name, ex.kind, ex.timeout, ex.assistant, ex.assistant_ids, ex.agent_type) == \\
-    ("codeg", "codeg-mcp", 5400, "arbor-{role}", None, None), ex
+assert (ex.name, ex.timeout, ex.max_parallel, ex.assistant, ex.assistant_ids, ex.agent_type) == \\
+    ("codeg", 5400, 3, "arbor-{role}", None, None), ex
 ex = resolve_executor({"executors": {"codeg": {"timeout": "30s", "agent_type": "coder"}}})
 assert (ex.name, ex.timeout, ex.assistant, ex.agent_type) == ("codeg", 30, "arbor-{role}", "coder"), ex
 ex = resolve_executor({"executors": {"default": "x", "x": {"type": "codeg-mcp", "assistant_ids": {"fix": "a-1"}}}})
 assert (ex.name, ex.timeout, ex.assistant_ids) == ("x", None, {"fix": "a-1"}), ex
-assert resolve_executor({"executors": {"default": "x", "x": {}}}, "codeg").name == "codeg"
 for cfg in (
     {"executors": {"default": "nope"}},
     {"executors": {"default": "x", "x": {"type": "command", "command": "sh run.sh"}}},
@@ -159,9 +158,10 @@ gate(d, ["AC-2"]);         assert d["state"] == "STOP" and d["stop"]["reason"] =
 sm.resume(d); assert (d["state"], d["step"]) == ("GATE", "decide") and d["counters"]["no_progress"] == 0 and d["decision"]["kind"] == "gate_red"
 d["after_gate"] = {"state": "REVIEW", "step": "review"}
 sm.on_gate(d, []); assert (d["state"], d["step"]) == ("REVIEW", "review") and d["gate_reds"] == 0
-# a green gate after BUILD resolves the REVIEW entry per tier
+# implement -> GATE -> the tier's REVIEW entry
 for tier, want in (("light", "review"), ("standard", "simplify"), ("full", "simplify")):
-    e = sm.ensure_fields({"state": "GATE", "base": "b", "after_gate": {"state": "REVIEW", "step": "entry"}})
+    e = sm.ensure_fields({"state": "BUILD", "step": "implement", "base": "b"})
+    sm.on_writer_done(e, "BUILD", "implement", True, tier); assert e["state"] == "GATE"
     sm.on_gate(e, [], tier); assert (e["state"], e["step"]) == ("REVIEW", want), (tier, e)
 e = sm.ensure_fields({"state": "GATE", "base": "b"})
 sm.on_gate(e, [], "light"); assert (e["state"], e["step"]) == ("REVIEW", "review")
@@ -177,31 +177,31 @@ gate(g, []); assert g["state"] != "STOP"
 
 # light review: REVIEW_ROUND_CAP fix rounds, then STOP(BUDGET) at the fix
 r = sm.ensure_fields({"state": "REVIEW", "base": "b"})
-sm.on_review(r, "light", "FAIL", ["x"], "b", "h1"); assert (r["step"], r["counters"]["review"]) == ("fix", 1)
+sm.on_review(r, "FAIL", ["x"], "b", "h1"); assert (r["step"], r["counters"]["review"]) == ("fix", 1)
 assert r["review_from"] == "b" and r["last_reviewed"] == "h1"
 r["state"], r["step"] = "REVIEW", "review"
-sm.on_review(r, "light", "FAIL", ["y"], "h1", "h2"); assert (r["step"], r["counters"]["review"]) == ("fix", 2) and "stop" not in r
+sm.on_review(r, "FAIL", ["y"], "h1", "h2"); assert (r["step"], r["counters"]["review"]) == ("fix", 2) and "stop" not in r
 r["state"], r["step"] = "REVIEW", "review"
-sm.on_review(r, "light", "FAIL", ["z"], "h2", "h3")
+sm.on_review(r, "FAIL", ["z"], "h2", "h3")
 assert r["state"] == "STOP" and r["stop"]["reason"] == "BUDGET" and r["stop"]["prev"] == {"state": "REVIEW", "step": "fix"}
 sm.resume(r); assert (r["state"], r["step"]) == ("REVIEW", "fix") and r["caps_extra"] == {"review": 2} and r["review_from"] == "h2"
 
 l = sm.ensure_fields({"state": "REVIEW", "base": "b"})
-sm.on_review(l, "light", "FAIL", ["x"], "b", "h1"); l["step"] = "review"
-sm.on_review(l, "light", "FAIL", ["x"], "h1", "h2")
+sm.on_review(l, "FAIL", ["x"], "b", "h1"); l["step"] = "review"
+sm.on_review(l, "FAIL", ["x"], "h1", "h2")
 assert l["counters"]["no_progress"] == 1 and l["step"] == "fix"
 l["step"] = "review"
-sm.on_review(l, "light", "FAIL", ["x"], "h2", "h3")
+sm.on_review(l, "FAIL", ["x"], "h2", "h3")
 assert l["state"] == "STOP" and l["stop"]["reason"] == "NO_PROGRESS"
 p = sm.ensure_fields({"state": "REVIEW", "base": "b"})
-sm.on_review(p, "light", "PASS", [], "b", "h"); assert p["state"] == "FINISH" and p["last_reviewed"] == "h"
+sm.on_review(p, "PASS", [], "b", "h"); assert p["state"] == "FINISH" and p["last_reviewed"] == "h"
 
 # REVIEW cycle (standard / full): simplify -> candidates -> verify batches -> fix -> GATE -> candidates over the delta
 s = sm.ensure_fields({"state": "REVIEW", "step": "simplify", "base": "b"})
-sm.on_writer_done(s, "REVIEW", "simplify", True)
+sm.on_writer_done(s, "REVIEW", "simplify", True, "full")
 assert (s["state"], s["after_gate"]) == ("GATE", {"state": "REVIEW", "step": "candidates"})
 q = sm.ensure_fields({"state": "REVIEW", "step": "simplify", "base": "b", "last_reviewed": "h"})
-sm.on_writer_done(q, "REVIEW", "simplify", False)
+sm.on_writer_done(q, "REVIEW", "simplify", False, "full")
 assert q["step"] == "candidates" and q["cycle"]["range_from"] == "b"
 assert not sm.on_candidate(q, "full", "d-1", "h2") and not sm.on_candidate(q, "full", "d-2", "h2")
 assert sm.on_candidate(q, "full", "d-3", "h2")
@@ -210,7 +210,7 @@ assert q["step"] == "verify" and q["cycle"]["verify_batches"] == 2 and q["last_r
 assert q["counters"]["review"] == 1 and q["cycle_ids"] == ["f%d" % i for i in range(9)]
 sm.on_verify(q, ["f1"], [], "full"); assert q["step"] == "verify"
 sm.on_verify(q, ["f2"], [], "full"); assert q["step"] == "fix" and q["cycle"]["fix"] == ["f1", "f2"]
-sm.on_writer_done(q, "REVIEW", "fix", True)
+sm.on_writer_done(q, "REVIEW", "fix", True, "full")
 assert q["state"] == "GATE" and q["after_gate"] == {"state": "REVIEW", "step": "candidates"}
 sm.on_gate(q, [], "full"); assert q["step"] == "candidates" and q["cycle"]["range_from"] == "h2"
 # the cap: REVIEW_ROUND_CAP cycles with findings, the next one stops (BUDGET)
@@ -230,7 +230,7 @@ sm.on_sweep_filtered(w, [], "s.json", "h9"); assert w["state"] == "FINISH" and w
 w = sm.ensure_fields({"state": "REVIEW", "step": "sweep", "base": "b", "cycle": {"sweep": True, "range_from": "b"}})
 sm.on_sweep_filtered(w, ["s1"], "s.json", "h9"); assert w["step"] == "verify" and w["sweep_ids"] == ["s1"] and w["review_from"] == "b"
 sm.on_verify(w, ["s1"], [], "full"); assert w["step"] == "fix"
-sm.on_writer_done(w, "REVIEW", "fix", True); assert w["after_gate"] == {"state": "FINISH"}
+sm.on_writer_done(w, "REVIEW", "fix", True, "full"); assert w["after_gate"] == {"state": "FINISH"}
 sm.on_gate(w, [], "full"); assert w["state"] == "FINISH"
 # PLAUSIBLE findings: a human (or the mandate) decides fix|skip
 v = sm.ensure_fields({"state": "REVIEW", "step": "verify", "base": "b", "cycle": {"range_from": "b", "verify_batches": 1}})
@@ -295,7 +295,6 @@ c = parse_contract("""## Acceptance criteria
 | AC-3 | manual | look | |
 """, Path("contract.md"))
 assert [i for i, _ in auto_checks(c)] == ["AC-1", "AC-2"]
-assert [i for i, _ in auto_checks(c, ["tests/**"])] == ["AC-2"]
 g = run_gate(get_gate_commands(cfg), c, Path("."))
 assert [x.id for x in g.checks] == ["GATE-1", "GATE-2", "AC-1", "AC-2"] and g.failing == ["GATE-2", "AC-2"] and not g.green
 text = format_checks(g.checks)

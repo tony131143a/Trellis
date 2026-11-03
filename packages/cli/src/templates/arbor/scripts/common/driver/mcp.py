@@ -106,15 +106,6 @@ def envelope(path: Path, record: dict) -> dict:
     }
 
 
-def find_pending(main: Path, task: str = "_intake") -> tuple[Path, dict] | None:
-    root = pending_path(main, task, "unused").parent
-    for path in sorted(root.glob("*.json")):
-        pair = load(main, str(path))
-        if pair[1].get("status") == "pending":
-            return pair
-    return None
-
-
 def terminal_result(record: dict, payload: dict) -> tuple[ExecResult, dict]:
     """Accept raw status JSON or a complete MCP tools/call result envelope."""
     if not isinstance(payload, dict):
