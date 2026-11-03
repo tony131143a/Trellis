@@ -484,13 +484,27 @@ def next_payload(ctx: Ctx | None, partition: str | None = None, role: str | None
                 "summary": "Planning commands are running; use next --role explore|architect for another angle"}
     if not ctx.started:
         dispatch = next_dispatch_id(ctx.data, ctx.task_dir)
-        return {"task": ctx.name, "state": "CONTRACT", "needs": "human", "started": False, "dispatch": dispatch,
-                "brief_path": str(brief_path(ctx, dispatch)),
-                "human": {"kind": "approve_contract", "mandate": ctx.mandate["contract"]},
-                "contract_roles": list(CONTRACT_ROLES),
-                "summary": f"CONTRACT: finish {ctx.name}/contract.md (research with `arbor run --role "
-                           "explore|architect|review [--mode plan]` after writing the brief); after human "
-                           "approval run `task.py start`"}
+        out = {"task": ctx.name, "state": "CONTRACT", "needs": "human", "started": False, "dispatch": dispatch,
+               "brief_path": str(brief_path(ctx, dispatch)),
+               "human": {"kind": "approve_contract", "mandate": ctx.mandate["contract"]},
+               "contract_roles": list(CONTRACT_ROLES),
+               "summary": f"CONTRACT: finish {ctx.name}/contract.md (research with `arbor run --role "
+                          "explore|architect|review [--mode plan]` after writing the brief); after human "
+                          "approval run `task.py start`"}
+        if ctx.data.get("children") and _live_integration(ctx):
+            view = _integration_view(ctx, _children_rows(ctx))
+            out["integration"] = view
+            if view and view.get("all_merged"):
+                out["needs"] = "run"
+                out["summary"] = (f"every child of {ctx.name} is merged into {view['branch']}: "
+                                  f"`task.py integrate {ctx.name}` starts the integration review")
+            else:
+                out["summary"] = (f"parent {ctx.name}: {view['children_merged']}/{len(ctx.data['children'])} "
+                                  "children merged; drive the children, then `task.py integrate`")
+        return out
+    if sm.unassigned_batch(ctx.data, ctx.tier):
+        with editing(ctx):  # a reader step entered outside the driver's own saves (task.py integrate)
+            save(ctx)
     data = ctx.data
     sm.reap_stale(data, pid_alive)  # in memory only; the next locked write persists it
     step = _current_step(ctx, partition)
@@ -991,7 +1005,8 @@ def _advance(ctx: Ctx, state: str, step: str, role: str, dispatch: str, out: Out
     if (state, step) == ("REVIEW", "review"):
         ids = [rv.finding_id(f) for f in out.check.findings
                if str(f.get("verdict", "")).upper() in ("CONFIRMED", "PLAUSIBLE")]
-        sm.on_review(data, out.check.verdict or "FAIL", ids, out.range_spec.split("..")[0], out.head_before)
+        sm.on_review(data, out.check.verdict or "FAIL", ids, out.range_spec.split("..")[0], out.head_before,
+                     ctx.tier)
     elif (state, step) == ("REVIEW", "candidates"):
         cycle = data.setdefault("cycle", {})
         cycle.setdefault("candidate_findings", []).extend(out.check.findings)
@@ -1428,7 +1443,11 @@ def cmd_gate(args: argparse.Namespace, ctx: Ctx | None = None) -> int:
         data = ctx.data
         if data["state"] != "GATE" or sm.step_of(data) != "gate":
             return 1 if result.failing else 0
-        sm.on_gate(data, result.failing, ctx.tier)
+        delta = None
+        if (data.get("after_gate") or {}).get("step") == "recheck" and data.get("last_reviewed"):
+            delta = fin.changed_lines(ctx.worktree, f"{data['last_reviewed']}..HEAD")  # the fix delta
+        sm.on_gate(data, result.failing, ctx.tier, delta_lines=delta,
+                   recheck_max_lines=int(ctx.mandate["auto_merge_max_lines"]))
         apply_mandate(ctx)
         number = data["counters"]["gate"]
         report = ctx.task_dir / "reports" / f"gate-{number}.md"
@@ -1526,7 +1545,10 @@ def _override(ctx: Ctx, args: argparse.Namespace) -> int:
         if state not in sm.DEFAULT_STEP or state == "STOP":
             raise DriverError(f"unknown state {state!r}")
         data.pop("stop", None)
-        sm.goto(data, state, step or None)
+        if (state, step) == ("REVIEW", "candidates"):
+            sm.start_cycle(data)  # a candidate cycle needs its range and counters
+        else:
+            sm.goto(data, state, step or None)
         record["to"] = f"{data['state']}/{data['step']}"
     elif args.role:
         if args.role not in PROMPT_ROLES:
@@ -1692,12 +1714,8 @@ def _integration_cleanup(ctx: Ctx) -> int:
     return 0
 
 
-def cmd_children(args: argparse.Namespace) -> int:
-    ctx = load_ctx(args.task)
-    if ctx is None:
-        raise DriverError("no active task (pass --task <parent>)")
-    if getattr(args, "cleanup", False):
-        return _integration_cleanup(ctx)
+def _children_rows(ctx: Ctx) -> list[dict]:
+    """One row per child: where it is, whether it is merged into its target."""
     record = ctx.data.get("integration") if isinstance(ctx.data.get("integration"), dict) else None
     roots = (Path(record["worktree"]),) if record and Path(record["worktree"]).is_dir() else ()
     rows = []
@@ -1720,6 +1738,16 @@ def cmd_children(args: argparse.Namespace) -> int:
             if record and started and data.get("state") != "DONE" and fin.branch_exists(ctx.main, data["branch"]):
                 row["behind"] = not fin.is_merged(ctx.main, record["branch"], data["branch"])
         rows.append(row)
+    return rows
+
+
+def cmd_children(args: argparse.Namespace) -> int:
+    ctx = load_ctx(args.task)
+    if ctx is None:
+        raise DriverError("no active task (pass --task <parent>)")
+    if getattr(args, "cleanup", False):
+        return _integration_cleanup(ctx)
+    rows = _children_rows(ctx)
     view = _integration_view(ctx, rows)
     if args.json:
         print(json.dumps({"task": ctx.name, "children": rows, "integration": view}, ensure_ascii=False))
@@ -1739,10 +1767,13 @@ def cmd_children(args: argparse.Namespace) -> int:
         print(f"  integration: {view['branch']} at {view['worktree']} -> {view['base_branch']}, "
               f"{view['children_merged']}/{len(rows)} children merged")
         if view["merged_into_base"]:
-            print(f"  merged into {view['base_branch']}: `arbor --task {ctx.name} children --cleanup`")
+            print(f"  merged into {view['base_branch']}: `arbor --task {ctx.name} "
+                  f"{'finish' if ctx.started else 'children --cleanup'}`")
+        elif ctx.started:
+            print(f"  integration review running: `arbor --task {ctx.name} next`")
         elif view["all_merged"]:
-            print(f"  every child is merged: integration review over {view['sweep_range']}, `arbor --task {ctx.name} gate`, "
-                  f"then a human merges it: {view['merge_command']}")
+            print(f"  every child is merged: `task.py integrate {ctx.name}` starts the integration review "
+                  f"(candidates, verify, fix on {view['branch']}), then a human merges it: {view['merge_command']}")
     return 0
 
 
@@ -1789,7 +1820,8 @@ def cmd_finish(args: argparse.Namespace) -> int:
     rc = fin.finish_before_merge(ctx.main, ctx.worktree, ctx.task_dir, ctx.task_rel, ctx.data, ctx.tier,
                                  want_pr=args.pr, save=lambda: save(ctx),
                                  auto_merge_max_lines=mandate["auto_merge_max_lines"]
-                                 if mandate["merge"] == "auto" and not args.pr else None,
+                                 if mandate["merge"] == "auto" and not args.pr and not ctx.data.get("integration_review")
+                                 else None,
                                  scope=scope, gate=gate)
     merged_itself = ctx.data.get("auto_merge") or ctx.data.get("integration_merge")
     if rc == 0 and merged_itself and fin.is_merged(ctx.main, ctx.branch, fin.base_branch_of(ctx.main, ctx.data)):

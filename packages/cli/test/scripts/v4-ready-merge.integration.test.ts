@@ -4,7 +4,8 @@
  * review binding (a PASS holds only for the head it saw) and the two-level
  * merge (children merge into the parent's integration branch without a
  * human, in the same `arbor finish` run that writes their scorecard; the
- * baseline only by a human).
+ * baseline only by a human) and the parent's integration review
+ * (`task.py integrate`: candidates -> verify -> fix on the integration branch).
  */
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -143,19 +144,22 @@ const childJson = (f: Fixture, child: string): Json =>
     fs.readFileSync(path.join(childDir(f, child), "task.json"), "utf-8"),
   );
 
-/** Light child to FINISH: implement -> gate -> review PASS, all in its own worktree. */
+/** Child to FINISH: implement -> gate, all in its own worktree; its review is deferred to the parent. */
 function driveChildToFinish(
   f: Fixture,
   child: string,
   files: { path: string; content: string }[],
 ): void {
   const dir = childDir(f, child);
-  f.plan({ "d-001": { write: files }, "d-002": { reply: reviewPass } });
+  expect(childJson(f, child).review_deferred).toBe(true);
+  f.plan({ "d-001": { write: files } });
   writeFile(dir, "briefs/d-001.md", "Brief for d-001.\n");
   ok(complete(f, f.run("--task", dir, "run", "--dispatch", "d-001")));
+  expect(childJson(f, child)).toMatchObject({
+    state: "GATE",
+    after_gate: { state: "FINISH" },
+  });
   ok(f.run("--task", dir, "gate"));
-  writeFile(dir, "briefs/d-002.md", "Brief for d-002.\n");
-  ok(complete(f, f.run("--task", dir, "run", "--dispatch", "d-002")));
   expect(childJson(f, child).state).toBe("FINISH");
 }
 
@@ -499,6 +503,161 @@ describe.skipIf(!hasPython())(
       expect(f.run("--task", f.taskDir, "children").stdout).toContain(
         "merged and cleaned up",
       );
+    });
+
+    it("task.py integrate: the parent reviews every merged child on the integration branch, fixes there, a human merges it", () => {
+      f = setupFixture({ start: false, gate: ["true"] });
+      const mainBefore = git(f.repo, "rev-parse", "main");
+      const integration = `arbor/${TASK}`;
+      const landing = path.join(f.tmp, "proj-wt", TASK);
+      const parentDir = path.join(landing, ".arbor", "tasks", TASK);
+      const parentJson = (): Json =>
+        JSON.parse(fs.readFileSync(path.join(parentDir, "task.json"), "utf-8"));
+      const review = (v: string, fs_: object[]) =>
+        `${v}\n\n\`\`\`json\n${JSON.stringify(fs_)}\n\`\`\`\nMode: m; angles: A; single-context pass.\n`;
+      const finding = {
+        file: "src/feature.txt",
+        line: 1,
+        angle: "B",
+        summary: "wrong word",
+        failure_scenario: "x",
+        evidence: "feature",
+        fix: "feature!",
+      };
+      const play = (id: string) => {
+        writeFile(parentDir, `briefs/${id}.md`, `Brief for ${id}.\n`);
+        return complete(f, f.run("--task", parentDir, "run", "--dispatch", id));
+      };
+
+      const a = createChild(f, "childa", CONTRACT);
+      ok(taskPy(f, "start", a));
+      // integrate waits for every child
+      const early = taskPy(f, "integrate", TASK);
+      expect(early.status).toBe(1);
+      expect(early.stdout + early.stderr).toContain(
+        "not every child is merged",
+      );
+      expect(
+        JSON.parse(f.run("--task", f.taskDir, "next", "--json").stdout).summary,
+      ).toContain("0/1 children merged");
+
+      driveChildToFinish(f, a, IMPLEMENTED);
+      ok(f.run("--task", childDir(f, a), "finish"));
+      expect(f.taskJson().integration.merged.map((m: Json) => m.task)).toEqual([
+        a,
+      ]);
+      expect(
+        JSON.parse(f.run("--task", f.taskDir, "next", "--json").stdout),
+      ).toMatchObject({
+        needs: "run",
+        summary: expect.stringContaining(`task.py integrate ${TASK}`),
+      });
+
+      // integrate: the parent takes the integration worktree and enters REVIEW/candidates over base..HEAD
+      const started = taskPy(f, "integrate", TASK);
+      ok(started);
+      expect(started.stdout).toContain("state REVIEW/candidates");
+      expect(fs.existsSync(f.taskDir)).toBe(false);
+      expect(parentJson()).toMatchObject({
+        status: "in_progress",
+        state: "REVIEW",
+        step: "candidates",
+        branch: integration,
+        worktree_path: landing,
+        base: mainBefore,
+        base_branch: "main",
+        sweep_done: true,
+        integration_review: true,
+        meta: { tier: "standard" },
+        cycle: { range_from: mainBefore },
+      });
+      expect(git(landing, "log", "-1", "--format=%s")).toBe(
+        `integrate(${TASK}): start the integration review`,
+      );
+      expect(taskPy(f, "integrate", TASK).status).toBe(1); // only once
+      const next = JSON.parse(f.run("--task", TASK, "next", "--json").stdout);
+      expect(next).toMatchObject({
+        state: "REVIEW",
+        role: "review",
+        mode: "candidates",
+        dispatch: "d-001",
+        range: `${mainBefore}..${git(landing, "rev-parse", "HEAD")}`,
+      });
+      expect(next.batch.map((b: Json) => b.dispatch)).toEqual([
+        "d-001",
+        "d-002",
+      ]);
+
+      f.plan({
+        "d-001": {
+          reply: review("FAIL", [{ ...finding, verdict: "CANDIDATE" }]),
+        },
+        "d-002": { reply: reviewPass },
+        "d-003": {
+          reply: `\`\`\`json\n${JSON.stringify([{ ...finding, verdict: "CONFIRMED" }])}\n\`\`\`\nCONFIRMED 1, PLAUSIBLE 0, REFUTED 0.\n`,
+        },
+        "d-004": {
+          write: [{ path: "src/feature.txt", content: "feature!\n" }],
+          reply: "## Fix: Done\n",
+        },
+        "d-005": { reply: reviewPass },
+      });
+      ok(play("d-001"));
+      ok(play("d-002"));
+      expect(parentJson()).toMatchObject({
+        step: "verify",
+        counters: { review: 1 },
+      });
+      ok(play("d-003"));
+      expect(parentJson()).toMatchObject({ step: "fix" });
+      ok(play("d-004")); // the fix lands on the integration branch itself
+      expect(git(landing, "log", "-3", "--format=%s")).toContain(
+        `fix(${TASK}): work`,
+      );
+      expect(parentJson()).toMatchObject({
+        state: "GATE",
+        after_gate: { state: "REVIEW", step: "recheck" },
+      });
+      ok(f.run("--task", parentDir, "gate"));
+      expect(parentJson()).toMatchObject({ state: "REVIEW", step: "review" });
+      ok(play("d-005"));
+      expect(parentJson().state).toBe("FINISH");
+
+      // FINISH: scorecard, then the human merge of the integration branch into the baseline
+      const finish = f.run("--task", parentDir, "finish");
+      ok(finish);
+      expect(finish.stdout).toContain(`merge --no-ff ${integration}`);
+      expect(git(f.repo, "rev-parse", "main")).toBe(mainBefore);
+      expect(fs.existsSync(path.join(parentDir, "scorecard.md"))).toBe(true);
+      git(f.repo, "merge", "--no-ff", "--no-edit", integration);
+      expect(
+        fs.readFileSync(path.join(f.repo, "src/feature.txt"), "utf-8"),
+      ).toBe("feature!\n");
+      const done = f.run("--task", TASK, "finish");
+      ok(done);
+      expect(done.stdout).toContain(`${TASK}: DONE`);
+      expect(fs.existsSync(landing)).toBe(false);
+      expect(
+        spawnSync(
+          "git",
+          ["rev-parse", "--verify", "--quiet", `refs/heads/${integration}`],
+          { cwd: f.repo },
+        ).status,
+      ).not.toBe(0);
+      const archive = path.join(f.repo, ".arbor/tasks/archive", month());
+      expect(fs.existsSync(path.join(archive, TASK))).toBe(true);
+      expect(fs.existsSync(path.join(archive, a))).toBe(true);
+      const archived = JSON.parse(
+        fs.readFileSync(path.join(archive, TASK, "task.json"), "utf-8"),
+      );
+      expect(archived.integration.cleaned).toBeTruthy();
+      const workspace = path.join(f.repo, ".arbor/workspace/tester");
+      const journal = fs
+        .readdirSync(workspace)
+        .filter((n) => n.startsWith("journal-"))
+        .map((n) => fs.readFileSync(path.join(workspace, n), "utf-8"))
+        .join("\n");
+      expect(journal).toContain(`${a}:`);
     });
   },
 );

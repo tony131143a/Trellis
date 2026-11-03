@@ -159,10 +159,14 @@ sm.resume(d); assert (d["state"], d["step"]) == ("GATE", "decide") and d["counte
 d["after_gate"] = {"state": "REVIEW", "step": "review"}
 sm.on_gate(d, []); assert (d["state"], d["step"]) == ("REVIEW", "review") and d["gate_reds"] == 0
 # implement -> GATE -> the tier's REVIEW entry
-for tier, want in (("light", "review"), ("standard", "simplify"), ("full", "simplify")):
+for tier, want in (("light", "review"), ("standard", "candidates"), ("full", "candidates")):
     e = sm.ensure_fields({"state": "BUILD", "step": "implement", "base": "b"})
     sm.on_writer_done(e, "BUILD", "implement", True, tier); assert e["state"] == "GATE"
     sm.on_gate(e, [], tier); assert (e["state"], e["step"]) == ("REVIEW", want), (tier, e)
+# a child with a deferred review (its parent reviews the integration branch) finishes after the gate
+e = sm.ensure_fields({"state": "BUILD", "step": "implement", "base": "b", "review_deferred": True})
+sm.on_writer_done(e, "BUILD", "implement", True, "standard"); assert e["after_gate"] == {"state": "FINISH"}
+sm.on_gate(e, [], "standard"); assert e["state"] == "FINISH"
 e = sm.ensure_fields({"state": "GATE", "base": "b"})
 sm.on_gate(e, [], "light"); assert (e["state"], e["step"]) == ("REVIEW", "review")
 
@@ -196,12 +200,9 @@ assert l["state"] == "STOP" and l["stop"]["reason"] == "NO_PROGRESS"
 p = sm.ensure_fields({"state": "REVIEW", "base": "b"})
 sm.on_review(p, "PASS", [], "b", "h"); assert p["state"] == "FINISH" and p["last_reviewed"] == "h"
 
-# REVIEW cycle (standard / full): simplify -> candidates -> verify batches -> fix -> GATE -> candidates over the delta
-s = sm.ensure_fields({"state": "REVIEW", "step": "simplify", "base": "b"})
-sm.on_writer_done(s, "REVIEW", "simplify", True, "full")
-assert (s["state"], s["after_gate"]) == ("GATE", {"state": "REVIEW", "step": "candidates"})
-q = sm.ensure_fields({"state": "REVIEW", "step": "simplify", "base": "b", "last_reviewed": "h"})
-sm.on_writer_done(q, "REVIEW", "simplify", False, "full")
+# REVIEW cycle (standard / full): candidates -> verify batches -> fix -> GATE -> recheck of the delta
+q = sm.ensure_fields({"state": "GATE", "base": "b", "last_reviewed": "h"})
+sm.on_gate(q, [], "full")  # a green gate after BUILD opens the first cycle over base..HEAD
 assert q["step"] == "candidates" and q["cycle"]["range_from"] == "b"
 assert not sm.on_candidate(q, "full", "d-1", "h2") and not sm.on_candidate(q, "full", "d-2", "h2")
 assert sm.on_candidate(q, "full", "d-3", "h2")
@@ -211,8 +212,14 @@ assert q["counters"]["review"] == 1 and q["cycle_ids"] == ["f%d" % i for i in ra
 sm.on_verify(q, ["f1"], [], "full"); assert q["step"] == "verify"
 sm.on_verify(q, ["f2"], [], "full"); assert q["step"] == "fix" and q["cycle"]["fix"] == ["f1", "f2"]
 sm.on_writer_done(q, "REVIEW", "fix", True, "full")
-assert q["state"] == "GATE" and q["after_gate"] == {"state": "REVIEW", "step": "candidates"}
-sm.on_gate(q, [], "full"); assert q["step"] == "candidates" and q["cycle"]["range_from"] == "h2"
+assert q["state"] == "GATE" and q["after_gate"] == {"state": "REVIEW", "step": "recheck"}
+import copy
+small = copy.deepcopy(q); sm.on_gate(small, [], "full", delta_lines=sm.RECHECK_MAX_LINES)
+assert (small["state"], small["step"]) == ("REVIEW", "review"), small  # one self-check reader over last_reviewed..HEAD
+unknown = copy.deepcopy(q); sm.on_gate(unknown, [], "full")
+assert unknown["step"] == "candidates", unknown  # no delta size known: the full cycle
+sm.on_gate(q, [], "full", delta_lines=sm.RECHECK_MAX_LINES + 1)
+assert q["step"] == "candidates" and q["cycle"]["range_from"] == "h2"
 # the cap: REVIEW_ROUND_CAP cycles with findings, the next one stops (BUDGET)
 q["counters"]["review"] = sm.REVIEW_ROUND_CAP
 for n in range(3): sm.on_candidate(q, "full", "d-%d" % (4 + n), "h3")
@@ -230,8 +237,12 @@ sm.on_sweep_filtered(w, [], "s.json", "h9"); assert w["state"] == "FINISH" and w
 w = sm.ensure_fields({"state": "REVIEW", "step": "sweep", "base": "b", "cycle": {"sweep": True, "range_from": "b"}})
 sm.on_sweep_filtered(w, ["s1"], "s.json", "h9"); assert w["step"] == "verify" and w["sweep_ids"] == ["s1"] and w["review_from"] == "b"
 sm.on_verify(w, ["s1"], [], "full"); assert w["step"] == "fix"
-sm.on_writer_done(w, "REVIEW", "fix", True, "full"); assert w["after_gate"] == {"state": "FINISH"}
-sm.on_gate(w, [], "full"); assert w["state"] == "FINISH"
+sm.on_writer_done(w, "REVIEW", "fix", True, "full"); assert w["after_gate"] == {"state": "REVIEW", "step": "recheck"}
+sm.on_gate(w, [], "full", delta_lines=3); assert (w["state"], w["step"]) == ("REVIEW", "review")
+sm.on_review(w, "PASS", [], "h9", "h10", "full"); assert w["state"] == "FINISH" and "cycle" not in w  # the sweep never repeats
+# a clean self-check in full before the sweep goes to the sweep, not to FINISH
+x = sm.ensure_fields({"state": "REVIEW", "step": "review", "base": "b"})
+sm.on_review(x, "PASS", [], "b", "h", "full"); assert (x["state"], x["step"]) == ("REVIEW", "sweep")
 # PLAUSIBLE findings: a human (or the mandate) decides fix|skip
 v = sm.ensure_fields({"state": "REVIEW", "step": "verify", "base": "b", "cycle": {"range_from": "b", "verify_batches": 1}})
 sm.on_verify(v, ["c1"], ["p1"], "standard")
@@ -262,7 +273,8 @@ sm.resume(y); assert (y["state"], y["step"]) == ("GATE", "gate")
 step = sm.plan(sm.ensure_fields({"state": "BUILD", "base": "b"}), "light")
 assert (step.needs, step.role, step.range_from) == ("brief", "implement", "b")
 assert sm.plan({"state": "FINISH"}, "light").human == {"kind": "merge"}
-assert set(sm.DISPATCH_STEPS.values()) == {"implement", "fix", "review", "simplify", "verify"}
+assert set(sm.DISPATCH_STEPS.values()) == {"implement", "fix", "review", "verify"}
+assert ("REVIEW", "simplify") not in sm.DISPATCH_STEPS  # simplify runs only through override --role simplify
 assert "POLISH" not in sm.STATES and sm.DECIDE_CHOICES == ("impl", "contract")
 print("ok")
 `);

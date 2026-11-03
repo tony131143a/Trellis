@@ -454,19 +454,27 @@ def merge_checks(worktree: Path, task_rel: str, data: dict, target: str,
     files = ig.out_of_scope(worktree, f"{target}...HEAD", scope)
     if files:
         return f"{len(files)} changed file(s) outside the declared paths", files
+    if data.get("review_deferred"):
+        return None, []  # the parent reviews the integration branch (task.py integrate)
     return ig.review_binding_problem(worktree, data.get("last_reviewed"), target, task_rel), []
+
+
+def changed_lines(repo: Path, range_spec: str) -> int:
+    """Product lines (added + deleted) ``range_spec`` changes; the task's own
+    metadata commits (.arbor/tasks/<task>) do not count."""
+    rc, out, _ = run_git(["diff", "--numstat", range_spec, "--", ".", f":(exclude){DIR_WORKFLOW}/{DIR_TASKS}"],
+                         cwd=repo)
+    lines = 0
+    for row in out.splitlines() if rc == 0 else []:
+        cols = row.split("\t")
+        lines += sum(int(c) for c in cols[:2] if c.isdigit())
+    return lines
 
 
 def auto_merge_blocked(main: Path, branch: str, base: str, max_lines: int) -> tuple[str | None, int]:
     """Why the mandate's auto-merge rule does not hold for ``branch`` (None when it
     does), plus the product lines the branch changes."""
-    # Product lines only: the task's own metadata commits (.arbor/tasks/<task>) do not count.
-    rc, out, _ = run_git(["diff", "--numstat", f"{base}...{branch}", "--", ".", f":(exclude){DIR_WORKFLOW}/{DIR_TASKS}"],
-                         cwd=main)
-    lines = 0
-    for row in out.splitlines() if rc == 0 else []:
-        cols = row.split("\t")
-        lines += sum(int(c) for c in cols[:2] if c.isdigit())
+    lines = changed_lines(main, f"{base}...{branch}")
     if lines >= max_lines:
         return f"{lines} changed lines, auto-merge allows fewer than {max_lines}", lines
     if current_branch(main) != base:
@@ -656,6 +664,9 @@ def start_cleanup(main: Path, task_dir: Path, data: dict) -> dict:
         # The checkout of the target branch: the merged copy of the task lives there.
         "landing": str(ig.checkout_of(main, base) or main),
         "integration_parent": (data.get("integration_target") or {}).get("parent"),
+        # An integrated parent: the children its integration branch carried.
+        "children": [{"task": m.get("task"), "summary": m.get("summary")}
+                     for m in (data.get("integration") or {}).get("merged") or []],
     }
 
 
@@ -725,6 +736,9 @@ def cleanup(main: Path, record: dict) -> int:
                 raise FinishError(f"cannot read {path}: {reason}")
             data["state"], data["step"] = "DONE", "done"
             data.pop("decision", None)
+            if isinstance(data.get("integration"), dict):
+                data["integration"]["cleaned"] = utc_now()
+                data["integration"]["merge_commit"] = record["merge_commit"]
             if not write_json(path, data):
                 raise FinishError(f"failed to write {path}")
         mark("state")
@@ -754,10 +768,12 @@ def cleanup(main: Path, record: dict) -> int:
 
     if "journal" not in done:
         short = record["merge_commit"][:12]
+        children = [arg for m in record.get("children") or [] for arg in ("--change", f"{m['task']}: {m['summary']}")]
         rc, out = _script(
             main, "add_session.py", "--title", record["title"], "--commit", record["merge_commit"],
             "--summary", record["summary"], "--branch", record["base_branch"],
             "--change", f"Merged {record['branch']} into {record['base_branch']} ({short})",
+            *children,
             "--change", f"Scorecard archived with the task: {name}/{SCORECARD}",
             "--test", f"Gate: {record['gate_rounds']} round(s); last round green",
             "--idempotency-key", f"arbor-finish-{name}"[:64],

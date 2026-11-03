@@ -97,8 +97,8 @@ def ensure(main: Path, config: dict, parent: Path) -> dict:
     if data is None:
         raise IntegrationError(f"cannot read {json_path}: {reason}")
     if data.get("worktree_path") or data.get("state"):
-        raise IntegrationError(f"parent {parent.name} is started; its children cannot merge into it "
-                               "(start a child with --base-branch <branch> at create time instead)")
+        raise IntegrationError(f"parent {parent.name} is in its integration review (task.py integrate); "
+                               "no new child can join it (create one with --base-branch <branch> instead)")
     record = data.get("integration")
     if isinstance(record, dict) and not record.get("cleaned"):
         if not Path(record["worktree"]).is_dir():

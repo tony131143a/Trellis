@@ -577,7 +577,7 @@ sm.on_merge_conflict(d, {"partition": "tests", "files": ["a"], "branch": "x--tes
 assert sm.plan(d, "full", W).human["kind"] == "merge_conflict"
 assert sm.on_conflict_resolved(d, "s") == "tests" and "merge_conflict" not in d
 sm.on_wave_merged(d, 1, "full")
-assert (d["state"], d["after_gate"]) == ("GATE", {"state": "REVIEW", "step": "simplify"})
+assert (d["state"], d["after_gate"]) == ("GATE", {"state": "REVIEW", "step": "candidates"})
 assert d["wave_history"][0]["partitions"]["tests"]["merge"] == "s"
 
 # the review cap never stops a green gate: the next candidates cycle opens
@@ -619,13 +619,8 @@ print("ok")
         `implement(${TASK}): seed\n\nArbor-Dispatch: d-000`,
       );
       ok(f.run("override", "--reason", "test setup", "--to", "GATE"));
-      // the gate resolves the REVIEW entry: full simplifies first
+      // the gate resolves the REVIEW entry: the candidate readers
       ok(f.run("gate"));
-      expect(f.next()).toMatchObject({
-        state: "REVIEW",
-        role: "simplify",
-        dispatch: "d-001",
-      });
 
       const finding = {
         file: "src/app.txt",
@@ -639,34 +634,33 @@ print("ok")
       const review = (v: string, fs_: object[]) =>
         `${v}\n\n\`\`\`json\n${JSON.stringify(fs_)}\n\`\`\`\nMode: m; angles: A; single-context pass.\n`;
       f.plan({
-        "d-001": { reply: "## Simplify: No Change\n" },
+        "d-001": { reply: review("PASS", []) },
         "d-002": { reply: review("PASS", []) },
         "d-003": { reply: review("PASS", []) },
-        "d-004": { reply: review("PASS", []) },
-        "d-005": {
+        "d-004": {
           reply: review("FAIL", [{ ...finding, verdict: "CANDIDATE" }]),
         },
-        "d-006": {
+        "d-005": {
           reply: `\`\`\`json\n${JSON.stringify([{ ...finding, verdict: "CONFIRMED" }])}\n\`\`\`\nCONFIRMED 1, PLAUSIBLE 0, REFUTED 0.\n`,
         },
-        "d-007": {
+        "d-006": {
           write: [{ path: "src/app.txt", content: "one\nTWO\nthree\n" }],
           reply: "## Fix: Done\n",
         },
+        "d-007": { reply: review("PASS", []) },
       });
-      expect(dispatch(f, "d-001").status).toBe(0);
       // three candidate readers, all delegated before any is collected
       const candidates = f.next();
       expect(candidates).toMatchObject({
         state: "REVIEW",
         role: "review",
         mode: "candidates",
-        dispatch: "d-002",
+        dispatch: "d-001",
       });
       expect(candidates.batch.map((b: Json) => b.dispatch)).toEqual([
+        "d-001",
         "d-002",
         "d-003",
-        "d-004",
       ]);
       const runs = candidates.batch.map((b: Json) => {
         f.brief(b.dispatch);
@@ -677,18 +671,18 @@ print("ok")
       const delegated = f.next();
       expect(delegated.needs).toBe("delegation");
       expect(delegated.items.map((i: Json) => [i.dispatch, i.needs])).toEqual([
+        ["d-001", "delegation"],
         ["d-002", "delegation"],
         ["d-003", "delegation"],
-        ["d-004", "delegation"],
       ]);
       expect(Object.keys(f.taskJson().batch.running)).toEqual([
+        "d-001",
         "d-002",
         "d-003",
-        "d-004",
       ]);
       for (const res of runs) ok(complete(f, res));
       expect(
-        fs.readFileSync(path.join(f.taskDir, "reports/d-004.md"), "utf-8"),
+        fs.readFileSync(path.join(f.taskDir, "reports/d-003.md"), "utf-8"),
       ).toContain("kept 0, dropped 0");
       // nothing kept: full sweeps once instead of finishing
       const base = f.taskJson().base;
@@ -696,26 +690,35 @@ print("ok")
         state: "REVIEW",
         role: "review",
         mode: "sweep",
-        dispatch: "d-005",
+        dispatch: "d-004",
         range: expect.stringMatching(new RegExp(`^${base}\\.\\.`)),
       });
-      expect(dispatch(f, "d-005").status).toBe(0);
+      expect(dispatch(f, "d-004").status).toBe(0);
       expect(
-        fs.readFileSync(path.join(f.tmp, "received/d-005.md"), "utf-8"),
+        fs.readFileSync(path.join(f.tmp, "received/d-004.md"), "utf-8"),
       ).toContain("Mode: sweep");
       expect(f.taskJson()).toMatchObject({
         step: "verify",
         sweep_done: true,
         sweep_ids: ["src/app.txt:2:wrong word"],
       });
+      expect(dispatch(f, "d-005").status).toBe(0);
+      expect(f.next()).toMatchObject({ role: "fix", dispatch: "d-006" });
       expect(dispatch(f, "d-006").status).toBe(0);
-      expect(f.next()).toMatchObject({ role: "fix", dispatch: "d-007" });
-      expect(dispatch(f, "d-007").status).toBe(0);
       expect(f.taskJson()).toMatchObject({
         state: "GATE",
-        after_gate: { state: "FINISH" },
+        after_gate: { state: "REVIEW", step: "recheck" },
       });
+      // a small fix delta: one self-check reader over last_reviewed..HEAD, then FINISH (the sweep never repeats)
       ok(f.run("gate"));
+      const reviewedTo = f.taskJson().last_reviewed;
+      expect(f.next()).toMatchObject({
+        role: "review",
+        mode: "self-check",
+        dispatch: "d-007",
+        range: expect.stringMatching(new RegExp(`^${reviewedTo}\\.\\.`)),
+      });
+      expect(dispatch(f, "d-007").status).toBe(0);
       const data = f.taskJson();
       expect(data.state).toBe("FINISH");
       expect(

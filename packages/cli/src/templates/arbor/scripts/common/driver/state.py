@@ -9,16 +9,23 @@ nothing else (no git, no subprocesses), so ``arbor next`` stays cheap.
     BUILD     partitions  (below)  a wave of named partitions, see "Waves"
     GATE      gate        run      green -> after_gate; red -> decide (impl|contract)
     GATE      fix         brief    -> GATE gate
-    REVIEW    review      brief    light: one review self-check: PASS -> FINISH;
-                                   FAIL -> fix (round cap)
-    REVIEW    simplify    brief    standard / full entry: commit -> GATE -> candidates;
-                                   No Change -> candidates
-    REVIEW    candidates  brief    N review candidates -> prefilter -> verify
+    REVIEW    review      brief    one review self-check over last_reviewed..HEAD (light
+                                   entry; every tier after a fix): PASS -> FINISH (full:
+                                   sweep first); FAIL -> fix (round cap)
+    REVIEW    candidates  brief    standard / full entry: N review candidates -> prefilter
+                                   -> verify
     REVIEW    verify      brief    PLAUSIBLE -> plausible; CONFIRMED -> fix; none -> FINISH
     REVIEW    plausible   human    decide fix|skip
-    REVIEW    fix         brief    -> GATE -> review (light) / candidates (last_reviewed..HEAD)
+    REVIEW    fix         brief    -> GATE -> recheck: the fix delta (last_reviewed..HEAD)
+                                   within ``recheck_max_lines`` -> review (self-check);
+                                   larger -> candidates
     REVIEW    sweep       brief    full only, once: review sweep base..HEAD ->
-                                   prefilter -> verify -> fix -> GATE -> FINISH
+                                   prefilter -> verify -> fix -> GATE -> recheck
+
+A child started on its parent's integration branch carries ``review_deferred``:
+BUILD -> GATE -> FINISH, and the parent reviews every child at once on the
+integration branch (``task.py integrate``). ``simplify`` is no longer a step of
+its own; ``arbor override --role simplify`` runs it on demand.
     CONTRACT  approve     human    edit contract.md; ``arbor resume`` re-approves
     FINISH    finish      run      ``arbor finish``: scorecard, then PR or merge command
                           human    a person merges the task branch (``--no-ff``)
@@ -79,7 +86,6 @@ DISPATCH_STEPS = {
     ("BUILD", "implement"): "implement",
     ("GATE", "fix"): "fix",
     ("REVIEW", "review"): "review",
-    ("REVIEW", "simplify"): "simplify",
     ("REVIEW", "candidates"): "review",
     ("REVIEW", "verify"): "verify",
     ("REVIEW", "fix"): "fix",
@@ -90,6 +96,7 @@ PLAUSIBLE_CHOICES = ("fix", "skip")
 
 REVIEW_ROUND_CAP = 2  # fix rounds, every tier
 GATE_RED_CAP = 4  # consecutive red gate rounds
+RECHECK_MAX_LINES = 200  # a fix delta up to this many lines is re-reviewed by one self-check reader
 CANDIDATE_READERS = {"standard": 2, "full": 3}
 BATCH_STEPS = (("REVIEW", "candidates"), ("REVIEW", "verify"))
 VERIFY_BATCH = 8
@@ -144,8 +151,16 @@ def step_of(data: dict) -> str:
 
 
 def review_entry(tier: str | None) -> str:
-    """The first REVIEW step of a tier: light reviews directly, the others simplify first."""
-    return "review" if tier == "light" else "simplify"
+    """The first REVIEW step of a tier: light one self-check, the others the candidate readers."""
+    return "review" if tier == "light" else "candidates"
+
+
+def after_build(data: dict, tier: str | None) -> dict:
+    """Where a green gate goes once BUILD is done: a child with a deferred review
+    (its parent reviews the integration branch) finishes; everything else enters REVIEW."""
+    if data.get("review_deferred"):
+        return {"state": "FINISH"}
+    return {"state": "REVIEW", "step": review_entry(tier)}
 
 
 def goto(data: dict, state: str, step: str | None = None) -> None:
@@ -440,28 +455,21 @@ def on_violation(data: dict, role: str, dispatch: str, violations: list[str]) ->
 def on_writer_done(data: dict, state: str, step: str, committed: bool, tier: str | None) -> None:
     """After an ok writer dispatch."""
     if state == "BUILD" and step == "implement":
-        data["after_gate"] = {"state": "REVIEW", "step": review_entry(tier)}
+        data["after_gate"] = after_build(data, tier)
         goto(data, "GATE")
     elif state == "GATE":
         goto(data, "GATE")
-    elif state == "REVIEW" and step == "simplify":
-        if committed:
-            data["after_gate"] = {"state": "REVIEW", "step": "candidates"}
-            goto(data, "GATE")
-        else:
-            _start_cycle(data)
     elif state == "REVIEW" and step == "fix":
-        if tier == "light":
-            data["after_gate"] = {"state": "REVIEW", "step": "review"}  # re-review the delta
-        elif (data.get("cycle") or {}).get("sweep"):
-            data["after_gate"] = {"state": "FINISH"}
-        else:
-            data["after_gate"] = {"state": "REVIEW", "step": "candidates"}
+        data["after_gate"] = {"state": "REVIEW", "step": "recheck"}  # re-review the fix delta
         goto(data, "GATE")
 
 
-def on_gate(data: dict, failing: list[str], tier: str | None = None) -> None:
-    """Record one gate run in GATE state."""
+def on_gate(data: dict, failing: list[str], tier: str | None = None, *,
+            delta_lines: int | None = None, recheck_max_lines: int = RECHECK_MAX_LINES) -> None:
+    """Record one gate run in GATE state. ``delta_lines`` is the size of
+    ``last_reviewed..HEAD`` when the gate follows a fix (step ``recheck``): a
+    delta within ``recheck_max_lines`` goes to one self-check reader, a larger
+    one to a full candidate cycle."""
     counters = data["counters"]
     counters["gate"] = counters.get("gate", 0) + 1
     previous = data.get("gate_failing")
@@ -469,9 +477,12 @@ def on_gate(data: dict, failing: list[str], tier: str | None = None) -> None:
     if not failing:
         data["gate_reds"] = 0
         counters["no_progress"] = 0
-        dest = data.pop("after_gate", None) or {"state": "REVIEW", "step": review_entry(tier)}
+        dest = data.pop("after_gate", None) or after_build(data, tier)
+        if dest.get("step") == "recheck":
+            small = delta_lines is not None and delta_lines <= recheck_max_lines
+            dest = {"state": "REVIEW", "step": "review" if small else "candidates"}
         if dest.get("step") == "candidates":
-            _start_cycle(data)
+            start_cycle(data)
         else:
             goto(data, dest["state"], dest.get("step"))
         return
@@ -486,15 +497,17 @@ def on_gate(data: dict, failing: list[str], tier: str | None = None) -> None:
     _budget(data, "gate", data["gate_reds"], GATE_RED_CAP, "consecutive red gates")
 
 
-def on_review(data: dict, verdict: str, finding_ids: list[str], range_from: str, range_to: str) -> None:
-    """An ok review dispatch in REVIEW review (self-check, light)."""
+def on_review(data: dict, verdict: str, finding_ids: list[str], range_from: str, range_to: str,
+              tier: str | None = None) -> None:
+    """An ok review dispatch in REVIEW review (self-check: the light entry, or the
+    recheck of a fix delta in any tier)."""
     counters = data["counters"]
     data["last_reviewed"] = range_to
     previous = data.get("review_ids")
     data["review_ids"] = sorted(finding_ids)
     if verdict == "PASS":
         counters["no_progress"] = 0
-        goto(data, "FINISH")
+        _cycle_done(data, tier)
         return
     progressed = previous is None or set(previous) != set(finding_ids)
     if _round(data, progressed, "review findings unchanged"):
@@ -505,7 +518,7 @@ def on_review(data: dict, verdict: str, finding_ids: list[str], range_from: str,
     _budget(data, "review", counters["review"], REVIEW_ROUND_CAP, "review fix rounds")
 
 
-def _start_cycle(data: dict) -> None:
+def start_cycle(data: dict) -> None:
     """Open one candidates -> verify -> fix cycle over the unreviewed range."""
     rounds = data["counters"].get("review", 0)
     base = data.get("base")
@@ -764,5 +777,5 @@ def on_wave_merged(data: dict, wave_count: int, tier: str | None) -> None:
         data["wave"] = wave + 1
         goto(data, "BUILD")
     else:
-        data["after_gate"] = {"state": "REVIEW", "step": review_entry(tier)}
+        data["after_gate"] = after_build(data, tier)
         goto(data, "GATE")

@@ -72,22 +72,20 @@ function driveToFinish(f: Fixture): void {
   expect(f.taskJson().state).toBe("FINISH");
 }
 
-/** Standard task from REVIEW/simplify to one verify batch with one PLAUSIBLE finding. */
+/** Standard task from REVIEW/candidates to one verify batch with one PLAUSIBLE finding. */
 function driveToPlausible(f: Fixture): void {
   f.plan({
-    "d-001": { reply: "## Simplify: No Change\n" },
+    "d-001": {
+      reply: reviewReply("FAIL", [finding("src/app.txt", 2, "CANDIDATE")]),
+    },
     "d-002": {
       reply: reviewReply("FAIL", [finding("src/app.txt", 2, "CANDIDATE")]),
     },
     "d-003": {
-      reply: reviewReply("FAIL", [finding("src/app.txt", 2, "CANDIDATE")]),
-    },
-    "d-004": {
       reply: `\`\`\`json\n${JSON.stringify([finding("src/app.txt", 2, "PLAUSIBLE")])}\n\`\`\`\nCONFIRMED 0, PLAUSIBLE 1, REFUTED 0.\n`,
     },
   });
-  for (const id of ["d-001", "d-002", "d-003"])
-    expect(dispatch(f, id).status).toBe(0);
+  for (const id of ["d-001", "d-002"]) expect(dispatch(f, id).status).toBe(0);
   expect(f.taskJson()).toMatchObject({ state: "REVIEW", step: "verify" });
 }
 
@@ -176,12 +174,12 @@ describe.skipIf(!hasPython())("arbor.py mandate", { timeout: 120_000 }, () => {
 
   it("plausible=auto (standard default): PLAUSIBLE findings are skipped by the driver, not asked", () => {
     f = setupFixture({ tier: "standard", mandate: "default" });
-    seedCode(f, "REVIEW/simplify");
+    seedCode(f, "REVIEW/candidates");
     expect(f.run("status").stdout).toContain(
       "mandate: contract=ask, plausible=auto, merge=ask",
     );
     driveToPlausible(f);
-    const r = dispatch(f, "d-004");
+    const r = dispatch(f, "d-003");
     expect(r.status, r.stdout + r.stderr).toBe(0);
     expect(r.stdout).toContain("mandate: skip");
     const data = f.taskJson();
@@ -200,9 +198,9 @@ describe.skipIf(!hasPython())("arbor.py mandate", { timeout: 120_000 }, () => {
   it("plausible=ask (config override) keeps the human gate", () => {
     f = setupFixture({ tier: "standard", mandate: "default" });
     appendConfig(f, "mandate:\n  standard:\n    plausible: ask\n");
-    seedCode(f, "REVIEW/simplify");
+    seedCode(f, "REVIEW/candidates");
     driveToPlausible(f);
-    expect(dispatch(f, "d-004").status).toBe(0);
+    expect(dispatch(f, "d-003").status).toBe(0);
     expect(f.next()).toMatchObject({
       needs: "human",
       human: { kind: "plausible", mandate: "ask" },

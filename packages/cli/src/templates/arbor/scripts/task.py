@@ -341,17 +341,22 @@ def _start_in_worktree(args: argparse.Namespace, task_dir: Path, repo_root: Path
     # integration branch goes into the baseline, by a human. `--base-branch` at
     # create time opts out.
     integration = None
-    parent = ig.parent_dir(main, data) if not binding and data.get("base_branch_source") != "explicit" else None
+    under_parent = bool(data.get("parent")) and not binding and data.get("base_branch_source") != "explicit"
+    parent = ig.parent_dir(main, data) if under_parent else None
+    if under_parent and (parent is None or _parent_in_integration_review(parent)):
+        print(colored(f"Error: parent {data['parent']} is in its integration review or gone from "
+                      f"{DIR_WORKFLOW}/{DIR_TASKS}/; no new child can join it (create one with --base-branch "
+                      "<branch> instead)", Colors.RED))
+        return 1
     if parent is not None:
-        parent_data, _ = read_json_checked(parent / FILE_TASK_JSON)
-        if parent_data and not (parent_data.get("worktree_path") or parent_data.get("state")):
-            try:
-                integration = ig.ensure(main, config, parent)
-            except ig.IntegrationError as e:
-                print(colored(f"Error: {e}", Colors.RED))
-                return 1
-            print(colored(f"✓ Integration branch: {integration['branch']} ({integration['worktree']}), "
-                          f"merged into {integration['base_branch']} by a human at the end", Colors.GREEN))
+        try:
+            integration = ig.ensure(main, config, parent)
+        except ig.IntegrationError as e:
+            print(colored(f"Error: {e}", Colors.RED))
+            return 1
+        print(colored(f"✓ Integration branch: {integration['branch']} ({integration['worktree']}), "
+                      f"merged into {integration['base_branch']} by a human at the end; "
+                      "this child skips REVIEW (the parent reviews the integration branch)", Colors.GREEN))
     try:
         wt = create_task_worktree(repo_root, task_dir, config,
                                   integration["branch"] if integration else "HEAD")
@@ -412,8 +417,9 @@ def _start_in_worktree(args: argparse.Namespace, task_dir: Path, repo_root: Path
     elif integration:
         data["base_branch"] = integration["branch"]
         data["base_branch_source"] = "integration"
-        data["integration_target"] = {"parent": parent.name, "branch": integration["branch"],
+        data["integration_target"] = {"parent": str(data["parent"]), "branch": integration["branch"],
                                       "worktree": integration["worktree"]}
+        data["review_deferred"] = True  # BUILD -> GATE -> merge; the parent reviews (task.py integrate)
     elif data.get("base_branch_source") != "explicit":
         # The task branch was just cut from the checked-out branch, and that is
         # where `finish` merges it back; a default stamped at create time
@@ -458,6 +464,123 @@ def _start_in_worktree(args: argparse.Namespace, task_dir: Path, repo_root: Path
 
     if binding:
         write_json(journal, {"binding": binding, "phase": "committed", "task_dir": str(dest)})
+    rc = _point_session_at(dest, repo_root)
+    run_task_hooks("after_start", dest / FILE_TASK_JSON, repo_root)
+    return rc
+
+
+def _parent_in_integration_review(parent: Path) -> bool:
+    """A parent that ``task.py integrate`` started (or whose task dir already moved away)."""
+    parent_data, _ = read_json_checked(parent / FILE_TASK_JSON)
+    return not parent_data or bool(parent_data.get("worktree_path") or parent_data.get("state"))
+
+
+def cmd_integrate(args: argparse.Namespace) -> int:
+    """Start a parent's integration review once every child is merged into its
+    integration branch: the parent takes the integration worktree and branch as
+    its own, enters REVIEW/candidates over the whole integration range, and the
+    task dir moves there (as ``start`` does) and is committed. From here
+    ``arbor.py --task <parent> next`` drives candidates -> verify -> fix -> GATE
+    -> FINISH; a human merges the integration branch into the baseline.
+    """
+    repo_root = get_repo_root()
+    from common.driver.state import NEW_COUNTERS, start_cycle
+
+    task_dir = resolve_task_dir(args.dir, repo_root)
+    if task_dir is None:
+        return 1
+    if task_dir.parent.resolve() != get_tasks_dir(repo_root).resolve():
+        print(colored(f"Error: only a parent directly under {DIR_WORKFLOW}/{DIR_TASKS}/ can be integrated", Colors.RED))
+        return 1
+    name = task_dir.name
+    task_rel = f"{DIR_WORKFLOW}/{DIR_TASKS}/{name}"
+    data, reason = read_json_checked(task_dir / FILE_TASK_JSON)
+    if data is None:
+        print(colored(f"Error: cannot read {task_dir / FILE_TASK_JSON}: {reason}", Colors.RED))
+        return 1
+    if data.get("worktree_path") or data.get("state"):
+        print(colored(f"Error: {name} is already started", Colors.RED))
+        return 1
+    children = [str(c) for c in data.get("children") or []]
+    record = data.get("integration")
+    if not children or not isinstance(record, dict) or record.get("cleaned"):
+        print(colored(f"Error: {name} is not a parent with a live integration branch "
+                      "(its children create one when they start)", Colors.RED))
+        return 1
+    merged = {str(m.get("task")) for m in record.get("merged") or []}
+    missing = [c for c in children if c not in merged]
+    if missing:
+        print(colored(f"Error: not every child is merged into {record['branch']}: {', '.join(missing)}", Colors.RED))
+        print(f"  finish them first (`arbor.py --task <child> finish`), then `task.py integrate {name}`")
+        return 1
+    wt = Path(record["worktree"])
+    if not wt.is_dir():
+        print(colored(f"Error: integration worktree {wt} is missing; recreate it with "
+                      f"`git worktree add {wt} {record['branch']}`", Colors.RED))
+        return 1
+    rc, status, _ = run_git(["status", "--porcelain", "--untracked-files=no"], cwd=wt)
+    if rc != 0 or status.strip():
+        print(colored(f"Error: the integration worktree {wt} has uncommitted changes; commit or discard them first",
+                      Colors.RED))
+        return 1
+    rc, tracked, _ = run_git(["ls-files", "--", task_rel], cwd=repo_root)
+    if rc == 0 and tracked.strip():
+        print(colored(f"Error: files under {task_rel} are tracked in this checkout; integrate moves the task dir "
+                      "into the integration worktree. Untrack it first (git rm -r --cached)", Colors.RED))
+        return 1
+    contract_path = find_contract(task_dir)
+    if contract_path is None:
+        print(colored(f"Error: {name} has no contract.md (its acceptance criteria run at GATE)", Colors.RED))
+        return 1
+    tier = args.tier or explicit_tier(data) or "standard"
+    if tier == "light":
+        tier = "standard"  # the integration review is a candidate cycle; light has no readers for it
+    manifest = task_dir / "check.jsonl"
+    if curated_entry_count(manifest) == 0:
+        print(colored(f"Warning: {name}/check.jsonl has no curated entries; the readers get no spec context "
+                      f"(`task.py seed-context {name}` before the first brief)", Colors.YELLOW))
+
+    dest = wt / DIR_WORKFLOW / DIR_TASKS / name
+    if dest.exists():
+        shutil.rmtree(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(task_dir), str(dest))
+    meta = dict(data["meta"]) if isinstance(data.get("meta"), dict) else {}
+    meta["tier"] = tier
+    data["meta"] = meta
+    data.update({
+        "status": "in_progress",
+        "wave": 1,
+        "base": record["base"],
+        "branch": record["branch"],
+        "worktree_path": str(wt),
+        "base_branch": record["base_branch"],
+        "contract_hash": contract_hash(find_contract(dest) or contract_path),
+        "counters": dict(NEW_COUNTERS),
+        "dispatches": data.get("dispatches") or [],
+        "sweep_done": True,  # the first cycle already covers the whole integration range
+        "integration_review": True,
+    })
+    start_cycle(data)  # state REVIEW / candidates over base..HEAD
+    if not write_json(dest / FILE_TASK_JSON, data):
+        print(colored(f"Error: failed to write {dest / FILE_TASK_JSON}", Colors.RED))
+        shutil.move(str(dest), str(task_dir))
+        return 1
+    commit_msg = f"integrate({name}): start the integration review"
+    ok, _, err = safe_git_add([task_rel], wt)
+    if ok:
+        rc, _, err = run_git_retry_index_lock(["commit", "-q", "-m", commit_msg, "--", task_rel], cwd=wt)
+        ok = rc == 0
+    if not ok:
+        if err and "ignored by" in err.lower():
+            print_gitignore_warning([task_rel])
+        print(colored(f"Error: git commit failed: {err.strip()}; the task dir stays at {dest}", Colors.RED))
+        return 1
+    print(colored(f"✓ Moved task to: {dest}", Colors.GREEN))
+    print(colored(f"✓ Committed on {record['branch']}: {commit_msg}", Colors.GREEN))
+    print(colored(f"✓ Status: in_progress, state REVIEW/candidates over {record['base'][:12]}..{record['branch']} "
+                  f"[{tier}]; {len(children)} children merged", Colors.GREEN))
+    print(f"  next: python3 ./.arbor/scripts/arbor.py --task {name} next")
     rc = _point_session_at(dest, repo_root)
     run_task_hooks("after_start", dest / FILE_TASK_JSON, repo_root)
     return rc
@@ -1044,6 +1167,13 @@ def main() -> int:
     p_listctx = subparsers.add_parser("list-context", help="List context entries")
     p_listctx.add_argument("dir", help="Task directory")
 
+    # integrate
+    p_integrate = subparsers.add_parser(
+        "integrate", help="Parent task: start the integration review once every child is merged")
+    p_integrate.add_argument("dir", help="Parent task directory or name")
+    p_integrate.add_argument("--tier", choices=["standard", "full"],
+                             help="Readers of the integration review (default: the parent's tier, at least standard)")
+
     # start
     p_start = subparsers.add_parser("start", help="Set active task")
     p_start.add_argument("dir", help="Task directory")
@@ -1161,6 +1291,7 @@ def main() -> int:
         "validate": cmd_validate,
         "list-context": cmd_list_context,
         "start": cmd_start,
+        "integrate": cmd_integrate,
         "current": cmd_current,
         "finish": cmd_finish,
         "set-branch": cmd_set_branch,

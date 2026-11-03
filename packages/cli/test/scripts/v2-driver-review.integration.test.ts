@@ -1,6 +1,6 @@
 /**
  * arbor.py driver: invariant observations, fail-closed replies, the REVIEW
- * state (light self-check; standard / full simplify -> candidates -> verify
+ * state (light self-check; standard / full candidates -> verify
  * -> fix -> candidates over the delta; the full sweep), the contract-hash
  * guard, override / abandon / status.
  */
@@ -179,7 +179,7 @@ describe.skipIf(!hasPython())(
       expect(dispatch(f, "d-002").status).toBe(0);
       expect(f.taskJson()).toMatchObject({
         state: "GATE",
-        after_gate: { state: "REVIEW", step: "review" },
+        after_gate: { state: "REVIEW", step: "recheck" },
       });
       expect(f.next()).toMatchObject({ state: "GATE", needs: "run" });
       expect(f.run("gate").status).toBe(1); // AC-1's tests/ac1.sh does not exist on this branch
@@ -257,33 +257,26 @@ describe.skipIf(!hasPython())(
       expect(f.next()).toMatchObject({ role: "fix", dispatch: "d-006" });
     });
 
-    it("REVIEW (standard): simplify No Change -> 2 candidate readers -> prefilter -> verify PLAUSIBLE -> decide skip -> FINISH", () => {
+    it("REVIEW (standard): 2 candidate readers -> prefilter -> verify PLAUSIBLE -> decide skip -> FINISH", () => {
       f = setupFixture({ tier: "standard" });
-      seedCode(f, "REVIEW/simplify");
+      seedCode(f, "REVIEW/candidates");
       f.plan({
-        "d-001": { reply: "## Simplify: No Change\n" },
-        "d-002": {
+        "d-001": {
           reply: reviewReply("FAIL", [
             finding("src/app.txt", 2, "CANDIDATE"),
             finding("src/gone.txt", 1, "CANDIDATE"),
           ]),
         },
-        "d-003": {
+        "d-002": {
           reply: reviewReply("FAIL", [
             finding("src/app.txt", 2, "CANDIDATE"),
             finding("README.md", 1, "CANDIDATE", "old"),
           ]),
         },
-        "d-004": {
+        "d-003": {
           reply: verifyReply([finding("src/app.txt", 2, "PLAUSIBLE")], 0, 1),
         },
       });
-      expect(f.next()).toMatchObject({
-        state: "REVIEW",
-        role: "simplify",
-        dispatch: "d-001",
-      });
-      expect(dispatch(f, "d-001").status).toBe(0);
       expect(f.taskJson()).toMatchObject({
         state: "REVIEW",
         step: "candidates",
@@ -294,15 +287,15 @@ describe.skipIf(!hasPython())(
         state: "REVIEW",
         role: "review",
         mode: "candidates",
-        dispatch: "d-002",
+        dispatch: "d-001",
       });
       expect(next.batch.map((b: { dispatch: string }) => b.dispatch)).toEqual([
+        "d-001",
         "d-002",
-        "d-003",
       ]);
-      expect(dispatch(f, "d-002").status).toBe(0);
+      expect(dispatch(f, "d-001").status).toBe(0);
       expect(f.taskJson().cycle.candidates_done).toBe(1);
-      expect(dispatch(f, "d-003").status).toBe(0);
+      expect(dispatch(f, "d-002").status).toBe(0);
 
       const data = f.taskJson();
       expect(data).toMatchObject({
@@ -332,15 +325,15 @@ describe.skipIf(!hasPython())(
         "file src/gone.txt does not exist",
       ]);
       expect(
-        fs.readFileSync(path.join(f.taskDir, "reports/d-003.md"), "utf-8"),
+        fs.readFileSync(path.join(f.taskDir, "reports/d-002.md"), "utf-8"),
       ).toContain("- kept 1, dropped 2 -> reports/candidates-r1.json");
       expect(f.next()).toMatchObject({
         role: "verify",
-        dispatch: "d-004",
+        dispatch: "d-003",
         summary: expect.stringContaining("candidates-r1.json"),
       });
 
-      expect(dispatch(f, "d-004").status).toBe(0);
+      expect(dispatch(f, "d-003").status).toBe(0);
       expect(f.taskJson()).toMatchObject({
         state: "REVIEW",
         step: "plausible",
@@ -363,33 +356,21 @@ describe.skipIf(!hasPython())(
       });
     });
 
-    it("REVIEW (standard): simplify commit -> GATE -> candidates -> verify CONFIRMED -> fix -> GATE -> candidates over the delta -> FINISH", () => {
+    it("REVIEW (standard): candidates -> verify CONFIRMED -> fix -> GATE -> one self-check over the delta -> FINISH", () => {
       f = setupFixture({ tier: "standard" });
-      seedCode(f, "REVIEW/simplify", [GREEN_CHECK]);
+      seedCode(f, "REVIEW/candidates", [GREEN_CHECK]);
       const base = f.taskJson().base;
       f.plan({
         "d-001": {
-          write: [{ path: "src/app.txt", content: "one\ntwo\nthree\nfour\n" }],
-          reply: "## Simplify: Changed\n",
-        },
-        "d-002": {
           reply: reviewReply("FAIL", [finding("src/app.txt", 2, "CANDIDATE")]),
         },
-        "d-003": { reply: reviewReply("PASS", []) },
-        "d-004": {
+        "d-002": { reply: reviewReply("PASS", []) },
+        "d-003": {
           reply: verifyReply([finding("src/app.txt", 2, "CONFIRMED")], 1, 0),
         },
-        "d-005": { write: [APP_FIX] },
-        "d-006": { reply: reviewReply("PASS", []) },
-        "d-007": { reply: reviewReply("PASS", []) },
+        "d-004": { write: [APP_FIX] },
+        "d-005": { reply: reviewReply("PASS", []) },
       });
-      // A simplify commit goes through the gate before the candidate readers.
-      expect(dispatch(f, "d-001").status).toBe(0);
-      expect(f.taskJson()).toMatchObject({
-        state: "GATE",
-        after_gate: { state: "REVIEW", step: "candidates" },
-      });
-      expect(f.run("gate").status).toBe(0);
       expect(f.taskJson()).toMatchObject({
         state: "REVIEW",
         step: "candidates",
@@ -398,18 +379,18 @@ describe.skipIf(!hasPython())(
       expect(f.next()).toMatchObject({
         role: "review",
         mode: "candidates",
-        dispatch: "d-002",
+        dispatch: "d-001",
         range: expect.stringMatching(new RegExp(`^${base}\\.\\.`)),
       });
+      expect(dispatch(f, "d-001").status).toBe(0);
       expect(dispatch(f, "d-002").status).toBe(0);
-      expect(dispatch(f, "d-003").status).toBe(0);
       expect(f.taskJson()).toMatchObject({
         step: "verify",
         counters: { review: 1 },
         cycle_ids: [FINDING_ID],
       });
 
-      expect(dispatch(f, "d-004").status).toBe(0);
+      expect(dispatch(f, "d-003").status).toBe(0);
       let data = f.taskJson();
       expect(data).toMatchObject({
         state: "REVIEW",
@@ -419,46 +400,38 @@ describe.skipIf(!hasPython())(
       const reviewedTo = data.last_reviewed;
       expect(f.next()).toMatchObject({
         role: "fix",
-        dispatch: "d-005",
+        dispatch: "d-004",
         range: expect.stringMatching(new RegExp(`^${base}\\.\\.`)),
       });
-      expect(dispatch(f, "d-005").status).toBe(0);
+      expect(dispatch(f, "d-004").status).toBe(0);
       expect(f.taskJson()).toMatchObject({
         state: "GATE",
-        after_gate: { state: "REVIEW", step: "candidates" },
+        after_gate: { state: "REVIEW", step: "recheck" },
       });
       expect(f.run("gate").status).toBe(0);
 
-      // The second cycle reads only the delta since the last review.
+      // A small fix delta: one self-check reader over last_reviewed..HEAD instead of a new candidate cycle.
       data = f.taskJson();
-      expect(data).toMatchObject({
-        state: "REVIEW",
-        step: "candidates",
-        cycle: { range_from: reviewedTo, candidates_done: 0 },
-      });
+      expect(data).toMatchObject({ state: "REVIEW", step: "review" });
       const next = f.next();
       expect(next).toMatchObject({
         role: "review",
-        mode: "candidates",
-        dispatch: "d-006",
+        mode: "self-check",
+        dispatch: "d-005",
         range: expect.stringMatching(new RegExp(`^${reviewedTo}\\.\\.`)),
       });
-      expect(next.batch.map((b: { dispatch: string }) => b.dispatch)).toEqual([
-        "d-006",
-        "d-007",
-      ]);
-      expect(dispatch(f, "d-006").status).toBe(0);
-      expect(dispatch(f, "d-007").status).toBe(0);
+      expect(next.batch).toBeUndefined();
+      expect(dispatch(f, "d-005").status).toBe(0);
       data = f.taskJson();
       expect(data).toMatchObject({
         state: "FINISH",
-        counters: { gate: 2, review: 1, no_progress: 0 },
-        cycle_ids: [],
+        counters: { gate: 1, review: 1, no_progress: 0 },
+        review_ids: [],
       });
       expect(data.cycle).toBeUndefined();
       expect(
         fs.existsSync(path.join(f.taskDir, "reports/candidates-r2.json")),
-      ).toBe(true);
+      ).toBe(false);
       expect(
         data.dispatches.map(
           (d: { id: string; role: string; mode: string | null }) => [
@@ -468,46 +441,91 @@ describe.skipIf(!hasPython())(
           ],
         ),
       ).toEqual([
-        ["d-001", "simplify", null],
+        ["d-001", "review", "candidates"],
         ["d-002", "review", "candidates"],
-        ["d-003", "review", "candidates"],
-        ["d-004", "verify", null],
-        ["d-005", "fix", null],
-        ["d-006", "review", "candidates"],
-        ["d-007", "review", "candidates"],
+        ["d-003", "verify", null],
+        ["d-004", "fix", null],
+        ["d-005", "review", "self-check"],
       ]);
     });
 
-    it("REVIEW (full): 3 candidate readers, a clean cycle -> one sweep over base..HEAD -> verify -> fix -> GATE -> FINISH", () => {
-      f = setupFixture({ tier: "full" });
-      seedCode(f, "REVIEW/simplify", [GREEN_CHECK]);
-      const base = f.taskJson().base;
+    it("REVIEW (standard): a fix delta above auto_merge_max_lines reopens the candidate cycle over the delta", () => {
+      f = setupFixture({ tier: "standard" });
+      fs.appendFileSync(
+        path.join(f.repo, ".arbor/config.yaml"),
+        "\nmandate:\n  auto_merge_max_lines: 1\n",
+      );
+      seedCode(f, "REVIEW/candidates", [GREEN_CHECK]);
       f.plan({
-        "d-001": { reply: "## Simplify: No Change\n" },
-        "d-002": { reply: reviewReply("PASS", []) },
-        "d-003": { reply: reviewReply("PASS", []) },
-        "d-004": { reply: reviewReply("PASS", []) },
-        "d-005": {
+        "d-001": {
           reply: reviewReply("FAIL", [finding("src/app.txt", 2, "CANDIDATE")]),
         },
-        "d-006": {
+        "d-002": { reply: reviewReply("PASS", []) },
+        "d-003": {
           reply: verifyReply([finding("src/app.txt", 2, "CONFIRMED")], 1, 0),
         },
-        "d-007": { write: [APP_FIX] },
+        "d-004": { write: [APP_FIX] },
+        "d-005": { reply: reviewReply("PASS", []) },
+        "d-006": { reply: reviewReply("PASS", []) },
       });
-      expect(dispatch(f, "d-001").status).toBe(0);
+      for (const id of ["d-001", "d-002", "d-003", "d-004"])
+        expect(dispatch(f, id).status).toBe(0);
+      const reviewedTo = f.taskJson().last_reviewed;
+      expect(f.run("gate").status).toBe(0);
+      const data = f.taskJson();
+      expect(data).toMatchObject({
+        state: "REVIEW",
+        step: "candidates",
+        cycle: { range_from: reviewedTo, candidates_done: 0 },
+      });
       const next = f.next();
       expect(next).toMatchObject({
         role: "review",
         mode: "candidates",
-        dispatch: "d-002",
+        dispatch: "d-005",
+        range: expect.stringMatching(new RegExp(`^${reviewedTo}\\.\\.`)),
       });
       expect(next.batch.map((b: { dispatch: string }) => b.dispatch)).toEqual([
+        "d-005",
+        "d-006",
+      ]);
+      expect(dispatch(f, "d-005").status).toBe(0);
+      expect(dispatch(f, "d-006").status).toBe(0);
+      expect(f.taskJson()).toMatchObject({ state: "FINISH", cycle_ids: [] });
+      expect(
+        fs.existsSync(path.join(f.taskDir, "reports/candidates-r2.json")),
+      ).toBe(true);
+    });
+
+    it("REVIEW (full): 3 candidate readers, a clean cycle -> one sweep over base..HEAD -> verify -> fix -> GATE -> self-check -> FINISH", () => {
+      f = setupFixture({ tier: "full" });
+      seedCode(f, "REVIEW/candidates", [GREEN_CHECK]);
+      const base = f.taskJson().base;
+      f.plan({
+        "d-001": { reply: reviewReply("PASS", []) },
+        "d-002": { reply: reviewReply("PASS", []) },
+        "d-003": { reply: reviewReply("PASS", []) },
+        "d-004": {
+          reply: reviewReply("FAIL", [finding("src/app.txt", 2, "CANDIDATE")]),
+        },
+        "d-005": {
+          reply: verifyReply([finding("src/app.txt", 2, "CONFIRMED")], 1, 0),
+        },
+        "d-006": { write: [APP_FIX] },
+        "d-007": { reply: reviewReply("PASS", []) },
+      });
+      const next = f.next();
+      expect(next).toMatchObject({
+        role: "review",
+        mode: "candidates",
+        dispatch: "d-001",
+      });
+      expect(next.batch.map((b: { dispatch: string }) => b.dispatch)).toEqual([
+        "d-001",
         "d-002",
         "d-003",
-        "d-004",
       ]);
-      for (const id of ["d-002", "d-003", "d-004"])
+      for (const id of ["d-001", "d-002", "d-003"])
         expect(dispatch(f, id).status).toBe(0);
 
       let data = f.taskJson();
@@ -521,11 +539,11 @@ describe.skipIf(!hasPython())(
       expect(f.next()).toMatchObject({
         role: "review",
         mode: "sweep",
-        dispatch: "d-005",
+        dispatch: "d-004",
         range: expect.stringMatching(new RegExp(`^${base}\\.\\.`)),
       });
       expect(f.next().batch).toBeUndefined();
-      expect(dispatch(f, "d-005").status).toBe(0);
+      expect(dispatch(f, "d-004").status).toBe(0);
       data = f.taskJson();
       expect(data).toMatchObject({
         step: "verify",
@@ -540,11 +558,11 @@ describe.skipIf(!hasPython())(
       ).toEqual([FINDING_ID]);
       expect(f.next()).toMatchObject({
         role: "verify",
-        dispatch: "d-006",
+        dispatch: "d-005",
         summary: expect.stringContaining("sweep.json"),
       });
 
-      expect(dispatch(f, "d-006").status).toBe(0);
+      expect(dispatch(f, "d-005").status).toBe(0);
       expect(f.taskJson()).toMatchObject({
         state: "REVIEW",
         step: "fix",
@@ -552,18 +570,27 @@ describe.skipIf(!hasPython())(
       });
       expect(f.next()).toMatchObject({
         role: "fix",
-        dispatch: "d-007",
+        dispatch: "d-006",
         range: expect.stringMatching(new RegExp(`^${base}\\.\\.`)),
       });
-      expect(dispatch(f, "d-007").status).toBe(0);
+      expect(dispatch(f, "d-006").status).toBe(0);
       expect(f.taskJson()).toMatchObject({
         state: "GATE",
-        after_gate: { state: "FINISH" },
+        after_gate: { state: "REVIEW", step: "recheck" },
       });
       expect(f.run("gate").status).toBe(0);
+      const reviewedTo = f.taskJson().last_reviewed;
+      expect(f.next()).toMatchObject({
+        role: "review",
+        mode: "self-check",
+        dispatch: "d-007",
+        range: expect.stringMatching(new RegExp(`^${reviewedTo}\\.\\.`)),
+      });
+      expect(dispatch(f, "d-007").status).toBe(0);
       data = f.taskJson();
       expect(data.state).toBe("FINISH"); // the sweep never repeats
       expect(data.sweep_done).toBe(true);
+      expect(data.cycle).toBeUndefined();
       expect(f.taskJson().counters.gate).toBe(1);
     });
 
