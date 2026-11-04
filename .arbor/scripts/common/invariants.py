@@ -10,7 +10,8 @@ stayed inside its boundary.
     explore, architect   .arbor/tasks/<task>/research/** no
     implement, fix,      anything (code and tests)       yes, own branch
     simplify
-    review, verify       nothing                         no
+    review               nothing                         no
+    verify               .arbor/tasks/<task>/research/repro/** no
 
 Every role: no push, merge, rebase or checkout of another branch; no writes
 under ``.arbor/`` outside ``tasks/<task>/``.
@@ -36,6 +37,8 @@ from .git import run_git
 READ_ONLY_ROLES: frozenset[str] = frozenset({"review", "verify"})
 RESEARCH_ROLES: frozenset[str] = frozenset({"explore", "architect"})
 WRITER_ROLES: frozenset[str] = frozenset({"implement", "fix", "simplify"})
+#: Read-only roles that may leave reproduction scripts in the task dir.
+REPRO_ROLES: frozenset[str] = frozenset({"verify"})
 
 COMMIT_SUBJECT_RE = re.compile(
     r"^(explore|architect|implement|review|verify|fix|simplify)\(([^)]+)\): \S.*$"
@@ -277,7 +280,8 @@ def check_after_dispatch(
     if role in READ_ONLY_ROLES or role in RESEARCH_ROLES:
         if new_commits:
             violations.append(f"{role} must not commit ({len(new_commits)} new commit(s) on {own_branch})")
-        allowed = f"{task_prefix}research/" if role in RESEARCH_ROLES else None
+        allowed = (f"{task_prefix}research/" if role in RESEARCH_ROLES
+                   else f"{task_prefix}research/repro/" if role in REPRO_ROLES else None)
         stray = [p for p in new_dirty if allowed is None or not p.startswith(allowed)]
         if stray:
             violations.append(f"{role} left the tree dirty: {', '.join(stray)}")

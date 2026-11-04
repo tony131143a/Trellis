@@ -15,6 +15,12 @@ Report formats come from ``.arbor/agents/<role>.md``:
 Rules: an empty reply fails. A review without an explicit first-line verdict
 or valid findings array fails (never read as PASS). A verify without
 per-candidate verdicts fails.
+
+A CONFIRMED verify entry carries a ``repro``: ``{"kind": "exec", "path":
+<file under <task>/research/repro/>, "command": <run from the worktree root>,
+...}`` or ``{"kind": "trace", "path": [<file:line>, <file:line>, ...]}``.
+:func:`check_repros` (it needs the worktree) reads a CONFIRMED entry without a
+valid one as PLAUSIBLE; that is an observation, never a failed reply.
 """
 
 from __future__ import annotations
@@ -47,6 +53,9 @@ _STATUS_LINE_RE = {
 }
 _RULE_FILE_RE = re.compile(r"((?:[\w.-]+/)*(?:AGENTS|CLAUDE)\.md|\.arbor/spec/[\w./-]+\.md)")
 _NO_COMMIT_VIOLATION = "produced no new commit"
+REPRO_DIR = "research/repro/"
+REPRO_TRACE_MIN = 2
+_TRACE_REF_RE = re.compile(r"^(.+?):(\d+)$")
 
 
 @dataclass
@@ -56,6 +65,8 @@ class ReplyCheck:
     verdict: str | None = None  # review: PASS | FAIL; writers: their status word
     confidence: str = "high"
     findings: list[dict] = field(default_factory=list)
+    downgraded: list[str] = field(default_factory=list)  # verify: CONFIRMED ids read as PLAUSIBLE
+    repros: dict = field(default_factory=dict)  # verify: CONFIRMED id -> normalised repro
 
 
 def first_line(reply: str) -> str:
@@ -238,3 +249,59 @@ def dedup(findings: list[dict]) -> list[dict]:
     for f in findings:
         seen.setdefault(finding_id(f), f)
     return list(seen.values())
+
+
+# =============================================================================
+# Verify repros
+# =============================================================================
+
+
+def repro_problem(repro: object, worktree: Path, task_rel: str) -> tuple[str | None, dict | None]:
+    """(problem, normalised repro): exactly one of the two is None."""
+    if not isinstance(repro, dict):
+        return "no repro", None
+    kind = repro.get("kind")
+    if kind == "exec":
+        raw, command = repro.get("path"), repro.get("command")
+        if not isinstance(raw, str) or not raw.strip():
+            return "exec repro without a path", None
+        rel = raw.strip().removeprefix("./")
+        prefix = f"{task_rel.strip('/')}/{REPRO_DIR}"
+        if rel.startswith(REPRO_DIR):
+            rel = f"{task_rel.strip('/')}/{rel}"
+        if not rel.startswith(prefix) or ".." in rel.split("/"):
+            return f"exec repro path {raw} is not under {prefix}", None
+        if not (worktree / rel).is_file():
+            return f"exec repro {rel} does not exist", None
+        if not isinstance(command, str) or not command.strip():
+            return "exec repro without a command", None
+        return None, {"kind": "exec", "path": rel, "command": command.strip()}
+    if kind == "trace":
+        steps = repro.get("path")
+        if not isinstance(steps, list) or len(steps) < REPRO_TRACE_MIN:
+            return f"trace repro needs at least {REPRO_TRACE_MIN} file:line steps", None
+        for step in steps:
+            match = _TRACE_REF_RE.match(step.strip()) if isinstance(step, str) else None
+            if match is None or not (worktree / match.group(1)).is_file():
+                return f"trace step {step!r} is not an existing file:line", None
+        return None, {"kind": "trace", "path": [s.strip() for s in steps]}
+    return f"unknown repro kind {kind!r}", None
+
+
+def check_repros(check: ReplyCheck, worktree: Path, task_rel: str) -> ReplyCheck:
+    """Read every CONFIRMED verify entry without a valid repro as PLAUSIBLE
+    (in place, so the state table and the scorecard agree); collect the
+    normalised repros of the rest."""
+    for finding in check.findings:
+        if str(finding.get("verdict", "")).upper() != "CONFIRMED":
+            continue
+        problem, repro = repro_problem(finding.get("repro"), worktree, task_rel)
+        fid = finding_id(finding)
+        if repro is not None:
+            check.repros[fid] = repro
+            continue
+        finding["verdict"] = "PLAUSIBLE"
+        finding["downgraded_from"] = "CONFIRMED"
+        finding["repro_problem"] = problem
+        check.downgraded.append(fid)
+    return check

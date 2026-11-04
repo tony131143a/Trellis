@@ -312,6 +312,8 @@ assert [x.id for x in g.checks] == ["GATE-1", "GATE-2", "AC-1", "AC-2"] and g.fa
 text = format_checks(g.checks)
 assert "- GATE-2: exit 2" in text and "ImportError: no module x" in text and "- AC-1: pass" in text
 assert run_gate([], c, Path(".")).failing == ["AC-2"]
+r = run_gate([], c, Path("."), repros=[("x:1:s", "true"), ("y:2:t", "exit 3")])
+assert [x.id for x in r.checks] == ["AC-1", "AC-2", "REPRO-1", "REPRO-2"] and r.failing == ["AC-2", "REPRO-2"]
 print("ok")
 `,
         tmp,
@@ -320,5 +322,83 @@ print("ok")
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
+  });
+
+  it("validate.check_repros: exec needs a file under research/repro/ and a command; trace needs two existing steps", () => {
+    const tmp = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), "arbor-repro-")),
+    );
+    try {
+      fs.mkdirSync(path.join(tmp, ".arbor/tasks/t/research/repro"), {
+        recursive: true,
+      });
+      fs.writeFileSync(
+        path.join(tmp, ".arbor/tasks/t/research/repro/r.sh"),
+        "exit 1\n",
+      );
+      fs.writeFileSync(path.join(tmp, ".arbor/tasks/t/notes.sh"), "exit 1\n");
+      fs.mkdirSync(path.join(tmp, "src"));
+      fs.writeFileSync(path.join(tmp, "src/a.py"), "x\n");
+      const out = probe(
+        `
+from pathlib import Path
+from common.driver.validate import ReplyCheck, check_repros, finding_id, repro_problem
+wt, rel = Path("."), ".arbor/tasks/t"
+ok = lambda r: repro_problem(r, wt, rel)
+assert ok({"kind": "exec", "path": "research/repro/r.sh", "command": "sh x"})[1] == \\
+    {"kind": "exec", "path": ".arbor/tasks/t/research/repro/r.sh", "command": "sh x"}
+assert ok({"kind": "exec", "path": ".arbor/tasks/t/research/repro/r.sh", "command": "sh x"})[1] is not None
+for bad in ({"kind": "exec", "path": "research/repro/missing.sh", "command": "sh x"},
+            {"kind": "exec", "path": ".arbor/tasks/t/notes.sh", "command": "sh x"},
+            {"kind": "exec", "path": "research/repro/../notes.sh", "command": "sh x"},
+            {"kind": "exec", "path": "research/repro/r.sh", "command": " "},
+            {"kind": "trace", "path": ["src/a.py:1"]},
+            {"kind": "trace", "path": ["src/a.py:1", "src/missing.py:2"]},
+            {"kind": "trace", "path": ["src/a.py:1", "src/a.py"]},
+            {"kind": "guess"}, None, "sh x"):
+    problem, repro = ok(bad)
+    assert repro is None and problem, bad
+assert ok({"kind": "trace", "path": ["src/a.py:1", "src/a.py:9"]})[1] == {"kind": "trace", "path": ["src/a.py:1", "src/a.py:9"]}
+good = {"file": "src/a.py", "line": 1, "summary": "g", "verdict": "CONFIRMED", "repro": {"kind": "trace", "path": ["src/a.py:1", "src/a.py:2"]}}
+bare = {"file": "src/a.py", "line": 2, "summary": "b", "verdict": "CONFIRMED"}
+kept = {"file": "src/a.py", "line": 3, "summary": "p", "verdict": "PLAUSIBLE"}
+c = check_repros(ReplyCheck(True, findings=[good, bare, kept]), wt, rel)
+assert c.downgraded == [finding_id(bare)] and list(c.repros) == [finding_id(good)]
+assert bare["verdict"] == "PLAUSIBLE" and bare["downgraded_from"] == "CONFIRMED" and bare["repro_problem"]
+assert kept["verdict"] == "PLAUSIBLE" and "downgraded_from" not in kept
+print("ok")
+`,
+        tmp,
+      );
+      expect(out).toBe("ok");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("state.on_gate: passing repros that cover every fixed finding skip the recheck self-check (full: to the sweep)", () => {
+    const out = probe(`
+from common.driver import state as sm
+def fixed(tier="standard", fix=("a", "b")):
+    d = sm.ensure_fields({"state": "GATE", "step": "gate", "base": "b0", "last_reviewed": "r1",
+                          "after_gate": {"state": "REVIEW", "step": "recheck"},
+                          "cycle": {"fix": list(fix), "range_from": "b0"}})
+    return d
+d = fixed(); sm.on_gate(d, [], "standard", delta_lines=10, repros_run=["a"], head="h")
+assert (d["state"], d["step"], d["last_reviewed"]) == ("REVIEW", "review", "r1") and "recheck_skips" not in d
+d = fixed(); sm.on_gate(d, [], "standard", delta_lines=500, repros_run=["a", "b"], head="h")
+assert (d["state"], d["step"]) == ("REVIEW", "candidates")
+d = fixed(fix=()); sm.on_gate(d, [], "standard", delta_lines=10, repros_run=[], head="h")
+assert (d["state"], d["step"]) == ("REVIEW", "review")
+d = fixed(); sm.on_gate(d, [], "standard", delta_lines=10, repros_run=["a", "b"], head="h")
+assert d["state"] == "FINISH" and d["last_reviewed"] == "h" and "cycle" not in d
+assert d["recheck_skips"] == [{"reason": "repros", "findings": ["a", "b"], "gate": 1}]
+d = fixed("full"); sm.on_gate(d, [], "full", delta_lines=10, repros_run=["a", "b"], head="h")
+assert (d["state"], d["step"]) == ("REVIEW", "sweep") and len(d["recheck_skips"]) == 1
+d = fixed(); sm.on_gate(d, ["REPRO-1"], "standard", delta_lines=10, repros_run=["a", "b"], head="h")
+assert (d["state"], d["step"]) == ("GATE", "decide") and d["after_gate"]["step"] == "recheck"
+print("ok")
+`);
+    expect(out).toBe("ok");
   });
 });

@@ -641,7 +641,7 @@ print("ok")
           reply: review("FAIL", [{ ...finding, verdict: "CANDIDATE" }]),
         },
         "d-005": {
-          reply: `\`\`\`json\n${JSON.stringify([{ ...finding, verdict: "CONFIRMED" }])}\n\`\`\`\nCONFIRMED 1, PLAUSIBLE 0, REFUTED 0.\n`,
+          reply: `\`\`\`json\n${JSON.stringify([{ ...finding, verdict: "CONFIRMED", repro: { kind: "trace", path: ["src/app.txt:1", "src/app.txt:2"] } }])}\n\`\`\`\nCONFIRMED 1, PLAUSIBLE 0, REFUTED 0.\n`,
         },
         "d-006": {
           write: [{ path: "src/app.txt", content: "one\nTWO\nthree\n" }],

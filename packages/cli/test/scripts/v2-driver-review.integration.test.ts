@@ -52,6 +52,7 @@ const finding = (
   line: number,
   verdict: string,
   summary = "off by one",
+  repro?: object,
 ) => ({
   file,
   line,
@@ -61,7 +62,10 @@ const finding = (
   verdict,
   evidence: "two",
   fix: "z",
+  ...(repro ? { repro } : {}),
 });
+/** A call path through files every review fixture has. */
+const TRACE = { kind: "trace", path: ["src/app.txt:1", "src/app.txt:2"] };
 const reviewReply = (verdict: string, findings: object[]) =>
   `${verdict}\n\n\`\`\`json\n${JSON.stringify(findings)}\n\`\`\`\nMode: m; angles: A; single-context pass.\n`;
 const verifyReply = (
@@ -356,6 +360,157 @@ describe.skipIf(!hasPython())(
       });
     });
 
+    /** Candidates -> verify (`d-003`) on a standard task; returns once verify is collected. */
+    function toVerified(verify: object): void {
+      f = setupFixture({ tier: "standard" });
+      seedCode(f, "REVIEW/candidates", [GREEN_CHECK]);
+      f.plan({
+        "d-001": {
+          reply: reviewReply("FAIL", [finding("src/app.txt", 2, "CANDIDATE")]),
+        },
+        "d-002": { reply: reviewReply("PASS", []) },
+        "d-003": verify,
+        "d-004": { write: [APP_FIX] },
+        "d-005": { reply: reviewReply("PASS", []) },
+      });
+      expect(dispatch(f, "d-001").status).toBe(0);
+      expect(dispatch(f, "d-002").status).toBe(0);
+      expect(dispatch(f, "d-003").status).toBe(0);
+    }
+    const REPRO_REL = `.arbor/tasks/${TASK}/research/repro/d-003-1.sh`;
+    const EXEC = {
+      kind: "exec",
+      path: "research/repro/d-003-1.sh",
+      command: `sh ${REPRO_REL}`,
+      exit: 1,
+      output_tail: "",
+    };
+    const execVerify = (fixPlan?: object) => ({
+      dirty: [{ path: REPRO_REL, content: "grep -q TWO src/app.txt\n" }],
+      reply: verifyReply(
+        [finding("src/app.txt", 2, "CONFIRMED", undefined, EXEC)],
+        1,
+        0,
+      ),
+      ...fixPlan,
+    });
+
+    it("REVIEW (standard): a CONFIRMED verdict with an exec repro stays CONFIRMED; the repro is committed with the report", () => {
+      toVerified(execVerify());
+      const data = f.taskJson();
+      expect(data).toMatchObject({
+        state: "REVIEW",
+        step: "fix",
+        cycle: {
+          fix: [FINDING_ID],
+          repros: {
+            [FINDING_ID]: {
+              kind: "exec",
+              path: REPRO_REL,
+              command: `sh ${REPRO_REL}`,
+            },
+          },
+        },
+      });
+      expect(data.dispatches[2].downgraded).toBeUndefined();
+      expect(data.dispatches[2].observations).toEqual([]);
+      const committed = git(f.wt, "show", "--name-only", "--format=", "HEAD");
+      expect(committed).toContain(`.arbor/tasks/${TASK}/reports/d-003.md`);
+      expect(committed).toContain(REPRO_REL);
+      expect(f.next()).toMatchObject({
+        role: "fix",
+        repros: { [FINDING_ID]: { kind: "exec" } },
+      });
+    });
+
+    it("REVIEW (standard): a CONFIRMED verdict without a valid repro is read as PLAUSIBLE, with an observation", () => {
+      toVerified({
+        reply: verifyReply(
+          [
+            finding("src/app.txt", 2, "CONFIRMED"),
+            finding("src/app.txt", 3, "CONFIRMED", "one step", {
+              kind: "trace",
+              path: ["src/app.txt:3"],
+            }),
+          ],
+          2,
+          0,
+        ),
+      });
+      const shallow = "src/app.txt:3:one step";
+      const data = f.taskJson();
+      expect(data).toMatchObject({
+        state: "REVIEW",
+        step: "plausible",
+        decision: { kind: "plausible", failing: [FINDING_ID, shallow] },
+      });
+      expect(data.dispatches[2]).toMatchObject({
+        status: "ok",
+        downgraded: [FINDING_ID, shallow],
+      });
+      expect(
+        fs.readFileSync(path.join(f.taskDir, "reports/d-003.md"), "utf-8"),
+      ).toContain(
+        `CONFIRMED without repro downgraded to PLAUSIBLE: ${FINDING_ID}, ${shallow}`,
+      );
+    });
+
+    it("REVIEW (standard): the recheck gate runs every exec repro as REPRO-n; a repro that still fails is a red gate", () => {
+      toVerified(execVerify());
+      f.plan({
+        "d-004": {
+          write: [{ path: "src/app.txt", content: "one\ntwo\nthree\nfour\n" }],
+        },
+      });
+      expect(dispatch(f, "d-004").status).toBe(0);
+      expect(f.run("gate").status).toBe(1);
+      expect(f.taskJson()).toMatchObject({
+        state: "GATE",
+        step: "decide",
+        gate_failing: ["REPRO-1"],
+      });
+      const report = fs.readFileSync(
+        path.join(f.taskDir, "reports/gate-1.md"),
+        "utf-8",
+      );
+      expect(report).toContain(`repros: REPRO-1 = ${FINDING_ID}`);
+      expect(report).toContain("- REPRO-1: exit 1");
+    });
+
+    it("REVIEW (standard): when the passing repros cover every fixed finding, the small fix skips the self-check -> FINISH", () => {
+      toVerified(execVerify());
+      expect(dispatch(f, "d-004").status).toBe(0);
+      const fixed = git(f.wt, "rev-parse", "HEAD");
+      expect(f.run("gate").status).toBe(0);
+      const data = f.taskJson();
+      expect(data).toMatchObject({
+        state: "FINISH",
+        last_reviewed: fixed,
+        recheck_skips: [{ reason: "repros", findings: [FINDING_ID], gate: 1 }],
+      });
+      expect(data.dispatches.map((d: { id: string }) => d.id)).not.toContain(
+        "d-005",
+      );
+      expect(
+        fs.readFileSync(path.join(f.taskDir, "reports/gate-1.md"), "utf-8"),
+      ).toContain("- REPRO-1: pass");
+    });
+
+    it("REVIEW (standard): a trace repro is not executable, so the fix still gets its self-check", () => {
+      toVerified({
+        reply: verifyReply(
+          [finding("src/app.txt", 2, "CONFIRMED", undefined, TRACE)],
+          1,
+          0,
+        ),
+      });
+      expect(f.taskJson().cycle.repros[FINDING_ID]).toEqual(TRACE);
+      expect(dispatch(f, "d-004").status).toBe(0);
+      expect(f.run("gate").status).toBe(0);
+      expect(f.taskJson()).toMatchObject({ state: "REVIEW", step: "review" });
+      expect(f.next()).toMatchObject({ mode: "self-check", dispatch: "d-005" });
+    });
+
     it("REVIEW (standard): candidates -> verify CONFIRMED -> fix -> GATE -> one self-check over the delta -> FINISH", () => {
       f = setupFixture({ tier: "standard" });
       seedCode(f, "REVIEW/candidates", [GREEN_CHECK]);
@@ -366,7 +521,11 @@ describe.skipIf(!hasPython())(
         },
         "d-002": { reply: reviewReply("PASS", []) },
         "d-003": {
-          reply: verifyReply([finding("src/app.txt", 2, "CONFIRMED")], 1, 0),
+          reply: verifyReply(
+            [finding("src/app.txt", 2, "CONFIRMED", undefined, TRACE)],
+            1,
+            0,
+          ),
         },
         "d-004": { write: [APP_FIX] },
         "d-005": { reply: reviewReply("PASS", []) },
@@ -462,7 +621,11 @@ describe.skipIf(!hasPython())(
         },
         "d-002": { reply: reviewReply("PASS", []) },
         "d-003": {
-          reply: verifyReply([finding("src/app.txt", 2, "CONFIRMED")], 1, 0),
+          reply: verifyReply(
+            [finding("src/app.txt", 2, "CONFIRMED", undefined, TRACE)],
+            1,
+            0,
+          ),
         },
         "d-004": { write: [APP_FIX] },
         "d-005": { reply: reviewReply("PASS", []) },
@@ -509,7 +672,11 @@ describe.skipIf(!hasPython())(
           reply: reviewReply("FAIL", [finding("src/app.txt", 2, "CANDIDATE")]),
         },
         "d-005": {
-          reply: verifyReply([finding("src/app.txt", 2, "CONFIRMED")], 1, 0),
+          reply: verifyReply(
+            [finding("src/app.txt", 2, "CONFIRMED", undefined, TRACE)],
+            1,
+            0,
+          ),
         },
         "d-006": { write: [APP_FIX] },
         "d-007": { reply: reviewReply("PASS", []) },

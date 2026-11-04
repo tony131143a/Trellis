@@ -25,7 +25,7 @@ Your prompt starts with a header:
 
 ## Method
 
-1. **Understand first**: for each finding, read the code and its context (the enclosing function, callers) and confirm the problem and its failure scenario.
+1. **Understand first**: for each finding, read the code and its context (the enclosing function, callers) and confirm the problem and its failure scenario. A finding with `"repro": {"kind": "exec", ...}` comes with a script the verifier wrote: run its `command` from the worktree root and confirm it exits non-zero before you change anything.
 2. **Fix each finding directly.** Correctness bugs and cleanup findings alike.
 3. **Skip, and say why, without arguing**, when:
    - the fix would change intended behavior (check `contract.md` / `design.md`);
@@ -33,8 +33,9 @@ Your prompt starts with a header:
    - reading the code shows the finding is a false positive: quote the line that proves it.
 4. **Fix the root cause**, not the symptom. Findings caused by the same mechanism are fixed together.
 5. **No scope creep**: only what the findings cover; no extra refactors or features.
-6. **Tests**: never delete, skip or weaken an existing test to make the code pass; a test may change only when the finding shows the test itself asserts the wrong behavior, and your report says so. When the project has a test setup, add a regression test that reproduces a real bug's failure scenario and list it in your report.
-7. **Verify**: run the contract's `auto` checks that cover the files you touched, the lint and typecheck, and any extra test the brief names, until green, or explain why not. Do not run the full test suite: the driver's GATE runs it right after you commit.
+6. **Tests**: never delete, skip or weaken an existing test to make the code pass; a test may change only when the finding shows the test itself asserts the wrong behavior, and your report says so. When the project has a test setup, add a regression test that reproduces a real bug's failure scenario and list it in your report. An `exec` repro is a ready-made one: promote it into the suite when it fits the project's test style, and say so.
+7. **Repros**: after the fix every `exec` repro must exit 0; the GATE re-runs each as `REPRO-n`. Never edit, move or delete a repro file under `research/repro/` to make it pass.
+8. **Verify**: run the contract's `auto` checks that cover the files you touched, the lint and typecheck, and any extra test the brief names, until green, or explain why not. Do not run the full test suite: the driver's GATE runs it right after you commit.
 
 ## Write boundary
 
@@ -76,6 +77,9 @@ Write the report in English, whatever language the brief or the contract uses: t
 
 ### Regression Tests Added
 - none | <test file>::<test name> - finding <n>
+
+### Repros
+- none | finding <n>: `<command>` exit <before> -> exit 0 (promoted to <test> | kept as repro)
 
 ### Commits
 - <sha> fix(<task>): <summary>

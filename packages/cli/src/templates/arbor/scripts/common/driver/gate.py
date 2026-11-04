@@ -4,6 +4,8 @@ of the contract's Verification map, run in the task worktree.
 
 Gate commands come from ``gate.commands`` in ``.arbor/config.yaml`` and are
 reported as ``GATE-1``, ``GATE-2``, ...; map checks keep their criterion id.
+After a review fix the gate also runs the ``exec`` repro of every fixed
+CONFIRMED finding as ``REPRO-1``, ``REPRO-2``, ... (each must exit 0).
 """
 
 from __future__ import annotations
@@ -11,6 +13,7 @@ from __future__ import annotations
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Sequence
 
 from ..contract import Contract
 
@@ -71,13 +74,17 @@ def auto_checks(contract: Contract) -> list[tuple[str, str]]:
     return [(e.id, e.check) for e in contract.auto_checks() if e.check.strip()]
 
 
-def run_gate(gate_commands: list[str], contract: Contract, worktree: Path) -> GateResult:
-    """Gate commands first, then every auto map check; all of them run."""
+def run_gate(gate_commands: list[str], contract: Contract, worktree: Path,
+             repros: Sequence[tuple[str, str]] = ()) -> GateResult:
+    """Gate commands first, then every auto map check, then the
+    ``(finding id, command)`` repros as ``REPRO-n``; all of them run."""
     checks = [
         run_check(f"GATE-{i}", command, worktree)
         for i, command in enumerate(gate_commands, start=1)
     ]
     checks += [run_check(cid, command, worktree) for cid, command in auto_checks(contract)]
+    checks += [run_check(f"REPRO-{i}", command, worktree)
+               for i, (_, command) in enumerate(repros, start=1)]
     return GateResult(checks)
 
 

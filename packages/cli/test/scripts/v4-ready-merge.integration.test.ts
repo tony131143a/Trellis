@@ -625,7 +625,7 @@ describe.skipIf(!hasPython())(
         },
         "d-002": { reply: reviewPass },
         "d-003": {
-          reply: `\`\`\`json\n${JSON.stringify([{ ...finding, verdict: "CONFIRMED" }])}\n\`\`\`\nCONFIRMED 1, PLAUSIBLE 0, REFUTED 0.\n`,
+          reply: `\`\`\`json\n${JSON.stringify([{ ...finding, verdict: "CONFIRMED", repro: { kind: "trace", path: ["src/feature.txt:1", "src/feature.txt:1"] } }])}\n\`\`\`\nCONFIRMED 1, PLAUSIBLE 0, REFUTED 0.\n`,
         },
         "d-004": {
           write: [{ path: "src/feature.txt", content: "feature!\n" }],

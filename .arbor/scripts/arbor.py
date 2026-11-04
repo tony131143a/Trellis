@@ -531,6 +531,9 @@ def next_payload(ctx: Ctx | None, partition: str | None = None, role: str | None
         out["decision"] = step.decision
     if step.human:
         out["human"] = _human(ctx, step.human)
+    repros = (data.get("cycle") or {}).get("repros")
+    if (data.get("state"), sm.step_of(data)) == ("REVIEW", "fix") and repros:
+        out["repros"] = repros  # paste into the fix brief with the findings
     out["touched_files"] = touched_files(ctx, unit.worktree)
     ready = ready_set(ctx, step)
     out.update(ready)
@@ -952,6 +955,10 @@ def validate_dispatch(ctx: Ctx, unit: Unit, role: str, dispatch: str, before, pa
         if leftover:
             violations.append(f"{role} left uncommitted changes: {', '.join(leftover)}")
     check = rv.check_reply(role, reply)
+    if role == "verify":
+        check = rv.check_repros(check, unit.worktree, ctx.task_rel)
+        if check.downgraded:
+            violations.append("CONFIRMED without repro downgraded to PLAUSIBLE: " + ", ".join(check.downgraded))
     violations = rv.adjust_violations(role, violations, reply, check)
     violations.extend(observations or [])
     if contract_changed(ctx):
@@ -1024,7 +1031,7 @@ def _advance(ctx: Ctx, state: str, step: str, role: str, dispatch: str, out: Out
         notes.append(f"### Prefilter\n- kept {len(kept)}, dropped {dropped} -> {rel}")
     elif (state, step) == ("REVIEW", "verify"):
         by = lambda v: [rv.finding_id(f) for f in out.check.findings if str(f.get("verdict", "")).upper() == v]
-        sm.on_verify(data, by("CONFIRMED"), by("PLAUSIBLE"), ctx.tier)
+        sm.on_verify(data, by("CONFIRMED"), by("PLAUSIBLE"), ctx.tier, repros=out.check.repros)
     elif role in WRITER_ROLES:
         sm.on_writer_done(data, state, step, out.head_after != out.head_before, ctx.tier)
     return notes
@@ -1138,6 +1145,8 @@ def _finish(ctx: Ctx, job: Job, out: Outcome) -> None:
         "id": dispatch, "role": role, "mode": job.mode, "commit": commit, "status": out.status,
         "started": res.started if res else utc_now(), "ended": res.ended if res else utc_now(),
         "range": out.range_spec, "confidence": out.check.confidence,
+        **({"verdict": out.check.verdict} if out.check.verdict else {}),
+        **({"downgraded": list(out.check.downgraded)} if out.check.downgraded else {}),
         **({"partition": name} if name else {}),
         **({"override": True} if job.override else {}),
         "observations": out.violations,
@@ -1429,7 +1438,13 @@ def cmd_gate(args: argparse.Namespace, ctx: Ctx | None = None) -> int:
     contract_path = find_contract(ctx.task_dir)
     if contract_path is None:
         raise DriverError(f"{ctx.name} has no contract.md")
-    result = run_gate(get_gate_commands(ctx.execution_config), load_contract(contract_path), ctx.worktree)
+    recheck = (ctx.data.get("after_gate") or {}).get("step") == "recheck"
+    repros = sorted(
+        (fid, rec["command"]) for fid, rec in ((ctx.data.get("cycle") or {}).get("repros") or {}).items()
+        if rec.get("kind") == "exec" and rec.get("command")
+    ) if recheck else []  # before the fix a repro fails by construction
+    result = run_gate(get_gate_commands(ctx.execution_config), load_contract(contract_path), ctx.worktree,
+                      repros=repros)
     if ctx.data.get("execution_binding") and not result.checks:
         result.checks.append(CheckResult("GATE-EMPTY", "", 1,
                                          "product gate has no commands or auto checks"))
@@ -1447,14 +1462,18 @@ def cmd_gate(args: argparse.Namespace, ctx: Ctx | None = None) -> int:
         if (data.get("after_gate") or {}).get("step") == "recheck" and data.get("last_reviewed"):
             delta = fin.changed_lines(ctx.worktree, f"{data['last_reviewed']}..HEAD")  # the fix delta
         sm.on_gate(data, result.failing, ctx.tier, delta_lines=delta,
-                   recheck_max_lines=int(ctx.mandate["auto_merge_max_lines"]))
+                   recheck_max_lines=int(ctx.mandate["auto_merge_max_lines"]),
+                   repros_run=[fid for fid, _ in repros], head=head(ctx))
         apply_mandate(ctx)
         number = data["counters"]["gate"]
         report = ctx.task_dir / "reports" / f"gate-{number}.md"
         report.parent.mkdir(exist_ok=True)
         report.write_text(
             f"# Gate {number}: {'red' if result.failing else 'green'}\n\n"
-            f"failing: {', '.join(result.failing) or 'none'}\n\n{format_checks(result.checks)}\n",
+            f"failing: {', '.join(result.failing) or 'none'}\n\n"
+            + (f"repros: {', '.join(f'REPRO-{i} = {fid}' for i, (fid, _) in enumerate(repros, start=1))}\n\n"
+               if repros else "")
+            + f"{format_checks(result.checks)}\n",
             encoding="utf-8",
         )
         save(ctx)
@@ -1484,6 +1503,8 @@ def decide_report(ctx: Ctx, args: argparse.Namespace) -> int:
         check = rv.check_reply(job.role, interpretation)
         if not check.ok or check.confidence == "low":
             raise DriverError(check.problem or "interpretation needs an explicit structured result")
+        if job.role == "verify":
+            check = rv.check_repros(check, job.unit.worktree, ctx.task_rel)
         raw = saved["outcome"]
         out = Outcome(**{**raw, "status": "ok", "reply": interpretation, "check": check,
                          "exec_result": ExecResult(**raw["exec_result"]) if raw["exec_result"] else None})
@@ -1497,6 +1518,8 @@ def decide_report(ctx: Ctx, args: argparse.Namespace) -> int:
         for entry in ctx.data["dispatches"]:
             if entry.get("id") == dispatch:
                 entry.update(status="ok", interpreted_report=rel)
+                if check.downgraded:
+                    entry["downgraded"] = list(check.downgraded)
     elif job.override:
         ctx.data["override_role"] = job.override
     pending.pop(dispatch)

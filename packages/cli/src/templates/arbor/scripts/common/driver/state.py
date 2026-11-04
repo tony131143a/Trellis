@@ -14,11 +14,14 @@ nothing else (no git, no subprocesses), so ``arbor next`` stays cheap.
                                    sweep first); FAIL -> fix (round cap)
     REVIEW    candidates  brief    standard / full entry: N review candidates -> prefilter
                                    -> verify
-    REVIEW    verify      brief    PLAUSIBLE -> plausible; CONFIRMED -> fix; none -> FINISH
+    REVIEW    verify      brief    PLAUSIBLE -> plausible; CONFIRMED (with a repro, else
+                                   read as PLAUSIBLE) -> fix; none -> FINISH
     REVIEW    plausible   human    decide fix|skip
     REVIEW    fix         brief    -> GATE -> recheck: the fix delta (last_reviewed..HEAD)
                                    within ``recheck_max_lines`` -> review (self-check);
-                                   larger -> candidates
+                                   larger -> candidates; small and every fixed finding's
+                                   exec repro passed as REPRO-n in that gate -> FINISH
+                                   (full: sweep) without the self-check
     REVIEW    sweep       brief    full only, once: review sweep base..HEAD ->
                                    prefilter -> verify -> fix -> GATE -> recheck
 
@@ -69,6 +72,7 @@ dispatches count against the partition's own ``no_progress``.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Sequence
 
 STATES = ("CONTRACT", "BUILD", "GATE", "REVIEW", "FINISH", "DONE", "STOP")
 STOP_REASONS = ("NO_PROGRESS", "BUDGET", "VIOLATION", "HUMAN")
@@ -465,11 +469,15 @@ def on_writer_done(data: dict, state: str, step: str, committed: bool, tier: str
 
 
 def on_gate(data: dict, failing: list[str], tier: str | None = None, *,
-            delta_lines: int | None = None, recheck_max_lines: int = RECHECK_MAX_LINES) -> None:
+            delta_lines: int | None = None, recheck_max_lines: int = RECHECK_MAX_LINES,
+            repros_run: Sequence[str] = (), head: str | None = None) -> None:
     """Record one gate run in GATE state. ``delta_lines`` is the size of
     ``last_reviewed..HEAD`` when the gate follows a fix (step ``recheck``): a
     delta within ``recheck_max_lines`` goes to one self-check reader, a larger
-    one to a full candidate cycle."""
+    one to a full candidate cycle. ``repros_run`` are the finding ids whose
+    ``exec`` repro ran in this gate: when they cover every fixed finding and the
+    delta is small, the passing repros stand in for the self-check (``head``
+    becomes ``last_reviewed``)."""
     counters = data["counters"]
     counters["gate"] = counters.get("gate", 0) + 1
     previous = data.get("gate_failing")
@@ -480,6 +488,16 @@ def on_gate(data: dict, failing: list[str], tier: str | None = None, *,
         dest = data.pop("after_gate", None) or after_build(data, tier)
         if dest.get("step") == "recheck":
             small = delta_lines is not None and delta_lines <= recheck_max_lines
+            cycle = data.get("cycle") or {}
+            fixed = list(cycle.get("fix") or [])
+            if small and fixed and set(fixed) <= set(repros_run):
+                record = {"reason": "repros", "findings": fixed}
+                cycle["recheck_skipped"] = record
+                data.setdefault("recheck_skips", []).append({**record, "gate": counters["gate"]})
+                if head:
+                    data["last_reviewed"] = head
+                _cycle_done(data, tier)
+                return
             dest = {"state": "REVIEW", "step": "review" if small else "candidates"}
         if dest.get("step") == "candidates":
             start_cycle(data)
@@ -597,8 +615,13 @@ def on_candidates_filtered(data: dict, kept_ids: list[str], candidates_file: str
     _start_verify(data, kept_ids, candidates_file)
 
 
-def on_verify(data: dict, confirmed: list[str], plausible: list[str], tier: str | None = None) -> None:
+def on_verify(data: dict, confirmed: list[str], plausible: list[str], tier: str | None = None,
+              repros: dict | None = None) -> None:
+    """One verify batch. ``repros`` maps CONFIRMED ids to their reproduction
+    (the recheck gate runs the ``exec`` ones as ``REPRO-n``)."""
     cycle = data["cycle"]
+    if repros:
+        cycle.setdefault("repros", {}).update({k: v for k, v in repros.items() if k in confirmed})
     cycle["confirmed"] = cycle.get("confirmed", []) + confirmed
     cycle["plausible"] = cycle.get("plausible", []) + plausible
     cycle["verify_done"] = cycle.get("verify_done", 0) + 1

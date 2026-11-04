@@ -28,12 +28,13 @@ Your prompt starts with a header:
 2. **Check each candidate independently**: open the file, read the changed function, its callers and callees, and judge against the diff. One candidate's verdict never decides another's.
 3. **Rule-based candidates**: when a candidate cites a spec, `AGENTS.md` or `CLAUDE.md`, open the rule file and confirm the rule text explicitly covers the problem. Otherwise REFUTED.
 4. **Acceptance candidates**: confirm the quoted criterion exists in `contract.md` and that the diff really leaves it unmet.
+5. **Reproduce what you confirm**: a CONFIRMED verdict carries a `repro` (see Report). Prefer an executable one: write a small script under `<task>/research/repro/<dispatch>-<n>.<ext>` (`<n>` numbers your candidates) that exits non-zero on the current HEAD because of the defect and will exit 0 once it is fixed, run it, and record the command, its exit code and the tail of its output. Write it as a test, not a demo: it must fail for the reason in the finding, nothing else. Keep it under a minute. When the defect cannot be executed in isolation (a missing branch, a wrong call order), give a `trace` repro instead: the call path as at least two `file:line` steps from the entry point to the failing line.
 
 ## Verdicts
 
 Exactly one per candidate:
 
-- **CONFIRMED**: you can name the inputs or state that trigger it and the wrong output or crash. Quote the line.
+- **CONFIRMED**: you can name the inputs or state that trigger it and the wrong output or crash, and you give a `repro`. Quote the line. The driver reads a CONFIRMED without a valid `repro` as PLAUSIBLE.
 - **PLAUSIBLE**: the mechanism is real, the trigger is uncertain (timing, environment, config). Say what would confirm it.
 - **REFUTED**: factually wrong (the code does not say that) or guarded elsewhere. Quote the line that proves it.
 
@@ -43,8 +44,9 @@ Exactly one per candidate:
 
 ## Hard limits
 
-- Read-only: read files, search, and run read-only commands (`git diff`, `git log`, `git show`, `git blame`, `rg`, `grep`, `find`, `ls`, `cat`).
-- Never create, modify, or delete files; leave the working tree clean and `HEAD` where it was. No commit, push, merge, rebase, reset, stash, branch switch or any other state-changing git command; no builds or tests.
+- Read files and search; run tests, builds, type checks and your repro scripts.
+- Write only under `<task>/research/repro/`; the driver commits those files with your report. Create, modify or delete nothing else; remove build outputs that are not gitignored before you finish; leave `HEAD` where it was. No commit, push, merge, rebase, reset, stash, branch switch or any other state-changing git command.
+- A product task (its prompt names a separate execution directory) cannot take repro files: give `trace` repros there.
 
 ## Report (your final message)
 
@@ -63,9 +65,12 @@ One JSON block, one entry per deduplicated candidate, most severe first:
     "verdict": "CONFIRMED | PLAUSIBLE | REFUTED",
     "evidence": "quoted code line or rule text",
     "to_confirm": "for PLAUSIBLE: what would confirm it; otherwise empty",
+    "repro": {"kind": "exec", "path": "research/repro/d-005-1.sh", "command": "sh .arbor/tasks/<task>/research/repro/d-005-1.sh", "exit": 1, "output_tail": "last lines of its output"},
     "fix": "carried over from the candidate, refined if needed"
   }
 ]
 ```
+
+`repro` is required for CONFIRMED and omitted otherwise. `kind` is `exec` (`path` under `<task>/research/repro/`, either task-relative or repo-relative; `command` runs it from the worktree root; `exit` and `output_tail` are what you observed) or `trace` (`"path": ["src/a.ts:12", "src/b.ts:40"]`, at least two existing `file:line` steps). After the fix the GATE runs every `exec` repro and expects exit 0.
 
 Last line: `CONFIRMED x, PLAUSIBLE y, REFUTED z.`
