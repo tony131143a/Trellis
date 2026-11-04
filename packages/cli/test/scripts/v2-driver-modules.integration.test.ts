@@ -33,7 +33,7 @@ try:
 except ExecutorError: pass
 ex = resolve_executor({})
 assert (ex.name, ex.timeout, ex.max_parallel, ex.assistant, ex.assistant_ids, ex.agent_type) == \\
-    ("codeg", 5400, 3, "arbor-{role}", None, None), ex
+    ("codeg", 5400, 5, "arbor-{role}", None, None), ex
 ex = resolve_executor({"executors": {"codeg": {"timeout": "30s", "agent_type": "coder"}}})
 assert (ex.name, ex.timeout, ex.assistant, ex.agent_type) == ("codeg", 30, "arbor-{role}", "coder"), ex
 ex = resolve_executor({"executors": {"default": "x", "x": {"type": "codeg-mcp", "assistant_ids": {"fix": "a-1"}}}})

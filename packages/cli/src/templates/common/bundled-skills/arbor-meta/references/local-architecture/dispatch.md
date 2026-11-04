@@ -65,7 +65,7 @@ executors:
     type: codeg-mcp
     assistant: "arbor-{role}"
     timeout: 90m
-    max_parallel: 3
+    max_parallel: 5
 ```
 
 Only `type: codeg-mcp` executors exist: `arbor.py run` returns `needs=delegation`. Call codeg MCP `delegate_to_agent` with the returned `mcp.arguments` (resolve the named assistant from the MCP roster if no id is configured), then immediately run `arbor.py bind --request <request_path> --task-id <returned task_id>`. Poll `get_delegation_status`, save its complete JSON response at the returned `result_path` outside the task worktree, and run `arbor.py collect --request <request_path> --result <file>` before proceeding. The shared PostToolUse hook `sync-delegation.py` (matcher `^mcp__.+__(delegate_to_agent|get_delegation_status)$`) does both: it finds the pending request in `.arbor/.runtime/delegations/` by the call's `task` text (bind) or by the bound `task_id` (collect, saving the response as `<dispatch>.result.json` next to the request) and returns what it did as `additionalContext`; a request already bound or collected by hand is skipped. Resume/poll a bound task after interruptions; never start it again. If the configured timeout expires, cancel it through `cancel_delegation` and collect the terminal report. Claude Code and Codex both use this same MCP flow. Do not substitute native Agent/Task/spawn_agent for a role.

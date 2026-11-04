@@ -9,7 +9,7 @@ collect protocol in ``mcp.py``.
         type: codeg-mcp
         assistant: "arbor-{role}"   # or assistant_ids: {role: id} / agent_type
         timeout: 90m                # 90m | 30s | 2h | plain seconds; absent = none
-        max_parallel: 3             # simultaneous delegations of one task
+        max_parallel: 5             # simultaneous delegations of one task
 """
 
 from __future__ import annotations

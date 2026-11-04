@@ -48,12 +48,12 @@ executors:
     type: codeg-mcp
     assistant: "arbor-{role}"
     timeout: 90m
-    max_parallel: 3
+    max_parallel: 5
   codeg-cli:
     type: command
     command: "codeg-cli run -A arbor-{role} -w {worktree} --permissions allow --timeout 90m --title arbor-{role}-{task}-{dispatch} -q -p - < {prompt}"
     timeout: 95m
-    max_parallel: 3
+    max_parallel: 5
 ```
 
 Create the eight role assistants in codeg with the corresponding `.arbor/agents/<name>.md` instructions and choose their underlying agent/options there. For the command executor put `codeg-cli` on PATH or write its absolute path in the command.

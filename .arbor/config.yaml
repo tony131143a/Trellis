@@ -125,7 +125,7 @@ executors:
     type: codeg-mcp
     assistant: "arbor-{role}"
     timeout: 90m
-    max_parallel: 3
+    max_parallel: 5
 
 #-------------------------------------------------------------------------------
 # Gate

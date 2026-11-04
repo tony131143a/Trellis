@@ -255,7 +255,7 @@ DEFAULT_EXECUTORS_CONFIG: dict = {
         "type": "codeg-mcp",
         "assistant": "arbor-{role}",
         "timeout": "90m",
-        "max_parallel": "3",
+        "max_parallel": "5",
     },
 }
 def get_worktree_config(config: dict) -> dict:

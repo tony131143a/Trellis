@@ -302,7 +302,7 @@ print(json.dumps({
       type: "codeg-mcp",
       assistant: "arbor-{role}",
       timeout: "90m",
-      max_parallel: "3",
+      max_parallel: "5",
     };
     expect(out).toEqual({
       wt_default: { root: "../{repo}-wt", setup: "", branch_prefix: "arbor/" },
@@ -343,7 +343,7 @@ print(json.dumps([get_worktree_config(cfg), get_executors_config(cfg)]))
           type: "codeg-mcp",
           assistant: "arbor-{role}",
           timeout: "90m",
-          max_parallel: "3",
+          max_parallel: "5",
         },
       },
     ]);

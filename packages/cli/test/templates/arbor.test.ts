@@ -524,7 +524,7 @@ describe("configYamlTemplate: executors and gate", () => {
         type: "codeg-mcp",
         assistant: "arbor-{role}",
         timeout: "90m",
-        max_parallel: "3",
+        max_parallel: "5",
       },
     });
     expect(parsed).not.toHaveProperty("conductor");
