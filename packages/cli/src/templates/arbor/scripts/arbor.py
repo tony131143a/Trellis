@@ -90,6 +90,7 @@ from common.dispatch_context import (
 )
 from common.driver import partitions as pt
 from common.driver import autopilot
+from common.driver import escalate as esc
 from common.driver import mcp
 from common.driver import finish as fin
 from common.driver import integration as ig
@@ -99,6 +100,7 @@ from common.driver import validate as rv
 from common.driver.executor import ExecResult, ExecutorError, resolve_executor, utc_now
 from common.driver.gate import CheckResult, format_checks, run_gate
 from common.driver.lock import LockTimeout, pid_alive, task_lock
+from common.config import get_packages
 from common.git import run_git
 from common.invariants import WRITER_ROLES, _dirty_paths, check_after_dispatch, snapshot_refs
 from common.io import read_json_checked, write_json, write_text_atomic
@@ -513,6 +515,9 @@ def next_payload(ctx: Ctx | None, partition: str | None = None, role: str | None
                  "partition": unit.label, "partitions_pending": list(step.pending), "needs": step.needs}
     if contract_changed(ctx):
         out["observations"] = ["contract.md differs from the recorded approval; main agent judges the change"]
+    if data.get("tier_history"):
+        out["tier_history"] = data["tier_history"]
+        out["escalated"] = data["tier_history"][-1]
     if step.role:
         dispatch = step.dispatch or next_dispatch_id(data, ctx.task_dir)
         out["role"] = step.role
@@ -650,6 +655,9 @@ def cmd_status(args: argparse.Namespace) -> int:
     print(f"  worktree: {ctx.worktree} ({ctx.branch}, base {d['base'][:12]})")
     print(f"  counters: {json.dumps(d['counters'])}")
     print(f"  mandate: {md.describe(ctx.mandate)}")
+    if d.get("tier_history"):
+        last = d["tier_history"][-1]
+        print(f"  escalated: {last['from']} -> {last['to']} ({last['detail']}, {last.get('at') or '-'})")
     if d.get("stop"):
         print(colored(f"  stop: {d['stop'].get('reason')}: {d['stop'].get('detail')}", Colors.RED))
     if d.get("partitions"):
@@ -1033,7 +1041,8 @@ def _advance(ctx: Ctx, state: str, step: str, role: str, dispatch: str, out: Out
         by = lambda v: [rv.finding_id(f) for f in out.check.findings if str(f.get("verdict", "")).upper() == v]
         sm.on_verify(data, by("CONFIRMED"), by("PLAUSIBLE"), ctx.tier, repros=out.check.repros)
     elif role in WRITER_ROLES:
-        sm.on_writer_done(data, state, step, out.head_after != out.head_before, ctx.tier)
+        sm.on_writer_done(data, state, step, out.head_after != out.head_before, ctx.tier,
+                          verdict=out.check.verdict if role == "implement" else None, at=utc_now())
     return notes
 
 
@@ -1136,6 +1145,8 @@ def _finish(ctx: Ctx, job: Job, out: Outcome) -> None:
             sm.on_dispatch_failed(data, role)
     elif name:
         sm.on_partition_implemented(data, name)
+        if role == "implement":
+            sm.maybe_escalate(data, ctx.tier, {"implement_status": out.check.verdict, "at": utc_now()})
     elif not job.override and not late:
         notes = _advance(ctx, job.state, job.step, role, dispatch, out)
 
@@ -1461,9 +1472,17 @@ def cmd_gate(args: argparse.Namespace, ctx: Ctx | None = None) -> int:
         delta = None
         if (data.get("after_gate") or {}).get("step") == "recheck" and data.get("last_reviewed"):
             delta = fin.changed_lines(ctx.worktree, f"{data['last_reviewed']}..HEAD")  # the fix delta
+        signals = {"at": utc_now()}
+        if ctx.tier == "light" and not recheck and not result.failing:
+            packages = None if data.get("execution_binding") else get_packages(ctx.main)
+            signals = esc.build_signals(ctx.worktree, data["base"], packages, at=signals["at"])
+        escalations = len(data.get("tier_history") or [])
         sm.on_gate(data, result.failing, ctx.tier, delta_lines=delta,
                    recheck_max_lines=int(ctx.mandate["auto_merge_max_lines"]),
-                   repros_run=[fid for fid, _ in repros], head=head(ctx))
+                   repros_run=[fid for fid, _ in repros], head=head(ctx), signals=signals)
+        if len(data.get("tier_history") or []) > escalations:
+            last = data["tier_history"][-1]
+            print(colored(f"  tier: {last['from']} -> {last['to']} ({last['detail']})", Colors.YELLOW))
         apply_mandate(ctx)
         number = data["counters"]["gate"]
         report = ctx.task_dir / "reports" / f"gate-{number}.md"

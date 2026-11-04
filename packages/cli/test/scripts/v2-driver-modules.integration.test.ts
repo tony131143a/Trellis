@@ -445,4 +445,30 @@ print("ok")
       fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
+
+  it("escalate: packages_touched maps paths to configured packages; maybe_escalate is one-way and lock-aware", () => {
+    const out = probe(`
+from common.driver.escalate import packages_touched
+from common.driver import state as sm
+pk = {"cli": {"path": "packages/cli"}, "docs": {"path": "./docs/"}, "root": {"path": "."}}
+assert packages_touched(["packages/cli/a.ts", "docs/x.md", "README.md", "packages/cli-x/b"], pk) == ["cli", "docs"]
+assert packages_touched(["a"], None) == []
+def light(**meta):
+    return {"meta": {"tier": "light", **meta}}
+for signals, name in (({"gate_reds": 2}, "gate_reds"), ({"implement_status": "Blocked"}, "implement_blocked"),
+                      ({"changed_lines": 301}, "diff_lines"), ({"packages": ["a", "b"]}, "packages")):
+    d = light()
+    assert sm.maybe_escalate(d, "light", {**signals, "at": "t"}) == "standard", signals
+    assert d["meta"]["tier"] == "standard" and d["tier_history"][0]["signal"] == name and d["tier_history"][0]["at"] == "t"
+for signals in ({"gate_reds": 1}, {"implement_status": "Complete"}, {"changed_lines": 300}, {"packages": ["a"]}, {}):
+    d = light(); assert sm.maybe_escalate(d, "light", signals) is None and "tier_history" not in d, signals
+for d, tier in ((light(tier_lock="true"), "light"), (light(tier_lock=True), "light"),
+                ({"meta": {}, "review_deferred": True}, "light"), ({"meta": {"tier": "standard"}}, "standard"),
+                ({"meta": {"tier": "full"}}, "full")):
+    assert sm.maybe_escalate(d, tier, {"gate_reds": 9}) is None and "tier_history" not in d
+d = light(tier_lock="no"); assert sm.maybe_escalate(d, "light", {"gate_reds": 2}) == "standard"
+print("ok")
+`);
+    expect(out).toBe("ok");
+  });
 });

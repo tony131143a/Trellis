@@ -8,7 +8,9 @@ and scope changes are always asked; they are not gates here.
 Resolution: the built-in default for the task's tier, then the ``mandate:``
 section of ``.arbor/config.yaml`` (per tier), then ``meta.mandate`` in
 task.json (``"contract=auto,merge=ask"``, set with ``task.py create
---mandate`` or ``task.py set-meta <task> mandate``).
+--mandate`` or ``task.py set-meta <task> mandate``). A light task the driver
+escalated (``state.maybe_escalate``) carries ``meta.tier: standard`` and
+resolves the standard defaults from then on.
 
 One gate the driver can act on by itself when it is ``auto``: ``plausible``
 (record ``decide skip``). ``contract`` only tells the main agent whether to ask; ``merge``

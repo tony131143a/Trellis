@@ -54,6 +54,59 @@ describe.skipIf(!hasPython())(
     let f: Fixture;
     afterEach(() => f?.cleanup());
 
+    it("two consecutive red gates escalate a light task to standard; the green gate then enters candidates", () => {
+      f = setupFixture({ gate: ["test -f a.txt", "test -f b.txt"] });
+      f.plan({
+        "d-001": { write: IMPLEMENTED },
+        "d-002": { write: [{ path: "a.txt", content: "a\n" }] },
+        "d-003": { write: [{ path: "b.txt", content: "b\n" }] },
+      });
+      expect(dispatch(f, "d-001").status).toBe(0);
+      expect(f.run("gate").status).toBe(1);
+      expect(f.taskJson().meta.tier).toBe("light");
+      expect(f.run("decide", "impl", "--reason", "missing").status).toBe(0);
+      expect(dispatch(f, "d-002").status).toBe(0);
+      const second = f.run("gate");
+      expect(second.status).toBe(1); // progress: GATE-1 now passes
+      expect(second.stdout).toContain(
+        "tier: light -> standard (2 consecutive red gates)",
+      );
+      expect(f.taskJson()).toMatchObject({
+        state: "GATE",
+        step: "decide",
+        gate_reds: 2,
+        meta: { tier: "standard" },
+        tier_history: [expect.objectContaining({ signal: "gate_reds" })],
+      });
+      expect(f.run("decide", "impl", "--reason", "missing").status).toBe(0);
+      expect(dispatch(f, "d-003").status).toBe(0);
+      expect(f.run("gate").status).toBe(0);
+      expect(f.taskJson()).toMatchObject({
+        state: "REVIEW",
+        step: "candidates",
+      });
+      expect(f.taskJson().tier_history).toHaveLength(1);
+    });
+
+    it("two red gates without progress still escalate; the no-progress count is kept", () => {
+      f = setupFixture({ gate: ["exit 3"] });
+      f.plan({
+        "d-001": { write: IMPLEMENTED },
+        "d-002": { write: [{ path: "src/a.txt", content: "1\n" }] },
+      });
+      expect(dispatch(f, "d-001").status).toBe(0);
+      expect(f.run("gate").status).toBe(1);
+      expect(f.run("decide", "impl", "--reason", "impl bug").status).toBe(0);
+      expect(dispatch(f, "d-002").status).toBe(0);
+      expect(f.run("gate").status).toBe(1);
+      expect(f.taskJson()).toMatchObject({
+        state: "GATE",
+        meta: { tier: "standard" },
+        counters: { no_progress: 1 },
+      });
+      expect(f.next().tier).toBe("standard");
+    });
+
     it("two red gate rounds without progress -> STOP(NO_PROGRESS); resume continues", () => {
       f = setupFixture({ gate: ["exit 3"] });
       f.plan({

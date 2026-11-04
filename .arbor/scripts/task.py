@@ -15,7 +15,7 @@ Usage:
     python3 task.py set-branch <dir> <branch>   # Set git branch
     python3 task.py set-base-branch <dir> <branch>  # Set PR target branch
     python3 task.py set-scope <dir> <scope>     # Set scope for PR title
-    python3 task.py set-meta <dir> <key> <value>  # Set a task metadata key (tier: light|standard|full; mandate: contract=auto,...)
+    python3 task.py set-meta <dir> <key> <value>  # Set a task metadata key (tier: light|standard|full; tier_lock: true keeps a light task light; mandate: contract=auto,...)
     python3 task.py rename <dir> <new-slug> [--dry-run]  # Rename task + references
     python3 task.py archive <task-dir> [--skip-branch-validation]  # Archive completed task
     python3 task.py list                        # List active tasks
@@ -1021,7 +1021,7 @@ Usage:
   python3 task.py set-branch <dir> <branch>          Set git branch
   python3 task.py set-base-branch <dir> <branch>     Set PR target branch
   python3 task.py set-scope <dir> <scope>            Set scope for PR title
-  python3 task.py set-meta <dir> <key> <value>       Set/overwrite a task metadata key (tier: light|standard|full; mandate: <gate>=<ask|auto>,...)
+  python3 task.py set-meta <dir> <key> <value>       Set/overwrite a task metadata key (tier: light|standard|full; tier_lock: true; mandate: <gate>=<ask|auto>,...)
   python3 task.py rename <dir> <new-slug>            Rename task, identity fields and references
   python3 task.py archive <task-dir>                 Archive completed task
   python3 task.py add-subtask <parent> <child>       Link child task to parent

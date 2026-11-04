@@ -35,6 +35,12 @@ its own; ``arbor override --role simplify`` runs it on demand.
                           run      merged: ``arbor finish`` cleans up -> DONE
     STOP      -           human    ``arbor resume`` / ``override`` / ``abandon``
 
+Escalation. A light task becomes standard (``meta.tier``, ``tier_history``)
+when ``maybe_escalate`` sees a signal: two consecutive red gates, an implement
+report Partial / Blocked, or at a BUILD gate a diff over ESCALATE_MAX_LINES
+lines or over more than one configured package. The green gate then enters
+REVIEW the standard way (candidates -> verify). ``meta.tier_lock`` opts out.
+
 Reader batches. REVIEW candidates (``CANDIDATE_READERS`` per tier) and
 REVIEW verify (one per batch of 8) are read-only readers of the same range:
 when the step opens, the caller assigns every reader its dispatch id under
@@ -106,6 +112,10 @@ BATCH_STEPS = (("REVIEW", "candidates"), ("REVIEW", "verify"))
 VERIFY_BATCH = 8
 NO_PROGRESS_LIMIT = 2
 NEW_COUNTERS = {"gate": 0, "review": 0, "no_progress": 0}
+# One-way light -> standard escalation (``maybe_escalate``).
+ESCALATE_GATE_REDS = 2  # consecutive red gates
+ESCALATE_MAX_LINES = 300  # changed lines of base..HEAD at a BUILD gate
+ESCALATE_STATUSES = ("Partial", "Blocked")  # implement report status
 DEFAULT_PARTITION = "default"
 PARTITION_BRIEF_STEPS = ("implement",)
 PARTITION_DONE = "done"
@@ -157,6 +167,40 @@ def step_of(data: dict) -> str:
 def review_entry(tier: str | None) -> str:
     """The first REVIEW step of a tier: light one self-check, the others the candidate readers."""
     return "review" if tier == "light" else "candidates"
+
+
+def tier_locked(data: dict) -> bool:
+    """``meta.tier_lock`` (``task.py set-meta <task> tier_lock true``) keeps the tier."""
+    lock = (data.get("meta") or {}).get("tier_lock")
+    return lock is True or str(lock).strip().lower() in ("1", "true", "yes", "on")
+
+
+def maybe_escalate(data: dict, tier: str | None, signals: dict) -> str | None:
+    """Promote a light task to standard when it proves bigger than planned;
+    returns the new tier, None when nothing changes. Signals, first match wins:
+    ``gate_reds`` >= ESCALATE_GATE_REDS, ``implement_status`` in
+    ESCALATE_STATUSES, ``changed_lines`` > ESCALATE_MAX_LINES, ``packages``
+    (names) spanning more than one. One way only; never for a locked tier or a
+    child whose review is deferred to its parent."""
+    if tier != "light" or tier_locked(data) or data.get("review_deferred"):
+        return None
+    status = str(signals.get("implement_status") or "")
+    packages = list(signals.get("packages") or [])
+    if int(signals.get("gate_reds") or 0) >= ESCALATE_GATE_REDS:
+        signal, detail = "gate_reds", f"{signals['gate_reds']} consecutive red gates"
+    elif status.capitalize() in ESCALATE_STATUSES:
+        signal, detail = f"implement_{status.lower()}", f"implement reported {status.capitalize()}"
+    elif int(signals.get("changed_lines") or 0) > ESCALATE_MAX_LINES:
+        signal, detail = "diff_lines", f"{signals['changed_lines']} changed lines (> {ESCALATE_MAX_LINES})"
+    elif len(packages) > 1:
+        signal, detail = "packages", f"changes span packages {', '.join(packages)}"
+    else:
+        return None
+    data.setdefault("meta", {})["tier"] = "standard"
+    data.setdefault("tier_history", []).append({
+        "from": "light", "to": "standard", "signal": signal, "detail": detail, "at": signals.get("at") or "",
+    })
+    return "standard"
 
 
 def after_build(data: dict, tier: str | None) -> dict:
@@ -456,9 +500,11 @@ def on_violation(data: dict, role: str, dispatch: str, violations: list[str]) ->
     data.setdefault("observations", []).append({"dispatch": dispatch, "role": role, "changes": violations})
 
 
-def on_writer_done(data: dict, state: str, step: str, committed: bool, tier: str | None) -> None:
-    """After an ok writer dispatch."""
+def on_writer_done(data: dict, state: str, step: str, committed: bool, tier: str | None,
+                   verdict: str | None = None, at: str = "") -> None:
+    """After an ok writer dispatch; ``verdict`` is the report's status word."""
     if state == "BUILD" and step == "implement":
+        tier = maybe_escalate(data, tier, {"implement_status": verdict, "at": at}) or tier
         data["after_gate"] = after_build(data, tier)
         goto(data, "GATE")
     elif state == "GATE":
@@ -470,14 +516,16 @@ def on_writer_done(data: dict, state: str, step: str, committed: bool, tier: str
 
 def on_gate(data: dict, failing: list[str], tier: str | None = None, *,
             delta_lines: int | None = None, recheck_max_lines: int = RECHECK_MAX_LINES,
-            repros_run: Sequence[str] = (), head: str | None = None) -> None:
+            repros_run: Sequence[str] = (), head: str | None = None,
+            signals: dict | None = None) -> None:
     """Record one gate run in GATE state. ``delta_lines`` is the size of
     ``last_reviewed..HEAD`` when the gate follows a fix (step ``recheck``): a
     delta within ``recheck_max_lines`` goes to one self-check reader, a larger
     one to a full candidate cycle. ``repros_run`` are the finding ids whose
     ``exec`` repro ran in this gate: when they cover every fixed finding and the
     delta is small, the passing repros stand in for the self-check (``head``
-    becomes ``last_reviewed``)."""
+    becomes ``last_reviewed``). ``signals`` (``escalate.build_signals``) feed
+    ``maybe_escalate`` at a BUILD gate; a red gate adds its own count."""
     counters = data["counters"]
     counters["gate"] = counters.get("gate", 0) + 1
     previous = data.get("gate_failing")
@@ -486,6 +534,11 @@ def on_gate(data: dict, failing: list[str], tier: str | None = None, *,
         data["gate_reds"] = 0
         counters["no_progress"] = 0
         dest = data.pop("after_gate", None) or after_build(data, tier)
+        if dest.get("step") != "recheck":
+            tier = maybe_escalate(data, tier, signals or {}) or tier
+            if data.get("tier_history"):
+                # after_gate was planned at writer time; an escalation since changes the REVIEW entry
+                dest = after_build(data, tier)
         if dest.get("step") == "recheck":
             small = delta_lines is not None and delta_lines <= recheck_max_lines
             cycle = data.get("cycle") or {}
@@ -506,6 +559,7 @@ def on_gate(data: dict, failing: list[str], tier: str | None = None, *,
         return
 
     data["gate_reds"] = int(data.get("gate_reds", 0)) + 1
+    maybe_escalate(data, tier, {"gate_reds": data["gate_reds"], "at": (signals or {}).get("at", "")})
     progressed = previous is None or bool(set(previous) - set(failing)) or len(failing) < len(previous)
     # The decision is recorded first so that a STOP resumes at GATE/decide.
     data["step"] = "decide"

@@ -335,5 +335,137 @@ describe.skipIf(!hasPython())(
       expect(f.taskJson()).toMatchObject({ state: "GATE", step: "fix" });
       expect(f.taskJson().overrides).toHaveLength(1);
     });
+
+    describe("light -> standard escalation", () => {
+      it("an implement report Partial escalates; the green gate enters candidates with two readers", () => {
+        f = setupFixture();
+        f.plan({
+          "d-001": { write: IMPLEMENTED, reply: "## Implementation Partial\n" },
+        });
+        expect(dispatch(f, "d-001").status).toBe(0);
+        let data = f.taskJson();
+        expect(data.meta.tier).toBe("standard");
+        expect(data.tier_history).toEqual([
+          expect.objectContaining({
+            from: "light",
+            to: "standard",
+            signal: "implement_partial",
+            detail: "implement reported Partial",
+          }),
+        ]);
+        expect(data.dispatches[0].verdict).toBe("Partial");
+        expect(f.run("gate").status).toBe(0);
+        data = f.taskJson();
+        expect(data).toMatchObject({ state: "REVIEW", step: "candidates" });
+        const next = f.next();
+        expect(next).toMatchObject({
+          tier: "standard",
+          mode: "candidates",
+          escalated: { signal: "implement_partial" },
+        });
+        expect(next.batch).toHaveLength(2);
+        expect(f.run("status").stdout).toContain(
+          "escalated: light -> standard (implement reported Partial",
+        );
+      });
+
+      it("a diff over 300 lines escalates at the BUILD gate", () => {
+        f = setupFixture();
+        f.plan({
+          "d-001": {
+            write: [
+              ...IMPLEMENTED,
+              { path: "src/big.txt", content: "x\n".repeat(320) },
+            ],
+          },
+        });
+        expect(dispatch(f, "d-001").status).toBe(0);
+        expect(f.taskJson().meta.tier).toBe("light");
+        const gate = f.run("gate");
+        expect(gate.status).toBe(0);
+        expect(gate.stdout).toContain(
+          "tier: light -> standard (322 changed lines (> 300))",
+        );
+        expect(f.taskJson()).toMatchObject({
+          state: "REVIEW",
+          step: "candidates",
+          meta: { tier: "standard" },
+          tier_history: [expect.objectContaining({ signal: "diff_lines" })],
+        });
+      });
+
+      it("changes in two configured packages escalate at the BUILD gate", () => {
+        f = setupFixture();
+        fs.appendFileSync(
+          path.join(f.repo, ".arbor/config.yaml"),
+          "packages:\n  a:\n    path: pkg-a\n  b:\n    path: ./pkg-b/\ndefault_package: a\n",
+        );
+        f.plan({
+          "d-001": {
+            write: [
+              ...IMPLEMENTED,
+              { path: "pkg-a/x.txt", content: "x\n" },
+              { path: "pkg-b/y.txt", content: "y\n" },
+            ],
+          },
+        });
+        expect(dispatch(f, "d-001").status).toBe(0);
+        expect(f.run("gate").status).toBe(0);
+        expect(f.taskJson()).toMatchObject({
+          state: "REVIEW",
+          step: "candidates",
+          tier_history: [
+            expect.objectContaining({
+              signal: "packages",
+              detail: "changes span packages a, b",
+            }),
+          ],
+        });
+      });
+
+      it("a small single-package light task stays light and enters the self-check", () => {
+        f = setupFixture();
+        f.plan({ "d-001": { write: IMPLEMENTED } });
+        expect(dispatch(f, "d-001").status).toBe(0);
+        expect(f.run("gate").status).toBe(0);
+        const data = f.taskJson();
+        expect(data).toMatchObject({ state: "REVIEW", step: "review" });
+        expect(data.tier_history).toBeUndefined();
+        expect(f.next().escalated).toBeUndefined();
+      });
+
+      it("meta.tier_lock keeps a light task light; a standard task never records tier_history", () => {
+        f = setupFixture();
+        const r = spawnSync(
+          "python3",
+          [
+            ".arbor/scripts/task.py",
+            "set-meta",
+            f.taskDir,
+            "tier_lock",
+            "true",
+          ],
+          { cwd: f.repo, encoding: "utf-8" },
+        );
+        expect(r.status, r.stdout + r.stderr).toBe(0);
+        f.plan({
+          "d-001": { write: IMPLEMENTED, reply: "## Implementation Blocked\n" },
+        });
+        expect(dispatch(f, "d-001").status).toBe(0);
+        expect(f.taskJson().meta).toMatchObject({
+          tier: "light",
+          tier_lock: "true",
+        });
+        expect(f.taskJson().tier_history).toBeUndefined();
+        f.cleanup();
+
+        f = setupFixture({ tier: "standard" });
+        f.plan({
+          "d-001": { write: IMPLEMENTED, reply: "## Implementation Partial\n" },
+        });
+        expect(dispatch(f, "d-001").status).toBe(0);
+        expect(f.taskJson().tier_history).toBeUndefined();
+      });
+    });
   },
 );

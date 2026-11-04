@@ -95,6 +95,9 @@ export const commonDriverPartitions = readTemplate(
 export const commonDriverFinish = readTemplate(
   "scripts/common/driver/finish.py",
 );
+export const commonDriverEscalate = readTemplate(
+  "scripts/common/driver/escalate.py",
+);
 export const commonDriverAutopilot = readTemplate(
   "scripts/common/driver/autopilot.py",
 );
@@ -178,6 +181,7 @@ export function getAllScripts(): Map<string, string> {
   scripts.set("common/driver/lock.py", commonDriverLock);
   scripts.set("common/driver/partitions.py", commonDriverPartitions);
   scripts.set("common/driver/finish.py", commonDriverFinish);
+  scripts.set("common/driver/escalate.py", commonDriverEscalate);
   scripts.set("common/driver/autopilot.py", commonDriverAutopilot);
 
   // Main
