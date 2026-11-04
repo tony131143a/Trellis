@@ -6,7 +6,7 @@
 
 1. **The contract is the spine** — `contract.md` says what "done" looks like and how it is checked; the human approves the scope; the main agent judges later edits in context and seeks approval only for material scope changes
 2. **The driver owns control, you own judgment** — `arbor.py` records state, counters, executable checks and observations; you (the main agent, the user's session) propose the tier, write the contract, split work into child tasks, curate context, write the briefs, classify red gates and retry within the contract
-3. **Verification is a ladder** — deterministic checks → review (candidates + independent verify in standard / full) → sweep (full); a red rung never climbs. Writers run only the contract's targeted checks; GATE runs the whole suite (`gate.commands`)
+3. **Verification is a ladder** — deterministic checks → review (candidates + independent verify in standard / full; verify reproduces what it confirms) → sweep (full); a red rung never climbs, and a light task that proves bigger than planned climbs to standard by itself. Writers run only the contract's targeted checks; GATE runs the whole suite (`gate.commands`) and, after a fix, every repro
 4. **Many readers, one writer** — read-only roles run in parallel; each branch has one writer at a time
 5. **Git-native** — a task is a worktree plus a branch; writers commit; a diff is a commit range; merges are `--no-ff`
 6. **Persist everything** — research, decisions and lessons go to files; conversations get compacted, files don't
@@ -83,7 +83,7 @@ Every command takes `--task <dir>` before the command name (default: this sessio
 
 ### `next --json`
 
-Always carries `task`, `state`, `needs` and `summary`; depending on `needs` also `role`, `mode`, `range`, `dispatch`, `brief_path`, `batch`, `decision`, `human` and `touched_files` (what the task changed so far: read it instead of re-exploring). `batch` lists the readers of the current step that run concurrently (REVIEW candidates: standard 2, full 3; the verify batches of 8 candidates): write every brief, then start each with `arbor.py run --dispatch <id>`. After start it also carries the **ready set**: `items` (every step you can act on now: the current step, every other reader of its batch, every other partition that needs a brief, every prepared delegation not yet sent), `running` (delegations and readers in flight) and, when `items` is empty, `blocked_on`. Act on every item in one turn, then wait once for what is running; never add items yourself. Before `task.py start` it answers `state: CONTRACT`, `needs: human` (`approve_contract`) plus the next `dispatch` id and its `brief_path`.
+Always carries `task`, `state`, `needs` and `summary`; depending on `needs` also `role`, `mode`, `range`, `dispatch`, `brief_path`, `batch`, `decision`, `human` and `touched_files` (what the task changed so far: read it instead of re-exploring). `batch` lists the readers of the current step that run concurrently (REVIEW candidates: standard 2, full 3; the verify batches of 8 candidates): write every brief, then start each with `arbor.py run --dispatch <id>`. After start it also carries the **ready set**: `items` (every step you can act on now: the current step, every other reader of its batch, every other partition that needs a brief, every prepared delegation not yet sent), `running` (delegations and readers in flight) and, when `items` is empty, `blocked_on`. Act on every item in one turn, then wait once for what is running; never add items yourself. An escalated task also carries `tier_history` and `escalated` (the last escalation: `signal`, `detail`); at REVIEW/fix, `repros` maps each CONFIRMED finding id to its reproduction. Before `task.py start` it answers `state: CONTRACT`, `needs: human` (`approve_contract`) plus the next `dispatch` id and its `brief_path`.
 
 | `needs` | Meaning | Do |
 |---|---|---|
@@ -131,10 +131,10 @@ Role instructions live in `.arbor/agents/<role>.md`.
 | `explore` | `.arbor/tasks/<task>/research/**` | no | findings + 5–10 essential files |
 | `architect` | `.arbor/tasks/<task>/research/**` | no | one blueprint + partition / wave suggestion |
 | `implement` | anything (code and tests) | yes, own branch | Complete / Partial / Blocked + verification (every auto check green) |
-| `fix` | as implement; never weakens a test to pass | yes, own branch | fixed / skipped per finding |
+| `fix` | as implement; never weakens a test or edits a repro to pass | yes, own branch | fixed / skipped per finding; each repro before / after (may promote it into the suite) |
 | `simplify` | as implement, tests untouched | yes, own branch | behavior-preserving cleanup, or "no change"; not a step of the loop, run it with `arbor.py override --role simplify` |
 | `review` | nothing | no | first line `PASS` / `FAIL` + findings JSON |
-| `verify` | nothing | no | CONFIRMED / PLAUSIBLE / REFUTED per candidate |
+| `verify` | `.arbor/tasks/<task>/research/repro/**`; runs tests and builds | no | CONFIRMED (with a `repro`) / PLAUSIBLE / REFUTED per candidate |
 
 Every role: no push, no merge, no rebase, no checkout of other branches, no writes under `.arbor/` except `tasks/<task>/`. Commit format: `<role>(<task-dir-name>): <summary>` with trailer `Arbor-Dispatch: d-NNN`.
 
@@ -192,7 +192,7 @@ Phase 3: Finish  → spec update → `arbor.py finish` (scorecard + PR / merge c
 | CONTRACT | task directory exists | you + explore / architect + human | explore → one question list → `contract.md` (+ `design.md`; full: architecture perspectives → `waves.md`) → `seed-context` → structural validation → full: review `Mode: plan` → human approves | `task.py start` → BUILD |
 | BUILD | a wave is pending | you + driver + implement | `implement` delivers code and tests and runs the contract's `auto` checks, lint and typecheck green before committing (GATE runs the full suite); a wave of several partitions runs one implement per partition in parallel | GATE |
 | GATE | the task branch has new commits | driver → you | `gate.commands` + every `auto` row of the Verification map. Green → next wave or REVIEW (an integration child: FINISH). Red → you classify: `impl` (`fix`) / `contract` (edit the contract; the human re-approves) | 4 consecutive reds → STOP |
-| REVIEW | GATE green, all waves done | review, verify, fix, human | light: one `review` `Mode: self-check` over `last_reviewed..HEAD` → findings → `fix`. standard / full: N `review` `Mode: candidates` (2 / 3, in parallel) → mechanical prefilter → `verify` (≤ 8 per reader, in parallel) → CONFIRMED → `fix`, PLAUSIBLE per mandate; full: one `sweep` over the whole range once the cycle is clean, its candidates verified too. After every `fix`: GATE → **recheck**: a delta of at most `mandate.auto_merge_max_lines` lines gets one `review` `Mode: self-check` over `last_reviewed..HEAD`, a larger one a new candidate cycle over it | PASS / clean → FINISH; 2 fix rounds or no progress → STOP |
+| REVIEW | GATE green, all waves done | review, verify, fix, human | light: one `review` `Mode: self-check` over `last_reviewed..HEAD` → findings → `fix`. standard / full: N `review` `Mode: candidates` (2 / 3, in parallel) → mechanical prefilter → `verify` (≤ 8 per reader, in parallel; a CONFIRMED verdict without a `repro` is read as PLAUSIBLE) → CONFIRMED → `fix`, PLAUSIBLE per mandate; full: one `sweep` over the whole range once the cycle is clean, its candidates verified too. After every `fix`: GATE (plus every `exec` repro as `REPRO-n`) → **recheck**: a delta of at most `mandate.auto_merge_max_lines` lines gets one `review` `Mode: self-check` over `last_reviewed..HEAD` (none when the passing repros cover every fixed finding), a larger one a new candidate cycle over it | PASS / clean → FINISH; 2 fix rounds or no progress → STOP |
 | FINISH | REVIEW done | you (`arbor.py finish`) + human | one `arbor.py finish`: `scorecard.md`, then the PR (`--pr`) or the printed `--no-ff` merge command (`merge=auto`: merges a small clean branch itself; a child: merges into the integration branch itself); after the human merge `arbor.py finish` again cleans up: worktree, archive, journal | DONE |
 | STOP | a round cap (`BUDGET`), no progress (`NO_PROGRESS`), explicit abandon (`HUMAN`) | you + human | inspect the reason and evidence; no automatic recovery | `arbor.py resume` (BUDGET: one more round), `override --reason`, a re-plan, or `abandon` |
 
@@ -210,8 +210,9 @@ Simple changes (at most 2 files, cause known, no design choice) do not use Arbor
 | REVIEW | 1 self-check reviewer → fix | 2 candidate readers → verify → fix | 3 candidate readers → verify → fix → sweep |
 | Human gates | tier · merge | + contract | + contract · PLAUSIBLE |
 | Sessions | one | one | one per child task, concurrently; the parent's for the integration review |
+| Escalation | → standard on the first signal: 2 consecutive red gates, an implement report Partial / Blocked, a large diff (`ESCALATE_MAX_LINES` in `common/driver/state.py`) or changes in two configured packages at a BUILD gate | — | — |
 
-The tier lives in `task.json.meta.tier` (`task.py create --tier <t>`, later `task.py set-meta <task> tier <t>`); without it the tier is inferred from the artifacts (`waves.md` → full, `design.md` → standard, else light).
+The tier lives in `task.json.meta.tier` (`task.py create --tier <t>`, later `task.py set-meta <task> tier <t>`); without it the tier is inferred from the artifacts (`waves.md` → full, `design.md` → standard, else light). The driver escalates a light task to standard by itself (one way, recorded in `task.json.tier_history`): the green gate then enters candidates → verify, and the standard mandate applies from then on. `task.py set-meta <task> tier_lock true` keeps a light task light; a child whose review is deferred to its parent never escalates. Light has no verify, so the repro rule and the repro-covered recheck skip apply only once a task is standard or full.
 
 ### Human Gates
 
@@ -297,7 +298,7 @@ Approve (1.7): end the planning summary with the approval question; run `task.py
 - 2.2 Write a brief `[required · repeatable]`
 - 2.3 BUILD (implement: code + tests, auto checks green)
 - 2.4 GATE and decide `[on demand]`
-- 2.5 REVIEW (light: self-check; standard / full: candidates → verify → fix; full: + sweep; after a fix: recheck of the delta)
+- 2.5 REVIEW (light: self-check; standard / full: candidates → verify (with repros) → fix; full: + sweep; after a fix: GATE with the repros, recheck of the delta)
 - 2.6 STOP, resume, override `[on demand]`
 
 <!-- Per-turn breadcrumb: fallback only. Normally the hook shows the driver's
@@ -363,7 +364,7 @@ Fill `contract.md` (sections in Task Artifacts). Every acceptance criterion is o
 
 #### 1.5 Configure context `[required · once]`
 
-`python3 ./.arbor/scripts/task.py seed-context <task> [--package <pkg> ...]` writes the packages' spec `index.md` files, `.arbor/spec/guides/index.md` and every `research/*.md` into **both** manifests. Then add specific guideline files with `task.py add-context <task> implement|check "<path>" "<reason>"` and drop lines that do not apply to a side (`implement.jsonl` → architect, implement; `check.jsonl` → review, verify, fix, simplify). Never add code files. Ready gate: both `implement.jsonl` and `check.jsonl` must contain at least one real `{"file": "...", "reason": "..."}` entry before `task.py start`. The seed `_example` row alone is not ready; `start` refuses it (`--allow-empty-context` when intentional).
+`python3 ./.arbor/scripts/task.py seed-context <task> [--package <pkg> ...]` writes the packages' spec `index.md` files, `.arbor/spec/guides/index.md` and every `research/*.md` into **both** manifests; when the package has a `lessons.jsonl` it first renders `research/lessons.md`, a digest of the newest 50 lessons not yet backed by a test or a lint. Then add specific guideline files with `task.py add-context <task> implement|check "<path>" "<reason>"` and drop lines that do not apply to a side (`implement.jsonl` → architect, implement; `check.jsonl` → review, verify, fix, simplify). Never add code files. Ready gate: both `implement.jsonl` and `check.jsonl` must contain at least one real `{"file": "...", "reason": "..."}` entry before `task.py start`. The seed `_example` row alone is not ready; `start` refuses it (`--allow-empty-context` when intentional).
 
 #### 1.6 Validate & plan review `[required · once]`
 
@@ -388,9 +389,9 @@ Goal: the driver walks BUILD → GATE → REVIEW; you supply judgment and briefs
 Write the brief at `brief_path` for the role `next` names, then `arbor.py run`. Short and specific:
 
 - **implement**: the essential files, the part of the design this run covers, the criteria and their test files, pitfalls, files to stay out of. Name only targeted tests: writers run the contract's `auto` checks, lint and typecheck; the full suite is GATE's (`gate.commands`).
-- **fix** (and `simplify` via override): the essential files, pitfalls; for fix the findings JSON.
+- **fix** (and `simplify` via override): the essential files, pitfalls; for fix the findings JSON, the CONFIRMED verify entries verbatim with their `repro` (also in `next --json` as `repros`).
 - **review**: `Angles:` — self-check (light entry, and the recheck of a fix delta in every tier): `A, B, C, D, E, Conventions, Acceptance, Cleanup-lite`; candidates, one angle group per reader (standard: `A, D, Acceptance` / `B, C, E, Conventions, Cleanup-lite`; full: `A, D` / `B, Conventions, Cleanup-lite` / `C, E, Acceptance`); sweep: the verified list.
-- **verify**: the deduplicated candidates JSON, at most 8.
+- **verify**: the deduplicated candidates JSON, at most 8. Verify may run tests and builds and writes its repros under `research/repro/`.
 
 #### 2.3 BUILD
 
@@ -400,9 +401,11 @@ Write the brief at `brief_path` for the role `next` names, then `arbor.py run`. 
 
 The driver runs `gate.commands` and every `auto` check. Red → `next` asks you to classify the failure with `arbor.py decide impl|contract --reason "<one line of evidence>"`: `impl` — the code or its tests are wrong; `fix` runs. `contract` — the contract is wrong; edit `contract.md`, get the user's approval, then `arbor.py resume`.
 
+On a light task the gate also feeds the escalation to standard: the second consecutive red gate, or at a green BUILD gate more than 300 changed lines in `base..HEAD` (`.arbor/tasks/` excluded) or files in more than one configured package; an implement report Partial / Blocked escalates as soon as it is collected. The gate output and `next --json` (`escalated`) say which signal fired.
+
 #### 2.5 REVIEW
 
-**Light**: one `review` `Mode: self-check` over `last_reviewed..HEAD` (including "does the Verification map cover every criterion"); findings go to `fix`. **Standard / full**: N `review` `Mode: candidates` in parallel from the `batch` of `next --json` → you dedup → the driver prefilters mechanically (file exists, line within ±5 of a change, cited rule exists) → `verify` (one reader per batch of 8, in parallel) → CONFIRMED findings are fixed without asking; PLAUSIBLE ones follow the mandate (`plausible=auto`: the driver records `decide skip` and lists them in the scorecard; `ask`: put them to the user once, then `arbor.py decide fix|skip --reason "…"`) → `fix`. Full: once a cycle is clean, one `review` `Mode: sweep` over the whole range with the verified list; its new candidates are verified too. **After every fix** (every tier): GATE, then the driver measures the fix delta `last_reviewed..HEAD`: at most `mandate.auto_merge_max_lines` lines → one `review` `Mode: self-check` over it (PASS → FINISH, or the sweep in full); larger → a new candidate cycle over the delta. Two fix rounds, or a cycle without progress, enter STOP. Invalid findings may stay unfixed; list them in the final summary. Cleanup is an angle of the readers (`Cleanup-lite`), not a stage: run `simplify` only on demand with `arbor.py override --role simplify`.
+**Light**: one `review` `Mode: self-check` over `last_reviewed..HEAD` (including "does the Verification map cover every criterion"); findings go to `fix`. **Standard / full**: N `review` `Mode: candidates` in parallel from the `batch` of `next --json` → you dedup → the driver prefilters mechanically (file exists, line within ±5 of a change, cited rule exists) → `verify` (one reader per batch of 8, in parallel; it may run tests and builds and writes its repros under `<task>/research/repro/`) → CONFIRMED findings are fixed without asking. A CONFIRMED verdict needs a `repro`: `exec` (a script that fails on the current HEAD and passes once fixed, plus the command that runs it) or `trace` (two or more existing `file:line` steps); the driver reads one without as PLAUSIBLE and says so in the report's observations; PLAUSIBLE ones follow the mandate (`plausible=auto`: the driver records `decide skip` and lists them in the scorecard; `ask`: put them to the user once, then `arbor.py decide fix|skip --reason "…"`) → `fix`. Full: once a cycle is clean, one `review` `Mode: sweep` over the whole range with the verified list; its new candidates are verified too. **After every fix** (every tier): GATE, which also runs the `exec` repro of every fixed finding as `REPRO-n` (a failing one is a red gate like any other), then the driver measures the fix delta `last_reviewed..HEAD`: at most `mandate.auto_merge_max_lines` lines → one `review` `Mode: self-check` over it (PASS → FINISH, or the sweep in full), except when every fixed finding's `exec` repro passed in that gate: then the cycle closes without the self-check (`task.json.recheck_skips`, listed in the scorecard); larger → a new candidate cycle over the delta. Two fix rounds, or a cycle without progress, enter STOP. Invalid findings may stay unfixed; list them in the final summary. Cleanup is an angle of the readers (`Cleanup-lite`), not a stage: run `simplify` only on demand with `arbor.py override --role simplify`.
 
 #### 2.6 STOP, resume, override `[on demand]`
 
@@ -417,6 +420,8 @@ Goal: a merged branch with its evidence, the lessons captured, the session recor
 #### 3.1 Spec update `[required · once]`
 
 Load `arbor-update-spec` and decide what this task taught: recurring CONFIRMED categories from the review reports belong in `.arbor/spec/` (or a lint rule). Edit spec files in the task worktree and commit them on the task branch before `arbor.py finish`; afterwards `python3 ./.arbor/scripts/spec.py verify <doc>` (`spec.py lint` lists stale or unlisted docs, advisory).
+
+`arbor.py finish` appends one row per CONFIRMED finding (self-check reviewer and verify) to `.arbor/spec/<package>/lessons.jsonl` (single repo: `.arbor/spec/lessons.jsonl`; `.arbor/spec/.gitattributes` merges it with `union`) and commits it with the scorecard. Before the merge, fill each new row's `root_cause`, `prevention`, `check` (`none` | `spec` | `test` | `lint`) and `check_ref`, and commit on the task branch. When the scorecard's **Recurring across tasks** names a category (rows of two or more tasks, none backed by a test or a lint), add a lint rule or a test and mark the row `check: lint|test` rather than another spec sentence; the reminder is advisory and does not block the merge.
 
 #### 3.2 Debug retrospective `[on demand]`
 

@@ -1,0 +1,9 @@
+{
+  "version": "0.9.1",
+  "description": "verify reproduces what it confirms; repro-covered fixes skip the self-check; light tasks escalate to standard by themselves; lessons.jsonl per package; max_parallel defaults to 5",
+  "breaking": false,
+  "recommendMigrate": false,
+  "changelog": "verify may run tests and builds and writes repros under <task>/research/repro/ (the driver commits them with its report). A CONFIRMED verify verdict now needs a repro, exec (a script that fails on the current HEAD and passes once fixed, plus its command) or trace (two or more existing file:line steps); the driver reads one without as PLAUSIBLE and says so in the report. After a fix the gate runs every exec repro as REPRO-n, and when they cover every fixed finding and the delta is small the recheck self-check is skipped (task.json recheck_skips). A light task escalates to standard by itself on two consecutive red gates, an implement report Partial or Blocked, or at a green BUILD gate more than 300 changed lines or files in two configured packages (task.json tier_history; next --json escalated; task.py set-meta <task> tier_lock true opts out). arbor.py finish appends every CONFIRMED finding to .arbor/spec/<package>/lessons.jsonl (merge=union via .arbor/spec/.gitattributes), the scorecard lists categories recurring across tasks without a test or a lint behind them (advisory), and task.py seed-context digests the open rows into research/lessons.md. executors.codeg.max_parallel defaults to 5.",
+  "migrations": [],
+  "configSectionsAdded": []
+}

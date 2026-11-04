@@ -4,7 +4,7 @@ Start an Arbor task from a request, or continue the current one. You are the mai
 
 Arguments: `[--tier light|standard|full] [request]`
 
-- `[--tier light|standard|full]` (optional): the tier for the task created from `[request]` (see the Tiers table in `.arbor/workflow.md`). Omit it to propose one yourself.
+- `[--tier light|standard|full]` (optional): the tier for the task created from `[request]` (see the Tiers table in `.arbor/workflow.md`). Omit it to propose one yourself. The driver may later escalate a light task to standard by itself (`next --json` shows `escalated`).
 - `[request]` (optional): a requirement or task description. With no active task it counts as consent to create one; the tier still needs the user's agreement unless `--tier` was given.
 
 ---

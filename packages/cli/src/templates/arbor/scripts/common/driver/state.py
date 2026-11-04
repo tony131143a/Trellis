@@ -42,7 +42,7 @@ lines or over more than one configured package. The green gate then enters
 REVIEW the standard way (candidates -> verify). ``meta.tier_lock`` opts out.
 
 Reader batches. REVIEW candidates (``CANDIDATE_READERS`` per tier) and
-REVIEW verify (one per batch of 8) are read-only readers of the same range:
+REVIEW verify (one per batch of 8; each writes only its own repro files) are readers of the same range:
 when the step opens, the caller assigns every reader its dispatch id under
 the task lock (``batch.ids``, like a partition's ``next_dispatch``) and the
 readers may run concurrently; ``batch.running`` holds the ones in flight.

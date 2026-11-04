@@ -107,8 +107,10 @@ request cannot be collected twice.
 A first prompt starting with `Active task:` plus `Role:` identifies a dispatched
 role. It performs that role directly, never delegates, never runs task lifecycle
 commands and has no `ARBOR_CONTEXT_ID`. Started-task writers commit with
-`Arbor-Dispatch: d-NNN` and stay inside their assigned paths; reader roles remain
-read-only. CONTRACT research roles may write only task research and do not commit.
+`Arbor-Dispatch: d-NNN` and stay inside their assigned paths; `review` remains
+read-only and `verify` may write only its repro scripts under the task's
+`research/repro/` (the driver commits them with the report). CONTRACT research
+roles may write only task research and do not commit.
 
 Any other first prompt belongs to a main agent: it writes briefs and calls the
 driver; it never performs a role itself.

@@ -393,8 +393,7 @@ describe("0.8.0 manifest", () => {
 // =============================================================================
 
 describe("0.9.0 manifest", () => {
-  it("is the package version, reached from 0.8.0, with no file migrations", () => {
-    expect(VERSION).toBe("0.9.0");
+  it("is reached from 0.8.0, with no file migrations", () => {
     expect(getAllMigrationVersions()).toContain("0.9.0");
     expect(getMigrationsForVersion("0.8.0", "0.9.0")).toEqual([]);
     const metadata = getMigrationMetadata("0.8.0", "0.9.0");
@@ -402,5 +401,30 @@ describe("0.9.0 manifest", () => {
     expect(metadata.changelog.join("\n")).toContain("task.py integrate");
     expect(getConfigSectionsAddedBetween("0.8.0", "0.9.0")).toEqual([]);
     expect(configYamlTemplate).toContain('#     - "pnpm test"');
+  });
+});
+
+// =============================================================================
+// 0.9.1 — verify repros, light -> standard escalation, lessons.jsonl
+// =============================================================================
+
+describe("0.9.1 manifest", () => {
+  it("is the package version, reached from 0.9.0, non-breaking, with no file migrations", () => {
+    expect(VERSION).toBe("0.9.1");
+    expect(getAllMigrationVersions()).toContain("0.9.1");
+    expect(getMigrationsForVersion("0.9.0", "0.9.1")).toEqual([]);
+    const metadata = getMigrationMetadata("0.9.0", "0.9.1");
+    expect(metadata.breaking).toBe(false);
+    const changelog = metadata.changelog.join("\n");
+    for (const term of [
+      "repro",
+      "REPRO-n",
+      "tier_lock",
+      "lessons.jsonl",
+      "max_parallel",
+    ])
+      expect(changelog).toContain(term);
+    expect(getConfigSectionsAddedBetween("0.9.0", "0.9.1")).toEqual([]);
+    expect(configYamlTemplate).toContain("max_parallel: 5");
   });
 });
