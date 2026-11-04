@@ -42,6 +42,7 @@ from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
+from .. import lessons as ls
 from ..active_task import clear_task_from_sessions
 from ..contract import find_contract, load_contract
 from ..git import run_git
@@ -58,7 +59,17 @@ SCORECARD = "scorecard.md"
 RUNTIME_FINISH = f"{DIR_WORKFLOW}/.runtime/finish"
 _REPORT_SPLIT = "\n---\n\n## Driver: "
 SPEC_REMINDER = ("update .arbor/spec/ (or add a lint) for any CONFIRMED finding category that "
-                 "recurred (scorecard.md, Recurring CONFIRMED categories)")
+                 "recurred (scorecard.md, Recurring CONFIRMED categories); fill root_cause, prevention "
+                 "and check in the lessons rows this finish appended")
+_ACROSS_HEADING = "## Recurring across tasks"
+
+
+def spec_reminder(across: list[str]) -> str:
+    """The pre-merge reminder; names the categories that recur across tasks."""
+    if not across:
+        return SPEC_REMINDER
+    return (f"add a lint rule or a test (lessons check: lint|test) for {', '.join(across)}, which recurred "
+            f"across tasks (scorecard.md, Recurring across tasks); {SPEC_REMINDER}")
 
 
 class FinishError(RuntimeError):
@@ -151,6 +162,20 @@ def _level(entry: dict) -> str | None:
     return None
 
 
+def _findings(task_dir: Path, entry: dict) -> list[dict]:
+    """The findings of an ok reader dispatch as the state table saw them: a
+    CONFIRMED verify entry the driver downgraded counts as PLAUSIBLE."""
+    reply = _reply(task_dir, str(entry.get("id")), entry.get("interpreted_report"))
+    if reply is None:
+        return []
+    downgraded = set(entry.get("downgraded") or [])
+    findings = rv.check_reply(entry["role"], reply).findings
+    for finding in findings:
+        if downgraded and rv.finding_id(finding) in downgraded:
+            finding["verdict"] = "PLAUSIBLE"
+    return findings
+
+
 def verdict_counts(task_dir: Path, dispatches: list[dict]) -> tuple[dict, Counter]:
     """({level: Counter(verdict)}, Counter(angle of every CONFIRMED finding))."""
     levels: dict[str, Counter] = {"2": Counter(), "3": Counter(), "4": Counter()}
@@ -159,15 +184,27 @@ def verdict_counts(task_dir: Path, dispatches: list[dict]) -> tuple[dict, Counte
         level = _level(entry)
         if level is None or entry.get("status") != "ok":
             continue
-        reply = _reply(task_dir, str(entry.get("id")), entry.get("interpreted_report"))
-        if reply is None:
-            continue
-        for finding in rv.check_reply(entry["role"], reply).findings:
+        for finding in _findings(task_dir, entry):
             verdict = str(finding.get("verdict", "")).upper()
             levels[level][verdict] += 1
             if verdict == "CONFIRMED":
                 confirmed_angles[str(finding.get("angle") or "unspecified")] += 1
     return levels, confirmed_angles
+
+
+def confirmed_findings(task_dir: Path, dispatches: list[dict]) -> list[dict]:
+    """Every distinct CONFIRMED finding a verdict-giving reader settled: the
+    self-check reviewer and verify (candidate and sweep readers only nominate)."""
+    found: dict[str, dict] = {}
+    for entry in dispatches:
+        if _level(entry) is None or entry.get("status") != "ok":
+            continue
+        if entry.get("role") == "review" and (entry.get("mode") or "self-check") != "self-check":
+            continue
+        for finding in _findings(task_dir, entry):
+            if str(finding.get("verdict", "")).upper() == "CONFIRMED":
+                found.setdefault(rv.finding_id(finding), finding)
+    return list(found.values())
 
 
 def gate_rounds(task_dir: Path, data: dict) -> list[tuple[int, str, str]]:
@@ -228,7 +265,8 @@ def coverage(task_dir: Path) -> tuple[int, int]:
     return sum(1 for e in entries if e.kind == "auto"), len(entries)
 
 
-def scorecard_facts(main: Path, task_dir: Path, data: dict, tier: str) -> dict:
+def scorecard_facts(main: Path, task_dir: Path, data: dict, tier: str,
+                    lessons: list[dict] | None = None) -> dict:
     dispatches = [d for d in data.get("dispatches") or [] if isinstance(d, dict)]
     by_role: dict[str, Counter] = {}
     for d in dispatches:
@@ -253,6 +291,8 @@ def scorecard_facts(main: Path, task_dir: Path, data: dict, tier: str) -> dict:
         "review_fail_rounds": int(counters.get("review", 0)),
         "levels": levels,
         "recurring": sorted(a for a, n in confirmed_angles.items() if n >= 2),
+        "recurring_across": ls.recurring_across_tasks(lessons or []),
+        "recheck_skips": [s for s in data.get("recheck_skips") or [] if isinstance(s, dict)],
         "auto": auto,
         "map_total": total,
         "overrides": len(data.get("overrides") or []),
@@ -292,6 +332,8 @@ def render_scorecard(name: str, data: dict, facts: dict) -> str:
     lines += ["", "## REVIEW", "",
               f"- review reads: {facts['review_rounds']}",
               f"- fix rounds: {facts['review_fail_rounds']}",
+              *[f"- recheck skipped (repros passed in gate {s.get('gate')}): "
+                f"{', '.join(map(str, s.get('findings') or []))}" for s in facts["recheck_skips"]],
               "", "## Findings by level", "",
               "| level | CONFIRMED | PLAUSIBLE | REFUTED |", "|---|---|---|---|"]
     names = {"2": "2 review", "3": "3 candidates + verify", "4": "4 sweep"}
@@ -301,6 +343,8 @@ def render_scorecard(name: str, data: dict, facts: dict) -> str:
     pct = f" ({round(100 * facts['auto'] / facts['map_total'])}%)" if facts["map_total"] else ""
     lines += ["", "## Recurring CONFIRMED categories", "",
               *([f"- {a}: add a spec rule or a lint before merging" for a in facts["recurring"]] or ["- none"]),
+              "", _ACROSS_HEADING, "",
+              *([f"- {c}: {', '.join(tasks)}" for c, tasks in facts["recurring_across"]] or ["- none"]),
               "", "## Other", "",
               f"- AC auto-coverage: {facts['auto']}/{facts['map_total']}{pct}",
               f"- overrides: {facts['overrides']}",
@@ -308,13 +352,14 @@ def render_scorecard(name: str, data: dict, facts: dict) -> str:
     return "\n".join(lines)
 
 
-def write_scorecard(main: Path, task_dir: Path, data: dict, tier: str) -> bool:
+def write_scorecard(main: Path, task_dir: Path, data: dict, tier: str,
+                    lessons: list[dict] | None = None) -> bool:
     """Write scorecard.md unless it exists (a human may have annotated it).
     True when written."""
     path = task_dir / SCORECARD
     if path.is_file():
         return False
-    facts = scorecard_facts(main, task_dir, data, tier)
+    facts = scorecard_facts(main, task_dir, data, tier, lessons)
     path.write_text(render_scorecard(task_dir.name, data, facts), encoding="utf-8")
     return True
 
@@ -365,7 +410,8 @@ def plan_finish(main: Path, task_dir: Path, data: dict) -> Step:
     pr = data.get("pr_url")
     how = (f"merge PR {pr} with a merge commit, then update {base} in {main}" if pr
            else f"merge with `{command}`")
-    return Step("human", f"FINISH: {SPEC_REMINDER}; then a human merges {branch} into {base}: {how}",
+    return Step("human", f"FINISH: {spec_reminder(across_from_scorecard(task_dir))}; "
+                f"then a human merges {branch} into {base}: {how}",
                 human={"kind": "merge", "command": command, "pr_url": pr})
 
 
@@ -386,13 +432,42 @@ def finish_stage(main: Path, task_dir: Path, data: dict) -> str:
 # =============================================================================
 
 
-def commit_paths(worktree: Path, rel: str, message: str) -> bool:
-    _git(worktree, "add", "-A", "--", rel)
-    rc, _, _ = run_git(["diff", "--cached", "--quiet", "--", rel], cwd=worktree)
+def commit_paths(worktree: Path, rel: str | list[str], message: str) -> bool:
+    rels = [rel] if isinstance(rel, str) else list(rel)
+    _git(worktree, "add", "-A", "--", *rels)
+    rc, _, _ = run_git(["diff", "--cached", "--quiet", "--", *rels], cwd=worktree)
     if rc == 0:
         return False
-    _git(worktree, "commit", "-q", "--no-verify", "-m", message, "--", rel)
+    _git(worktree, "commit", "-q", "--no-verify", "-m", message, "--", *rels)
     return True
+
+
+def across_from_scorecard(task_dir: Path) -> list[str]:
+    """The categories the scorecard lists under "Recurring across tasks"."""
+    path = task_dir / SCORECARD
+    if not path.is_file():
+        return []
+    out, inside = [], False
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.startswith("## "):
+            inside = line.strip() == _ACROSS_HEADING
+        elif inside and line.startswith("- ") and line.strip() != "- none":
+            out.append(line[2:].split(":", 1)[0].strip())
+    return out
+
+
+def record_lessons(worktree: Path, task_dir: Path, data: dict) -> tuple[str, list[dict], int]:
+    """Append this task's CONFIRMED findings to its package's lessons file
+    (idempotent); returns (its repo-relative path, every row, rows added)."""
+    rel = ls.lessons_rel(ls.package_for(worktree, data))
+    path = worktree / rel
+    dispatches = [d for d in data.get("dispatches") or [] if isinstance(d, dict)]
+    found = confirmed_findings(task_dir, dispatches)
+    date = datetime.now().date().isoformat()
+    added = ls.append_rows(path, [ls.row(f, task_dir.name, date) for f in found])
+    if found:
+        ls.ensure_union_merge(worktree / DIR_WORKFLOW / "spec")
+    return rel, ls.read_rows(path), added
 
 
 def open_pr(worktree: Path, task_dir: Path, data: dict, base: str) -> str:
@@ -556,10 +631,14 @@ def finish_before_merge(main: Path, worktree: Path, task_dir: Path, task_rel: st
     name = task_dir.name
     if data.get("execution_binding"):
         return finish_product(main, task_dir, data, tier, want_pr=want_pr, save=save)
-    scorecard_written = write_scorecard(main, task_dir, data, tier)
+    lessons_rel, lessons, added = record_lessons(worktree, task_dir, data)
+    if added:
+        print(f"lessons: +{added} row(s) in {lessons_rel}")
+    scorecard_written = write_scorecard(main, task_dir, data, tier, lessons)
     if scorecard_written:
         print(f"scorecard: {task_dir / SCORECARD}")
-    if commit_paths(worktree, task_rel, f"arbor({name}): scorecard"):
+    spec_rels = [r for r in (lessons_rel, f"{DIR_WORKFLOW}/spec/.gitattributes") if (worktree / r).is_file()]
+    if commit_paths(worktree, [task_rel, *spec_rels], f"arbor({name}): scorecard"):
         print(f"committed on {data['branch']}: arbor({name}): scorecard")
     base = base_branch_of(main, data)
     if data.get("integration_target") and not want_pr:
@@ -592,7 +671,7 @@ def finish_before_merge(main: Path, worktree: Path, task_dir: Path, task_rel: st
                 print(f"merged {data['branch']} into {base} with --no-ff (mandate merge=auto, {lines} lines)")
                 return 0
         print(f"auto-merge skipped: {why}")
-    print(f"before merging: {SPEC_REMINDER}")
+    print(f"before merging: {spec_reminder(across_from_scorecard(task_dir))}")
     print(f"merge (human): {merge_command(main, data['branch'], base)}")
     return 0
 

@@ -401,4 +401,48 @@ print("ok")
 `);
     expect(out).toBe("ok");
   });
+
+  it("lessons: rows keep task-relative exec repros; union merge; downgraded verify entries are neither lessons nor CONFIRMED", () => {
+    const tmp = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), "arbor-lessons-")),
+    );
+    try {
+      const out = probe(
+        `
+import json
+from pathlib import Path
+from common import lessons as ls
+from common.driver import finish as fin
+f = {"file": "a.py", "line": 3, "summary": "  two   words ", "angle": "C", "verdict": "CONFIRMED",
+     "repro": {"kind": "exec", "path": ".arbor/tasks/10-30-t/research/repro/d-3-1.sh", "command": "sh x"}}
+r = ls.row(f, "10-30-t", "2026-11-03")
+assert r["repro"] == "research/repro/d-3-1.sh" and r["summary"] == "two words" and r["category"] == "C", r
+assert ls.row({**f, "repro": {"kind": "trace", "path": ["a:1", "b:2"]}}, "t", "d")["repro"] is None
+p = Path("spec/lessons.jsonl")
+assert ls.append_rows(p, [r, dict(r)]) == 1 and ls.append_rows(p, [r]) == 0 and len(ls.read_rows(p)) == 1
+assert ls.ensure_union_merge(Path("spec")) and not ls.ensure_union_merge(Path("spec"))
+assert Path("spec/.gitattributes").read_text() == "lessons.jsonl merge=union\\n"
+rows = [{"category": "A", "task": "t1"}, {"category": "A", "task": "t2"}, {"category": "A", "task": "t2"},
+        {"category": "B", "task": "t1"}, {"category": "B", "task": "t3", "check": "lint"}, {"category": "C", "task": "t1"}]
+assert ls.recurring_across_tasks(rows) == [("A", ["t1", "t2"])]
+assert ls.digest([{"check": "test"}]) is None
+task = Path("task"); (task / "reports").mkdir(parents=True)
+F = lambda line, s: {"file": "a.py", "line": line, "summary": s, "verdict": "CONFIRMED", "angle": "A"}
+(task / "reports" / "d-001.md").write_text("\`\`\`json\\n" + json.dumps([F(1, "kept"), F(2, "cut")]) +
+    "\\n\`\`\`\\nCONFIRMED 2, PLAUSIBLE 0, REFUTED 0.\\n")
+(task / "reports" / "d-002.md").write_text("FAIL\\n\`\`\`json\\n" + json.dumps([F(5, "nominated")]) + "\\n\`\`\`\\n")
+ds = [{"id": "d-001", "role": "verify", "status": "ok", "downgraded": ["a.py:2:cut"]},
+      {"id": "d-002", "role": "review", "mode": "candidates", "status": "ok"}]
+assert [x["summary"] for x in fin.confirmed_findings(task, ds)] == ["kept"]
+levels, angles = fin.verdict_counts(task, ds)
+assert levels["3"]["CONFIRMED"] == 2 and levels["3"]["PLAUSIBLE"] == 1, levels
+print("ok")
+`,
+        tmp,
+      );
+      expect(out).toBe("ok");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 });

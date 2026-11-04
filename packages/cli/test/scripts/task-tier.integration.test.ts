@@ -64,7 +64,11 @@ function runScript(
   });
 }
 
-function runTask(repo: string, args: string[], env: Record<string, string> = {}) {
+function runTask(
+  repo: string,
+  args: string[],
+  env: Record<string, string> = {},
+) {
   return runScript(repo, "task.py", args, env);
 }
 
@@ -227,7 +231,9 @@ print(json.dumps({
       expect(readTaskJson(tmp, dir).meta).toEqual({});
       expect(r.stderr).toContain("Tier: not set");
       expect(r.stderr).toContain(`task.py seed-context ${dir}`);
-      expect(r.stderr).toContain(`task.py set-meta ${dir} tier light|standard|full`);
+      expect(r.stderr).toContain(
+        `task.py set-meta ${dir} tier light|standard|full`,
+      );
       // Pinned by regression.test.ts as well.
       expect(r.stderr).toContain("Curate implement.jsonl / check.jsonl");
       expect(r.stderr).toContain('{"file": "<path>", "reason": "<why>"}');
@@ -291,7 +297,9 @@ print(json.dumps({
       expect(readTaskJson(tmp, dir).meta).toEqual({ tier: "standard" });
 
       // Other keys are untouched by the tier check.
-      expect(runTask(tmp, ["set-meta", dir, "execution", "whatever"]).status).toBe(0);
+      expect(
+        runTask(tmp, ["set-meta", dir, "execution", "whatever"]).status,
+      ).toBe(0);
     });
   });
 
@@ -309,7 +317,9 @@ print(json.dumps({
       for (const extra of [[], ["--allow-empty-context"]]) {
         const r = start(rel, ...extra);
         expect(r.status).toBe(1);
-        expect(r.stdout).toContain("tier 'light' requires contract.md before start");
+        expect(r.stdout).toContain(
+          "tier 'light' requires contract.md before start",
+        );
         expect(r.stdout).toContain("Tier: light (inferred from artifacts)");
         expect(r.stdout).not.toContain("Current task set to");
       }
@@ -325,7 +335,9 @@ print(json.dumps({
       );
       const r = start(rel);
       expect(r.status).toBe(1);
-      expect(r.stdout).toContain("tier 'standard' requires design.md before start");
+      expect(r.stdout).toContain(
+        "tier 'standard' requires design.md before start",
+      );
       expect(r.stdout).toContain("Tier: standard (meta.tier)");
       expect(r.stdout).toContain(`task.py set-meta ${rel} tier`);
       expect(status(rel)).toBe("planning");
@@ -353,7 +365,10 @@ print(json.dumps({
       const rel = makeTask(
         tmp,
         "10-28-par-std",
-        { status: "planning", meta: { tier: "standard", execution: "parallel" } },
+        {
+          status: "planning",
+          meta: { tier: "standard", execution: "parallel" },
+        },
         ["prd.md", "design.md"],
       );
       const r = start(rel);
@@ -419,7 +434,9 @@ print(json.dumps({
       ".arbor/spec/cli/frontend/index.md",
     ];
 
-    function setupMonorepo(config = "packages:\n  cli:\n    path: packages/cli\n"): void {
+    function setupMonorepo(
+      config = "packages:\n  cli:\n    path: packages/cli\n",
+    ): void {
       writeFile(tmp, ".arbor/config.yaml", config);
       for (const index of PKG_INDEXES) writeFile(tmp, index, "# index\n");
       // A layer without index.md contributes nothing.
@@ -438,7 +455,12 @@ print(json.dumps({
         tmp,
         name,
         { status: "planning", ...data },
-        ["prd.md", "research/b-second.md", "research/a-first.md", "research/notes.txt"],
+        [
+          "prd.md",
+          "research/b-second.md",
+          "research/a-first.md",
+          "research/notes.txt",
+        ],
         manifests,
       );
       return rel;
@@ -490,6 +512,64 @@ print(json.dumps({
       const started = runTask(tmp, ["start", rel, "--no-worktree"], SESSION);
       expect(started.status, started.stdout + started.stderr).toBe(0);
       expect(started.stdout).not.toContain("no curated entries");
+    });
+
+    it("renders the package's open lessons into research/lessons.md (bounded, newest first) and seeds it", () => {
+      setupMonorepo();
+      const row = (n: number, check = "none") =>
+        JSON.stringify({
+          category: n % 2 ? "A" : "B",
+          summary: `lesson ${n}`,
+          file: `src/f${n}.ts`,
+          task: `09-${String(n).padStart(2, "0")}-t`,
+          date: `2026-09-${String((n % 28) + 1).padStart(2, "0")}`,
+          prevention: n === 3 ? "guard the cache" : "",
+          check,
+        });
+      const rows = [
+        ...Array.from({ length: 55 }, (_, i) => row(i)),
+        row(99, "lint"),
+        "not json",
+      ];
+      writeFile(tmp, ".arbor/spec/cli/lessons.jsonl", rows.join("\n") + "\n");
+      const rel = seededTask("10-28-lessons", { package: "cli" });
+      const r = runTask(tmp, ["seed-context", rel]);
+      expect(r.status, r.stdout + r.stderr).toBe(0);
+      expect(r.stdout).toContain(
+        "research/lessons.md: digest of 56 lessons row(s)",
+      );
+      const digest = readFile(tmp, `${rel}/research/lessons.md`);
+      expect(digest).toContain("(newest 50 of 55)");
+      expect(digest).not.toContain("lesson 99");
+      expect(digest).toContain("guard the cache");
+      expect(
+        digest.split("\n").filter((l) => l.startsWith("- [")),
+      ).toHaveLength(50);
+      for (const m of ["implement.jsonl", "check.jsonl"])
+        expect(manifestFiles(tmp, `${rel}/${m}`)).toContain(
+          `${rel}/research/lessons.md`,
+        );
+      const validate = runTask(tmp, ["validate", rel]);
+      expect(validate.status, validate.stdout).toBe(0);
+    });
+
+    it("writes no lessons digest when every lesson is backed by a test or a lint", () => {
+      setupMonorepo();
+      writeFile(
+        tmp,
+        ".arbor/spec/cli/lessons.jsonl",
+        JSON.stringify({
+          category: "A",
+          summary: "s",
+          task: "t",
+          check: "test",
+        }) + "\n",
+      );
+      const rel = seededTask("10-28-nolessons", { package: "cli" });
+      expect(runTask(tmp, ["seed-context", rel]).status).toBe(0);
+      expect(fs.existsSync(path.join(tmp, rel, "research/lessons.md"))).toBe(
+        false,
+      );
     });
 
     it("rejects an unknown --package and lists the available ones", () => {
@@ -549,7 +629,8 @@ print(json.dumps({
 
     it("does not duplicate an entry that is already listed", () => {
       setupMonorepo();
-      const mine = JSON.stringify({ file: GUIDES_INDEX, reason: "mine" }) + "\n";
+      const mine =
+        JSON.stringify({ file: GUIDES_INDEX, reason: "mine" }) + "\n";
       const rel = seededTask(
         "10-28-preexisting",
         { package: "cli" },
@@ -561,7 +642,9 @@ print(json.dumps({
       expect(r.stdout).toContain("check.jsonl: +5 (0 already present)");
       const files = manifestFiles(tmp, `${rel}/implement.jsonl`);
       expect(files.filter((f) => f === GUIDES_INDEX)).toHaveLength(1);
-      expect(readFile(tmp, `${rel}/implement.jsonl`).startsWith(mine)).toBe(true);
+      expect(readFile(tmp, `${rel}/implement.jsonl`).startsWith(mine)).toBe(
+        true,
+      );
     });
 
     it("keeps and warns about a legacy _example row without treating it as a duplicate", () => {
@@ -580,10 +663,14 @@ print(json.dumps({
       const r = runTask(tmp, ["seed-context", rel]);
       expect(r.status).toBe(0);
       expect(r.stdout).toContain("implement.jsonl: +5 (0 already present)");
-      expect(r.stdout).toContain("implement.jsonl still has a legacy `_example` row");
+      expect(r.stdout).toContain(
+        "implement.jsonl still has a legacy `_example` row",
+      );
       const implement = readFile(tmp, `${rel}/implement.jsonl`);
       expect(implement.startsWith(example)).toBe(true);
-      expect(manifestFiles(tmp, `${rel}/implement.jsonl`)).toContain(GUIDES_INDEX);
+      expect(manifestFiles(tmp, `${rel}/implement.jsonl`)).toContain(
+        GUIDES_INDEX,
+      );
     });
 
     it("add-context still deduplicates normal rows and appends after a row without a newline", () => {
@@ -596,10 +683,22 @@ print(json.dumps({
           check: "",
         },
       );
-      const added = runTask(tmp, ["add-context", rel, "implement", GUIDES_INDEX, "why"]);
+      const added = runTask(tmp, [
+        "add-context",
+        rel,
+        "implement",
+        GUIDES_INDEX,
+        "why",
+      ]);
       expect(added.status).toBe(0);
       expect(added.stdout).toContain(`Added file: ${GUIDES_INDEX}`);
-      const dup = runTask(tmp, ["add-context", rel, "implement", GUIDES_INDEX, "again"]);
+      const dup = runTask(tmp, [
+        "add-context",
+        rel,
+        "implement",
+        GUIDES_INDEX,
+        "again",
+      ]);
       expect(dup.status).toBe(0);
       expect(dup.stdout).toContain(`Entry already exists for ${GUIDES_INDEX}`);
       expect(manifestFiles(tmp, `${rel}/implement.jsonl`)).toEqual([

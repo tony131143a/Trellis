@@ -35,6 +35,7 @@ from .config import (
     resolve_package,
     validate_package,
 )
+from . import lessons as ls
 from .git import branch_exists_locally
 from .io import read_json
 from .log import Colors, colored
@@ -252,7 +253,10 @@ def cmd_seed_context(args: argparse.Namespace) -> int:
     """Seed implement.jsonl and check.jsonl with the task's starting context.
 
     Rows: each chosen package's spec layer ``index.md``, the shared guides
-    index, and every ``research/*.md`` of the task. Both manifests get the
+    index, and every ``research/*.md`` of the task, including
+    ``research/lessons.md``: a digest of the packages' ``lessons.jsonl``
+    (rows not yet backed by a test or a lint, newest first, bounded), written
+    here when there are any. Both manifests get the
     same rows (each feeds a different set of dispatched roles); the main
     agent then adds the specific guideline files and deletes what does not
     apply per side. Idempotent: paths already listed are skipped.
@@ -281,6 +285,12 @@ def cmd_seed_context(args: argparse.Namespace) -> int:
         entries.append((f"{spec_prefix}guides/index.md", "Shared guides (seed-context)"))
 
     research_dir = target_dir / "research"
+    lesson_rows = [r for package in packages for r in ls.read_rows(repo_root / ls.lessons_rel(package))]
+    lessons_digest = ls.digest(lesson_rows)
+    if lessons_digest:
+        research_dir.mkdir(exist_ok=True)
+        (research_dir / ls.DIGEST).write_text(lessons_digest, encoding="utf-8")
+        print(f"research/{ls.DIGEST}: digest of {len(lesson_rows)} lessons row(s)")
     if research_dir.is_dir():
         for research_file in sorted(research_dir.glob("*.md")):
             if research_file.is_file():

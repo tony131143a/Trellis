@@ -110,6 +110,108 @@ describe.skipIf(!hasPython())("arbor.py FINISH", { timeout: 90_000 }, () => {
   let f: Fixture;
   afterEach(() => f?.cleanup());
 
+  const LESSONS = ".arbor/spec/lessons.jsonl";
+  const lessonRows = (f: Fixture) =>
+    fs
+      .readFileSync(path.join(f.wt, LESSONS), "utf-8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
+
+  it("finish appends one lessons row per CONFIRMED finding (idempotent), committed with the scorecard", () => {
+    f = setupFixture();
+    driveToFinish(f);
+    const r = f.run("finish");
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+    expect(r.stdout).toContain(`lessons: +1 row(s) in ${LESSONS}`);
+    expect(r.stdout).toContain("fill root_cause, prevention and check");
+    const rows = lessonRows(f);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      category: "correctness",
+      summary: "wrong content",
+      file: "src/feature.txt",
+      task: TASK,
+      repro: null,
+      root_cause: "",
+      prevention: "",
+      check: "none",
+      check_ref: "",
+    });
+    expect(rows[0].date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    const committed = git(f.wt, "show", "--name-only", "--format=", "HEAD");
+    expect(committed).toContain(LESSONS);
+    expect(committed).toContain(".arbor/spec/.gitattributes");
+    expect(committed).toContain(`.arbor/tasks/${TASK}/scorecard.md`);
+    expect(
+      fs.readFileSync(path.join(f.wt, ".arbor/spec/.gitattributes"), "utf-8"),
+    ).toBe("lessons.jsonl merge=union\n");
+    const card = fs.readFileSync(path.join(f.taskDir, "scorecard.md"), "utf-8");
+    expect(card).toContain("## Recurring across tasks\n\n- none");
+
+    const head = git(f.wt, "rev-parse", "HEAD");
+    expect(f.run("finish").status).toBe(0);
+    expect(lessonRows(f)).toHaveLength(1);
+    expect(git(f.wt, "rev-parse", "HEAD")).toBe(head);
+  });
+
+  it("a category another task already recorded is listed as recurring across tasks and named in the reminder", () => {
+    f = setupFixture();
+    const old = {
+      category: "correctness",
+      summary: "s",
+      file: "x",
+      task: "09-01-old",
+      date: "2026-09-01",
+      repro: null,
+      root_cause: "",
+      prevention: "",
+      check: "none",
+      check_ref: "",
+    };
+    writeFile(f.wt, LESSONS, JSON.stringify(old) + "\n");
+    git(f.wt, "add", LESSONS);
+    git(f.wt, "commit", "-q", "-m", "seed lessons");
+    driveToFinish(f);
+    const r = f.run("finish");
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+    expect(r.stdout).toContain(
+      "add a lint rule or a test (lessons check: lint|test) for correctness",
+    );
+    const card = fs.readFileSync(path.join(f.taskDir, "scorecard.md"), "utf-8");
+    expect(card).toContain(
+      `## Recurring across tasks\n\n- correctness: 09-01-old, ${TASK}`,
+    );
+    expect(lessonRows(f).map((row) => row.task)).toEqual(["09-01-old", TASK]);
+    expect(f.next()).toMatchObject({
+      needs: "human",
+      summary: expect.stringContaining("for correctness, which recurred"),
+    });
+  });
+
+  it("a category backed by a test in an earlier task is not recurring", () => {
+    f = setupFixture();
+    writeFile(
+      f.wt,
+      LESSONS,
+      JSON.stringify({
+        category: "correctness",
+        summary: "s",
+        file: "x",
+        task: "09-01-old",
+        date: "2026-09-01",
+        check: "test",
+        check_ref: "test/x.test.ts",
+      }) + "\n",
+    );
+    git(f.wt, "add", LESSONS);
+    git(f.wt, "commit", "-q", "-m", "seed lessons");
+    driveToFinish(f);
+    expect(f.run("finish").status).toBe(0);
+    const card = fs.readFileSync(path.join(f.taskDir, "scorecard.md"), "utf-8");
+    expect(card).toContain("## Recurring across tasks\n\n- none");
+  });
+
   it("scorecard + merge command in one run, merge detection, cleanup to DONE", () => {
     f = setupFixture();
     driveToFinish(f);
