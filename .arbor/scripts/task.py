@@ -280,6 +280,32 @@ def _rollback_start(
         print(f"  git branch -D {wt.branch}", file=sys.stderr)
 
 
+def _untrack_task_dirs(repo_root: Path, rels: list[str], name: str) -> bool:
+    """Commit the untracking of ``rels`` (files stay on disk) on the checked-out
+    branch, so the task branches cut next start without them. Nothing tracked:
+    no commit. Refuses when other changes are staged (they would join the commit).
+    """
+    rc, tracked, _ = run_git(["ls-files", "--", *rels], cwd=repo_root)
+    if rc != 0 or not tracked.strip():
+        return True
+    _, staged, _ = run_git(["diff", "--cached", "--name-only"], cwd=repo_root)
+    if staged.strip():
+        print(colored(f"Error: {', '.join(rels)} are tracked here and start commits their untracking "
+                      "first, but other changes are staged; commit or unstage them, then re-run start",
+                      Colors.RED))
+        return False
+    msg = f"chore(task): untrack {name} task dirs before start"
+    rc, _, err = run_git(["rm", "-r", "-q", "--cached", "--ignore-unmatch", "--", *rels], cwd=repo_root)
+    if rc == 0:
+        rc, _, err = run_git_retry_index_lock(["commit", "-q", "-m", msg], cwd=repo_root)
+    if rc != 0:
+        run_git(["reset", "-q", "--", *rels], cwd=repo_root)
+        print(colored(f"Error: untracking {', '.join(rels)} failed: {err.strip()}", Colors.RED))
+        return False
+    print(colored(f"✓ Untracked here (files kept on disk): {msg}", Colors.GREEN))
+    return True
+
+
 def _start_in_worktree(args: argparse.Namespace, task_dir: Path, repo_root: Path) -> int:
     """v2 start: freeze the contract and move the task into its own worktree.
 
@@ -311,17 +337,9 @@ def _start_in_worktree(args: argparse.Namespace, task_dir: Path, repo_root: Path
     if getattr(args, "execution", None):
         data["execution_mode"] = args.execution
 
+    force_move = bool(getattr(args, "force_move", False))
     rc, tracked, _ = run_git(["ls-files", "--", task_rel], cwd=repo_root)
     tracked_files = [line for line in tracked.splitlines() if line.strip()] if rc == 0 else []
-    if tracked_files and not getattr(args, "force_move", False):
-        print(colored(
-            f"Error: {len(tracked_files)} file(s) under {task_rel} are tracked in this "
-            "checkout; start moves the task dir into its worktree",
-            Colors.RED,
-        ))
-        print("  The task branch would then carry it twice (committed here, moved there).")
-        print("  Untrack it first (git rm -r --cached), or re-run start with --force-move")
-        return 1
 
     config = read_arbor_config(main)
     from common import execution as ex
@@ -348,6 +366,16 @@ def _start_in_worktree(args: argparse.Namespace, task_dir: Path, repo_root: Path
                       f"{DIR_WORKFLOW}/{DIR_TASKS}/; no new child can join it (create one with --base-branch "
                       "<branch> instead)", Colors.RED))
         return 1
+    if not force_move:
+        # Branches are cut below; they must not carry the task dirs, or the
+        # merge back meets them twice (modify here vs delete there).
+        rels = [task_rel]
+        if parent is not None:
+            parent_data, _ = read_json_checked(parent / FILE_TASK_JSON)
+            rels += [f"{DIR_WORKFLOW}/{DIR_TASKS}/{n}"
+                     for n in [parent.name, *((parent_data or {}).get("children") or [])]]
+        if not _untrack_task_dirs(repo_root, list(dict.fromkeys(rels)), name):
+            return 1
     if parent is not None:
         try:
             integration = ig.ensure(main, config, parent)
@@ -455,10 +483,11 @@ def _start_in_worktree(args: argparse.Namespace, task_dir: Path, repo_root: Path
     print(colored(f"✓ Moved task to: {dest}", Colors.GREEN))
     print(colored(f"✓ Committed on {wt.branch}: {commit_msg}", Colors.GREEN))
     print(colored("✓ Status: in_progress, state BUILD, wave 1", Colors.GREEN))
-    if tracked_files:
+    if tracked_files and force_move:
         print(colored(
-            f"Note: {task_rel} was tracked here; this checkout now shows it as "
-            "deleted. Commit that removal when convenient.",
+            f"Note: {task_rel} is still tracked here, so this checkout shows it as deleted. "
+            "Do not commit that removal (the merge back would conflict); restore it with "
+            f"`git checkout -- {task_rel}` before merging the task branch.",
             Colors.YELLOW,
         ))
 
@@ -1007,7 +1036,7 @@ Tiers (task.json meta.tier; without it: waves.md → full, design.md → standar
 
 Start options:
   --no-worktree        Stay in this checkout (no worktree, branch, move or commit)
-  --force-move         Move the task dir even when files in it are tracked here
+  --force-move         Keep a tracked task dir tracked here (no untrack commit) and move it anyway
 
 Monorepo options:
   --package <pkg>      Package name (validated against config.yaml packages)
@@ -1193,7 +1222,7 @@ def main() -> int:
     p_start.add_argument(
         "--force-move",
         action="store_true",
-        help="Move the task dir into its worktree even when files in it are tracked",
+        help="Skip the untrack commit for a tracked task dir and move it anyway",
     )
 
     # current

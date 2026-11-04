@@ -505,6 +505,37 @@ describe.skipIf(!hasPython())(
       );
     });
 
+    it("starting a child of a tracked plan untracks the parent and every child before the integration branch is cut", () => {
+      f = setupFixture({ start: false });
+      const a = createChild(f, "childa", CONTRACT);
+      const b = createChild(f, "childb", CONTRACT);
+      const rels = [TASK, a, b].map((t) => `.arbor/tasks/${t}`);
+      git(f.repo, "add", ...rels);
+      git(f.repo, "commit", "-q", "-m", "plan");
+
+      ok(taskPy(f, "start", a));
+      expect(git(f.repo, "log", "-1", "--format=%s")).toBe(
+        `chore(task): untrack ${a} task dirs before start`,
+      );
+      expect(git(f.repo, "ls-files", "--", ...rels)).toBe("");
+      // untracked (??), never a pending deletion
+      expect(
+        git(f.repo, "status", "--porcelain", "--", ...rels)
+          .split("\n")
+          .every((line) => line.startsWith("??")),
+      ).toBe(true);
+      const integration = `arbor/${TASK}`;
+      expect(git(f.repo, "rev-parse", integration)).toBe(
+        git(f.repo, "rev-parse", "main"),
+      );
+      expect(fs.existsSync(path.join(f.repo, rels[2], "task.json"))).toBe(true);
+
+      ok(taskPy(f, "start", b)); // nothing tracked any more: no second commit
+      expect(git(f.repo, "rev-list", "--count", `${integration}..main`)).toBe(
+        "0",
+      );
+    });
+
     it("task.py integrate: the parent reviews every merged child on the integration branch, fixes there, a human merges it", () => {
       f = setupFixture({ start: false, gate: ["true"] });
       const mainBefore = git(f.repo, "rev-parse", "main");

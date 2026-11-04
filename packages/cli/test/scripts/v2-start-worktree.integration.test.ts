@@ -219,17 +219,40 @@ describe.skipIf(!hasPython())(
       );
     });
 
-    it("refuses a tracked task dir unless --force-move", () => {
+    it("a tracked task dir is untracked by a commit here first, so the task branch merges back cleanly", () => {
       const rel = makeTask();
       git(repo, "add", rel);
       git(repo, "commit", "-q", "-m", "track task");
+      writeFile(repo, "other.txt", "staged\n");
+      git(repo, "add", "other.txt");
 
       const refused = runTask(repo, ["start", TASK]);
       expect(refused.status).toBe(1);
-      expect(refused.stdout).toContain(`file(s) under ${rel} are tracked`);
-      expect(refused.stdout).toContain("--force-move");
+      expect(refused.stdout).toContain("other changes are staged");
       expect(fs.existsSync(wt)).toBe(false);
+      expect(git(repo, "log", "-1", "--format=%s")).toBe("track task");
+      git(repo, "reset", "-q", "--", "other.txt");
 
+      const r = runTask(repo, ["start", TASK]);
+      expect(r.status, r.stdout + r.stderr).toBe(0);
+      expect(git(repo, "log", "-1", "--format=%s")).toBe(
+        `chore(task): untrack ${TASK} task dirs before start`,
+      );
+      expect(git(repo, "ls-files", "--", rel)).toBe("");
+      expect(git(repo, "status", "--porcelain", "--", rel)).toBe("");
+      expect(git(wt, "rev-parse", "HEAD~1")).toBe(
+        git(repo, "rev-parse", "HEAD"),
+      );
+      git(repo, "merge", "--no-ff", "--no-edit", `arbor/${TASK}`);
+      expect(git(repo, "ls-files", "--", `${rel}/task.json`)).toBe(
+        `${rel}/task.json`,
+      );
+    });
+
+    it("--force-move keeps a tracked task dir tracked here and moves it anyway", () => {
+      const rel = makeTask();
+      git(repo, "add", rel);
+      git(repo, "commit", "-q", "-m", "track task");
       writeFile(
         repo,
         `${rel}/contract.md`,
@@ -237,7 +260,8 @@ describe.skipIf(!hasPython())(
       );
       const forced = runTask(repo, ["start", TASK, "--force-move"]);
       expect(forced.status, forced.stdout + forced.stderr).toBe(0);
-      expect(forced.stdout).toContain("shows it as deleted");
+      expect(forced.stdout).toContain("Do not commit that removal");
+      expect(git(repo, "log", "-1", "--format=%s")).toBe("track task");
       expect(fs.existsSync(path.join(repo, rel))).toBe(false);
       // the working copy (with the edit) is what lands on the task branch
       expect(git(wt, "show", `HEAD:${rel}/contract.md`)).toContain(
