@@ -9,6 +9,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 
 import {
+  CONTRACT,
   FEATURE,
   IMPLEMENTED,
   TASK,
@@ -234,7 +235,7 @@ describe.skipIf(!hasPython())(
       expect(rows[0].commit).toMatch(/^[0-9a-f]{40}$/);
     });
 
-    it("implement Blocked or without a commit waits for the main agent; retry re-dispatches implement", () => {
+    it("implement Blocked or without a commit waits for the main agent; retries count toward NO_PROGRESS", () => {
       f = setupFixture({ tier: "standard" });
       f.plan({
         "d-001": { write: IMPLEMENTED, reply: "## Implementation Blocked\n" },
@@ -250,8 +251,14 @@ describe.skipIf(!hasPython())(
           decision: { kind: "report", dispatch: id },
         });
         expect(f.run("decide", "retry", "--reason", "re-brief").status).toBe(0);
-        expect(f.next()).toMatchObject({ needs: "brief", role: "implement" });
       }
+      // two retries without progress: STOP(NO_PROGRESS), resume grants another round
+      expect(f.taskJson()).toMatchObject({
+        state: "STOP",
+        stop: { reason: "NO_PROGRESS" },
+      });
+      expect(f.run("resume").status).toBe(0);
+      expect(f.next()).toMatchObject({ needs: "brief", role: "implement" });
       expect(dispatch(f, "d-003").status).toBe(0);
       expect(f.taskJson()).toMatchObject({ state: "GATE", step: "gate" });
       expect(f.run("gate").stdout).not.toContain("warning:");
@@ -295,6 +302,23 @@ describe.skipIf(!hasPython())(
       const gate = f.run("gate");
       expect(gate.stdout).toContain(
         "warning: AC-1: `tests/ac1.sh` is unchanged since the task base",
+      );
+    });
+
+    it("the gate warns when no test and no selector names the criterion id", () => {
+      f = setupFixture({
+        contract: CONTRACT.replaceAll("tests/ac1.sh", "tests/check.sh"),
+      });
+      const check = {
+        path: "tests/check.sh",
+        content: "test -f src/feature.txt\n",
+      };
+      f.plan({ "d-001": { write: [check, FEATURE] } });
+      expect(dispatch(f, "d-001").status).toBe(0);
+      const gate = f.run("gate");
+      expect(gate.status).toBe(0);
+      expect(gate.stdout).toContain(
+        "warning: AC-1: no test in `tests/check.sh` names AC-1",
       );
     });
 

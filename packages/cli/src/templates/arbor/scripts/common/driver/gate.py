@@ -10,6 +10,7 @@ CONFIRMED finding as ``REPRO-1``, ``REPRO-2``, ... (each must exit 0).
 
 from __future__ import annotations
 
+import re
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -89,18 +90,30 @@ def run_gate(gate_commands: list[str], contract: Contract, worktree: Path,
     return GateResult(checks)
 
 
-def untouched_test_files(contract: Contract, worktree: Path, base: str) -> list[str]:
-    """Warnings for auto checks whose map ``file`` the task never changed
-    (``base..HEAD``): such a check may pass on tests that already existed."""
+def map_warnings(contract: Contract, worktree: Path, base: str) -> list[str]:
+    """Warnings for auto checks that may pass without testing their criterion:
+    the map ``file`` is unchanged since the task base (``base..HEAD``), or
+    neither the check command, the file's path nor its text names the
+    criterion id (implement names tests after it, e.g. ``ac8`` for AC-8)."""
     rc, out, _ = run_git(["diff", "--name-only", f"{base}..HEAD"], cwd=worktree)
-    if rc != 0:
-        return []
-    changed = set(out.split())
+    changed = set(out.split()) if rc == 0 else None
     warnings = []
     for e in contract.auto_checks():
         file = (e.file or "").split("::")[0].strip()  # a pytest node id names its file first
-        if e.check.strip() and file not in ("", "-", "—") and file not in changed:
+        if not e.check.strip() or file in ("", "-", "—"):
+            continue
+        if changed is not None and file not in changed:
             warnings.append(f"{e.id}: `{file}` is unchanged since the task base; its check may pass on existing tests")
+            continue
+        number = e.id.split("-", 1)[-1]
+        named = re.compile(rf"(?<![a-z0-9])ac[-_ ]?{re.escape(number)}(?!\d)", re.IGNORECASE)
+        try:
+            text = (worktree / file).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            text = ""
+        if not any(named.search(x) for x in (e.check, file, text)):
+            warnings.append(f"{e.id}: no test in `{file}` names {e.id} and the check does not select one; "
+                            "it may pass on unrelated tests")
     return warnings
 
 

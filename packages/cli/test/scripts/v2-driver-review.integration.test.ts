@@ -660,7 +660,7 @@ describe.skipIf(!hasPython())(
       ).toBe(true);
     });
 
-    it("REVIEW (standard): verify in a delta cycle is told the task base", () => {
+    it("REVIEW (standard): candidates and verify in a delta cycle are told the task base", () => {
       f = setupFixture({ tier: "standard" });
       fs.appendFileSync(
         path.join(f.repo, ".arbor/config.yaml"),
@@ -694,6 +694,8 @@ describe.skipIf(!hasPython())(
         fs.readFileSync(path.join(f.tmp, "received", `${id}.md`), "utf-8");
       expect(prompt("d-003")).not.toContain("Task base:");
       expect(prompt("d-007")).toContain(`Task base: ${base}.`);
+      expect(prompt("d-001")).not.toContain("Task base:");
+      expect(prompt("d-005")).toContain(`Task base: ${base}.`);
     });
 
     it("REVIEW (full): 3 candidate readers, a clean cycle -> one sweep over base..HEAD -> verify -> fix -> GATE -> self-check -> FINISH", () => {

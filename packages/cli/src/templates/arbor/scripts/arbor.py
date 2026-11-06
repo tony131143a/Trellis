@@ -98,7 +98,7 @@ from common.driver import mandate as md
 from common.driver import state as sm
 from common.driver import validate as rv
 from common.driver.executor import ExecResult, ExecutorError, resolve_executor, utc_now
-from common.driver.gate import CheckResult, format_checks, run_gate, untouched_test_files
+from common.driver.gate import CheckResult, format_checks, map_warnings, run_gate
 from common.driver.lock import LockTimeout, pid_alive, task_lock
 from common.config import get_packages
 from common.git import run_git
@@ -403,7 +403,7 @@ def append_result(main: Path, row: dict) -> None:
 def build_prompt(worktree: Path, task_dir: Path | None, role: str, mode: str | None,
                  range_spec: str | None, dispatch: str | None, brief: str, execution_root: Path | None = None,
                  task_base: str | None = None) -> str:
-    if role == "verify" and task_base and range_spec and range_spec.split("..")[0] != task_base:
+    if role in ("review", "verify") and task_base and range_spec and range_spec.split("..")[0] != task_base:
         brief = (f"Task base: {task_base}. This range starts after the task's own earlier commits: a problem "
                  f"introduced in {task_base}..{range_spec.split('..')[0]} is this task's, not pre-existing.\n\n" + brief)
     if execution_root is not None:
@@ -887,7 +887,8 @@ def cmd_collect(args: argparse.Namespace) -> int:
                 if sibling:
                     raise DriverError(str(e)) from None
                 control_observations.append(str(e))
-        result, report = mcp.terminal_result(record, payload)
+        result, report = mcp.terminal_result(
+            record, payload, Path(args.text).read_text(encoding="utf-8") if args.text else None)
         before = mcp.snapshot_from(record["before"])
         role, mode, dispatch = record["role"], record["mode"], record["dispatch"]
         if record["kind"] == "run":
@@ -918,7 +919,8 @@ def cmd_collect(args: argparse.Namespace) -> int:
         if acceptance:
             record["control_drift_acceptance"] = acceptance
         record.update(status="collected", driver_exit_code=rc, ended=utc_now(),
-                      child_conversation_id=report.get("child_conversation_id"))
+                      child_conversation_id=report.get("child_conversation_id"),
+                      **({"text_recovered": True} if args.text else {}))
         mcp.store(path, record)
     return rc
 
@@ -1479,7 +1481,7 @@ def cmd_gate(args: argparse.Namespace, ctx: Ctx | None = None) -> int:
         result.checks.append(CheckResult("GATE-EMPTY", "", 1,
                                          "product gate has no commands or auto checks"))
     print(format_checks(result.checks) or "no gate commands and no auto checks")
-    warnings = untouched_test_files(load_contract(contract_path), ctx.worktree, ctx.data["base"])
+    warnings = map_warnings(load_contract(contract_path), ctx.worktree, ctx.data["base"])
     for warning in warnings:
         print(colored(f"  warning: {warning}", Colors.YELLOW))
     if result.failing:
@@ -1566,6 +1568,9 @@ def decide_report(ctx: Ctx, args: argparse.Namespace) -> int:
                     entry["downgraded"] = list(check.downgraded)
     elif job.override:
         ctx.data["override_role"] = job.override
+    elif job.role == "implement" and rv.implement_unfinished(
+            saved["outcome"].get("violations") or [], rv.ReplyCheck(**saved["outcome"]["check"])):
+        sm.on_implement_retry(ctx.data, job.unit.partition)  # an unreadable report retries freely
     pending.pop(dispatch)
     if not pending:
         ctx.data.pop("report_pending", None)
@@ -1994,6 +1999,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--accept-new-control-task", metavar="NAME",
                    help="explicitly accept only a newly created sibling task in control main; audit hashes are recorded")
     p.add_argument("--reason", help="required justification for --accept-new-control-task")
+    p.add_argument("--text", metavar="FILE",
+                   help="the child's reply recovered by hand when the completed report has no text "
+                        "(codeg result cache expired: get_session_info)")
     p.set_defaults(func=cmd_collect)
     p = sub.add_parser("children", help="one line per child task: state, merged; the parent's integration branch")
     p.add_argument("--json", action="store_true")

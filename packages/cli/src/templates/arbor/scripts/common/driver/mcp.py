@@ -106,8 +106,10 @@ def envelope(path: Path, record: dict) -> dict:
     }
 
 
-def terminal_result(record: dict, payload: dict) -> tuple[ExecResult, dict]:
-    """Accept raw status JSON or a complete MCP tools/call result envelope."""
+def terminal_result(record: dict, payload: dict, text: str | None = None) -> tuple[ExecResult, dict]:
+    """Accept raw status JSON or a complete MCP tools/call result envelope.
+    ``text`` is the child's reply recovered by hand (``collect --text``) when a
+    completed report lost it to codeg's result cache."""
     if not isinstance(payload, dict):
         raise ExecutorError("MCP result must be a JSON object")
     report = payload.get("structuredContent", payload)
@@ -135,7 +137,11 @@ def terminal_result(record: dict, payload: dict) -> tuple[ExecResult, dict]:
     status = report.get("status")
     if status not in ("completed", "failed", "canceled"):
         raise ExecutorError(f"delegation is {status!r}, not terminal; poll/resume the existing task")
-    if status == "completed" and (report.get("truncated") or report.get("text_truncated")):
+    if text is not None:
+        if status != "completed":
+            raise ExecutorError("--text only replaces the reply of a completed report")
+        report = {**report, "text": text, "text_recovered": True}
+    elif status == "completed" and (report.get("truncated") or report.get("text_truncated")):
         raise ExecutorError("MCP result is truncated; retrieve the complete child report before collecting")
     text = report.get("text", "")
     if isinstance(text, str) and len(text.encode("utf-8")) >= 262140 and text.endswith("…"):
@@ -145,9 +151,9 @@ def terminal_result(record: dict, payload: dict) -> tuple[ExecResult, dict]:
         child = report.get("child_conversation_id")
         raise ExecutorError(
             "completed MCP report has no result text (codeg's result cache may have expired); recover it: "
-            f"codeg get_session_info({child if child is not None else '<child_conversation_id>'}), copy the "
-            "child's last assistant message into this report's \"text\", then "
-            "`arbor collect --request <request> --result <file>`")
+            f"codeg get_session_info({child if child is not None else '<child_conversation_id>'}), save the "
+            "child's last assistant message to a file, then "
+            "`arbor collect --request <request> --result <file> --text <reply file>`")
     ended = utc_now()
     duration = (datetime.now(timezone.utc) - datetime.fromisoformat(record["started"].replace("Z", "+00:00"))).total_seconds()
     error = None if status == "completed" else str(report.get("message") or report.get("error_code") or status)

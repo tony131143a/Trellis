@@ -329,6 +329,41 @@ describe.skipIf(!hasPython())("codeg MCP handoff", { timeout: 90_000 }, () => {
     );
   });
 
+  it("a completed report whose text expired names the recovery; collect --text supplies the reply", () => {
+    configure();
+    const p = prepare();
+    bind(p.request_path);
+    const expired = {
+      task_id: "codeg-task-1",
+      status: "completed",
+      child_conversation_id: 1309,
+      message:
+        "Result no longer cached; open child session 1309 for the full output.",
+    };
+    const refused = collect(p.request_path, expired);
+    expect(refused.status).not.toBe(0);
+    expect(refused.stdout + refused.stderr).toContain("get_session_info(1309)");
+    expect(refused.stdout + refused.stderr).toContain("--text <reply file>");
+    const reply = path.join(f.tmp, "reply.md");
+    fs.writeFileSync(reply, EXPLORE);
+    const file = path.join(f.tmp, "mcp-result.json");
+    const done = f.run(
+      "collect",
+      "--request",
+      p.request_path,
+      "--result",
+      file,
+      "--text",
+      reply,
+    );
+    expect(done.status, done.stdout + done.stderr).toBe(0);
+    expect(f.results()[0]).toMatchObject({ dispatch: "d-001", status: "ok" });
+    expect(JSON.parse(fs.readFileSync(p.request_path, "utf-8"))).toMatchObject({
+      status: "collected",
+      text_recovered: true,
+    });
+  });
+
   it("resolves portable assistant names without a local id and reads a content-block report", () => {
     configure(false, "");
     const p = prepare();

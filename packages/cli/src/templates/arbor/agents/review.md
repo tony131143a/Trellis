@@ -96,7 +96,7 @@ PLAUSIBLE by default: do not refute a candidate for being "speculative" or "depe
 
 ## Do not report
 
-- Problems that existed before the diff (angle A's "inside a touched function" excepted).
+- Problems that existed before the task base (angle A's "inside a touched function" excepted). The range start is the task base unless the prompt names an earlier `Task base:`; what the task's own earlier commits introduced is in scope.
 - Things a linter, type checker or compiler catches: missing or wrong imports, type errors, failing tests, formatting.
 - Nitpicks a senior engineer would not raise; general code-quality remarks (coverage, docs, generic security) unless a rule file requires them.
 - Rule violations the code explicitly exempts (for example a lint-ignore comment).
