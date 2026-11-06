@@ -9,6 +9,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 
 import {
+  FEATURE,
   IMPLEMENTED,
   TASK,
   dispatch,
@@ -231,6 +232,70 @@ describe.skipIf(!hasPython())(
         violations: [],
       });
       expect(rows[0].commit).toMatch(/^[0-9a-f]{40}$/);
+    });
+
+    it("implement Blocked or without a commit waits for the main agent; retry re-dispatches implement", () => {
+      f = setupFixture({ tier: "standard" });
+      f.plan({
+        "d-001": { write: IMPLEMENTED, reply: "## Implementation Blocked\n" },
+        "d-002": {}, // Complete, but no commit
+        "d-003": { write: [{ path: "src/more.txt", content: "more\n" }] },
+      });
+      for (const id of ["d-001", "d-002"]) {
+        expect(dispatch(f, id).status).toBe(0);
+        expect(f.taskJson().state).toBe("BUILD");
+        expect(f.taskJson().report_pending).toHaveProperty(id);
+        expect(f.next()).toMatchObject({
+          needs: "decide",
+          decision: { kind: "report", dispatch: id },
+        });
+        expect(f.run("decide", "retry", "--reason", "re-brief").status).toBe(0);
+        expect(f.next()).toMatchObject({ needs: "brief", role: "implement" });
+      }
+      expect(dispatch(f, "d-003").status).toBe(0);
+      expect(f.taskJson()).toMatchObject({ state: "GATE", step: "gate" });
+      expect(f.run("gate").stdout).not.toContain("warning:");
+    });
+
+    it("resume re-approves a contract edited after start, in place", () => {
+      f = setupFixture();
+      fs.appendFileSync(
+        path.join(f.taskDir, "contract.md"),
+        "\n<!-- clarified -->\n",
+      );
+      expect(JSON.stringify(f.next().observations)).toContain(
+        "differs from the recorded approval",
+      );
+      const r = f.run("resume");
+      expect(r.status, r.stdout + r.stderr).toBe(0);
+      expect(r.stdout).toContain("contract re-approved in place");
+      expect(f.taskJson().state).toBe("BUILD");
+      expect(f.taskJson().decisions.at(-1)).toMatchObject({
+        kind: "contract",
+        choice: "re-approve",
+      });
+      expect(f.next().observations).toBeUndefined();
+    });
+
+    it("next refuses a started task whose contract no longer parses instead of falling back to default", () => {
+      f = setupFixture();
+      fs.appendFileSync(
+        path.join(f.taskDir, "contract.md"),
+        "\n## Partitions\n\n- impl:\n",
+      );
+      const r = f.run("next");
+      expect(r.status).not.toBe(0);
+      expect(r.stdout + r.stderr).toContain("contract.md does not parse");
+    });
+
+    it("the gate warns when an auto check's file is unchanged since the task base", () => {
+      f = setupFixture();
+      f.plan({ "d-001": { write: [FEATURE] } }); // the feature without its AC-1 test
+      expect(dispatch(f, "d-001").status).toBe(0);
+      const gate = f.run("gate");
+      expect(gate.stdout).toContain(
+        "warning: AC-1: `tests/ac1.sh` is unchanged since the task base",
+      );
     });
 
     it("GATE red -> decide contract -> CONTRACT -> resume re-runs the gate", () => {

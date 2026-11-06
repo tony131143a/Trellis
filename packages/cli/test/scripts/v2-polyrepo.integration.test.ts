@@ -547,6 +547,13 @@ Build two components.
       ["d-001", "impl"],
       ["d-002", "data"],
     ]) {
+      const ready = f.next();
+      expect(ready.items).toHaveLength(1);
+      expect(ready.summary).not.toContain("in parallel");
+      if (id === "d-001")
+        expect(ready.summary).toContain(
+          "product task: dispatches run one at a time",
+        );
       const r = dispatch(f, id, "--partition", partition);
       expect(r.status, r.stdout + r.stderr).toBe(0);
     }

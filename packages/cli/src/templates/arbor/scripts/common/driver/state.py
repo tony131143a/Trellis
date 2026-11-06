@@ -409,7 +409,7 @@ def plan(data: dict, tier: str, waves=None, partition: str | None = None) -> Ste
             note = f" (batch {cycle.get('verify_done', 0) + 1}/{batches}; candidates in {cycle.get('candidates_file')})"
     elif state == "GATE" and step == "fix":
         note = f" (failing: {', '.join(data.get('gate_failing') or []) or '-'})"
-    if len(ids) > 1:
+    if len(ids) > 1 and not data.get("execution_binding"):
         note += (f"; readers {', '.join(ids)} may run concurrently: write each brief, then "
                  "`arbor run --dispatch <id>` for each")
     return Step("brief", f"{state}: write the brief for role {role}{note}, then `arbor run`",

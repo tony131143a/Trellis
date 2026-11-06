@@ -219,6 +219,23 @@ describe.skipIf(!hasPython())(
       );
     });
 
+    it("refuses a contract that does not parse and leaves everything in place", () => {
+      const rel = makeTask();
+      writeFile(
+        repo,
+        `${rel}/contract.md`,
+        "# Foo\n\n## Goal\n\nDo foo.\n\n## Partitions\n\n- impl:\n",
+      );
+      const r = runTask(repo, ["start", TASK]);
+      expect(r.status).toBe(1);
+      expect(r.stdout).toContain("contract.md does not parse");
+      expect(r.stdout).toContain("Partitions: impl lists no paths");
+      expect(fs.existsSync(wt)).toBe(false);
+      expect(readJson(path.join(repo, rel, "task.json")).status).toBe(
+        "planning",
+      );
+    });
+
     it("a tracked task dir is untracked by a commit here first, so the task branch merges back cleanly", () => {
       const rel = makeTask();
       git(repo, "add", rel);

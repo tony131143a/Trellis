@@ -51,7 +51,7 @@ from common.active_task import (
     set_active_task,
 )
 from common.arbor_config import get_worktree_config, read_arbor_config
-from common.contract import contract_hash, find_contract
+from common.contract import ContractError, contract_hash, find_contract, load_contract
 from common.git import current_branch_name, run_git, run_git_retry_index_lock
 from common.io import (
     describe_json_read_failure,
@@ -188,6 +188,21 @@ def _record_start_state(
             "set-branch <task> <feature-branch>",
             file=sys.stderr,
         )
+
+
+def _contract_gate(task_dir: Path) -> bool:
+    """A planning task's contract must parse before start: the driver reads
+    its partitions and waves from it. False after printing why."""
+    data, _ = read_json_checked(task_dir / FILE_TASK_JSON)
+    path = find_contract(task_dir)
+    if not isinstance(data, dict) or data.get("status") != "planning" or path is None:
+        return True
+    try:
+        load_contract(path)
+    except ContractError as e:
+        print(colored(f"Error: contract.md does not parse: {e}", Colors.RED))
+        return False
+    return True
 
 
 def _tier_gate(task_dir: Path, task_input: str) -> bool:
@@ -654,6 +669,8 @@ def cmd_start(args: argparse.Namespace) -> int:
     if use_worktree and find_contract(full_path) is None:
         print(colored(f"Error: {task_input} has no contract.md; write it before start", Colors.RED))
         print("Start without a worktree (v1 behaviour): re-run with --no-worktree")
+        return 1
+    if use_worktree and not _contract_gate(full_path):
         return 1
 
     # Tier gate: a planning task needs its tier's planning artifacts, and a

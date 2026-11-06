@@ -98,7 +98,7 @@ from common.driver import mandate as md
 from common.driver import state as sm
 from common.driver import validate as rv
 from common.driver.executor import ExecResult, ExecutorError, resolve_executor, utc_now
-from common.driver.gate import CheckResult, format_checks, run_gate
+from common.driver.gate import CheckResult, format_checks, run_gate, untouched_test_files
 from common.driver.lock import LockTimeout, pid_alive, task_lock
 from common.config import get_packages
 from common.git import run_git
@@ -317,8 +317,11 @@ def waves_of(ctx: Ctx) -> tuple[tuple[str, ...], ...] | None:
         return None
     try:
         contract = load_contract(path)
-    except ContractError:
-        return None
+    except ContractError as e:
+        if ctx.data.get("state") in (None, "CONTRACT"):
+            return None  # still being drafted
+        # a started task must not fall back to the default partition silently
+        raise DriverError(f"contract.md does not parse ({e}); fix it, then `arbor resume` to re-approve") from e
     return contract.waves
 
 
@@ -364,7 +367,8 @@ def guard_contract(ctx: Ctx) -> None:
     """Report contract drift; the main agent judges changes in context."""
     if contract_changed(ctx):
         print("Note: contract.md differs from the recorded approval; review the change in context. "
-              "No restoration or automatic re-approval is required to collect results.", file=sys.stderr)
+              "No restoration or automatic re-approval is required to collect results; "
+              "`arbor resume` records the revised contract as approved.", file=sys.stderr)
 
 
 def next_dispatch_id(data: dict, task_dir: Path | None = None) -> str:
@@ -397,7 +401,11 @@ def append_result(main: Path, row: dict) -> None:
 
 
 def build_prompt(worktree: Path, task_dir: Path | None, role: str, mode: str | None,
-                 range_spec: str | None, dispatch: str | None, brief: str, execution_root: Path | None = None) -> str:
+                 range_spec: str | None, dispatch: str | None, brief: str, execution_root: Path | None = None,
+                 task_base: str | None = None) -> str:
+    if role == "verify" and task_base and range_spec and range_spec.split("..")[0] != task_base:
+        brief = (f"Task base: {task_base}. This range starts after the task's own earlier commits: a problem "
+                 f"introduced in {task_base}..{range_spec.split('..')[0]} is this task's, not pre-existing.\n\n" + brief)
     if execution_root is not None:
         brief = (f"Control repository: {worktree} (read only).\nExecution repository: {execution_root}.\n"
                  "Run code edits, Git commands and tests in the execution repository. "
@@ -543,10 +551,12 @@ def next_payload(ctx: Ctx | None, partition: str | None = None, role: str | None
     ready = ready_set(ctx, step)
     out.update(ready)
     summary = step.summary
-    if step.pending:
+    if step.pending and not data.get("execution_binding"):
         limit = resolve_executor(ctx.config).max_parallel
         summary += (f"; also ready: {', '.join(step.pending)} (brief each from `next --partition P`, then "
                     f"`arbor run --partition P` in parallel{f', at most {limit} at once' if limit else ''})")
+    if data.get("execution_binding") and (step.pending or len(step.batch) > 1):
+        summary += "; product task: dispatches run one at a time, `next` again after each collect"
     if len(ready["items"]) > 1:
         summary += (f"; {len(ready['items'])} items ready: act on every one (brief each at its brief_path, "
                     "dispatch them all), then wait once for the running ones")
@@ -616,6 +626,11 @@ def ready_set(ctx: Ctx, step: sm.Step | None) -> dict:
             other = plan_for(ctx, name)
             if other.needs == "brief":
                 items.append(_item(ctx, other))
+    if ctx.data.get("execution_binding"):
+        # product task: one dispatch at a time (`_begin` refuses a second one)
+        busy = ctx.data.get("mcp_pending") or any(
+            p.get("running") for p in (ctx.data.get("partitions") or {}).values())
+        items = [i for i in items if i["needs"] == "delegation"] if busy else items[:1]
     out: dict = {"items": items, "running": running}
     if not items:
         out["blocked_on"] = (step.summary if step is not None and step.needs == "wait"
@@ -807,7 +822,8 @@ def prepare_run(ctx: Ctx, job: Job, executor) -> int:
     contract = require_contract(ctx)
     paths = _partition_paths(contract, unit.partition)
     brief = _partition_brief(ctx, unit.partition, job.brief)
-    prompt = build_prompt(ctx.control_worktree, ctx.task_dir, job.role, job.mode, range_spec, job.dispatch, brief, unit.worktree if ctx.data.get("execution_binding") else None)
+    prompt = build_prompt(ctx.control_worktree, ctx.task_dir, job.role, job.mode, range_spec, job.dispatch, brief, unit.worktree if ctx.data.get("execution_binding") else None,
+                          task_base=ctx.data.get("base"))
     prompt_file = runtime_dir(ctx.main, "prompts", ctx.name) / f"{job.dispatch}.md"
     prompt_file.write_text(prompt, encoding="utf-8")
     job_data = {**asdict(job), "unit": {"partition": unit.partition, "worktree": str(unit.worktree),
@@ -976,6 +992,9 @@ def validate_dispatch(ctx: Ctx, unit: Unit, role: str, dispatch: str, before, pa
         status, problem = "fail", result.error
     elif not check.ok or check.confidence == "low":
         status, problem = "judgment", check.problem or "report needs main-agent interpretation"
+    elif role == "implement" and rv.implement_unfinished(violations, check):
+        status, problem = "judgment", ("implement reported Blocked or made no commit: "
+                                       "`decide retry` to re-dispatch, or accept an interpretation")
     else:
         status, problem = "ok", check.problem
     # Observations are not proof of authorship. Never reset commits or delete
@@ -1460,6 +1479,9 @@ def cmd_gate(args: argparse.Namespace, ctx: Ctx | None = None) -> int:
         result.checks.append(CheckResult("GATE-EMPTY", "", 1,
                                          "product gate has no commands or auto checks"))
     print(format_checks(result.checks) or "no gate commands and no auto checks")
+    warnings = untouched_test_files(load_contract(contract_path), ctx.worktree, ctx.data["base"])
+    for warning in warnings:
+        print(colored(f"  warning: {warning}", Colors.YELLOW))
     if result.failing:
         print(colored(f"failing: {' '.join(result.failing)}", Colors.RED))
     else:
@@ -1492,7 +1514,8 @@ def cmd_gate(args: argparse.Namespace, ctx: Ctx | None = None) -> int:
             f"failing: {', '.join(result.failing) or 'none'}\n\n"
             + (f"repros: {', '.join(f'REPRO-{i} = {fid}' for i, (fid, _) in enumerate(repros, start=1))}\n\n"
                if repros else "")
-            + f"{format_checks(result.checks)}\n",
+            + f"{format_checks(result.checks)}\n"
+            + "".join(f"- warning: {w}\n" for w in warnings),
             encoding="utf-8",
         )
         save(ctx)
@@ -1530,6 +1553,8 @@ def decide_report(ctx: Ctx, args: argparse.Namespace) -> int:
         notes = []
         if job.unit.partition:
             sm.on_partition_implemented(ctx.data, job.unit.partition)
+            if job.role == "implement":
+                sm.maybe_escalate(ctx.data, ctx.tier, {"implement_status": check.verdict, "at": utc_now()})
         elif not job.override:
             notes = _advance(ctx, job.state, job.step, job.role, dispatch, out)
         rel = f"reports/{dispatch}-interpreted.md"
@@ -1638,7 +1663,8 @@ def _resume_merge(ctx: Ctx) -> int:
 
 def _resume(ctx: Ctx) -> int:
     data = ctx.data
-    reapprove = data.get("state") == "CONTRACT" or (data.get("stop") or {}).get("contract")
+    in_place = data.get("state") not in ("STOP", "CONTRACT") and contract_changed(ctx)
+    reapprove = data.get("state") == "CONTRACT" or (data.get("stop") or {}).get("contract") or in_place
     if reapprove:
         path = find_contract(ctx.task_dir)
         if path is None:
@@ -1652,7 +1678,13 @@ def _resume(ctx: Ctx) -> int:
                 print(colored(f"  {error}", Colors.RED))
             raise DriverError("contract.md does not validate; fix it before re-approving")
         data["contract_hash"] = contract_hash(path)
-    message = sm.resume(data)
+    if in_place:
+        # an in-scope edit after start (wording, a clarified interface): record it, the state stays
+        data.setdefault("decisions", []).append({"ts": utc_now(), "kind": "contract", "choice": "re-approve",
+                                                 "reason": "contract.md edited after start"})
+        message = f"contract re-approved in place; {data['state']}/{sm.step_of(data)} unchanged"
+    else:
+        message = sm.resume(data)
     save(ctx)
     if reapprove:
         commit_task_dir(ctx, f"contract({ctx.name}): re-approve contract")
@@ -1904,7 +1936,8 @@ def cmd_prompt(args: argparse.Namespace) -> int:
     if ctx.started:
         brief = _partition_brief(ctx, partition, brief)
     text = build_prompt(ctx.control_worktree if ctx.started else ctx.main, ctx.task_dir, role, mode, range_spec, args.dispatch,
-                        brief, ctx.unit(partition).worktree if ctx.started and ctx.data.get("execution_binding") else None)
+                        brief, ctx.unit(partition).worktree if ctx.started and ctx.data.get("execution_binding") else None,
+                        task_base=ctx.data.get("base") if ctx.started else None)
     if args.print:
         sys.stdout.write(text)
     else:

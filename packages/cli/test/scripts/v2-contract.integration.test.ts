@@ -294,6 +294,35 @@ print(json.dumps(result))
       expect(out.partition).toContain("Partitions: impl lists no paths");
       expect(out.wave).toContain("Waves: wave names no partition");
     });
+
+    it("a nested bullet continues its criterion; a full-width colon separates the label", () => {
+      const out = py(`
+from common.contract import parse_contract
+text = """## Acceptance criteria
+
+- AC-1：Given a
+  - sub item b
+  - sub item c
+- AC-2: Given d
+
+## Partitions
+
+  - backend: src/a/
+  - agent：src/b/
+"""
+c = parse_contract(text, Path("c.md"))
+print(json.dumps({"criteria": [[x.id, x.text] for x in c.criteria],
+                  "partitions": [[p.name, list(p.paths)] for p in c.partitions]}))
+`) as { criteria: string[][]; partitions: (string | string[])[][] };
+      expect(out.criteria).toEqual([
+        ["AC-1", "Given a - sub item b - sub item c"],
+        ["AC-2", "Given d"],
+      ]);
+      expect(out.partitions).toEqual([
+        ["backend", ["src/a/"]],
+        ["agent", ["src/b/"]],
+      ]);
+    });
   });
 
   describe("validate_contract", () => {

@@ -141,7 +141,13 @@ def terminal_result(record: dict, payload: dict) -> tuple[ExecResult, dict]:
     if isinstance(text, str) and len(text.encode("utf-8")) >= 262140 and text.endswith("…"):
         raise ExecutorError("MCP result reached codeg's text cap; retrieve the complete child report")
     if status == "completed" and (not isinstance(text, str) or not text.strip()):
-        raise ExecutorError("completed MCP report has no result text; retrieve the complete child report")
+        # codeg caches the result text for a limited time ("Result no longer cached")
+        child = report.get("child_conversation_id")
+        raise ExecutorError(
+            "completed MCP report has no result text (codeg's result cache may have expired); recover it: "
+            f"codeg get_session_info({child if child is not None else '<child_conversation_id>'}), copy the "
+            "child's last assistant message into this report's \"text\", then "
+            "`arbor collect --request <request> --result <file>`")
     ended = utc_now()
     duration = (datetime.now(timezone.utc) - datetime.fromisoformat(record["started"].replace("Z", "+00:00"))).total_seconds()
     error = None if status == "completed" else str(report.get("message") or report.get("error_code") or status)

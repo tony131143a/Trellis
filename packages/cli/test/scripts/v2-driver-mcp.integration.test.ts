@@ -319,7 +319,8 @@ describe.skipIf(!hasPython())("codeg MCP handoff", { timeout: 90_000 }, () => {
       text: "## Implementation Complete\n",
     });
     expect(r.status, r.stdout + r.stderr).toBe(0);
-    expect(f.taskJson().dispatches[0].status).toBe("ok");
+    expect(f.taskJson().dispatches[0].status).toBe("judgment");
+    expect(f.taskJson().report_pending).toHaveProperty("d-001");
     expect(f.taskJson().dispatches[0].observations.join("\n")).toContain(
       "produced no new commit",
     );

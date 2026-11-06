@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Sequence
 
 from ..contract import Contract
+from ..git import run_git
 
 #: Upper bound for one check; a hung test runner must not hang the driver.
 CHECK_TIMEOUT_S = 30 * 60
@@ -86,6 +87,21 @@ def run_gate(gate_commands: list[str], contract: Contract, worktree: Path,
     checks += [run_check(f"REPRO-{i}", command, worktree)
                for i, (_, command) in enumerate(repros, start=1)]
     return GateResult(checks)
+
+
+def untouched_test_files(contract: Contract, worktree: Path, base: str) -> list[str]:
+    """Warnings for auto checks whose map ``file`` the task never changed
+    (``base..HEAD``): such a check may pass on tests that already existed."""
+    rc, out, _ = run_git(["diff", "--name-only", f"{base}..HEAD"], cwd=worktree)
+    if rc != 0:
+        return []
+    changed = set(out.split())
+    warnings = []
+    for e in contract.auto_checks():
+        file = (e.file or "").split("::")[0].strip()  # a pytest node id names its file first
+        if e.check.strip() and file not in ("", "-", "—") and file not in changed:
+            warnings.append(f"{e.id}: `{file}` is unchanged since the task base; its check may pass on existing tests")
+    return warnings
 
 
 def format_checks(checks: list[CheckResult]) -> str:

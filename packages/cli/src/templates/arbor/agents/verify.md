@@ -40,7 +40,7 @@ Exactly one per candidate:
 
 **PLAUSIBLE by default.** Do not refute a candidate for being "speculative" or "depending on runtime state" when the state is realistic: concurrency races, null/undefined on a rare but reachable path (error handler, cold cache, missing optional field), falsy-zero treated as missing, off-by-one on a boundary the code does not exclude, retry storms and partial failures, a regex or allowlist that lost its anchor.
 
-**REFUTED only when you can construct it from the code**: factually wrong (quote the actual line); provably impossible (show the type, constant or invariant); already handled in this diff (cite the guard); or pure style with no observable effect. Also REFUTED: problems that existed before the diff, anything a linter, type checker or compiler catches, and nitpicks a senior engineer would not raise.
+**REFUTED only when you can construct it from the code**: factually wrong (quote the actual line); provably impossible (show the type, constant or invariant); already handled in this diff (cite the guard); or pure style with no observable effect. Also REFUTED: problems that existed before the task base (the range start, unless the prompt names an earlier `Task base:`: what the task's own earlier commits introduced is in scope), anything a linter, type checker or compiler catches, and nitpicks a senior engineer would not raise.
 
 ## Hard limits
 

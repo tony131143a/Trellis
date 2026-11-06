@@ -660,6 +660,42 @@ describe.skipIf(!hasPython())(
       ).toBe(true);
     });
 
+    it("REVIEW (standard): verify in a delta cycle is told the task base", () => {
+      f = setupFixture({ tier: "standard" });
+      fs.appendFileSync(
+        path.join(f.repo, ".arbor/config.yaml"),
+        "\nmandate:\n  auto_merge_max_lines: 1\n",
+      );
+      seedCode(f, "REVIEW/candidates", [GREEN_CHECK]);
+      const base = f.taskJson().base;
+      const candidate = reviewReply("FAIL", [
+        finding("src/app.txt", 2, "CANDIDATE"),
+      ]);
+      const confirmed = verifyReply(
+        [finding("src/app.txt", 2, "CONFIRMED", undefined, TRACE)],
+        1,
+        0,
+      );
+      f.plan({
+        "d-001": { reply: candidate },
+        "d-002": { reply: reviewReply("PASS", []) },
+        "d-003": { reply: confirmed },
+        "d-004": { write: [APP_FIX] },
+        "d-005": { reply: candidate },
+        "d-006": { reply: reviewReply("PASS", []) },
+        "d-007": { reply: confirmed },
+      });
+      for (const id of ["d-001", "d-002", "d-003", "d-004"])
+        expect(dispatch(f, id).status).toBe(0);
+      expect(f.run("gate").status).toBe(0);
+      for (const id of ["d-005", "d-006", "d-007"])
+        expect(dispatch(f, id).status).toBe(0);
+      const prompt = (id: string) =>
+        fs.readFileSync(path.join(f.tmp, "received", `${id}.md`), "utf-8");
+      expect(prompt("d-003")).not.toContain("Task base:");
+      expect(prompt("d-007")).toContain(`Task base: ${base}.`);
+    });
+
     it("REVIEW (full): 3 candidate readers, a clean cycle -> one sweep over base..HEAD -> verify -> fix -> GATE -> self-check -> FINISH", () => {
       f = setupFixture({ tier: "full" });
       seedCode(f, "REVIEW/candidates", [GREEN_CHECK]);
