@@ -124,7 +124,7 @@ Then the injected context (`implement.jsonl` for architect / implement, `check.j
 
 ### Roles
 
-Role instructions live in `.arbor/agents/<role>.md`.
+Role instructions live in `.arbor/agents/<role>.md` of the main checkout; the driver reads them at every dispatch, so an edit applies to every open task from its next dispatch on.
 
 | Role | Writes | Commits | Output |
 |---|---|---|---|

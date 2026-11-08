@@ -20,7 +20,8 @@ Parent / Child Task Trees). The command surface is in
 
 Roles are `explore`, `architect`, `implement`, `review`, `fix` and
 `simplify` (`implement` writes code and tests together). Their instructions live
-in `.arbor/agents/<role>.md`. `arbor.py run` uses the executor named by
+in `.arbor/agents/<role>.md` of the driver's own install (the main checkout),
+read at every dispatch (`DRIVER_ARBOR_DIR` in `common/dispatch_context.py`). `arbor.py run` uses the executor named by
 `executors.default` in `.arbor/config.yaml`.
 The main agent (the user's session, normally one codeg conversation per task)
 writes the briefs and runs the loop; roles are its depth-1 codeg delegations.

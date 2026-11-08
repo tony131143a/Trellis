@@ -14,7 +14,7 @@ Arbor has six roles: `explore`, `architect`, `implement`, `review`, `fix`, and `
 | `.arbor/agents/fix.md` | Apply the chosen findings, commit, report fixed or skipped per finding. |
 | `.arbor/agents/simplify.md` | Behavior-preserving cleanup of a range (reuse, duplication, needless complexity); commit or report no change. |
 
-These are plain markdown with no frontmatter. The driver inlines these role instructions into the prepared MCP prompt. The selected `arbor-<role>` codeg assistant supplies the underlying agent, model and permissions; keep its own instructions empty, so the role file is the only copy.
+These are plain markdown with no frontmatter. The driver inlines these role instructions into the prepared MCP prompt, read at every dispatch from the `.arbor/agents/` of the install it runs from (the main checkout), so an edit applies to every open task from its next dispatch on. The selected `arbor-<role>` codeg assistant supplies the underlying agent, model and permissions; keep its own instructions empty, so the role file is the only copy.
 
 ## What The Files Contain
 

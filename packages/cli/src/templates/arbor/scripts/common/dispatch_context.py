@@ -50,6 +50,10 @@ from .paths import DIR_SPEC, DIR_WORKFLOW, get_tasks_dir, resolve_task_ref
 from .tasks import WAVES_FILE, find_artifact
 
 
+# The `.arbor/` this module runs from: role instructions and the report checker
+# come from the same install as the driver, never from a task worktree's copy.
+DRIVER_ARBOR_DIR = Path(__file__).resolve().parents[2]
+
 # Every role a dispatch prompt can be built for.
 PROMPT_ROLES = (
     "explore", "architect", "implement", "review", "fix", "simplify",
@@ -906,7 +910,7 @@ def build_dispatch_prompt(req: DispatchRequest) -> DispatchPrompt:
                 extra.append(diff_block)
         if extra:
             context = "\n\n".join([context, *extra])
-    role_file = repo_root / DIR_WORKFLOW / "agents" / f"{req.role}.md"
+    role_file = DRIVER_ARBOR_DIR / "agents" / f"{req.role}.md"
     try:
         instructions = role_file.read_text(encoding="utf-8").strip()
     except OSError:
@@ -928,7 +932,7 @@ def build_dispatch_prompt(req: DispatchRequest) -> DispatchPrompt:
                  "provisional until collected; use the brief's baseline and completed evidence. "
                  "The main agent chooses the angles and consolidates all returned results.")
     if req.role == "review":
-        checker = repo_root / DIR_WORKFLOW / "scripts" / "check_report.py"
+        checker = DRIVER_ARBOR_DIR / "scripts" / "check_report.py"
         body += (
             "\n\n## Before returning your review\n\n"
             "Your final message must start with PASS or FAIL, followed by exactly one JSON findings array "

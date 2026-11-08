@@ -762,6 +762,24 @@ describe.skipIf(!hasPython())(
       expect(f.taskJson().counters.gate).toBe(1);
     });
 
+    it("role instructions come from the driver's install, not the task worktree's copy", () => {
+      f = setupFixture();
+      seedCode(f, "REVIEW");
+      writeFile(f.repo, ".arbor/agents/review.md", "# MAIN-ROLE review\n");
+      writeFile(f.wt, ".arbor/agents/review.md", "# STALE-WORKTREE review\n");
+      f.plan({ "d-001": { reply: reviewReply("PASS", []) } });
+      expect(dispatch(f, "d-001").status).toBe(0);
+      const received = fs.readFileSync(
+        path.join(f.tmp, "received/d-001.md"),
+        "utf-8",
+      );
+      expect(received).toContain("# MAIN-ROLE review");
+      expect(received).not.toContain("STALE-WORKTREE");
+      expect(received).toContain(
+        path.join(f.repo, ".arbor/scripts/check_report.py"),
+      );
+    });
+
     it("contract edits are observations, not a frozen-hash execution gate", () => {
       f = setupFixture();
       const frozen = f.taskJson().contract_hash;

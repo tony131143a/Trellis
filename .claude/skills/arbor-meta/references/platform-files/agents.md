@@ -10,12 +10,11 @@ Arbor has six roles: `explore`, `architect`, `implement`, `review`, `fix`, and `
 | `.arbor/agents/architect.md` | Produce one design blueprint from an assigned perspective into `research/<dispatch>-design-<perspective>.md`, with a partition / wave suggestion. |
 | `.arbor/agents/test.md` | Commit failing tests for the contract's acceptance criteria, only inside the test paths; report the criterion → test map and the red run. |
 | `.arbor/agents/implement.md` | Make the committed tests pass against `contract.md`, optional `design.md` / `waves.md`, `implement.jsonl`, and referenced spec/research; commit; never touch test paths. |
-| `.arbor/agents/review.md` | Review a commit `Range:` for correctness bugs (`Mode: self-check`, `candidates`, `sweep`, or `plan`); report `PASS`/`FAIL` with JSON findings; never edits code. |
-| `.arbor/agents/verify.md` | Judge each candidate finding as CONFIRMED, PLAUSIBLE, or REFUTED against the range. |
+| `.arbor/agents/review.md` | Review a commit `Range:` for correctness bugs (`Mode: self-check`, `candidates`, `sweep`, or `plan`); verify each finding (candidates / sweep: reproduce the CONFIRMED ones under `research/repro/`); report `PASS`/`FAIL` with JSON findings; never edits code. |
 | `.arbor/agents/fix.md` | Apply the chosen findings, commit, report fixed or skipped per finding. |
 | `.arbor/agents/simplify.md` | Behavior-preserving cleanup of a range (reuse, duplication, needless complexity); commit or report no change. |
 
-These are plain markdown with no frontmatter. The driver inlines these role instructions into the prepared MCP prompt. The selected `arbor-<role>` codeg assistant supplies the underlying agent, model and permissions; keep its own instructions empty, so the role file is the only copy.
+These are plain markdown with no frontmatter. The driver inlines these role instructions into the prepared MCP prompt, read at every dispatch from the `.arbor/agents/` of the install it runs from (the main checkout), so an edit applies to every open task from its next dispatch on. The selected `arbor-<role>` codeg assistant supplies the underlying agent, model and permissions; keep its own instructions empty, so the role file is the only copy.
 
 ## What The Files Contain
 
@@ -36,7 +35,7 @@ Context normally arrives by driver push: `arbor.py run` assembles it into the pr
 | Implement role must follow extra restrictions | `.arbor/agents/implement.md`, then refresh the executor's copy. |
 | Tests must follow a project convention | `.arbor/agents/test.md` (and `.arbor/spec/` for durable rules). |
 | Review must apply extra project-specific angles | `.arbor/agents/review.md` (and `.arbor/spec/` for durable rules). |
-| Fix or verify must follow stricter rules | `.arbor/agents/fix.md` / `.arbor/agents/verify.md`. |
+| Review verdicts or fix must follow stricter rules | `.arbor/agents/review.md` / `.arbor/agents/fix.md`. |
 | Explore or architect must output a fixed format | `.arbor/agents/explore.md` / `.arbor/agents/architect.md`. |
 | Role cannot read task context | `.arbor/scripts/common/dispatch_context.py`, the task's jsonl manifests, or the context-loading section of the role file. |
 
