@@ -147,23 +147,31 @@ def _unquote(value: str) -> str:
 
 
 def _bullets(lines: list[str]) -> list[str]:
-    """Bullet texts; an indented non-bullet line continues the previous bullet."""
+    """Bullet texts. A bullet indented no deeper than the first one starts an
+    item; a deeper line (a nested bullet too) continues the previous item."""
     items: list[str] = []
+    base: int | None = None
     for line in lines:
+        indent = len(line) - len(line.lstrip())
         match = _BULLET_RE.match(line)
-        if match:
+        if match and (base is None or indent <= base):
+            base = indent if base is None else base
             items.append(match.group(1))
-        elif items and line[:1].isspace() and line.strip():
+        elif items and indent > (base or 0) and line.strip():
             items[-1] = f"{items[-1]} {line.strip()}"
     return [item for item in items if item]
 
 
+_LABEL_SEP_RE = re.compile(r"[:：]")
+
+
 def _split_labelled(item: str, section: str) -> tuple[str, str]:
-    """``"<label>: <rest>"`` → (label, rest); ContractError without a colon."""
-    label, sep, rest = item.partition(":")
-    if not sep or not label.strip():
-        raise ContractError(f"{section}: expected '- <name>: …', got {item!r}")
-    return _unquote(label), rest.strip()
+    """``"<label>: <rest>"`` → (label, rest); a full-width ``：`` also
+    separates. ContractError without a colon."""
+    match = _LABEL_SEP_RE.search(item)
+    if not match or not item[:match.start()].strip():
+        raise ContractError(f"{section}: expected '- <name>: …' (ASCII or full-width colon), got {item!r}")
+    return _unquote(item[:match.start()]), item[match.end():].strip()
 
 
 def _table_cells(line: str) -> list[str]:

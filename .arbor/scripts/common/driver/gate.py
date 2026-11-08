@@ -10,12 +10,14 @@ CONFIRMED finding as ``REPRO-1``, ``REPRO-2``, ... (each must exit 0).
 
 from __future__ import annotations
 
+import re
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Sequence
 
 from ..contract import Contract
+from ..git import run_git
 
 #: Upper bound for one check; a hung test runner must not hang the driver.
 CHECK_TIMEOUT_S = 30 * 60
@@ -86,6 +88,33 @@ def run_gate(gate_commands: list[str], contract: Contract, worktree: Path,
     checks += [run_check(f"REPRO-{i}", command, worktree)
                for i, (_, command) in enumerate(repros, start=1)]
     return GateResult(checks)
+
+
+def map_warnings(contract: Contract, worktree: Path, base: str) -> list[str]:
+    """Warnings for auto checks that may pass without testing their criterion:
+    the map ``file`` is unchanged since the task base (``base..HEAD``), or
+    neither the check command, the file's path nor its text names the
+    criterion id (implement names tests after it, e.g. ``ac8`` for AC-8)."""
+    rc, out, _ = run_git(["diff", "--name-only", f"{base}..HEAD"], cwd=worktree)
+    changed = set(out.split()) if rc == 0 else None
+    warnings = []
+    for e in contract.auto_checks():
+        file = (e.file or "").split("::")[0].strip()  # a pytest node id names its file first
+        if not e.check.strip() or file in ("", "-", "—"):
+            continue
+        if changed is not None and file not in changed:
+            warnings.append(f"{e.id}: `{file}` is unchanged since the task base; its check may pass on existing tests")
+            continue
+        number = e.id.split("-", 1)[-1]
+        named = re.compile(rf"(?<![a-z0-9])ac[-_ ]?{re.escape(number)}(?!\d)", re.IGNORECASE)
+        try:
+            text = (worktree / file).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            text = ""
+        if not any(named.search(x) for x in (e.check, file, text)):
+            warnings.append(f"{e.id}: no test in `{file}` names {e.id} and the check does not select one; "
+                            "it may pass on unrelated tests")
+    return warnings
 
 
 def format_checks(checks: list[CheckResult]) -> str:

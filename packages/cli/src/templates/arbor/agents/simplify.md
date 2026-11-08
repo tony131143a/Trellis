@@ -29,7 +29,7 @@ The diff is your scope. Do not touch code outside it unless the brief widens the
 ## Principles
 
 1. **Preserve behavior**: change how the code does things, never what it does. Every feature, output and behavior stays intact.
-2. **Follow project standards**: the injected specs, `AGENTS.md` / `CLAUDE.md`, and the surrounding code's conventions for imports, function style, type annotations, error handling and naming.
+2. **Follow project standards**: the injected specs and the surrounding code's conventions for imports, function style, type annotations, error handling and naming.
 3. **Clarity over brevity**: explicit, readable code beats compact code.
 4. **Balance**. Do not:
    - reduce clarity or maintainability, or write clever code that is hard to follow;
@@ -55,7 +55,7 @@ Flag wasted work the diff introduces: redundant computation or repeated I/O, ind
 Check that each change fixes the root cause at the right depth rather than patching a symptom with a fragile bandaid. Special cases layered on shared infrastructure signal the fix is not deep enough: prefer the simpler, more general change to the underlying mechanism, and name it.
 
 ### Conventions (additional)
-Flag a clear violation of a rule in the injected specs or a governing `AGENTS.md` / `CLAUDE.md` only when you can quote the rule and the line that breaks it.
+Flag a clear violation of a rule in the injected specs only when you can quote the rule and the line that breaks it.
 
 ## Step 2: apply
 

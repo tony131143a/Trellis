@@ -409,7 +409,7 @@ def plan(data: dict, tier: str, waves=None, partition: str | None = None) -> Ste
             note = f" (batch {cycle.get('verify_done', 0) + 1}/{batches}; candidates in {cycle.get('candidates_file')})"
     elif state == "GATE" and step == "fix":
         note = f" (failing: {', '.join(data.get('gate_failing') or []) or '-'})"
-    if len(ids) > 1:
+    if len(ids) > 1 and not data.get("execution_binding"):
         note += (f"; readers {', '.join(ids)} may run concurrently: write each brief, then "
                  "`arbor run --dispatch <id>` for each")
     return Step("brief", f"{state}: write the brief for role {role}{note}, then `arbor run`",
@@ -494,6 +494,13 @@ def _plan_wave(data: dict, parts: tuple[str, ...], partition: str | None) -> Ste
 def on_dispatch_failed(data: dict, role: str) -> None:
     """A failed dispatch is a round without progress; the step repeats."""
     _round(data, False, f"{role} dispatch failed")
+
+
+def on_implement_retry(data: dict, partition: str | None) -> None:
+    """The main agent re-dispatches an unfinished implement (Blocked or no
+    commit): a round without progress, so retries are capped."""
+    counters = data["partitions"][partition].setdefault("counters", {"no_progress": 0}) if partition else None
+    _round(data, False, f"{partition + ': ' if partition else ''}implement retried without progress", counters)
 
 
 def on_violation(data: dict, role: str, dispatch: str, violations: list[str]) -> None:

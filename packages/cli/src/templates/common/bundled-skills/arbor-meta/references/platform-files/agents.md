@@ -15,7 +15,7 @@ Arbor has seven roles: `explore`, `architect`, `implement`, `review`, `verify`, 
 | `.arbor/agents/fix.md` | Apply the chosen findings, commit, report fixed or skipped per finding. |
 | `.arbor/agents/simplify.md` | Behavior-preserving cleanup of a range (reuse, duplication, needless complexity); commit or report no change. |
 
-These are plain markdown with no frontmatter. The driver inlines these role instructions into the prepared MCP prompt. The selected `arbor-<role>` codeg assistant supplies the underlying agent, model and permissions.
+These are plain markdown with no frontmatter. The driver inlines these role instructions into the prepared MCP prompt. The selected `arbor-<role>` codeg assistant supplies the underlying agent, model and permissions; keep its own instructions empty, so the role file is the only copy.
 
 ## What The Files Contain
 
@@ -39,8 +39,6 @@ Context normally arrives by driver push: `arbor.py run` assembles it into the pr
 | Fix or verify must follow stricter rules | `.arbor/agents/fix.md` / `.arbor/agents/verify.md`. |
 | Explore or architect must output a fixed format | `.arbor/agents/explore.md` / `.arbor/agents/architect.md`. |
 | Role cannot read task context | `.arbor/scripts/common/dispatch_context.py`, the task's jsonl manifests, or the context-loading section of the role file. |
-
-Editing a file under `.arbor/agents/` does not change an executor that keeps its own copy (for example a codeg assistant); refresh that copy after editing.
 
 ## Modification Principles
 

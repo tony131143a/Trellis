@@ -73,7 +73,7 @@ Scan for the classic pitfalls of the diff's language or framework, for example: 
 When the diff adds or modifies a type that wraps another (cache, proxy, decorator, adapter): check that every method routes to the wrapped instance and not back through a registry, session or global (a caching provider holding a `delegate` field that resolves IDs via `session.get(...)` instead of `delegate.get(...)` re-enters the cache or recurses), and that the wrapper forwards every method callers actually use.
 
 ### Conventions
-Find the rule files that govern the changed code: the injected Arbor specs, plus `AGENTS.md` / `CLAUDE.md` at the repo root and in every ancestor directory of a changed file (a directory's file applies only at or below it). Flag a violation only when you can quote the exact rule and the exact line that breaks it. No style preferences, no "spirit of the doc" inferences. Name the rule file and quote the rule in `evidence`.
+The rules that govern the changed code are the injected Arbor specs. Flag a violation only when you can quote the exact rule and the exact line that breaks it. No style preferences, no "spirit of the doc" inferences. Name the spec file and quote the rule in `evidence`.
 
 ### Acceptance
 Walk every acceptance criterion in `contract.md`. For each one the diff does not satisfy, or satisfies only partially, report a finding with the criterion quoted in `evidence` and `file`/`line` pointing at the closest relevant code (use the contract's path and the criterion's line when no code exists yet). Also check the Verification map covers every criterion and that each `auto` row's test really exercises the behaviour the criterion states; a test that would pass without the change is a finding.
@@ -96,9 +96,9 @@ PLAUSIBLE by default: do not refute a candidate for being "speculative" or "depe
 
 ## Do not report
 
-- Problems that existed before the diff (angle A's "inside a touched function" excepted).
+- Problems that existed before the task base (angle A's "inside a touched function" excepted). The range start is the task base unless the prompt names an earlier `Task base:`; what the task's own earlier commits introduced is in scope.
 - Things a linter, type checker or compiler catches: missing or wrong imports, type errors, failing tests, formatting.
-- Nitpicks a senior engineer would not raise; general code-quality remarks (coverage, docs, generic security) unless a rule file requires them.
+- Nitpicks a senior engineer would not raise; general code-quality remarks (coverage, docs, generic security) unless a spec requires them.
 - Rule violations the code explicitly exempts (for example a lint-ignore comment).
 - Behavior changes that are clearly intended or are the point of the task.
 

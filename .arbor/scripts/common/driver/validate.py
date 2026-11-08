@@ -187,6 +187,12 @@ def adjust_violations(role: str, violations: list[str], reply: str, check: Reply
     return [v for v in violations if not (_NO_COMMIT_VIOLATION in v and no_commit_allowed(role, reply, check))]
 
 
+def implement_unfinished(violations: list[str], check: ReplyCheck) -> bool:
+    """An implement report that must not count as done: Blocked, or no commit."""
+    return (str(check.verdict or "").capitalize() == "Blocked"
+            or any(_NO_COMMIT_VIOLATION in v for v in violations))
+
+
 def only_missing_commit(violations: list[str]) -> bool:
     """A writer that made no commit failed; it did not break a boundary."""
     return bool(violations) and all(_NO_COMMIT_VIOLATION in v for v in violations)

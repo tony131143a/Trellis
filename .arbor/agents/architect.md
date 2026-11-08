@@ -32,7 +32,7 @@ Without a named perspective, use `pragmatic`. Use the `Dispatch:` header in the 
 ## Process
 
 1. **Understand requirements**: the goal, scope, acceptance criteria and interface pins in `contract.md`, plus the decisions and constraints in the brief. Read every file the brief lists as essential.
-2. **Codebase pattern analysis**: find existing patterns and conventions, the technology stack, module boundaries and abstraction layers; read the project rules (`AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING`, the spec indexes); find similar features and trace the relevant code paths.
+2. **Codebase pattern analysis**: find existing patterns and conventions, the technology stack, module boundaries and abstraction layers; read the project rules (the injected spec indexes and the docs they list); find similar features and trace the relevant code paths.
 3. **Architecture design**: design the complete feature on top of the patterns you found. Be decisive: pick one approach and commit to it, do not list alternatives. Integrate seamlessly with existing code; design for testability, performance and maintainability.
 4. **Implementation blueprint**: every file to create or modify, component responsibilities, integration points and data flow, broken into clear phases and concrete tasks.
 

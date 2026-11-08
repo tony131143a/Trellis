@@ -808,7 +808,7 @@ def build_role_prompt(
     return f"""{MARKER}
 # Arbor `{role}` dispatch
 
-You are the dispatched `{role}` role. Your assistant instructions define your method, limits and report format; this message carries the prepared context and the brief.
+You are the dispatched `{role}` role. The Role Instructions above define your method, limits and report format; this message carries the prepared context and the brief.
 
 ## Your Context
 

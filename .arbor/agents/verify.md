@@ -26,7 +26,7 @@ Your prompt starts with a header:
 
 1. **Dedup**: candidates for the same defect, at the same location, for the same reason collapse to one; keep the most concrete failure scenario.
 2. **Check each candidate independently**: open the file, read the changed function, its callers and callees, and judge against the diff. One candidate's verdict never decides another's.
-3. **Rule-based candidates**: when a candidate cites a spec, `AGENTS.md` or `CLAUDE.md`, open the rule file and confirm the rule text explicitly covers the problem. Otherwise REFUTED.
+3. **Rule-based candidates**: when a candidate cites a spec, open the spec file and confirm the rule text explicitly covers the problem. Otherwise REFUTED.
 4. **Acceptance candidates**: confirm the quoted criterion exists in `contract.md` and that the diff really leaves it unmet.
 5. **Reproduce what you confirm**: a CONFIRMED verdict carries a `repro` (see Report). Prefer an executable one: write a small script under `<task>/research/repro/<dispatch>-<n>.<ext>` (`<n>` numbers your candidates) that exits non-zero on the current HEAD because of the defect and will exit 0 once it is fixed, run it, and record the command, its exit code and the tail of its output. Write it as a test, not a demo: it must fail for the reason in the finding, nothing else. Keep it under a minute. When the defect cannot be executed in isolation (a missing branch, a wrong call order), give a `trace` repro instead: the call path as at least two `file:line` steps from the entry point to the failing line.
 
@@ -40,7 +40,7 @@ Exactly one per candidate:
 
 **PLAUSIBLE by default.** Do not refute a candidate for being "speculative" or "depending on runtime state" when the state is realistic: concurrency races, null/undefined on a rare but reachable path (error handler, cold cache, missing optional field), falsy-zero treated as missing, off-by-one on a boundary the code does not exclude, retry storms and partial failures, a regex or allowlist that lost its anchor.
 
-**REFUTED only when you can construct it from the code**: factually wrong (quote the actual line); provably impossible (show the type, constant or invariant); already handled in this diff (cite the guard); or pure style with no observable effect. Also REFUTED: problems that existed before the diff, anything a linter, type checker or compiler catches, and nitpicks a senior engineer would not raise.
+**REFUTED only when you can construct it from the code**: factually wrong (quote the actual line); provably impossible (show the type, constant or invariant); already handled in this diff (cite the guard); or pure style with no observable effect. Also REFUTED: problems that existed before the task base (the range start, unless the prompt names an earlier `Task base:`: what the task's own earlier commits introduced is in scope), anything a linter, type checker or compiler catches, and nitpicks a senior engineer would not raise.
 
 ## Hard limits
 

@@ -13,8 +13,7 @@ When the user wants to change the behavior of one of the seven roles (`explore`,
 ## Edit And Refresh
 
 1. Edit the relevant `.arbor/agents/<role>.md`.
-2. If the executor keeps its own copy of the instructions (the default codeg executor uses one `arbor-<role>` assistant per role), update that copy.
-3. Run one dispatch of that role on a scratch task and read `reports/<dispatch>.md` to check that the reply still has the expected format.
+2. Run one dispatch of that role on a scratch task and read `reports/<dispatch>.md` to check that the reply still has the expected format.
 
 ## Common Needs
 
