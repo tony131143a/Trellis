@@ -403,7 +403,7 @@ def append_result(main: Path, row: dict) -> None:
 def build_prompt(worktree: Path, task_dir: Path | None, role: str, mode: str | None,
                  range_spec: str | None, dispatch: str | None, brief: str, execution_root: Path | None = None,
                  task_base: str | None = None) -> str:
-    if role in ("review", "verify") and task_base and range_spec and range_spec.split("..")[0] != task_base:
+    if role == "review" and task_base and range_spec and range_spec.split("..")[0] != task_base:
         brief = (f"Task base: {task_base}. This range starts after the task's own earlier commits: a problem "
                  f"introduced in {task_base}..{range_spec.split('..')[0]} is this task's, not pre-existing.\n\n" + brief)
     if execution_root is not None:
@@ -899,7 +899,8 @@ def cmd_collect(args: argparse.Namespace) -> int:
             if ctx.data["state"] != job.state:
                 raise DriverError("task state changed while delegated; resolve the pending task before advancing")
             out = validate_dispatch(ctx, unit, role, dispatch, before, record["paths"],
-                                    record["head_before"], record["range_spec"], result, control_observations)
+                                    record["head_before"], record["range_spec"], result, control_observations,
+                                    mode)
             ctx.data["mcp_pending"].pop(dispatch)
             if acceptance:
                 ctx.data.setdefault("collection_exceptions", []).append(acceptance)
@@ -960,7 +961,7 @@ def _concurrent_moves(ctx: Ctx, unit: Unit, before, violations: list[str]) -> li
 
 def validate_dispatch(ctx: Ctx, unit: Unit, role: str, dispatch: str, before, paths,
                       head_before: str, range_spec: str | None, result: ExecResult,
-                      observations: list[str] | None = None) -> Outcome:
+                      observations: list[str] | None = None, mode: str | None = None) -> Outcome:
     """Acceptance checks on a collected MCP reply."""
     reply = result.stdout
     violations = check_after_dispatch(role, before, unit.worktree, own_branch=unit.branch,
@@ -981,7 +982,7 @@ def validate_dispatch(ctx: Ctx, unit: Unit, role: str, dispatch: str, before, pa
         if leftover:
             violations.append(f"{role} left uncommitted changes: {', '.join(leftover)}")
     check = rv.check_reply(role, reply)
-    if role == "verify":
+    if _verifying(role, mode):
         check = rv.check_repros(check, unit.worktree, ctx.task_rel)
         if check.downgraded:
             violations.append("CONFIRMED without repro downgraded to PLAUSIBLE: " + ", ".join(check.downgraded))
@@ -1022,10 +1023,17 @@ def _partition_brief(ctx: Ctx, partition: str | None, brief: str) -> str:
     return line + "\n\n" + brief.strip()
 
 
+def _verifying(role: str, mode: str | None) -> bool:
+    """A review reader that verifies its own candidates: its CONFIRMED findings need a repro."""
+    return role == "review" and mode in ("candidates", "sweep")
+
+
 def _prefilter_report(ctx: Ctx, findings: list[dict], range_spec: str, rel: str) -> tuple[list[dict], int]:
-    """Prefilter ``findings`` over ``range_spec`` and write ``<task>/<rel>``;
-    returns the kept findings and the number dropped."""
-    kept, dropped = rv.prefilter(rv.dedup(findings), ctx.worktree, range_spec)
+    """Dedup and prefilter the CONFIRMED / PLAUSIBLE ``findings`` over
+    ``range_spec`` and write ``<task>/<rel>``; returns the kept findings and
+    the number dropped."""
+    live = [f for f in findings if str(f.get("verdict", "")).upper() in ("CONFIRMED", "PLAUSIBLE")]
+    kept, dropped = rv.prefilter(rv.dedup(live), ctx.worktree, range_spec)
     (ctx.task_dir / "reports").mkdir(exist_ok=True)
     (ctx.task_dir / rel).write_text(json.dumps({
         "range": range_spec,
@@ -1033,6 +1041,12 @@ def _prefilter_report(ctx: Ctx, findings: list[dict], range_spec: str, rel: str)
         "dropped": [{"id": rv.finding_id(f), "reason": why, **f} for f, why in dropped],
     }, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return kept, len(dropped)
+
+
+def _split(findings: list[dict]) -> tuple[list[str], list[str]]:
+    """(CONFIRMED ids, PLAUSIBLE ids) of prefiltered findings."""
+    by = lambda v: [rv.finding_id(f) for f in findings if str(f.get("verdict", "")).upper() == v]
+    return by("CONFIRMED"), by("PLAUSIBLE")
 
 
 def _advance(ctx: Ctx, state: str, step: str, role: str, dispatch: str, out: Outcome) -> list[str]:
@@ -1046,21 +1060,19 @@ def _advance(ctx: Ctx, state: str, step: str, role: str, dispatch: str, out: Out
     elif (state, step) == ("REVIEW", "candidates"):
         cycle = data.setdefault("cycle", {})
         cycle.setdefault("candidate_findings", []).extend(out.check.findings)
+        cycle.setdefault("candidate_repros", {}).update(out.check.repros)
         if sm.on_candidate(data, ctx.tier, dispatch, out.head_before):
             number = data["counters"].get("review", 0) + 1
             rel = f"reports/candidates-r{number}.json"
-            findings = cycle.pop("candidate_findings", [])
+            findings, repros = cycle.pop("candidate_findings", []), cycle.pop("candidate_repros", {})
             kept, dropped = _prefilter_report(ctx, findings, str(out.range_spec), rel)
-            sm.on_candidates_filtered(data, [rv.finding_id(f) for f in kept], f"{ctx.task_rel}/{rel}", ctx.tier)
+            sm.on_candidates_filtered(data, *_split(kept), f"{ctx.task_rel}/{rel}", ctx.tier, repros)
             notes.append(f"### Prefilter\n- kept {len(kept)}, dropped {dropped} -> {rel}")
     elif (state, step) == ("REVIEW", "sweep"):
         rel = "reports/sweep.json"
         kept, dropped = _prefilter_report(ctx, out.check.findings, str(out.range_spec), rel)
-        sm.on_sweep_filtered(data, [rv.finding_id(f) for f in kept], f"{ctx.task_rel}/{rel}", out.head_before)
+        sm.on_sweep_filtered(data, *_split(kept), f"{ctx.task_rel}/{rel}", out.head_before, out.check.repros)
         notes.append(f"### Prefilter\n- kept {len(kept)}, dropped {dropped} -> {rel}")
-    elif (state, step) == ("REVIEW", "verify"):
-        by = lambda v: [rv.finding_id(f) for f in out.check.findings if str(f.get("verdict", "")).upper() == v]
-        sm.on_verify(data, by("CONFIRMED"), by("PLAUSIBLE"), ctx.tier, repros=out.check.repros)
     elif role in WRITER_ROLES:
         sm.on_writer_done(data, state, step, out.head_after != out.head_before, ctx.tier,
                           verdict=out.check.verdict if role == "implement" else None, at=utc_now())
@@ -1547,7 +1559,7 @@ def decide_report(ctx: Ctx, args: argparse.Namespace) -> int:
         check = rv.check_reply(job.role, interpretation)
         if not check.ok or check.confidence == "low":
             raise DriverError(check.problem or "interpretation needs an explicit structured result")
-        if job.role == "verify":
+        if _verifying(job.role, job.mode):
             check = rv.check_repros(check, job.unit.worktree, ctx.task_rel)
         raw = saved["outcome"]
         out = Outcome(**{**raw, "status": "ok", "reply": interpretation, "check": check,
@@ -1852,7 +1864,7 @@ def cmd_children(args: argparse.Namespace) -> int:
             print(f"  integration review running: `arbor --task {ctx.name} next`")
         elif view["all_merged"]:
             print(f"  every child is merged: `task.py integrate {ctx.name}` starts the integration review "
-                  f"(candidates, verify, fix on {view['branch']}), then a human merges it: {view['merge_command']}")
+                  f"(candidates, fix on {view['branch']}), then a human merges it: {view['merge_command']}")
     return 0
 
 

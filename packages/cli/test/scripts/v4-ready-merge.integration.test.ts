@@ -5,7 +5,7 @@
  * merge (children merge into the parent's integration branch without a
  * human, in the same `arbor finish` run that writes their scorecard; the
  * baseline only by a human) and the parent's integration review
- * (`task.py integrate`: candidates -> verify -> fix on the integration branch).
+ * (`task.py integrate`: candidates -> fix on the integration branch).
  */
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -621,27 +621,31 @@ describe.skipIf(!hasPython())(
 
       f.plan({
         "d-001": {
-          reply: review("FAIL", [{ ...finding, verdict: "CANDIDATE" }]),
+          reply: review("FAIL", [
+            {
+              ...finding,
+              verdict: "CONFIRMED",
+              repro: {
+                kind: "trace",
+                path: ["src/feature.txt:1", "src/feature.txt:1"],
+              },
+            },
+          ]),
         },
         "d-002": { reply: reviewPass },
         "d-003": {
-          reply: `\`\`\`json\n${JSON.stringify([{ ...finding, verdict: "CONFIRMED", repro: { kind: "trace", path: ["src/feature.txt:1", "src/feature.txt:1"] } }])}\n\`\`\`\nCONFIRMED 1, PLAUSIBLE 0, REFUTED 0.\n`,
-        },
-        "d-004": {
           write: [{ path: "src/feature.txt", content: "feature!\n" }],
           reply: "## Fix: Done\n",
         },
-        "d-005": { reply: reviewPass },
+        "d-004": { reply: reviewPass },
       });
       ok(play("d-001"));
       ok(play("d-002"));
       expect(parentJson()).toMatchObject({
-        step: "verify",
+        step: "fix",
         counters: { review: 1 },
       });
-      ok(play("d-003"));
-      expect(parentJson()).toMatchObject({ step: "fix" });
-      ok(play("d-004")); // the fix lands on the integration branch itself
+      ok(play("d-003")); // the fix lands on the integration branch itself
       expect(git(landing, "log", "-3", "--format=%s")).toContain(
         `fix(${TASK}): work`,
       );
@@ -651,7 +655,7 @@ describe.skipIf(!hasPython())(
       });
       ok(f.run("--task", parentDir, "gate"));
       expect(parentJson()).toMatchObject({ state: "REVIEW", step: "review" });
-      ok(play("d-005"));
+      ok(play("d-004"));
       expect(parentJson().state).toBe("FINISH");
 
       // FINISH: scorecard, then the human merge of the integration branch into the baseline

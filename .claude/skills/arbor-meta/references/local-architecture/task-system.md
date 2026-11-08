@@ -28,7 +28,7 @@ The Arbor task system is stored entirely under `.arbor/tasks/` in the user proje
 | `design.md` | Technical design for standard and full tasks: boundaries, contracts, data flow, compatibility, tradeoffs. |
 | `waves.md` | Full tasks: the chosen architect design's partitions and wave order with the reasoning (legacy name `implement.md`). |
 | `implement.jsonl` | List of spec/research files the `architect` and `implement` roles must read first. |
-| `check.jsonl` | List of spec/research files the `review`, `verify`, `fix`, and `simplify` roles must read first. |
+| `check.jsonl` | List of spec/research files the `review`, `fix`, and `simplify` roles must read first. |
 | `research/` | Research artifacts (`explore` findings, `architect` blueprints `design-<perspective>.md`, or the main agent's notes). Larger findings should not live only in chat. |
 | `briefs/` | `d-NNN.md`: the brief the main agent wrote for each dispatch (body only; the driver adds header and context). |
 | `reports/` | `d-NNN.md`: the role's reply plus the driver's verdict; `gate-N.md`: output of the N-th gate round; `candidates-rN.json`: REVIEW cycle N after the prefilter. Committed by the driver; CONTRACT-phase files are committed by `task.py start`. The assembled prompts stay uncommitted in `.arbor/.runtime/prompts/<task>/` of the main checkout. |

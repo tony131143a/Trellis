@@ -3,9 +3,8 @@ Fail-closed reply validation, finding ids and the mechanical prefilter.
 
 Report formats come from ``.arbor/agents/<role>.md``:
 
-    review     first line PASS | FAIL, then a JSON array of findings
-    verify     a JSON array, one verdict per candidate (CONFIRMED | PLAUSIBLE |
-               REFUTED), last line "CONFIRMED x, PLAUSIBLE y, REFUTED z."
+    review     first line PASS | FAIL, then a JSON array of findings, each with a
+               verdict (CONFIRMED | PLAUSIBLE | REFUTED)
     implement  "## Implementation Complete | Partial | Blocked"
     fix        "## Fix: Done | Partial | Blocked"; no commit is fine only when
                every finding was skipped
@@ -13,10 +12,9 @@ Report formats come from ``.arbor/agents/<role>.md``:
     explore    "## Explore Results"
 
 Rules: an empty reply fails. A review without an explicit first-line verdict
-or valid findings array fails (never read as PASS). A verify without
-per-candidate verdicts fails.
+or valid findings array fails (never read as PASS).
 
-A CONFIRMED verify entry carries a ``repro``: ``{"kind": "exec", "path":
+A CONFIRMED finding of a candidates or sweep review carries a ``repro``: ``{"kind": "exec", "path":
 <file under <task>/research/repro/>, "command": <run from the worktree root>,
 ...}`` or ``{"kind": "trace", "path": [<file:line>, <file:line>, ...]}``.
 :func:`check_repros` (it needs the worktree) reads a CONFIRMED entry without a
@@ -32,8 +30,7 @@ from pathlib import Path
 
 from ..git import run_git
 
-FINDING_VERDICTS = ("CONFIRMED", "PLAUSIBLE", "CANDIDATE", "REFUTED")
-VERIFY_VERDICTS = ("CONFIRMED", "PLAUSIBLE", "REFUTED")
+FINDING_VERDICTS = ("CONFIRMED", "PLAUSIBLE", "REFUTED")
 FINDING_KEYS = ("file", "line", "summary", "verdict")
 PREFILTER_SLACK = 5
 # Angles whose `file` is a planning artifact, not code in the Range.
@@ -41,9 +38,6 @@ NON_DIFF_ANGLES = ("acceptance", "plan")
 
 _EMPHASIS = "*_`# \t"
 _REVIEW_VERDICT_RE = re.compile(r"^(PASS|FAIL)\b")
-_VERIFY_SUMMARY_RE = re.compile(
-    r"CONFIRMED\s+\d+\s*,\s*PLAUSIBLE\s+\d+\s*,\s*REFUTED\s+\d+", re.IGNORECASE
-)
 _JSON_BLOCK_RE = re.compile(r"```(?:json)?\s*\n(.*?)\n\s*```", re.DOTALL)
 _STATUS_LINE_RE = {
     "implement": re.compile(r"^##\s*Implementation\s+(Complete|Partial|Blocked)\b", re.IGNORECASE),
@@ -51,7 +45,7 @@ _STATUS_LINE_RE = {
     "simplify": re.compile(r"^##\s*Simplify:\s*(Changed|No Change)\b", re.IGNORECASE),
     "explore": re.compile(r"^##\s*Explore Results\b", re.IGNORECASE),
 }
-_RULE_FILE_RE = re.compile(r"((?:[\w.-]+/)*(?:AGENTS|CLAUDE)\.md|\.arbor/spec/[\w./-]+\.md)")
+_RULE_FILE_RE = re.compile(r"(\.arbor/spec/[\w./-]+\.md)")
 _NO_COMMIT_VIOLATION = "produced no new commit"
 REPRO_DIR = "research/repro/"
 REPRO_TRACE_MIN = 2
@@ -65,8 +59,8 @@ class ReplyCheck:
     verdict: str | None = None  # review: PASS | FAIL; writers: their status word
     confidence: str = "high"
     findings: list[dict] = field(default_factory=list)
-    downgraded: list[str] = field(default_factory=list)  # verify: CONFIRMED ids read as PLAUSIBLE
-    repros: dict = field(default_factory=dict)  # verify: CONFIRMED id -> normalised repro
+    downgraded: list[str] = field(default_factory=list)  # review: CONFIRMED ids read as PLAUSIBLE
+    repros: dict = field(default_factory=dict)  # review: CONFIRMED id -> normalised repro
 
 
 def first_line(reply: str) -> str:
@@ -132,21 +126,10 @@ def check_reply(role: str, reply: str) -> ReplyCheck:
                               "Use [] only when there are no findings. Correct the report without repeating the review.",
                               verdict, "low", findings)
         if verdict == "PASS" and any(
-            str(f.get("verdict", "")).upper() in ("CONFIRMED", "PLAUSIBLE", "CANDIDATE") for f in findings
+            str(f.get("verdict", "")).upper() in ("CONFIRMED", "PLAUSIBLE") for f in findings
         ):
             return ReplyCheck(True, "PASS contradicts the listed findings; read as FAIL", "FAIL", "low", findings)
         return ReplyCheck(True, None, verdict, confidence, findings)
-
-    if role == "verify":
-        findings = extract_json_list(reply)
-        if findings is None or not findings:
-            return ReplyCheck(False, "verify reply carries no JSON verdict list", None, "low")
-        entries = [f for f in findings if isinstance(f, dict)]
-        if not entries or any(str(f.get("verdict", "")).upper() not in VERIFY_VERDICTS for f in entries):
-            return ReplyCheck(False, "verify reply has a candidate without a CONFIRMED/PLAUSIBLE/REFUTED verdict",
-                              None, "low", entries)
-        confidence = "high" if _schema_ok(entries, VERIFY_VERDICTS) and _VERIFY_SUMMARY_RE.search(reply) else "low"
-        return ReplyCheck(True, None, None, confidence, entries)
 
     status_re = _STATUS_LINE_RE.get(role)
     if status_re is None:
@@ -199,7 +182,7 @@ def only_missing_commit(violations: list[str]) -> bool:
 
 
 # =============================================================================
-# Mechanical prefilter (REVIEW, before verify)
+# Mechanical prefilter (REVIEW, after the readers)
 # =============================================================================
 
 
@@ -251,14 +234,18 @@ def prefilter(findings: list[dict], worktree: Path, range_spec: str) -> tuple[li
 
 
 def dedup(findings: list[dict]) -> list[dict]:
+    """One finding per id; a CONFIRMED copy wins over the others (first seen otherwise)."""
     seen: dict[str, dict] = {}
     for f in findings:
-        seen.setdefault(finding_id(f), f)
+        fid = finding_id(f)
+        if fid not in seen or (str(f.get("verdict", "")).upper() == "CONFIRMED"
+                               and str(seen[fid].get("verdict", "")).upper() != "CONFIRMED"):
+            seen[fid] = f
     return list(seen.values())
 
 
 # =============================================================================
-# Verify repros
+# Review repros
 # =============================================================================
 
 
@@ -295,7 +282,7 @@ def repro_problem(repro: object, worktree: Path, task_rel: str) -> tuple[str | N
 
 
 def check_repros(check: ReplyCheck, worktree: Path, task_rel: str) -> ReplyCheck:
-    """Read every CONFIRMED verify entry without a valid repro as PLAUSIBLE
+    """Read every CONFIRMED review finding without a valid repro as PLAUSIBLE
     (in place, so the state table and the scorecard agree); collect the
     normalised repros of the rest."""
     for finding in check.findings:

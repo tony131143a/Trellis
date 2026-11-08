@@ -69,12 +69,12 @@ c = check_reply("review", "PASS\\n" + J(F))
 assert c.ok and c.verdict == "FAIL" and c.confidence == "low"
 c = check_reply("review", "FAIL\\n" + J("{not json"))
 assert not c.ok and c.verdict == "FAIL" and c.confidence == "low" and c.findings == []
-assert not check_reply("verify", "CONFIRMED 1, PLAUSIBLE 0, REFUTED 0.").ok
-assert not check_reply("verify", J('[{"file": "a", "line": 1, "summary": "s", "verdict": "MAYBE"}]')).ok
-c = check_reply("verify", J('[{"file": "a", "line": 1, "summary": "s", "verdict": "REFUTED"}]'))
-assert c.ok and c.confidence == "low"
-c = check_reply("verify", J('[{"file": "a", "line": 1, "summary": "s", "verdict": "REFUTED"}]') + "\\nCONFIRMED 0, PLAUSIBLE 0, REFUTED 1.")
-assert c.ok and c.confidence == "high"
+c = check_reply("review", "FAIL\\n" + J('[{"file": "a", "line": 1, "summary": "s", "verdict": "CANDIDATE"}]'))
+assert not c.ok and c.confidence == "low"  # every finding carries a verdict now
+c = check_reply("review", "PASS\\n" + J('[{"file": "a", "line": 1, "summary": "s", "verdict": "REFUTED"}]'))
+assert c.ok and c.verdict == "PASS" and c.confidence == "high"  # REFUTED findings do not contradict PASS
+d = dedup([{"file": "a", "line": 1, "summary": "s", "verdict": "PLAUSIBLE"}, {"file": "a", "line": 1, "summary": "s", "verdict": "CONFIRMED"}])
+assert [x["verdict"] for x in d] == ["CONFIRMED"]
 assert check_reply("implement", "## Implementation Partial").verdict == "Partial"
 c = check_reply("implement", "done!")
 assert c.ok and c.confidence == "low"
@@ -112,6 +112,8 @@ print("ok")
       git(tmp, "config", "user.name", "t");
       const lines = Array.from({ length: 40 }, (_, i) => `line ${i + 1}`);
       fs.writeFileSync(path.join(tmp, "a.txt"), lines.join("\n") + "\n");
+      fs.mkdirSync(path.join(tmp, ".arbor/spec"), { recursive: true });
+      fs.writeFileSync(path.join(tmp, ".arbor/spec/rules.md"), "rules\n");
       fs.writeFileSync(path.join(tmp, "AGENTS.md"), "rules\n");
       git(tmp, "add", ".");
       git(tmp, "commit", "-q", "-m", "one");
@@ -127,7 +129,8 @@ fs = [
   {"file": "a.txt", "line": 25, "summary": "near"},
   {"file": "a.txt", "line": 26, "summary": "far"},
   {"file": "missing.txt", "line": 1, "summary": "gone"},
-  {"file": "a.txt", "line": 20, "angle": "Conventions", "summary": "rule", "evidence": "AGENTS.md: rules"},
+  {"file": "a.txt", "line": 20, "angle": "Conventions", "summary": "rule", "evidence": ".arbor/spec/rules.md: rules"},
+  {"file": "a.txt", "line": 20, "angle": "Conventions", "summary": "agentsrule", "evidence": "AGENTS.md: rules"},
   {"file": "a.txt", "line": 20, "angle": "Conventions", "summary": "norule", "evidence": "style"},
   {"file": "a.txt", "line": 20, "summary": "badrule", "evidence": ".arbor/spec/nope.md says"},
   {"file": "a.txt", "line": 1, "angle": "Acceptance", "summary": "ac"},
@@ -137,7 +140,7 @@ print(json.dumps([[k["summary"] for k in kept], sorted(d["summary"] for d, _ in 
 `);
       expect(JSON.parse(out)).toEqual([
         ["near", "rule", "ac"],
-        ["badrule", "far", "gone", "norule"],
+        ["agentsrule", "badrule", "far", "gone", "norule"],
       ]);
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
@@ -200,17 +203,16 @@ assert l["state"] == "STOP" and l["stop"]["reason"] == "NO_PROGRESS"
 p = sm.ensure_fields({"state": "REVIEW", "base": "b"})
 sm.on_review(p, "PASS", [], "b", "h"); assert p["state"] == "FINISH" and p["last_reviewed"] == "h"
 
-# REVIEW cycle (standard / full): candidates -> verify batches -> fix -> GATE -> recheck of the delta
+# REVIEW cycle (standard / full): self-verified candidates -> fix -> GATE -> recheck of the delta
 q = sm.ensure_fields({"state": "GATE", "base": "b", "last_reviewed": "h"})
 sm.on_gate(q, [], "full")  # a green gate after BUILD opens the first cycle over base..HEAD
 assert q["step"] == "candidates" and q["cycle"]["range_from"] == "b"
 assert not sm.on_candidate(q, "full", "d-1", "h2") and not sm.on_candidate(q, "full", "d-2", "h2")
 assert sm.on_candidate(q, "full", "d-3", "h2")
-sm.on_candidates_filtered(q, ["f%d" % i for i in range(9)], "c.json", "full")
-assert q["step"] == "verify" and q["cycle"]["verify_batches"] == 2 and q["last_reviewed"] == "h2"
-assert q["counters"]["review"] == 1 and q["cycle_ids"] == ["f%d" % i for i in range(9)]
-sm.on_verify(q, ["f1"], [], "full"); assert q["step"] == "verify"
-sm.on_verify(q, ["f2"], [], "full"); assert q["step"] == "fix" and q["cycle"]["fix"] == ["f1", "f2"]
+sm.on_candidates_filtered(q, ["f1", "f2"], [], "c.json", "full", {"f1": {"kind": "trace"}, "x": {"kind": "trace"}})
+assert q["step"] == "fix" and q["cycle"]["fix"] == ["f1", "f2"] and q["last_reviewed"] == "h2"
+assert q["counters"]["review"] == 1 and q["cycle_ids"] == ["f1", "f2"]
+assert q["cycle"]["repros"] == {"f1": {"kind": "trace"}}  # only CONFIRMED ids keep a repro
 sm.on_writer_done(q, "REVIEW", "fix", True, "full")
 assert q["state"] == "GATE" and q["after_gate"] == {"state": "REVIEW", "step": "recheck"}
 import copy
@@ -223,20 +225,19 @@ assert q["step"] == "candidates" and q["cycle"]["range_from"] == "h2"
 # the cap: REVIEW_ROUND_CAP cycles with findings, the next one stops (BUDGET)
 q["counters"]["review"] = sm.REVIEW_ROUND_CAP
 for n in range(3): sm.on_candidate(q, "full", "d-%d" % (4 + n), "h3")
-sm.on_candidates_filtered(q, ["g1"], "c2.json", "full")
+sm.on_candidates_filtered(q, ["g1"], [], "c2.json", "full")
 assert q["state"] == "STOP" and q["stop"]["reason"] == "BUDGET" and q["stop"]["counter"] == "review"
 sm.resume(q); assert q["state"] == "REVIEW" and q["caps_extra"] == {"review": 2}
 # the same candidate ids twice is a round without progress; a clean cycle finishes (full: after its sweep)
 u = sm.ensure_fields({"state": "REVIEW", "step": "candidates", "base": "b", "cycle": {"range_from": "b"}, "cycle_ids": ["g1"]})
-sm.on_candidates_filtered(u, ["g1"], "c.json", "standard"); assert u["counters"]["no_progress"] == 1 and u["step"] == "verify"
+sm.on_candidates_filtered(u, ["g1"], [], "c.json", "standard"); assert u["counters"]["no_progress"] == 1 and u["step"] == "fix"
 for tier, want in (("standard", ("FINISH", "finish")), ("full", ("REVIEW", "sweep"))):
     w = sm.ensure_fields({"state": "REVIEW", "step": "candidates", "base": "b", "cycle": {"range_from": "b"}})
-    sm.on_candidates_filtered(w, [], "c.json", tier); assert (w["state"], w["step"]) == want, (tier, w)
+    sm.on_candidates_filtered(w, [], [], "c.json", tier); assert (w["state"], w["step"]) == want, (tier, w)
 assert w["cycle"] == {"sweep": True, "range_from": "b"}
-sm.on_sweep_filtered(w, [], "s.json", "h9"); assert w["state"] == "FINISH" and w["sweep_done"] and "cycle" not in w
+sm.on_sweep_filtered(w, [], [], "s.json", "h9"); assert w["state"] == "FINISH" and w["sweep_done"] and "cycle" not in w
 w = sm.ensure_fields({"state": "REVIEW", "step": "sweep", "base": "b", "cycle": {"sweep": True, "range_from": "b"}})
-sm.on_sweep_filtered(w, ["s1"], "s.json", "h9"); assert w["step"] == "verify" and w["sweep_ids"] == ["s1"] and w["review_from"] == "b"
-sm.on_verify(w, ["s1"], [], "full"); assert w["step"] == "fix"
+sm.on_sweep_filtered(w, ["s1"], [], "s.json", "h9"); assert w["step"] == "fix" and w["sweep_ids"] == ["s1"] and w["review_from"] == "b"
 sm.on_writer_done(w, "REVIEW", "fix", True, "full"); assert w["after_gate"] == {"state": "REVIEW", "step": "recheck"}
 sm.on_gate(w, [], "full", delta_lines=3); assert (w["state"], w["step"]) == ("REVIEW", "review")
 sm.on_review(w, "PASS", [], "h9", "h10", "full"); assert w["state"] == "FINISH" and "cycle" not in w  # the sweep never repeats
@@ -244,8 +245,8 @@ sm.on_review(w, "PASS", [], "h9", "h10", "full"); assert w["state"] == "FINISH" 
 x = sm.ensure_fields({"state": "REVIEW", "step": "review", "base": "b"})
 sm.on_review(x, "PASS", [], "b", "h", "full"); assert (x["state"], x["step"]) == ("REVIEW", "sweep")
 # PLAUSIBLE findings: a human (or the mandate) decides fix|skip
-v = sm.ensure_fields({"state": "REVIEW", "step": "verify", "base": "b", "cycle": {"range_from": "b", "verify_batches": 1}})
-sm.on_verify(v, ["c1"], ["p1"], "standard")
+v = sm.ensure_fields({"state": "REVIEW", "step": "candidates", "base": "b", "cycle": {"range_from": "b"}})
+sm.on_candidates_filtered(v, ["c1"], ["p1"], "c.json", "standard")
 assert v["step"] == "plausible" and v["decision"] == {"kind": "plausible", "options": ["fix", "skip"], "failing": ["p1"]}
 assert sm.plan(v, "standard").human == {"kind": "plausible"}
 try:
@@ -273,7 +274,7 @@ sm.resume(y); assert (y["state"], y["step"]) == ("GATE", "gate")
 step = sm.plan(sm.ensure_fields({"state": "BUILD", "base": "b"}), "light")
 assert (step.needs, step.role, step.range_from) == ("brief", "implement", "b")
 assert sm.plan({"state": "FINISH"}, "light").human == {"kind": "merge"}
-assert set(sm.DISPATCH_STEPS.values()) == {"implement", "fix", "review", "verify"}
+assert set(sm.DISPATCH_STEPS.values()) == {"implement", "fix", "review"}
 assert ("REVIEW", "simplify") not in sm.DISPATCH_STEPS  # simplify runs only through override --role simplify
 assert "POLISH" not in sm.STATES and sm.DECIDE_CHOICES == ("impl", "contract")
 print("ok")
@@ -402,7 +403,7 @@ print("ok")
     expect(out).toBe("ok");
   });
 
-  it("lessons: rows keep task-relative exec repros; union merge; downgraded verify entries are neither lessons nor CONFIRMED", () => {
+  it("lessons: rows keep task-relative exec repros; union merge; downgraded review findings are neither lessons nor CONFIRMED", () => {
     const tmp = fs.realpathSync(
       fs.mkdtempSync(path.join(os.tmpdir(), "arbor-lessons-")),
     );
@@ -428,12 +429,11 @@ assert ls.recurring_across_tasks(rows) == [("A", ["t1", "t2"])]
 assert ls.digest([{"check": "test"}]) is None
 task = Path("task"); (task / "reports").mkdir(parents=True)
 F = lambda line, s: {"file": "a.py", "line": line, "summary": s, "verdict": "CONFIRMED", "angle": "A"}
-(task / "reports" / "d-001.md").write_text("\`\`\`json\\n" + json.dumps([F(1, "kept"), F(2, "cut")]) +
-    "\\n\`\`\`\\nCONFIRMED 2, PLAUSIBLE 0, REFUTED 0.\\n")
-(task / "reports" / "d-002.md").write_text("FAIL\\n\`\`\`json\\n" + json.dumps([F(5, "nominated")]) + "\\n\`\`\`\\n")
-ds = [{"id": "d-001", "role": "verify", "status": "ok", "downgraded": ["a.py:2:cut"]},
+(task / "reports" / "d-001.md").write_text("FAIL\\n\`\`\`json\\n" + json.dumps([F(1, "kept"), F(2, "cut")]) + "\\n\`\`\`\\n")
+(task / "reports" / "d-002.md").write_text("FAIL\\n\`\`\`json\\n" + json.dumps([F(5, "second")]) + "\\n\`\`\`\\n")
+ds = [{"id": "d-001", "role": "review", "mode": "candidates", "status": "ok", "downgraded": ["a.py:2:cut"]},
       {"id": "d-002", "role": "review", "mode": "candidates", "status": "ok"}]
-assert [x["summary"] for x in fin.confirmed_findings(task, ds)] == ["kept"]
+assert [x["summary"] for x in fin.confirmed_findings(task, ds)] == ["kept", "second"]
 levels, angles = fin.verdict_counts(task, ds)
 assert levels["3"]["CONFIRMED"] == 2 and levels["3"]["PLAUSIBLE"] == 1, levels
 print("ok")

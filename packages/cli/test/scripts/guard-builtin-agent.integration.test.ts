@@ -114,7 +114,6 @@ describe.skipIf(!hasPython())("guard-builtin-agent.py", () => {
       "architect",
       "implement",
       "review",
-      "verify",
       "fix",
       "simplify",
     ]) {

@@ -249,7 +249,7 @@ describe.skipIf(!hasPython())("arbor.py FINISH", { timeout: 90_000 }, () => {
     expect(card).toContain("- review reads: 2");
     expect(card).toContain("- fix rounds: 1");
     expect(card).toContain("| 2 review | 1 | 0 | 0 |");
-    expect(card).toContain("| 3 candidates + verify | 0 | 0 | 0 |");
+    expect(card).toContain("| 3 candidates | 0 | 0 | 0 |");
     expect(card).toContain("| 4 sweep | 0 | 0 | 0 |");
     expect(card).toContain("- AC auto-coverage: 1/1 (100%)");
     expect(card).toContain("- overrides: 0");

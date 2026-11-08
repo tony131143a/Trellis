@@ -5,7 +5,7 @@ Built-in Agent Guard Hook (Claude Code / Codex)
 
 PreToolUse hook on the host's built-in sub-agent tool (matcher
 `^(Agent|Task)$`). Arbor roles (explore / architect / implement /
-review / verify / fix / simplify) run only through the driver
+review / fix / simplify) run only through the driver
 (`arbor.py run`) and the executor configured in `executors:`; spawning them
 through the built-in Agent/Task tool would skip the driver's prompt
 assembly, invariant checks, commit validation and state tracking.
@@ -42,14 +42,14 @@ DIR_WORKFLOW = ".arbor"
 GUARDED_TOOLS = ("Agent", "Task", "spawn_agent")
 ROLE_RE = re.compile(
     r"^\s*(?:Active task:|Role:\s*"
-    r"(?:explore|architect|implement|review|verify|fix|simplify)\b)",
+    r"(?:explore|architect|implement|review|fix|simplify)\b)",
     re.IGNORECASE | re.MULTILINE,
 )
 # Only the head of the prompt is the header; a role word deep in the body is
 # ordinary prose.
 HEADER_SCAN_CHARS = 400
 DENY_REASON = (
-    "Arbor roles (explore/architect/implement/review/verify/fix/simplify) "
+    "Arbor roles (explore/architect/implement/review/fix/simplify) "
     "run only through the driver. Run `python3 ./.arbor/scripts/arbor.py next`, "
     "write the brief it names and `arbor.py run`; the driver hands the role to the configured "
     "executor. Never the built-in Agent/Task tool."

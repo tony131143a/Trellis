@@ -405,16 +405,22 @@ describe("0.9.0 manifest", () => {
 });
 
 // =============================================================================
-// 0.9.1 — verify repros, light -> standard escalation, lessons.jsonl
+// 0.9.1 — review verifies its own findings, repros, light -> standard escalation, lessons.jsonl
 // =============================================================================
 
 describe("0.9.1 manifest", () => {
-  it("is the package version, reached from 0.9.0, non-breaking, with no file migrations", () => {
+  it("is the package version, reached from 0.9.0, breaking, and deletes the verify role", () => {
     expect(VERSION).toBe("0.9.1");
     expect(getAllMigrationVersions()).toContain("0.9.1");
-    expect(getMigrationsForVersion("0.9.0", "0.9.1")).toEqual([]);
+    const migrations = getMigrationsForVersion("0.9.0", "0.9.1");
+    expect(migrations).toHaveLength(1);
+    expect(migrations[0]).toMatchObject({
+      type: "safe-file-delete",
+      from: ".arbor/agents/verify.md",
+    });
     const metadata = getMigrationMetadata("0.9.0", "0.9.1");
-    expect(metadata.breaking).toBe(false);
+    expect(metadata.breaking).toBe(true);
+    expect(metadata.recommendMigrate).toBe(true);
     const changelog = metadata.changelog.join("\n");
     for (const term of [
       "repro",

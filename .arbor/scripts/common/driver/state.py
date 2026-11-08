@@ -12,18 +12,18 @@ nothing else (no git, no subprocesses), so ``arbor next`` stays cheap.
     REVIEW    review      brief    one review self-check over last_reviewed..HEAD (light
                                    entry; every tier after a fix): PASS -> FINISH (full:
                                    sweep first); FAIL -> fix (round cap)
-    REVIEW    candidates  brief    standard / full entry: N review candidates -> prefilter
-                                   -> verify
-    REVIEW    verify      brief    PLAUSIBLE -> plausible; CONFIRMED (with a repro, else
-                                   read as PLAUSIBLE) -> fix; none -> FINISH
+    REVIEW    candidates  brief    standard / full entry: N review candidates, each
+                                   reader verifies its own (CONFIRMED with a repro, else
+                                   read as PLAUSIBLE) -> dedup + prefilter -> PLAUSIBLE ->
+                                   plausible; CONFIRMED -> fix; none -> FINISH
     REVIEW    plausible   human    decide fix|skip
     REVIEW    fix         brief    -> GATE -> recheck: the fix delta (last_reviewed..HEAD)
                                    within ``recheck_max_lines`` -> review (self-check);
                                    larger -> candidates; small and every fixed finding's
                                    exec repro passed as REPRO-n in that gate -> FINISH
                                    (full: sweep) without the self-check
-    REVIEW    sweep       brief    full only, once: review sweep base..HEAD ->
-                                   prefilter -> verify -> fix -> GATE -> recheck
+    REVIEW    sweep       brief    full only, once: review sweep base..HEAD (self-verified)
+                                   -> prefilter -> plausible / fix -> GATE -> recheck
 
 A child started on its parent's integration branch carries ``review_deferred``:
 BUILD -> GATE -> FINISH, and the parent reviews every child at once on the
@@ -39,11 +39,10 @@ Escalation. A light task becomes standard (``meta.tier``, ``tier_history``)
 when ``maybe_escalate`` sees a signal: two consecutive red gates, an implement
 report Partial / Blocked, or at a BUILD gate a diff over ESCALATE_MAX_LINES
 lines or over more than one configured package. The green gate then enters
-REVIEW the standard way (candidates -> verify). ``meta.tier_lock`` opts out.
+REVIEW the standard way (candidates). ``meta.tier_lock`` opts out.
 
-Reader batches. REVIEW candidates (``CANDIDATE_READERS`` per tier) and
-REVIEW verify (one per batch of 8; each writes only its own repro files) are readers of the same range:
-when the step opens, the caller assigns every reader its dispatch id under
+Reader batches. REVIEW candidates (``CANDIDATE_READERS`` per tier; each
+writes only its own repro files) are readers of the same range: when the step opens, the caller assigns every reader its dispatch id under
 the task lock (``batch.ids``, like a partition's ``next_dispatch``) and the
 readers may run concurrently; ``batch.running`` holds the ones in flight.
 The step completes when all of them are done.
@@ -97,7 +96,6 @@ DISPATCH_STEPS = {
     ("GATE", "fix"): "fix",
     ("REVIEW", "review"): "review",
     ("REVIEW", "candidates"): "review",
-    ("REVIEW", "verify"): "verify",
     ("REVIEW", "fix"): "fix",
     ("REVIEW", "sweep"): "review",
 }
@@ -108,8 +106,7 @@ REVIEW_ROUND_CAP = 2  # fix rounds, every tier
 GATE_RED_CAP = 4  # consecutive red gate rounds
 RECHECK_MAX_LINES = 200  # a fix delta up to this many lines is re-reviewed by one self-check reader
 CANDIDATE_READERS = {"standard": 2, "full": 3}
-BATCH_STEPS = (("REVIEW", "candidates"), ("REVIEW", "verify"))
-VERIFY_BATCH = 8
+BATCH_STEPS = (("REVIEW", "candidates"),)
 NO_PROGRESS_LIMIT = 2
 NEW_COUNTERS = {"gate": 0, "review": 0, "no_progress": 0}
 # One-way light -> standard escalation (``maybe_escalate``).
@@ -275,15 +272,11 @@ def batch_size(data: dict, tier: str | None) -> int:
     key = (data.get("state"), step_of(data))
     if key not in BATCH_STEPS or data.get("override_role"):
         return 0
-    if key == ("REVIEW", "candidates"):
-        return CANDIDATE_READERS.get(tier or "", 2)
-    return int((data.get("cycle") or {}).get("verify_batches", 1))
+    return CANDIDATE_READERS.get(tier or "", 2)
 
 
 def _batch_done(data: dict) -> int:
-    key = (data.get("state"), step_of(data))
-    cycle = data.get("cycle") or {}
-    return int(cycle.get("candidates_done" if key == ("REVIEW", "candidates") else "verify_done", 0))
+    return int((data.get("cycle") or {}).get("candidates_done", 0))
 
 
 def unassigned_batch(data: dict, tier: str | None) -> int:
@@ -399,14 +392,9 @@ def plan(data: dict, tier: str, waves=None, partition: str | None = None) -> Ste
     elif step == "sweep":
         mode, range_from = "sweep", cycle.get("range_from") or base
         note = " (Mode: sweep over the whole task range, once)"
-    elif step in ("candidates", "verify"):
-        range_from = cycle.get("range_from") or base
-        if step == "candidates":
-            mode = "candidates"
-            note = f" ({cycle.get('candidates_done', 0) + 1}/{CANDIDATE_READERS.get(tier, 2)})"
-        else:
-            batches = cycle.get("verify_batches", 1)
-            note = f" (batch {cycle.get('verify_done', 0) + 1}/{batches}; candidates in {cycle.get('candidates_file')})"
+    elif step == "candidates":
+        mode, range_from = "candidates", cycle.get("range_from") or base
+        note = f" ({cycle.get('candidates_done', 0) + 1}/{CANDIDATE_READERS.get(tier, 2)})"
     elif state == "GATE" and step == "fix":
         note = f" (failing: {', '.join(data.get('gate_failing') or []) or '-'})"
     if len(ids) > 1 and not data.get("execution_binding"):
@@ -598,7 +586,7 @@ def on_review(data: dict, verdict: str, finding_ids: list[str], range_from: str,
 
 
 def start_cycle(data: dict) -> None:
-    """Open one candidates -> verify -> fix cycle over the unreviewed range."""
+    """Open one candidates -> fix cycle over the unreviewed range."""
     rounds = data["counters"].get("review", 0)
     base = data.get("base")
     data["cycle"] = {
@@ -628,37 +616,46 @@ def _cycle_done(data: dict, tier: str | None) -> None:
         goto(data, "FINISH")
 
 
-def _start_verify(data: dict, kept_ids: list[str], candidates_file: str) -> None:
+def _route(data: dict, confirmed: list[str], plausible: list[str], candidates_file: str,
+           tier: str | None, repros: dict | None) -> None:
+    """Send the readers' verified findings on: PLAUSIBLE ones to the human
+    gate, else the CONFIRMED ones to fix. ``repros`` maps CONFIRMED ids to their
+    reproduction (the recheck gate runs the ``exec`` ones as ``REPRO-n``)."""
     data["cycle"].update({
         "candidates_file": candidates_file,
-        "candidates": len(kept_ids),
-        "verify_batches": -(-len(kept_ids) // VERIFY_BATCH),
-        "verify_done": 0,
-        "confirmed": [],
-        "plausible": [],
+        "confirmed": list(confirmed),
+        "plausible": list(plausible),
+        "repros": {k: v for k, v in (repros or {}).items() if k in confirmed},
     })
-    goto(data, "REVIEW", "verify")
+    if plausible:
+        data["step"] = "plausible"
+        data["decision"] = {"kind": "plausible", "options": list(PLAUSIBLE_CHOICES), "failing": list(plausible)}
+    else:
+        _fix_or_done(data, list(confirmed), tier)
 
 
-def on_sweep_filtered(data: dict, kept_ids: list[str], candidates_file: str, range_to: str) -> None:
+def on_sweep_filtered(data: dict, confirmed: list[str], plausible: list[str], candidates_file: str,
+                      range_to: str, repros: dict | None = None) -> None:
     """After the sweep review and its prefilter; the sweep never repeats."""
     data["sweep_done"] = True
     cycle = data.setdefault("cycle", {"sweep": True, "range_from": data.get("base")})
     cycle["range_to"] = range_to
     data["last_reviewed"] = range_to
     data["review_from"] = cycle.get("range_from")
-    data["sweep_ids"] = sorted(kept_ids)
+    data["sweep_ids"] = sorted(confirmed + plausible)
     data["counters"]["no_progress"] = 0
-    if not kept_ids:
+    if not confirmed and not plausible:
         _cycle_done(data, None)  # sweep_done: FINISH
         return
-    _start_verify(data, kept_ids, candidates_file)
+    _route(data, confirmed, plausible, candidates_file, None, repros)
 
 
-def on_candidates_filtered(data: dict, kept_ids: list[str], candidates_file: str, tier: str | None = None) -> None:
-    """After the mechanical prefilter of one cycle's candidates."""
+def on_candidates_filtered(data: dict, confirmed: list[str], plausible: list[str], candidates_file: str,
+                           tier: str | None = None, repros: dict | None = None) -> None:
+    """After the dedup and mechanical prefilter of one cycle's self-verified candidates."""
     counters = data["counters"]
     cycle = data["cycle"]
+    kept_ids = confirmed + plausible
     data["last_reviewed"] = cycle.get("range_to") or data.get("last_reviewed")
     data["review_from"] = cycle.get("range_from")
     previous = data.get("cycle_ids")
@@ -673,27 +670,7 @@ def on_candidates_filtered(data: dict, kept_ids: list[str], candidates_file: str
         return
     if _budget(data, "review", counters["review"], REVIEW_ROUND_CAP, "review fix rounds"):
         return
-    _start_verify(data, kept_ids, candidates_file)
-
-
-def on_verify(data: dict, confirmed: list[str], plausible: list[str], tier: str | None = None,
-              repros: dict | None = None) -> None:
-    """One verify batch. ``repros`` maps CONFIRMED ids to their reproduction
-    (the recheck gate runs the ``exec`` ones as ``REPRO-n``)."""
-    cycle = data["cycle"]
-    if repros:
-        cycle.setdefault("repros", {}).update({k: v for k, v in repros.items() if k in confirmed})
-    cycle["confirmed"] = cycle.get("confirmed", []) + confirmed
-    cycle["plausible"] = cycle.get("plausible", []) + plausible
-    cycle["verify_done"] = cycle.get("verify_done", 0) + 1
-    if cycle["verify_done"] < cycle.get("verify_batches", 1):
-        return
-    if cycle["plausible"]:
-        data["step"] = "plausible"
-        data["decision"] = {"kind": "plausible", "options": list(PLAUSIBLE_CHOICES),
-                            "failing": list(cycle["plausible"])}
-    else:
-        _fix_or_done(data, list(cycle["confirmed"]), tier)
+    _route(data, confirmed, plausible, candidates_file, tier, repros)
 
 
 def _fix_or_done(data: dict, fix: list[str], tier: str | None) -> None:

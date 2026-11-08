@@ -1,6 +1,6 @@
 # Arbor Workflow
 
-Start an Arbor task from a request, or continue the current one. You are the main agent: you plan, get the contract approved, then drive the started task yourself and dispatch every role (explore / architect / implement / review / verify / fix; simplify on demand) through the driver, `python3 ./.arbor/scripts/arbor.py`, and the executor configured under `executors:` in `.arbor/config.yaml` (default: codeg MCP delegation).
+Start an Arbor task from a request, or continue the current one. You are the main agent: you plan, get the contract approved, then drive the started task yourself and dispatch every role (explore / architect / implement / review / fix; simplify on demand) through the driver, `python3 ./.arbor/scripts/arbor.py`, and the executor configured under `executors:` in `.arbor/config.yaml` (default: codeg MCP delegation).
 
 Arguments: `[--tier light|standard|full] [request]`
 

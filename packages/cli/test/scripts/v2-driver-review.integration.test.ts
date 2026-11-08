@@ -1,6 +1,6 @@
 /**
  * arbor.py driver: invariant observations, fail-closed replies, the REVIEW
- * state (light self-check; standard / full candidates -> verify
+ * state (light self-check; standard / full self-verified candidates
  * -> fix -> candidates over the delta; the full sweep), the contract-hash
  * guard, override / abandon / status.
  */
@@ -68,12 +68,6 @@ const finding = (
 const TRACE = { kind: "trace", path: ["src/app.txt:1", "src/app.txt:2"] };
 const reviewReply = (verdict: string, findings: object[]) =>
   `${verdict}\n\n\`\`\`json\n${JSON.stringify(findings)}\n\`\`\`\nMode: m; angles: A; single-context pass.\n`;
-const verifyReply = (
-  findings: object[],
-  confirmed: number,
-  plausible: number,
-) =>
-  `\`\`\`json\n${JSON.stringify(findings)}\n\`\`\`\nCONFIRMED ${confirmed}, PLAUSIBLE ${plausible}, REFUTED 0.\n`;
 const APP_FIX = { path: "src/app.txt", content: "one\nTWO\nthree\n" };
 const FINDING_ID = "src/app.txt:2:off by one";
 
@@ -261,24 +255,22 @@ describe.skipIf(!hasPython())(
       expect(f.next()).toMatchObject({ role: "fix", dispatch: "d-006" });
     });
 
-    it("REVIEW (standard): 2 candidate readers -> prefilter -> verify PLAUSIBLE -> decide skip -> FINISH", () => {
+    it("REVIEW (standard): 2 candidate readers verify their own findings -> dedup + prefilter -> PLAUSIBLE -> decide skip -> FINISH", () => {
       f = setupFixture({ tier: "standard" });
       seedCode(f, "REVIEW/candidates");
       f.plan({
         "d-001": {
           reply: reviewReply("FAIL", [
-            finding("src/app.txt", 2, "CANDIDATE"),
-            finding("src/gone.txt", 1, "CANDIDATE"),
+            finding("src/app.txt", 2, "PLAUSIBLE"),
+            finding("src/gone.txt", 1, "PLAUSIBLE"),
           ]),
         },
         "d-002": {
           reply: reviewReply("FAIL", [
-            finding("src/app.txt", 2, "CANDIDATE"),
-            finding("README.md", 1, "CANDIDATE", "old"),
+            finding("src/app.txt", 2, "PLAUSIBLE"),
+            finding("README.md", 1, "PLAUSIBLE", "old"),
+            finding("src/app.txt", 3, "REFUTED", "guarded"),
           ]),
-        },
-        "d-003": {
-          reply: verifyReply([finding("src/app.txt", 2, "PLAUSIBLE")], 0, 1),
         },
       });
       expect(f.taskJson()).toMatchObject({
@@ -303,14 +295,15 @@ describe.skipIf(!hasPython())(
 
       const data = f.taskJson();
       expect(data).toMatchObject({
-        step: "verify",
+        state: "REVIEW",
+        step: "plausible",
         counters: { review: 1 },
         cycle_ids: [FINDING_ID],
+        decision: { kind: "plausible", failing: [FINDING_ID] },
       });
       expect(data.cycle).toMatchObject({
-        candidates: 1,
-        verify_batches: 1,
-        verify_done: 0,
+        confirmed: [],
+        plausible: [FINDING_ID],
         candidates_file: `.arbor/tasks/${TASK}/reports/candidates-r1.json`,
       });
       const filtered = JSON.parse(
@@ -332,18 +325,6 @@ describe.skipIf(!hasPython())(
         fs.readFileSync(path.join(f.taskDir, "reports/d-002.md"), "utf-8"),
       ).toContain("- kept 1, dropped 2 -> reports/candidates-r1.json");
       expect(f.next()).toMatchObject({
-        role: "verify",
-        dispatch: "d-003",
-        summary: expect.stringContaining("candidates-r1.json"),
-      });
-
-      expect(dispatch(f, "d-003").status).toBe(0);
-      expect(f.taskJson()).toMatchObject({
-        state: "REVIEW",
-        step: "plausible",
-        decision: { kind: "plausible", failing: [FINDING_ID] },
-      });
-      expect(f.next()).toMatchObject({
         needs: "human",
         human: { kind: "plausible", mandate: "ask" },
       });
@@ -360,43 +341,58 @@ describe.skipIf(!hasPython())(
       });
     });
 
-    /** Candidates -> verify (`d-003`) on a standard task; returns once verify is collected. */
-    function toVerified(verify: object): void {
+    it("REVIEW (standard): readers that disagree on a finding keep its CONFIRMED copy", () => {
       f = setupFixture({ tier: "standard" });
       seedCode(f, "REVIEW/candidates", [GREEN_CHECK]);
       f.plan({
         "d-001": {
-          reply: reviewReply("FAIL", [finding("src/app.txt", 2, "CANDIDATE")]),
+          reply: reviewReply("FAIL", [finding("src/app.txt", 2, "PLAUSIBLE")]),
         },
-        "d-002": { reply: reviewReply("PASS", []) },
-        "d-003": verify,
-        "d-004": { write: [APP_FIX] },
-        "d-005": { reply: reviewReply("PASS", []) },
+        "d-002": {
+          reply: reviewReply("FAIL", [
+            finding("src/app.txt", 2, "CONFIRMED", undefined, TRACE),
+          ]),
+        },
       });
       expect(dispatch(f, "d-001").status).toBe(0);
       expect(dispatch(f, "d-002").status).toBe(0);
-      expect(dispatch(f, "d-003").status).toBe(0);
+      expect(f.taskJson()).toMatchObject({
+        state: "REVIEW",
+        step: "fix",
+        cycle: { confirmed: [FINDING_ID], plausible: [], fix: [FINDING_ID] },
+      });
+    });
+
+    /** Two candidate readers on a standard task (`d-001` = ``reader``, `d-002` PASS); returns once both are collected. */
+    function toReviewed(reader: object): void {
+      f = setupFixture({ tier: "standard" });
+      seedCode(f, "REVIEW/candidates", [GREEN_CHECK]);
+      f.plan({
+        "d-001": reader,
+        "d-002": { reply: reviewReply("PASS", []) },
+        "d-003": { write: [APP_FIX] },
+        "d-004": { reply: reviewReply("PASS", []) },
+      });
+      expect(dispatch(f, "d-001").status).toBe(0);
+      expect(dispatch(f, "d-002").status).toBe(0);
     }
-    const REPRO_REL = `.arbor/tasks/${TASK}/research/repro/d-003-1.sh`;
+    const REPRO_REL = `.arbor/tasks/${TASK}/research/repro/d-001-1.sh`;
     const EXEC = {
       kind: "exec",
-      path: "research/repro/d-003-1.sh",
+      path: "research/repro/d-001-1.sh",
       command: `sh ${REPRO_REL}`,
       exit: 1,
       output_tail: "",
     };
-    const execVerify = (fixPlan?: object) => ({
+    const execReader = () => ({
       dirty: [{ path: REPRO_REL, content: "grep -q TWO src/app.txt\n" }],
-      reply: verifyReply(
-        [finding("src/app.txt", 2, "CONFIRMED", undefined, EXEC)],
-        1,
-        0,
-      ),
-      ...fixPlan,
+      reply: reviewReply("FAIL", [
+        finding("src/app.txt", 2, "CONFIRMED", undefined, EXEC),
+      ]),
     });
 
-    it("REVIEW (standard): a CONFIRMED verdict with an exec repro stays CONFIRMED; the repro is committed with the report", () => {
-      toVerified(execVerify());
+    it("REVIEW (standard): a CONFIRMED verdict with an exec repro stays CONFIRMED; the repro is committed with the reader's report", () => {
+      toReviewed(execReader());
       const data = f.taskJson();
       expect(data).toMatchObject({
         state: "REVIEW",
@@ -412,10 +408,24 @@ describe.skipIf(!hasPython())(
           },
         },
       });
-      expect(data.dispatches[2].downgraded).toBeUndefined();
-      expect(data.dispatches[2].observations).toEqual([]);
-      const committed = git(f.wt, "show", "--name-only", "--format=", "HEAD");
-      expect(committed).toContain(`.arbor/tasks/${TASK}/reports/d-003.md`);
+      expect(data.dispatches[0].downgraded).toBeUndefined();
+      expect(data.dispatches[0].observations).toEqual([]);
+      const reproCommit = git(
+        f.wt,
+        "log",
+        "-1",
+        "--format=%H",
+        "--",
+        REPRO_REL,
+      );
+      const committed = git(
+        f.wt,
+        "show",
+        "--name-only",
+        "--format=",
+        reproCommit,
+      );
+      expect(committed).toContain(`.arbor/tasks/${TASK}/reports/d-001.md`);
       expect(committed).toContain(REPRO_REL);
       expect(f.next()).toMatchObject({
         role: "fix",
@@ -424,18 +434,14 @@ describe.skipIf(!hasPython())(
     });
 
     it("REVIEW (standard): a CONFIRMED verdict without a valid repro is read as PLAUSIBLE, with an observation", () => {
-      toVerified({
-        reply: verifyReply(
-          [
-            finding("src/app.txt", 2, "CONFIRMED"),
-            finding("src/app.txt", 3, "CONFIRMED", "one step", {
-              kind: "trace",
-              path: ["src/app.txt:3"],
-            }),
-          ],
-          2,
-          0,
-        ),
+      toReviewed({
+        reply: reviewReply("FAIL", [
+          finding("src/app.txt", 2, "CONFIRMED"),
+          finding("src/app.txt", 3, "CONFIRMED", "one step", {
+            kind: "trace",
+            path: ["src/app.txt:3"],
+          }),
+        ]),
       });
       const shallow = "src/app.txt:3:one step";
       const data = f.taskJson();
@@ -444,25 +450,25 @@ describe.skipIf(!hasPython())(
         step: "plausible",
         decision: { kind: "plausible", failing: [FINDING_ID, shallow] },
       });
-      expect(data.dispatches[2]).toMatchObject({
+      expect(data.dispatches[0]).toMatchObject({
         status: "ok",
         downgraded: [FINDING_ID, shallow],
       });
       expect(
-        fs.readFileSync(path.join(f.taskDir, "reports/d-003.md"), "utf-8"),
+        fs.readFileSync(path.join(f.taskDir, "reports/d-001.md"), "utf-8"),
       ).toContain(
         `CONFIRMED without repro downgraded to PLAUSIBLE: ${FINDING_ID}, ${shallow}`,
       );
     });
 
     it("REVIEW (standard): the recheck gate runs every exec repro as REPRO-n; a repro that still fails is a red gate", () => {
-      toVerified(execVerify());
+      toReviewed(execReader());
       f.plan({
-        "d-004": {
+        "d-003": {
           write: [{ path: "src/app.txt", content: "one\ntwo\nthree\nfour\n" }],
         },
       });
-      expect(dispatch(f, "d-004").status).toBe(0);
+      expect(dispatch(f, "d-003").status).toBe(0);
       expect(f.run("gate").status).toBe(1);
       expect(f.taskJson()).toMatchObject({
         state: "GATE",
@@ -478,8 +484,8 @@ describe.skipIf(!hasPython())(
     });
 
     it("REVIEW (standard): when the passing repros cover every fixed finding, the small fix skips the self-check -> FINISH", () => {
-      toVerified(execVerify());
-      expect(dispatch(f, "d-004").status).toBe(0);
+      toReviewed(execReader());
+      expect(dispatch(f, "d-003").status).toBe(0);
       const fixed = git(f.wt, "rev-parse", "HEAD");
       expect(f.run("gate").status).toBe(0);
       const data = f.taskJson();
@@ -489,7 +495,7 @@ describe.skipIf(!hasPython())(
         recheck_skips: [{ reason: "repros", findings: [FINDING_ID], gate: 1 }],
       });
       expect(data.dispatches.map((d: { id: string }) => d.id)).not.toContain(
-        "d-005",
+        "d-004",
       );
       expect(
         fs.readFileSync(path.join(f.taskDir, "reports/gate-1.md"), "utf-8"),
@@ -497,38 +503,31 @@ describe.skipIf(!hasPython())(
     });
 
     it("REVIEW (standard): a trace repro is not executable, so the fix still gets its self-check", () => {
-      toVerified({
-        reply: verifyReply(
-          [finding("src/app.txt", 2, "CONFIRMED", undefined, TRACE)],
-          1,
-          0,
-        ),
+      toReviewed({
+        reply: reviewReply("FAIL", [
+          finding("src/app.txt", 2, "CONFIRMED", undefined, TRACE),
+        ]),
       });
       expect(f.taskJson().cycle.repros[FINDING_ID]).toEqual(TRACE);
-      expect(dispatch(f, "d-004").status).toBe(0);
+      expect(dispatch(f, "d-003").status).toBe(0);
       expect(f.run("gate").status).toBe(0);
       expect(f.taskJson()).toMatchObject({ state: "REVIEW", step: "review" });
-      expect(f.next()).toMatchObject({ mode: "self-check", dispatch: "d-005" });
+      expect(f.next()).toMatchObject({ mode: "self-check", dispatch: "d-004" });
     });
 
-    it("REVIEW (standard): candidates -> verify CONFIRMED -> fix -> GATE -> one self-check over the delta -> FINISH", () => {
+    it("REVIEW (standard): candidates CONFIRMED -> fix -> GATE -> one self-check over the delta -> FINISH", () => {
       f = setupFixture({ tier: "standard" });
       seedCode(f, "REVIEW/candidates", [GREEN_CHECK]);
       const base = f.taskJson().base;
       f.plan({
         "d-001": {
-          reply: reviewReply("FAIL", [finding("src/app.txt", 2, "CANDIDATE")]),
+          reply: reviewReply("FAIL", [
+            finding("src/app.txt", 2, "CONFIRMED", undefined, TRACE),
+          ]),
         },
         "d-002": { reply: reviewReply("PASS", []) },
-        "d-003": {
-          reply: verifyReply(
-            [finding("src/app.txt", 2, "CONFIRMED", undefined, TRACE)],
-            1,
-            0,
-          ),
-        },
-        "d-004": { write: [APP_FIX] },
-        "d-005": { reply: reviewReply("PASS", []) },
+        "d-003": { write: [APP_FIX] },
+        "d-004": { reply: reviewReply("PASS", []) },
       });
       expect(f.taskJson()).toMatchObject({
         state: "REVIEW",
@@ -543,26 +542,21 @@ describe.skipIf(!hasPython())(
       });
       expect(dispatch(f, "d-001").status).toBe(0);
       expect(dispatch(f, "d-002").status).toBe(0);
-      expect(f.taskJson()).toMatchObject({
-        step: "verify",
-        counters: { review: 1 },
-        cycle_ids: [FINDING_ID],
-      });
-
-      expect(dispatch(f, "d-003").status).toBe(0);
       let data = f.taskJson();
       expect(data).toMatchObject({
         state: "REVIEW",
         step: "fix",
+        counters: { review: 1 },
+        cycle_ids: [FINDING_ID],
         cycle: { confirmed: [FINDING_ID], fix: [FINDING_ID] },
       });
       const reviewedTo = data.last_reviewed;
       expect(f.next()).toMatchObject({
         role: "fix",
-        dispatch: "d-004",
+        dispatch: "d-003",
         range: expect.stringMatching(new RegExp(`^${base}\\.\\.`)),
       });
-      expect(dispatch(f, "d-004").status).toBe(0);
+      expect(dispatch(f, "d-003").status).toBe(0);
       expect(f.taskJson()).toMatchObject({
         state: "GATE",
         after_gate: { state: "REVIEW", step: "recheck" },
@@ -576,11 +570,11 @@ describe.skipIf(!hasPython())(
       expect(next).toMatchObject({
         role: "review",
         mode: "self-check",
-        dispatch: "d-005",
+        dispatch: "d-004",
         range: expect.stringMatching(new RegExp(`^${reviewedTo}\\.\\.`)),
       });
       expect(next.batch).toBeUndefined();
-      expect(dispatch(f, "d-005").status).toBe(0);
+      expect(dispatch(f, "d-004").status).toBe(0);
       data = f.taskJson();
       expect(data).toMatchObject({
         state: "FINISH",
@@ -602,9 +596,8 @@ describe.skipIf(!hasPython())(
       ).toEqual([
         ["d-001", "review", "candidates"],
         ["d-002", "review", "candidates"],
-        ["d-003", "verify", null],
-        ["d-004", "fix", null],
-        ["d-005", "review", "self-check"],
+        ["d-003", "fix", null],
+        ["d-004", "review", "self-check"],
       ]);
     });
 
@@ -617,21 +610,16 @@ describe.skipIf(!hasPython())(
       seedCode(f, "REVIEW/candidates", [GREEN_CHECK]);
       f.plan({
         "d-001": {
-          reply: reviewReply("FAIL", [finding("src/app.txt", 2, "CANDIDATE")]),
+          reply: reviewReply("FAIL", [
+            finding("src/app.txt", 2, "CONFIRMED", undefined, TRACE),
+          ]),
         },
         "d-002": { reply: reviewReply("PASS", []) },
-        "d-003": {
-          reply: verifyReply(
-            [finding("src/app.txt", 2, "CONFIRMED", undefined, TRACE)],
-            1,
-            0,
-          ),
-        },
-        "d-004": { write: [APP_FIX] },
+        "d-003": { write: [APP_FIX] },
+        "d-004": { reply: reviewReply("PASS", []) },
         "d-005": { reply: reviewReply("PASS", []) },
-        "d-006": { reply: reviewReply("PASS", []) },
       });
-      for (const id of ["d-001", "d-002", "d-003", "d-004"])
+      for (const id of ["d-001", "d-002", "d-003"])
         expect(dispatch(f, id).status).toBe(0);
       const reviewedTo = f.taskJson().last_reviewed;
       expect(f.run("gate").status).toBe(0);
@@ -645,22 +633,22 @@ describe.skipIf(!hasPython())(
       expect(next).toMatchObject({
         role: "review",
         mode: "candidates",
-        dispatch: "d-005",
+        dispatch: "d-004",
         range: expect.stringMatching(new RegExp(`^${reviewedTo}\\.\\.`)),
       });
       expect(next.batch.map((b: { dispatch: string }) => b.dispatch)).toEqual([
+        "d-004",
         "d-005",
-        "d-006",
       ]);
+      expect(dispatch(f, "d-004").status).toBe(0);
       expect(dispatch(f, "d-005").status).toBe(0);
-      expect(dispatch(f, "d-006").status).toBe(0);
       expect(f.taskJson()).toMatchObject({ state: "FINISH", cycle_ids: [] });
       expect(
         fs.existsSync(path.join(f.taskDir, "reports/candidates-r2.json")),
       ).toBe(true);
     });
 
-    it("REVIEW (standard): candidates and verify in a delta cycle are told the task base", () => {
+    it("REVIEW (standard): candidate readers in a delta cycle are told the task base", () => {
       f = setupFixture({ tier: "standard" });
       fs.appendFileSync(
         path.join(f.repo, ".arbor/config.yaml"),
@@ -668,37 +656,28 @@ describe.skipIf(!hasPython())(
       );
       seedCode(f, "REVIEW/candidates", [GREEN_CHECK]);
       const base = f.taskJson().base;
-      const candidate = reviewReply("FAIL", [
-        finding("src/app.txt", 2, "CANDIDATE"),
+      const confirmed = reviewReply("FAIL", [
+        finding("src/app.txt", 2, "CONFIRMED", undefined, TRACE),
       ]);
-      const confirmed = verifyReply(
-        [finding("src/app.txt", 2, "CONFIRMED", undefined, TRACE)],
-        1,
-        0,
-      );
       f.plan({
-        "d-001": { reply: candidate },
+        "d-001": { reply: confirmed },
         "d-002": { reply: reviewReply("PASS", []) },
-        "d-003": { reply: confirmed },
-        "d-004": { write: [APP_FIX] },
-        "d-005": { reply: candidate },
-        "d-006": { reply: reviewReply("PASS", []) },
-        "d-007": { reply: confirmed },
+        "d-003": { write: [APP_FIX] },
+        "d-004": { reply: confirmed },
+        "d-005": { reply: reviewReply("PASS", []) },
       });
-      for (const id of ["d-001", "d-002", "d-003", "d-004"])
+      for (const id of ["d-001", "d-002", "d-003"])
         expect(dispatch(f, id).status).toBe(0);
       expect(f.run("gate").status).toBe(0);
-      for (const id of ["d-005", "d-006", "d-007"])
+      for (const id of ["d-004", "d-005"])
         expect(dispatch(f, id).status).toBe(0);
       const prompt = (id: string) =>
         fs.readFileSync(path.join(f.tmp, "received", `${id}.md`), "utf-8");
-      expect(prompt("d-003")).not.toContain("Task base:");
-      expect(prompt("d-007")).toContain(`Task base: ${base}.`);
       expect(prompt("d-001")).not.toContain("Task base:");
-      expect(prompt("d-005")).toContain(`Task base: ${base}.`);
+      expect(prompt("d-004")).toContain(`Task base: ${base}.`);
     });
 
-    it("REVIEW (full): 3 candidate readers, a clean cycle -> one sweep over base..HEAD -> verify -> fix -> GATE -> self-check -> FINISH", () => {
+    it("REVIEW (full): 3 candidate readers, a clean cycle -> one self-verified sweep over base..HEAD -> fix -> GATE -> self-check -> FINISH", () => {
       f = setupFixture({ tier: "full" });
       seedCode(f, "REVIEW/candidates", [GREEN_CHECK]);
       const base = f.taskJson().base;
@@ -707,17 +686,12 @@ describe.skipIf(!hasPython())(
         "d-002": { reply: reviewReply("PASS", []) },
         "d-003": { reply: reviewReply("PASS", []) },
         "d-004": {
-          reply: reviewReply("FAIL", [finding("src/app.txt", 2, "CANDIDATE")]),
+          reply: reviewReply("FAIL", [
+            finding("src/app.txt", 2, "CONFIRMED", undefined, TRACE),
+          ]),
         },
-        "d-005": {
-          reply: verifyReply(
-            [finding("src/app.txt", 2, "CONFIRMED", undefined, TRACE)],
-            1,
-            0,
-          ),
-        },
-        "d-006": { write: [APP_FIX] },
-        "d-007": { reply: reviewReply("PASS", []) },
+        "d-005": { write: [APP_FIX] },
+        "d-006": { reply: reviewReply("PASS", []) },
       });
       const next = f.next();
       expect(next).toMatchObject({
@@ -751,10 +725,11 @@ describe.skipIf(!hasPython())(
       expect(dispatch(f, "d-004").status).toBe(0);
       data = f.taskJson();
       expect(data).toMatchObject({
-        step: "verify",
+        state: "REVIEW",
+        step: "fix",
         sweep_done: true,
         sweep_ids: [FINDING_ID],
-        cycle: { sweep: true, candidates: 1 },
+        cycle: { sweep: true, fix: [FINDING_ID] },
       });
       expect(
         JSON.parse(
@@ -762,23 +737,11 @@ describe.skipIf(!hasPython())(
         ).kept.map((k: { id: string }) => k.id),
       ).toEqual([FINDING_ID]);
       expect(f.next()).toMatchObject({
-        role: "verify",
-        dispatch: "d-005",
-        summary: expect.stringContaining("sweep.json"),
-      });
-
-      expect(dispatch(f, "d-005").status).toBe(0);
-      expect(f.taskJson()).toMatchObject({
-        state: "REVIEW",
-        step: "fix",
-        cycle: { sweep: true, fix: [FINDING_ID] },
-      });
-      expect(f.next()).toMatchObject({
         role: "fix",
-        dispatch: "d-006",
+        dispatch: "d-005",
         range: expect.stringMatching(new RegExp(`^${base}\\.\\.`)),
       });
-      expect(dispatch(f, "d-006").status).toBe(0);
+      expect(dispatch(f, "d-005").status).toBe(0);
       expect(f.taskJson()).toMatchObject({
         state: "GATE",
         after_gate: { state: "REVIEW", step: "recheck" },
@@ -788,10 +751,10 @@ describe.skipIf(!hasPython())(
       expect(f.next()).toMatchObject({
         role: "review",
         mode: "self-check",
-        dispatch: "d-007",
+        dispatch: "d-006",
         range: expect.stringMatching(new RegExp(`^${reviewedTo}\\.\\.`)),
       });
-      expect(dispatch(f, "d-007").status).toBe(0);
+      expect(dispatch(f, "d-006").status).toBe(0);
       data = f.taskJson();
       expect(data.state).toBe("FINISH"); // the sweep never repeats
       expect(data.sweep_done).toBe(true);

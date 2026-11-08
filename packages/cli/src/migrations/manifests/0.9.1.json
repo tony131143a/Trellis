@@ -1,9 +1,25 @@
 {
   "version": "0.9.1",
-  "description": "verify reproduces what it confirms; repro-covered fixes skip the self-check; light tasks escalate to standard by themselves; lessons.jsonl per package; max_parallel defaults to 5",
-  "breaking": false,
-  "recommendMigrate": false,
-  "changelog": "verify may run tests and builds and writes repros under <task>/research/repro/ (the driver commits them with its report). A CONFIRMED verify verdict now needs a repro, exec (a script that fails on the current HEAD and passes once fixed, plus its command) or trace (two or more existing file:line steps); the driver reads one without as PLAUSIBLE and says so in the report. After a fix the gate runs every exec repro as REPRO-n, and when they cover every fixed finding and the delta is small the recheck self-check is skipped (task.json recheck_skips). A light task escalates to standard by itself on two consecutive red gates, an implement report Partial or Blocked, or at a green BUILD gate more than 300 changed lines or files in two configured packages (task.json tier_history; next --json escalated; task.py set-meta <task> tier_lock true opts out). arbor.py finish appends every CONFIRMED finding to .arbor/spec/<package>/lessons.jsonl (merge=union via .arbor/spec/.gitattributes), the scorecard lists categories recurring across tasks without a test or a lint behind them (advisory), and task.py seed-context digests the open rows into research/lessons.md. executors.codeg.max_parallel defaults to 5.",
-  "migrations": [],
-  "configSectionsAdded": []
+  "description": "review verifies its own findings and reproduces what it confirms (the verify role is gone); repro-covered fixes skip the self-check; light tasks escalate to standard by themselves; lessons.jsonl per package; max_parallel defaults to 5",
+  "breaking": true,
+  "recommendMigrate": true,
+  "changelog": "The verify role is merged into review: in candidates and sweep mode each reader verifies its own findings (CONFIRMED / PLAUSIBLE / REFUTED, at most 8), may run tests and builds and writes repros under <task>/research/repro/ (the driver commits them with its report); the driver dedups and prefilters, then sends CONFIRMED findings to fix and PLAUSIBLE ones to the mandate. A CONFIRMED verdict of a candidates or sweep reader needs a repro, exec (a script that fails on the current HEAD and passes once fixed, plus its command) or trace (two or more existing file:line steps); the driver reads one without as PLAUSIBLE and says so in the report. After a fix the gate runs every exec repro as REPRO-n, and when they cover every fixed finding and the delta is small the recheck self-check is skipped (task.json recheck_skips). A light task escalates to standard by itself on two consecutive red gates, an implement report Partial or Blocked, or at a green BUILD gate more than 300 changed lines or files in two configured packages (task.json tier_history; next --json escalated; task.py set-meta <task> tier_lock true opts out). arbor.py finish appends every CONFIRMED finding to .arbor/spec/<package>/lessons.jsonl (merge=union via .arbor/spec/.gitattributes), the scorecard lists categories recurring across tasks without a test or a lint behind them (advisory), and task.py seed-context digests the open rows into research/lessons.md. executors.codeg.max_parallel defaults to 5.",
+  "migrations": [
+    {
+      "type": "safe-file-delete",
+      "from": ".arbor/agents/verify.md",
+      "description": "verify role instructions, merged into review in 0.9.1",
+      "allowed_hashes": [
+        "1e4512c43a73e852c6438e8475d04f5c244feab914dca473efb84cf76242b9ab",
+        "b8d0d9c1431db71e1c167e54fae5a905745e7408ca3a7c220b0be6e7abd18ec4",
+        "076f1b895d2a284460e7dca69077dcc9d22bfc16d2e78cb40e1575614eeebb79",
+        "92f09b5083f534025baac929781b89c5e3134dcd7300cd976ad901a794709f43",
+        "9d2274197e748947c143c248d36890f51b9db2d93c61cc28d0ee898458e764ea",
+        "db46dbeb77e0c6b1cc0f2ac6b14acccf64d2c14bb95e17644608eae6e9ff0c0a",
+        "fafb298a15e3a0cae234bf05f5827472b08313e6c3e78b52cba87d4db7fa2651"
+      ]
+    }
+  ],
+  "configSectionsAdded": [],
+  "migrationGuide": "Finish or abandon any task in REVIEW/verify before updating; the driver no longer has that step. Run `arbor update --migrate` to delete .arbor/agents/verify.md (kept when you edited it: move your local rules into review.md, then delete it). Review .arbor/agents/review.md for local edits: in candidates and sweep mode it now verifies its own findings and writes repros under <task>/research/repro/. The codeg `arbor-verify` assistant and any `assistant_ids.verify` entry in .arbor/config.yaml are no longer used; remove them."
 }

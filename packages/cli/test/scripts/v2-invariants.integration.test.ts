@@ -142,38 +142,20 @@ print(json.dumps({"head": s.head, "head_ref": s.head_ref, "branches": sorted(s.b
         expect(v[0]).toContain("review left the tree dirty: src/a.ts");
       });
 
-      it("verify that committed is a violation", () => {
-        const v = check(
-          "verify",
-          `echo y > src/b.ts && git add src/b.ts && ${commit(`verify(${TASK}): x`)}`,
-        );
-        expect(v.join("\n")).toContain("verify must not commit");
-      });
-
-      it("verify may write under the task's research/repro/ only", () => {
+      it("review may write under the task's research/repro/ only", () => {
         expect(
           check(
-            "verify",
+            "review",
             `mkdir -p ${TASK_REL}/research/repro && echo 'exit 1' > ${TASK_REL}/research/repro/d-007-1.sh`,
           ),
         ).toEqual([]);
         const notes = check(
-          "verify",
+          "review",
           `mkdir -p ${TASK_REL}/research && echo n > ${TASK_REL}/research/notes.md`,
         );
         expect(notes.join("\n")).toContain(
-          `verify left the tree dirty: ${TASK_REL}/research/notes.md`,
+          `review left the tree dirty: ${TASK_REL}/research/notes.md`,
         );
-        const code = check("verify", "echo z > src/a.ts");
-        expect(code.join("\n")).toContain(
-          "verify left the tree dirty: src/a.ts",
-        );
-        expect(
-          check(
-            "review",
-            `mkdir -p ${TASK_REL}/research/repro && echo x > ${TASK_REL}/research/repro/r.sh`,
-          ).join("\n"),
-        ).toContain("review left the tree dirty");
       });
 
       it("explore may write research files only", () => {

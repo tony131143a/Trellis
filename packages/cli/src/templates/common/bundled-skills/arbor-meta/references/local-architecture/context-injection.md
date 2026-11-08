@@ -33,9 +33,9 @@ To change "what the AI should do next" for a started task, change the driver's s
 
 ## dispatched-role context
 
-Dispatched roles (explore, architect, test, implement, review, verify, fix, simplify) run in separate executor sessions and need task context. Arbor has two loading modes:
+Dispatched roles (explore, architect, test, implement, review, fix, simplify) run in separate executor sessions and need task context. Arbor has two loading modes:
 
-1. **driver push**: `arbor.py run` assembles the prompt (`common/dispatch_context.py`): the header, then jsonl-referenced files (`implement.jsonl` for architect, test and implement, `check.jsonl` for review, verify, fix, and simplify), `contract.md`, `design.md` if present, `waves.md` if present, and `git diff <Range>`, then the brief. See `dispatch.md`.
+1. **driver push**: `arbor.py run` assembles the prompt (`common/dispatch_context.py`): the header, then jsonl-referenced files (`implement.jsonl` for architect, test and implement, `check.jsonl` for review, fix, and simplify), `contract.md`, `design.md` if present, `waves.md` if present, and `git diff <Range>`, then the brief. See `dispatch.md`.
 2. **role pull**: the instructions in `.arbor/agents/<role>.md` tell the role to read the jsonl context and task artifacts itself when no `<!-- arbor-hook-injected -->` marker is present.
 
 In both modes, JSONL files in the task directory are the manifest for spec/research context. Task artifacts are read separately in this order: `contract.md` (legacy `prd.md`) -> `design.md if present` -> `waves.md if present` (legacy `implement.md`) -> `git diff <Range>` when the header has one.

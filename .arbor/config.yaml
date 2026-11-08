@@ -166,7 +166,7 @@ worktree:
 #-------------------------------------------------------------------------------
 # Which human gates the main agent puts to the user, per tier: `ask` (stop and
 # ask) or `auto` (proceed on its own). Gates: contract (approving contract.md),
-# plausible (PLAUSIBLE findings after verify; auto = the driver records
+# plausible (PLAUSIBLE review findings; auto = the driver records
 # `decide skip`), merge (auto = `arbor.py finish` merges the task branch
 # --no-ff into the base branch itself when it changes fewer than
 # auto_merge_max_lines lines, stays within the partition paths, has no product

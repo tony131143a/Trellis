@@ -4,7 +4,7 @@
 Arbor dispatch context assembler.
 
 Single source of truth for the prompt a dispatched Arbor role (explore,
-architect, test, implement, review, verify, fix, simplify) receives. Both
+architect, test, implement, review, fix, simplify) receives. Both
 ``arbor.py run`` and ``arbor.py prompt`` build the final task text through
 ``build_dispatch_prompt`` so the two cannot drift.
 
@@ -20,7 +20,7 @@ Context sources per role:
 - explore: spec directory overview; with a task, contract.md + research file list
 - architect: implement.jsonl entries -> task artifacts -> research/*.md
 - test / implement: implement.jsonl entries -> contract.md -> design.md -> waves.md
-- review / verify / fix / simplify: check.jsonl entries -> the same task
+- review / fix / simplify: check.jsonl entries -> the same task
   artifacts
 - every role given ``Range:``: ``git diff <range>`` run in the worktree that
   holds the task directory
@@ -52,7 +52,7 @@ from .tasks import WAVES_FILE, find_artifact
 
 # Every role a dispatch prompt can be built for.
 PROMPT_ROLES = (
-    "explore", "architect", "implement", "review", "verify", "fix", "simplify",
+    "explore", "architect", "implement", "review", "fix", "simplify",
 )
 ROLES_REQUIRE_TASK = tuple(role for role in PROMPT_ROLES if role != "explore")
 # Roles that take a ``Range:`` header (everything that writes or reads a diff).
@@ -62,7 +62,6 @@ ROLE_MANIFEST = {
     "architect": "implement",
     "implement": "implement",
     "review": "check",
-    "verify": "check",
     "fix": "check",
     "simplify": "check",
 }
@@ -75,11 +74,12 @@ REVIEW_MODE_NOTES = {
     ),
     "candidates": (
         "pass every candidate with a nameable failure scenario through; do not "
-        "filter on doubt. An independent verify role filters afterwards."
+        "filter on doubt. Then verify each one yourself: CONFIRMED with a repro, "
+        "PLAUSIBLE when the trigger is uncertain, REFUTED when the code disproves it."
     ),
     "sweep": (
         "the brief carries an already-verified list; report only defects that "
-        "are not on it (up to 8), or an empty list."
+        "are not on it (up to 8), verified as in candidates mode, or an empty list."
     ),
     "plan": (
         "review the planning artifacts, not code: work backward from the goal "

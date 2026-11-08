@@ -18,7 +18,7 @@ Parent / Child Task Trees). The command surface is in
 
 ## Roles and executors
 
-Roles are `explore`, `architect`, `implement`, `review`, `verify`, `fix` and
+Roles are `explore`, `architect`, `implement`, `review`, `fix` and
 `simplify` (`implement` writes code and tests together). Their instructions live
 in `.arbor/agents/<role>.md`. `arbor.py run` uses the executor named by
 `executors.default` in `.arbor/config.yaml`.
@@ -35,7 +35,7 @@ The driver, rather than the brief author, writes the role header:
 
 ```text
 Active task: <absolute task directory in the execution checkout>
-Role: explore | architect | implement | review | verify | fix | simplify
+Role: explore | architect | implement | review | fix | simplify
 Mode: self-check | candidates | sweep | plan
 Range: <base>..<head>
 Dispatch: d-NNN
@@ -55,7 +55,7 @@ executors receive the assembled file directly and carry no `Prompt:` line.
 Role context carries `<!-- arbor-hook-injected -->`. The normal artifact order
 is jsonl entries → `contract.md` → `design.md` if present → `waves.md` if present,
 then `git diff <Range>` when supplied, followed by the brief. Architect and
-implement use `implement.jsonl`; review, verify, fix and simplify use
+implement use `implement.jsonl`; review, fix and simplify use
 `check.jsonl`. Architect also receives task research. Explore receives the spec
 overview and, when a task is supplied, its contract and research file list.
 Without the marker the role pulls its required context itself (with codeg MCP:
@@ -107,9 +107,9 @@ request cannot be collected twice.
 A first prompt starting with `Active task:` plus `Role:` identifies a dispatched
 role. It performs that role directly, never delegates, never runs task lifecycle
 commands and has no `ARBOR_CONTEXT_ID`. Started-task writers commit with
-`Arbor-Dispatch: d-NNN` and stay inside their assigned paths; `review` remains
-read-only and `verify` may write only its repro scripts under the task's
-`research/repro/` (the driver commits them with the report). CONTRACT research
+`Arbor-Dispatch: d-NNN` and stay inside their assigned paths; `review` may
+write only its repro scripts under the task's `research/repro/` (candidates /
+sweep mode; the driver commits them with the report). CONTRACT research
 roles may write only task research and do not commit.
 
 Any other first prompt belongs to a main agent: it writes briefs and calls the

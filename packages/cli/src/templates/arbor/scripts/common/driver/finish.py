@@ -157,14 +157,12 @@ def _level(entry: dict) -> str | None:
         return None
     if role == "review":
         return {"self-check": "2", "candidates": "3", "sweep": "4"}.get(mode or "self-check")
-    if role == "verify":
-        return "3"
     return None
 
 
 def _findings(task_dir: Path, entry: dict) -> list[dict]:
     """The findings of an ok reader dispatch as the state table saw them: a
-    CONFIRMED verify entry the driver downgraded counts as PLAUSIBLE."""
+    CONFIRMED finding the driver downgraded (no valid repro) counts as PLAUSIBLE."""
     reply = _reply(task_dir, str(entry.get("id")), entry.get("interpreted_report"))
     if reply is None:
         return []
@@ -193,13 +191,10 @@ def verdict_counts(task_dir: Path, dispatches: list[dict]) -> tuple[dict, Counte
 
 
 def confirmed_findings(task_dir: Path, dispatches: list[dict]) -> list[dict]:
-    """Every distinct CONFIRMED finding a verdict-giving reader settled: the
-    self-check reviewer and verify (candidate and sweep readers only nominate)."""
+    """Every distinct CONFIRMED finding a review reader settled."""
     found: dict[str, dict] = {}
     for entry in dispatches:
         if _level(entry) is None or entry.get("status") != "ok":
-            continue
-        if entry.get("role") == "review" and (entry.get("mode") or "self-check") != "self-check":
             continue
         for finding in _findings(task_dir, entry):
             if str(finding.get("verdict", "")).upper() == "CONFIRMED":
@@ -336,7 +331,7 @@ def render_scorecard(name: str, data: dict, facts: dict) -> str:
                 f"{', '.join(map(str, s.get('findings') or []))}" for s in facts["recheck_skips"]],
               "", "## Findings by level", "",
               "| level | CONFIRMED | PLAUSIBLE | REFUTED |", "|---|---|---|---|"]
-    names = {"2": "2 review", "3": "3 candidates + verify", "4": "4 sweep"}
+    names = {"2": "2 review", "3": "3 candidates", "4": "4 sweep"}
     for level in ("2", "3", "4"):
         c = facts["levels"][level]
         lines.append(f"| {names[level]} | {c['CONFIRMED']} | {c['PLAUSIBLE']} | {c['REFUTED']} |")

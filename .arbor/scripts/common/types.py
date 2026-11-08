@@ -65,7 +65,7 @@ class TaskData(TypedDict, total=False):
     dispatches: list[dict]  # {"id", "role", "mode", "commit", "status", "started", "ended"}
     stop: dict  # {"reason": NO_PROGRESS|BUDGET|VIOLATION|HUMAN, "detail"}
     # Driver bookkeeping (scripts/arbor.py; see common/driver/state.py).
-    step: str  # sub-step within state, e.g. REVIEW simplify|candidates|verify|fix
+    step: str  # sub-step within state, e.g. REVIEW review|candidates|fix
     decision: dict  # pending {"kind", "options", "failing"}
     after_gate: dict  # {"state", "step"} a green gate moves to
     gate_failing: list[str]  # failing ids of the last gate round

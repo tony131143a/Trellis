@@ -165,7 +165,7 @@ Open questions do not belong in the contract; ask them and fold the answers in.
 
 Light tasks have only `contract.md`. Standard tasks add `design.md`; full tasks add `waves.md`. `task.py start` checks this.
 
-The roles receive only what the driver injects: the manifest entries (`implement.jsonl` feeds `architect` and `implement`; `check.jsonl` feeds `review`, `verify`, `fix`, and `simplify`), the contract, the design and the diff, so `implement.jsonl` and `check.jsonl` must each contain at least one real spec/research entry before `task.py start`; an empty manifest, or one holding only a legacy `_example` placeholder row, does not count. Fill them with `task.py seed-context <task> [--package <pkg> ...]` (spec layer index files, the guides index, and the task's research files; idempotent), then add or drop entries per side.
+The roles receive only what the driver injects: the manifest entries (`implement.jsonl` feeds `architect` and `implement`; `check.jsonl` feeds `review`, `fix`, and `simplify`), the contract, the design and the diff, so `implement.jsonl` and `check.jsonl` must each contain at least one real spec/research entry before `task.py start`; an empty manifest, or one holding only a legacy `_example` placeholder row, does not count. Fill them with `task.py seed-context <task> [--package <pkg> ...]` (spec layer index files, the guides index, and the task's research files; idempotent), then add or drop entries per side.
 
 ## Contract Convergence Pass (standard / full)
 

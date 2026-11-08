@@ -94,7 +94,7 @@ def apply(data: dict, mandate: dict, tier: str) -> list[dict]:
     returns the decision records it appended to ``data['decisions']``.
 
     - PLAUSIBLE findings with ``plausible=auto``: ``decide skip``; the
-      findings stay listed in the verify report and the scorecard.
+      findings stay listed in the review reports and the scorecard.
     """
     taken: list[dict] = []
     if sm.step_of(data) == "plausible" and mandate.get("plausible") == "auto":

@@ -104,7 +104,7 @@ describe.skipIf(!hasPython())(
       f.plan({
         "d-001": { reply: reviewReply("PASS", []) },
         "d-002": {
-          reply: reviewReply("FAIL", [finding("src/app.txt", 2, "CANDIDATE")]),
+          reply: reviewReply("FAIL", [finding("src/app.txt", 2, "PLAUSIBLE")]),
         },
       });
       f.brief("d-001", "Angles: A, Acceptance");
@@ -135,16 +135,11 @@ describe.skipIf(!hasPython())(
       const data = f.taskJson();
       expect(data).toMatchObject({
         state: "REVIEW",
-        step: "verify",
+        step: "plausible",
         counters: { review: 1 },
         cycle_ids: [FINDING_ID],
       });
       expect(data.cycle.candidate_dispatches).toEqual(["d-002", "d-001"]);
-      expect(data.batch).toMatchObject({
-        key: "REVIEW/verify",
-        ids: ["d-003"],
-        running: {},
-      });
       expect(data.mcp_pending).toEqual({});
       expect(
         data.dispatches.map((d: { id: string; status: string }) => [
@@ -162,10 +157,13 @@ describe.skipIf(!hasPython())(
       expect(
         fs.readFileSync(path.join(f.taskDir, "reports/d-002.md"), "utf-8"),
       ).not.toContain("### Prefilter");
-      const verify = f.next();
-      expect(verify).toMatchObject({ role: "verify", dispatch: "d-003" });
-      expect(verify.readers_running).toBeUndefined();
-      expect(verify.batch).toBeUndefined(); // one verify batch
+      const gate = f.next();
+      expect(gate).toMatchObject({
+        needs: "human",
+        human: { kind: "plausible" },
+      });
+      expect(gate.readers_running).toBeUndefined();
+      expect(gate.batch).toBeUndefined();
     });
 
     it("standard candidates: run one reader at a time without --dispatch; nothing kept -> FINISH", () => {
@@ -318,7 +316,7 @@ describe.skipIf(!hasPython())(
       collect(
         second,
         "codeg-2",
-        reviewReply("FAIL", [finding("src/app.txt", 2, "CANDIDATE")]),
+        reviewReply("FAIL", [finding("src/app.txt", 2, "PLAUSIBLE")]),
       );
       expect(f.taskJson()).toMatchObject({
         state: "REVIEW",
@@ -328,7 +326,7 @@ describe.skipIf(!hasPython())(
       collect(first, "codeg-1", reviewReply("PASS", []));
       expect(f.taskJson()).toMatchObject({
         state: "REVIEW",
-        step: "verify",
+        step: "plausible",
         mcp_pending: {},
         cycle_ids: [FINDING_ID],
       });

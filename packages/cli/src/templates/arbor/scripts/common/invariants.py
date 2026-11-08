@@ -10,8 +10,7 @@ stayed inside its boundary.
     explore, architect   .arbor/tasks/<task>/research/** no
     implement, fix,      anything (code and tests)       yes, own branch
     simplify
-    review               nothing                         no
-    verify               .arbor/tasks/<task>/research/repro/** no
+    review               .arbor/tasks/<task>/research/repro/** no
 
 Every role: no push, merge, rebase or checkout of another branch; no writes
 under ``.arbor/`` outside ``tasks/<task>/``.
@@ -34,14 +33,14 @@ from typing import Literal, Sequence
 
 from .git import run_git
 
-READ_ONLY_ROLES: frozenset[str] = frozenset({"review", "verify"})
+READ_ONLY_ROLES: frozenset[str] = frozenset({"review"})
 RESEARCH_ROLES: frozenset[str] = frozenset({"explore", "architect"})
 WRITER_ROLES: frozenset[str] = frozenset({"implement", "fix", "simplify"})
 #: Read-only roles that may leave reproduction scripts in the task dir.
-REPRO_ROLES: frozenset[str] = frozenset({"verify"})
+REPRO_ROLES: frozenset[str] = frozenset({"review"})
 
 COMMIT_SUBJECT_RE = re.compile(
-    r"^(explore|architect|implement|review|verify|fix|simplify)\(([^)]+)\): \S.*$"
+    r"^(explore|architect|implement|review|fix|simplify)\(([^)]+)\): \S.*$"
 )
 TRAILER_RE = re.compile(r"^Arbor-Dispatch: d-\d{3,}$", re.MULTILINE)
 

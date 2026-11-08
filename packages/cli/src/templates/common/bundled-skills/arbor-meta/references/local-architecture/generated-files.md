@@ -25,7 +25,7 @@ This page only describes files that are visible and editable inside the user pro
 | --- | --- | --- |
 | `.arbor/workflow.md` | Yes | Local workflow documentation and AI routing rules. |
 | `.arbor/config.yaml` | Yes | Project configuration, hooks, packages, journal line limits, and related settings. |
-| `.arbor/agents/` | Yes | Role instruction sources for the seven roles (explore, architect, implement, review, verify, fix, simplify); refresh the executor's copy after editing (for example the matching `arbor-<role>` assistant). |
+| `.arbor/agents/` | Yes | Role instruction sources for the six roles (explore, architect, implement, review, fix, simplify); refresh the executor's copy after editing (for example the matching `arbor-<role>` assistant). |
 | `.arbor/spec/` | Yes | Project specs, intended to be updated regularly by users and AI. |
 | `.arbor/tasks/` | Yes | Task material and research artifacts, maintained by the task workflow. |
 | `.arbor/workspace/` | Yes | Session records, usually written by `add_session.py`. |

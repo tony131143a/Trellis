@@ -7143,7 +7143,7 @@ describe("regression: sub-agent context injection fallback (0.5.3)", () => {
       "Active task: <absolute path of .arbor/tasks/<task> inside the task worktree>",
     );
     expect(wf).toContain(
-      "Role: explore | architect | implement | review | verify | fix | simplify",
+      "Role: explore | architect | implement | review | fix | simplify",
     );
     expect(wf).toContain("Range: <base>..<head>");
     expect(wf).toContain("Dispatch: d-NNN");

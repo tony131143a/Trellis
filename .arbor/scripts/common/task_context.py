@@ -333,7 +333,7 @@ def cmd_seed_context(args: argparse.Namespace) -> int:
     print(f"  python3 ./.arbor/scripts/task.py add-context {args.dir} implement|check <path> \"<why>\"")
     print(
         "Then delete lines that do not apply to each side "
-        "(implement.jsonl: architect / implement; check.jsonl: review / verify / fix / simplify)."
+        "(implement.jsonl: architect / implement; check.jsonl: review / fix / simplify)."
     )
     return 0
 

@@ -72,21 +72,19 @@ function driveToFinish(f: Fixture): void {
   expect(f.taskJson().state).toBe("FINISH");
 }
 
-/** Standard task from REVIEW/candidates to one verify batch with one PLAUSIBLE finding. */
+/** Standard task in REVIEW/candidates with the first reader collected; the second reader (`d-002`)
+ * reports the same PLAUSIBLE finding, so collecting it reaches the plausible gate. */
 function driveToPlausible(f: Fixture): void {
   f.plan({
     "d-001": {
-      reply: reviewReply("FAIL", [finding("src/app.txt", 2, "CANDIDATE")]),
+      reply: reviewReply("FAIL", [finding("src/app.txt", 2, "PLAUSIBLE")]),
     },
     "d-002": {
-      reply: reviewReply("FAIL", [finding("src/app.txt", 2, "CANDIDATE")]),
-    },
-    "d-003": {
-      reply: `\`\`\`json\n${JSON.stringify([finding("src/app.txt", 2, "PLAUSIBLE")])}\n\`\`\`\nCONFIRMED 0, PLAUSIBLE 1, REFUTED 0.\n`,
+      reply: reviewReply("FAIL", [finding("src/app.txt", 2, "PLAUSIBLE")]),
     },
   });
-  for (const id of ["d-001", "d-002"]) expect(dispatch(f, id).status).toBe(0);
-  expect(f.taskJson()).toMatchObject({ state: "REVIEW", step: "verify" });
+  expect(dispatch(f, "d-001").status).toBe(0);
+  expect(f.taskJson()).toMatchObject({ state: "REVIEW", step: "candidates" });
 }
 
 describe.skipIf(!hasPython())("arbor.py mandate", { timeout: 120_000 }, () => {
@@ -179,7 +177,7 @@ describe.skipIf(!hasPython())("arbor.py mandate", { timeout: 120_000 }, () => {
       "mandate: contract=ask, plausible=auto, merge=ask",
     );
     driveToPlausible(f);
-    const r = dispatch(f, "d-003");
+    const r = dispatch(f, "d-002");
     expect(r.status, r.stdout + r.stderr).toBe(0);
     expect(r.stdout).toContain("mandate: skip");
     const data = f.taskJson();
@@ -200,7 +198,7 @@ describe.skipIf(!hasPython())("arbor.py mandate", { timeout: 120_000 }, () => {
     appendConfig(f, "mandate:\n  standard:\n    plausible: ask\n");
     seedCode(f, "REVIEW/candidates");
     driveToPlausible(f);
-    expect(dispatch(f, "d-003").status).toBe(0);
+    expect(dispatch(f, "d-002").status).toBe(0);
     expect(f.next()).toMatchObject({
       needs: "human",
       human: { kind: "plausible", mandate: "ask" },

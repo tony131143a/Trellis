@@ -5,7 +5,7 @@
 Therefore, when an AI uses this skill, the default customization target is local files inside the user project:
 
 - `.arbor/`: workflow, tasks, specs, journals, scripts, and runtime state.
-- `.arbor/agents/`: role instruction sources for the seven roles (explore, architect, implement, review, verify, fix, simplify).
+- `.arbor/agents/`: role instruction sources for the six roles (explore, architect, implement, review, fix, simplify).
 - Platform directories: `.claude/` (Claude Code) and `.starFactory/` (StarFactory, a Claude Code fork).
 - Root files `CLAUDE.md` and `AGENTS.md`, which contain a managed block between `<!-- ARBOR:START -->` and `<!-- ARBOR:END -->`.
 
@@ -31,7 +31,7 @@ All four layers live inside the user project, so an AI can read and modify them 
 | `.arbor/spec/` | The user's project-specific coding conventions and thinking guides. |
 | `.arbor/tasks/` | Each task's contract, technical notes, research files, briefs, scorecard, and JSONL context. |
 | `.arbor/workspace/` | Per-developer journals. |
-| `.arbor/agents/` | Role instruction sources (`explore.md`, `architect.md`, `test.md`, `implement.md`, `review.md`, `verify.md`, `fix.md`, `simplify.md`) used by the executor. |
+| `.arbor/agents/` | Role instruction sources (`explore.md`, `architect.md`, `test.md`, `implement.md`, `review.md`, `fix.md`, `simplify.md`) used by the executor. |
 | `.arbor/scripts/` | Local Python runtime used by commands, hooks, and context injection. |
 | `.arbor/.runtime/` | Session-level runtime state, such as the current task pointer. |
 | `.arbor/.template-hashes.json` | Template hashes for Arbor-managed files, used by update to determine whether local files were modified by the user. |

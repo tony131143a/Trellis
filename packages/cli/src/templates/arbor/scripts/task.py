@@ -524,7 +524,7 @@ def cmd_integrate(args: argparse.Namespace) -> int:
     integration branch: the parent takes the integration worktree and branch as
     its own, enters REVIEW/candidates over the whole integration range, and the
     task dir moves there (as ``start`` does) and is committed. From here
-    ``arbor.py --task <parent> next`` drives candidates -> verify -> fix -> GATE
+    ``arbor.py --task <parent> next`` drives candidates -> fix -> GATE
     -> FINISH; a human merges the integration branch into the baseline.
     """
     repo_root = get_repo_root()

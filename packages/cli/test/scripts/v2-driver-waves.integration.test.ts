@@ -638,16 +638,22 @@ print("ok")
         "d-002": { reply: review("PASS", []) },
         "d-003": { reply: review("PASS", []) },
         "d-004": {
-          reply: review("FAIL", [{ ...finding, verdict: "CANDIDATE" }]),
+          reply: review("FAIL", [
+            {
+              ...finding,
+              verdict: "CONFIRMED",
+              repro: {
+                kind: "trace",
+                path: ["src/app.txt:1", "src/app.txt:2"],
+              },
+            },
+          ]),
         },
         "d-005": {
-          reply: `\`\`\`json\n${JSON.stringify([{ ...finding, verdict: "CONFIRMED", repro: { kind: "trace", path: ["src/app.txt:1", "src/app.txt:2"] } }])}\n\`\`\`\nCONFIRMED 1, PLAUSIBLE 0, REFUTED 0.\n`,
-        },
-        "d-006": {
           write: [{ path: "src/app.txt", content: "one\nTWO\nthree\n" }],
           reply: "## Fix: Done\n",
         },
-        "d-007": { reply: review("PASS", []) },
+        "d-006": { reply: review("PASS", []) },
       });
       // three candidate readers, all delegated before any is collected
       const candidates = f.next();
@@ -698,13 +704,12 @@ print("ok")
         fs.readFileSync(path.join(f.tmp, "received/d-004.md"), "utf-8"),
       ).toContain("Mode: sweep");
       expect(f.taskJson()).toMatchObject({
-        step: "verify",
+        step: "fix",
         sweep_done: true,
         sweep_ids: ["src/app.txt:2:wrong word"],
       });
+      expect(f.next()).toMatchObject({ role: "fix", dispatch: "d-005" });
       expect(dispatch(f, "d-005").status).toBe(0);
-      expect(f.next()).toMatchObject({ role: "fix", dispatch: "d-006" });
-      expect(dispatch(f, "d-006").status).toBe(0);
       expect(f.taskJson()).toMatchObject({
         state: "GATE",
         after_gate: { state: "REVIEW", step: "recheck" },
@@ -715,10 +720,10 @@ print("ok")
       expect(f.next()).toMatchObject({
         role: "review",
         mode: "self-check",
-        dispatch: "d-007",
+        dispatch: "d-006",
         range: expect.stringMatching(new RegExp(`^${reviewedTo}\\.\\.`)),
       });
-      expect(dispatch(f, "d-007").status).toBe(0);
+      expect(dispatch(f, "d-006").status).toBe(0);
       const data = f.taskJson();
       expect(data.state).toBe("FINISH");
       expect(

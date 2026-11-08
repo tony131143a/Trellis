@@ -121,7 +121,7 @@ children [--json] [--cleanup]
   it. A child created with `--base-branch` opts out. After all children merge,
   `task.py integrate <parent>` moves the parent's task dir into the integration
   worktree, adopts its branch and base, and opens REVIEW/candidates over the
-  whole integration range; `next` then drives candidates -> verify -> fix (on
+  whole integration range; `next` then drives candidates -> fix (on
   the integration branch) -> `gate` (in the integration worktree) -> recheck
   -> FINISH, and `finish` prints the human merge command, then cleans up and
   archives the parent after the merge (its journal entry lists every child).

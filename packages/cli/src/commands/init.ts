@@ -440,7 +440,7 @@ this task from a session that provides Arbor session identity.
 
 **Your job**: help them populate \`.arbor/spec/\` with the team's real
 coding conventions. Every role the Arbor driver dispatches (architect, test,
-implement, review, verify, fix, simplify) gets the spec files listed in its
+implement, review, fix, simplify) gets the spec files listed in its
 task's jsonl manifests inlined into its prompt. Empty spec = roles write
 generic code. Real spec = roles match the team's actual patterns.
 
@@ -754,7 +754,7 @@ code every session.
   activity, and routes to the right step (planning: explore / questions /
   contract; driven: \`arbor.py next\`).
 - **The driver** (\`.arbor/scripts/arbor.py\`) runs every role (explore,
-  architect, test, implement, review, verify, fix, simplify) through the
+  architect, test, implement, review, fix, simplify) through the
   executor configured under \`executors:\` in \`.arbor/config.yaml\`. It
   inlines the spec files listed in \`{TASK_DIR}/implement.jsonl\` (writers) or
   \`check.jsonl\` (reviewers) + \`contract.md\` into each role prompt, then

@@ -1,6 +1,6 @@
 # Agents (Role Instruction Sources)
 
-Arbor has seven roles: `explore`, `architect`, `implement`, `review`, `verify`, `fix`, and `simplify`. In Arbor they are not platform-native sub-agents and there are no `.claude/agents/` or `.starFactory/agents/` files. The driver (`.arbor/scripts/arbor.py`) prepares and validates roles through the codeg MCP executor in `.arbor/config.yaml` (delegation via `delegate_to_agent`). The main agent of the session drives the loop and dispatches the roles. See `../local-architecture/dispatch.md` for the mechanism.
+Arbor has six roles: `explore`, `architect`, `implement`, `review`, `fix`, and `simplify`. In Arbor they are not platform-native sub-agents and there are no `.claude/agents/` or `.starFactory/agents/` files. The driver (`.arbor/scripts/arbor.py`) prepares and validates roles through the codeg MCP executor in `.arbor/config.yaml` (delegation via `delegate_to_agent`). The main agent of the session drives the loop and dispatches the roles. See `../local-architecture/dispatch.md` for the mechanism.
 
 ## Instruction Sources
 
@@ -21,7 +21,7 @@ These are plain markdown with no frontmatter. The driver inlines these role inst
 
 - Identity and recursion guard: the role never dispatches, never spawns sub-agents.
 - Session identity: no `ARBOR_CONTEXT_ID`; never run `arbor.py` or `task.py start/current/finish`.
-- Context loading: use the inlined `<!-- arbor-hook-injected -->` payload, else read the JSONL manifest (`implement.jsonl` for architect/test/implement, `check.jsonl` for review/verify/fix/simplify), `contract.md`, `design.md`, `waves.md`, and `git diff <Range>`.
+- Context loading: use the inlined `<!-- arbor-hook-injected -->` payload, else read the JSONL manifest (`implement.jsonl` for architect/test/implement, `check.jsonl` for review/fix/simplify), `contract.md`, `design.md`, `waves.md`, and `git diff <Range>`.
 - Write boundary and commits: readers leave the tree clean (`explore` / `architect` write only `<task>/research/`); writers commit on their own branch as `<role>(<task>): <summary>` with trailer `Arbor-Dispatch: d-NNN`; nobody pushes, merges, rebases or switches branches.
 - A fixed final report format.
 

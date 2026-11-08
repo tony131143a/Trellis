@@ -126,7 +126,6 @@ export const AGENT_ROLES = [
   "architect",
   "implement",
   "review",
-  "verify",
   "fix",
   "simplify",
 ] as const;

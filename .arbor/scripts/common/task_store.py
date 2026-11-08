@@ -708,7 +708,7 @@ def cmd_create(args: argparse.Namespace) -> int:
     print(
         "  - Curate implement.jsonl / check.jsonl (created empty) as spec/research "
         "manifests before task.py start (implement.jsonl feeds architect / implement, "
-        "check.jsonl feeds review / verify / fix / simplify):",
+        "check.jsonl feeds review / fix / simplify):",
         file=sys.stderr,
     )
     print(
