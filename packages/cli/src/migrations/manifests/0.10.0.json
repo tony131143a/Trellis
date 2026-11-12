@@ -1,0 +1,42 @@
+{
+  "version": "0.10.0",
+  "description": "roles run as Orca workers: the driver starts each dispatch with `orca orchestration worker-start` and collects it with `arbor.py sync`; codeg MCP, bind / collect and the sync-delegation hook are gone",
+  "breaking": true,
+  "recommendMigrate": true,
+  "changelog": "The only executor type is now `orca`. `arbor.py run` assembles the prompt, writes a task spec (dispatch header plus `Prompt:` and `Report:` pointers) and starts the role itself as a supervised Orca worker in the dispatch's worktree (`orca orchestration worker-start --spec-file ... --worktree path:<worktree> --agent <agent>`); it answers `needs=worker`. The worker writes its complete reply to the `Report:` file (`.arbor/.runtime/replies/<task>/d-NNN.md`) and reports `worker_done`; Orca wakes the main agent, which runs `arbor.py sync`: it reads each pending worker with `orca orchestration worker-show`, collects the settled ones through the unchanged validation, reports workers that wait for a person, fails workers that exited without reporting and stops workers past the executor timeout (`sync --wait <duration>` polls). `arbor.py bind` and `arbor.py collect` are removed, as are the codeg-mcp executor, `assistant` / `assistant_ids` / `agent_type`, the PostToolUse hook sync-delegation.py and its entries in .claude/settings.json and .codex/hooks.json. `executors.<name>` takes `command` (the Orca CLI), `agent`, `model`, `effort`, `keep_open` and per-role overrides under `roles:`. task.json `mcp_pending` is now `workers`; request records moved from .arbor/.runtime/delegations/ to .arbor/.runtime/workers/; next --json says `needs: worker`, `pending_workers`, `orca_dispatch`. Task, partition and integration worktrees are registered in Orca as child workspaces of the checkout they were cut from (`orca worktree set --parent-worktree`, display only).",
+  "migrations": [
+    {
+      "type": "safe-file-delete",
+      "from": ".arbor/scripts/common/driver/mcp.py",
+      "description": "codeg MCP handoff, replaced by driver/orca.py in 0.10.0",
+      "allowed_hashes": [
+        "16b08a07c955fc71d13a33d4cf59de6969e7234c1352a215223963deb6569519",
+        "a714ce45397f568d028ed28fe5036f9775530bcb1fd8701148864958eb749528",
+        "affa1e54448a104db764e5b934eb34d0315b202a0dc2398222bf0acfd0c14ca7",
+        "da3f7b09c4f72871c40d171b0bed51ce10ac8d9d19225e91463505f36d3b9556",
+        "e0eb676ef35de5654f6c3e9ff1d44fba38dc9b980105d7535b116742e8399af0",
+        "fe679727443d9936a579b7621630d5f731016d5633c39c6ae2e61ee7d6d24154"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".claude/hooks/sync-delegation.py",
+      "description": "codeg MCP bind/collect hook, removed in 0.10.0",
+      "allowed_hashes": [
+        "be07630e9a562a89989f60850280a5643d7c253455d35fd98b86fa4364ee70e2",
+        "c704f3b6ce559bfbcc987fc4fa2bd8c6d30be1fb92d4b0212bc7181bd6cff18b"
+      ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".codex/hooks/sync-delegation.py",
+      "description": "codeg MCP bind/collect hook, removed in 0.10.0",
+      "allowed_hashes": [
+        "be07630e9a562a89989f60850280a5643d7c253455d35fd98b86fa4364ee70e2",
+        "c704f3b6ce559bfbcc987fc4fa2bd8c6d30be1fb92d4b0212bc7181bd6cff18b"
+      ]
+    }
+  ],
+  "configSectionsAdded": [],
+  "migrationGuide": "Collect or abandon every pending codeg delegation before updating: a 0.9 request cannot be collected by 0.10. Run `arbor update --migrate` (deletes driver/mcp.py and the sync-delegation.py hooks, rewrites the hook settings). In .arbor/config.yaml replace the `executors:` section: `default: orca` and an `orca:` block with `type: orca`, `command` (the Orca CLI; on macOS /Applications/Orca.app/Contents/Resources/bin/orca when `orca` is not on PATH), `agent` (codex, claude, omp, ...), optional `model` / `effort` / `keep_open` and per-role overrides under `roles:`; drop `assistant`, `assistant_ids` and `agent_type`. In Orca: add the repository (`orca repo add`), show non-Orca worktrees for it (`orca repo set --repo path:<repo> --external-worktree-visibility show`), set each agent's permission mode under Settings > Agents so workers do not stop on prompts, and drive every task from an agent that runs inside Orca (the coordinator identity comes from the Orca terminal). The codeg `arbor-*` assistants are no longer used."
+}

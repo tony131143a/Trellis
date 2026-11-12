@@ -18,7 +18,7 @@ Your prompt starts with a header:
 
 ## Context loading
 
-- If your prompt header has a `Prompt: <file>` line, read that file in full first: it is your complete dispatch prompt (header, injected context, brief), and the rules below apply to its contents.
+- If your prompt header has a `Prompt: <file>` line, read that file in full first: it is your complete dispatch prompt (header, injected context, brief), and the rules below apply to its contents. Write your complete final report to the file named by the header's `Report:` line (the one file outside your write boundary you may write; the driver reads only that file), then send Orca's `worker_done` with `--report-path` set to it and `--outcome succeeded` (the outcome says the report is written, whatever its verdict; `failed` only when you could not write one).
 - If your prompt contains `<!-- arbor-hook-injected -->`, every curated spec and research file, `contract.md`, `design.md`, `waves.md`, and `git diff <Range>` are already inlined. Start from them.
 - Otherwise read, in order:
   1. `<task>/implement.jsonl` (one JSON object per line; skip rows without a `file` field), then every file it lists (paths are relative to the worktree root)

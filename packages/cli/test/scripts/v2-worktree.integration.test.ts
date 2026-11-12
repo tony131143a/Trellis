@@ -275,19 +275,19 @@ cfg = parse_simple_yaml("""
 worktree:
   setup: "pnpm install --offline"
 executors:
-  default: claude
-  claude:
-    type: codeg-mcp
-    assistant: "claude-{role}"
-  codeg:
+  default: omp
+  omp:
+    type: orca
+    command: orca
+    agent: omp
+  orca:
     timeout: 30m
 """)
 partial = parse_simple_yaml("""
 executors:
-  default: codeg
-  codeg:
-    type: codeg-mcp
-    assistant: "arbor-{role}"
+  default: orca
+  orca:
+    agent: claude
 """)
 print(json.dumps({
     "wt_default": get_worktree_config({}),
@@ -298,11 +298,13 @@ print(json.dumps({
 }))
 `,
     );
-    const codeg = {
-      type: "codeg-mcp",
-      assistant: "arbor-{role}",
+    const orca = {
+      type: "orca",
+      command: "orca",
+      agent: "codex",
       timeout: "90m",
       max_parallel: "5",
+      keep_open: "false",
     };
     expect(out).toEqual({
       wt_default: { root: "../{repo}-wt", setup: "", branch_prefix: "arbor/" },
@@ -311,13 +313,13 @@ print(json.dumps({
         setup: "pnpm install --offline",
         branch_prefix: "arbor/",
       },
-      ex_default: { default: "codeg", codeg },
+      ex_default: { default: "orca", orca },
       ex: {
-        default: "claude",
-        claude: { type: "codeg-mcp", assistant: "claude-{role}" },
-        codeg: { ...codeg, timeout: "30m" },
+        default: "omp",
+        omp: { type: "orca", command: "orca", agent: "omp" },
+        orca: { ...orca, timeout: "30m" },
       },
-      ex_partial: { default: "codeg", codeg },
+      ex_partial: { default: "orca", orca: { ...orca, agent: "claude" } },
     });
   });
 
@@ -338,12 +340,14 @@ print(json.dumps([get_worktree_config(cfg), get_executors_config(cfg)]))
     expect(out).toEqual([
       { root: "../{repo}-wt", setup: "", branch_prefix: "arbor/" },
       {
-        default: "codeg",
-        codeg: {
-          type: "codeg-mcp",
-          assistant: "arbor-{role}",
+        default: "orca",
+        orca: {
+          type: "orca",
+          command: "orca",
+          agent: "codex",
           timeout: "90m",
           max_parallel: "5",
+          keep_open: "false",
         },
       },
     ]);

@@ -184,7 +184,7 @@ def snapshot_control(main: Path, control: Path, task_rel: str, product: Path | N
 
 def check_control(main: Path, control: Path, task_rel: str, before: dict, product: Path | None = None) -> None:
     if snapshot_control(main, control, task_rel, product) != before:
-        raise ExecutionError('protected control/product main repository changed during product delegation; evidence preserved')
+        raise ExecutionError('protected control/product main repository changed while the worker ran; evidence preserved')
 
 
 def accept_new_control_task(main: Path, control: Path, task_rel: str, before: dict,
@@ -199,7 +199,7 @@ def accept_new_control_task(main: Path, control: Path, task_rel: str, before: di
         raise ExecutionError('accept-new-control-task requires a different task directory name')
     prefix = f'.arbor/tasks/{sibling}/'
     if any(p.startswith(prefix) for p in before['main']['files']):
-        raise ExecutionError('cannot accept changes to a task that existed before delegation')
+        raise ExecutionError('cannot accept changes to a task that existed before the worker started')
     current = snapshot_control(main, control, task_rel, product)
     additions = {p: h for p, h in current['main']['files'].items() if p.startswith(prefix)}
     if prefix + 'task.json' not in additions or any(h == 'missing' or h.startswith('link:') for h in additions.values()):

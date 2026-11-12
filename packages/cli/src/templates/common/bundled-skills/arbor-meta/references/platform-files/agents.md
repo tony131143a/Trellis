@@ -1,6 +1,6 @@
 # Agents (Role Instruction Sources)
 
-Arbor has six roles: `explore`, `architect`, `implement`, `review`, `fix`, and `simplify`. In Arbor they are not platform-native sub-agents and there are no `.claude/agents/` or `.starFactory/agents/` files. The driver (`.arbor/scripts/arbor.py`) prepares and validates roles through the codeg MCP executor in `.arbor/config.yaml` (delegation via `delegate_to_agent`). The main agent of the session drives the loop and dispatches the roles. See `../local-architecture/dispatch.md` for the mechanism.
+Arbor has six roles: `explore`, `architect`, `implement`, `review`, `fix`, and `simplify`. In Arbor they are not platform-native sub-agents and there are no `.claude/agents/` or `.starFactory/agents/` files. The driver (`.arbor/scripts/arbor.py`) prepares and validates roles through the Orca executor in `.arbor/config.yaml` (workers started with `orca orchestration worker-start`). The main agent of the session drives the loop and dispatches the roles. See `../local-architecture/dispatch.md` for the mechanism.
 
 ## Instruction Sources
 
@@ -14,7 +14,7 @@ Arbor has six roles: `explore`, `architect`, `implement`, `review`, `fix`, and `
 | `.arbor/agents/fix.md` | Apply the chosen findings, commit, report fixed or skipped per finding. |
 | `.arbor/agents/simplify.md` | Behavior-preserving cleanup of a range (reuse, duplication, needless complexity); commit or report no change. |
 
-These are plain markdown with no frontmatter. The driver inlines these role instructions into the prepared MCP prompt, read at every dispatch from the `.arbor/agents/` of the install it runs from (the main checkout), so an edit applies to every open task from its next dispatch on. The selected `arbor-<role>` codeg assistant supplies the underlying agent, model and permissions; keep its own instructions empty, so the role file is the only copy.
+These are plain markdown with no frontmatter. The driver inlines these role instructions into the prepared worker prompt, read at every dispatch from the `.arbor/agents/` of the install it runs from (the main checkout), so an edit applies to every open task from its next dispatch on. The `executors.orca` agent, model and effort (with the per-role overrides) select the underlying agent; keep the agent's own instructions empty, so the role file is the only copy.
 
 ## What The Files Contain
 

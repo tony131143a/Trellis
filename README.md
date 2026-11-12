@@ -1,6 +1,6 @@
 # Arbor
 
-Arbor is a spec-driven AI engineering workflow for **Claude Code and Codex**. The Python driver assembles task context, dispatches roles through a configured executor, records reports, Git observations and task state. Your session's main agent plans, gets the contract approved and drives the loop itself; the roles run as codeg MCP delegations; executable quality checks remain enforced.
+Arbor is a spec-driven AI engineering workflow for **Claude Code and Codex**. The Python driver assembles task context, dispatches roles through a configured executor, records reports, Git observations and task state. Your session's main agent plans, gets the contract approved and drives the loop itself; the roles run as Orca workers; executable quality checks remain enforced.
 
 ## Install and initialize
 
@@ -36,40 +36,29 @@ Arbor ships eight role instructions under `.arbor/agents/`:
 
 The driver includes each role's instructions, task context, brief and report requirements in its dispatch prompt. Roles run through the executor in `.arbor/config.yaml`; native Codex sub-agent definitions are not required.
 
-Two kinds of agent take part. The **main agent** is your session (Claude Code or Codex, normally one codeg conversation per task): it talks to you, writes the contract, splits multi-deliverable requests into child tasks, starts the task and drives BUILD → GATE → REVIEW → FINISH with `arbor.py next`, dispatching the **roles** through the executor. It asks you only at the human gates: tier, contract approval, surviving PLAUSIBLE findings, round caps (STOP) and the merge; which of those actually ask is the task's mandate (`mandate:` in `.arbor/config.yaml` per tier, `task.py create --mandate`): with `auto` the driver skips PLAUSIBLE findings, resumes the first STOP and `arbor.py finish` merges a small clean, in-scope, reviewed branch itself when you opt in to `merge=auto`; by default merging into your base branch is always your call. Child tasks run in parallel, each from its own session, skip their own review and merge into the parent's integration branch on their own; the parent then reviews and fixes them all at once there (`task.py integrate`), and only that branch reaches your base branch, through you. Inside a task, readers run in parallel (the 2 / 3 candidate readers of standard / full, which may only add their own repro scripts); writers run only the contract's targeted checks and GATE runs the full suite once.
+Two kinds of agent take part. The **main agent** is your session (Claude Code or Codex, normally one Orca agent session per task): it talks to you, writes the contract, splits multi-deliverable requests into child tasks, starts the task and drives BUILD → GATE → REVIEW → FINISH with `arbor.py next`, dispatching the **roles** through the executor. It asks you only at the human gates: tier, contract approval, surviving PLAUSIBLE findings, round caps (STOP) and the merge; which of those actually ask is the task's mandate (`mandate:` in `.arbor/config.yaml` per tier, `task.py create --mandate`): with `auto` the driver skips PLAUSIBLE findings, resumes the first STOP and `arbor.py finish` merges a small clean, in-scope, reviewed branch itself when you opt in to `merge=auto`; by default merging into your base branch is always your call. Child tasks run in parallel, each from its own session, skip their own review and merge into the parent's integration branch on their own; the parent then reviews and fixes them all at once there (`task.py integrate`), and only that branch reaches your base branch, through you. Inside a task, readers run in parallel (the 2 / 3 candidate readers of standard / full, which may only add their own repro scripts); writers run only the contract's targeted checks and GATE runs the full suite once.
 
-The default executor hands every role to codeg MCP (`delegate_to_agent`) as a sub-agent of the main agent's session; the `codeg-cli` command executor stays available for terminal sessions:
-
-```yaml
-executors:
-  default: codeg
-  codeg:
-    type: codeg-mcp
-    assistant: "arbor-{role}"
-    timeout: 90m
-    max_parallel: 5
-  codeg-cli:
-    type: command
-    command: "codeg-cli run -A arbor-{role} -w {worktree} --permissions allow --timeout 90m --title arbor-{role}-{task}-{dispatch} -q -p - < {prompt}"
-    timeout: 95m
-    max_parallel: 5
-```
-
-Create the eight role assistants in codeg with the corresponding `.arbor/agents/<name>.md` instructions and choose their underlying agent/options there. For the command executor put `codeg-cli` on PATH or write its absolute path in the command.
-
-With the `codeg-mcp` executor, `arbor.py run` returns `needs=delegation`; the returned `mcp.arguments.task` is the dispatch header plus a `Prompt:` line naming the assembled prompt file (`.arbor/.runtime/prompts/<task>/d-NNN.md`), which the role reads first. Call codeg MCP `delegate_to_agent` with the returned `mcp.arguments` (resolve the named assistant from the MCP roster if no id is configured), then immediately run `arbor.py bind --request <request_path> --task-id <returned task_id>`. Poll `get_delegation_status`, save its complete JSON response at the returned `result_path` outside the task worktree, and run `arbor.py collect --request <request_path> --result <file>` before proceeding. The Arbor PostToolUse hook `sync-delegation.py` (installed for Claude Code and Codex) does the bind and the collect by itself and reports what it did. Resume/poll a bound task after interruptions; never start it again. If the configured timeout expires, cancel it through `cancel_delegation` and collect the terminal report. Claude Code and Codex both use this same MCP flow. Do not substitute native Agent/Task/spawn_agent for a role.
-
-A direct CLI executor can also consume the prepared prompt, for example:
+The only executor is Orca (the multi-agent desktop app; its CLI is `orca`): the driver starts every role as an Orca worker inside the task's Orca workspace, and the main agent runs in an Orca agent tab of the repository's workspace:
 
 ```yaml
 executors:
-  default: codex
-  codex:
-    command: "codex exec --cd {worktree} --sandbox workspace-write - < {prompt}"
+  default: orca
+  orca:
+    type: orca
+    command: orca          # the Orca CLI; an absolute path when not on PATH (macOS: /Applications/Orca.app/Contents/Resources/bin/orca)
+    agent: codex           # Orca agent id every role starts as (codex, claude, omp, ...)
     timeout: 90m
+    max_parallel: 5
+    keep_open: false       # true: a finished worker stays open in Orca
+    roles:                 # per-role overrides of agent / model / effort
+      explore:
+        agent: omp
+        model: "@worker"
 ```
 
-For Claude Code, use `claude -p < {prompt}`. The executor already runs in the task worktree. Use permissions appropriate for the role, including access to shared Git metadata when writing commits in linked worktrees. Parent Arbor and host session identifiers are not inherited by the child session.
+One-time setup per repository: `orca repo add --path <repo>` and `orca repo set --repo path:<repo> --external-worktree-visibility show`; in Orca Settings, Agents, set each agent's permission mode so workers do not stop on prompts (codex and claude have a Yolo preset; omp needs `--approval-mode yolo` as its launch arguments).
+
+`arbor.py run` assembles the prompt (`.arbor/.runtime/prompts/<task>/d-NNN.md`), writes the worker's task spec beside it (the dispatch header plus `Prompt:` and `Report:` lines) and starts the worker itself with `orca orchestration worker-start`. The worker reads the prompt, writes its complete report to the `Report:` file (`.arbor/.runtime/replies/<task>/d-NNN.md`) and sends Orca's `worker_done`. The main agent ends its turn after starting every ready item; Orca wakes it when a worker reports, asks a question or stops, and it runs `arbor.py sync` (validates settled reports, collects failed, timed-out or empty ones, shows `waiting for a person` for a permission prompt you answer in the worker's Orca tab) and then `arbor.py next`. A worker's question arrives as Orca mail (`orca orchestration reply --id <message_id> --body "..."`). If Orca is unreachable the request stays prepared and `arbor.py run --dispatch d-NNN` starts it; never start a dispatch twice. Do not substitute native Agent/Task/spawn_agent for a role.
 
 ## Workflow and maintenance
 

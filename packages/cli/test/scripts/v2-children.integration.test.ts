@@ -1,7 +1,7 @@
 /**
  * Parent / child tasks for the Planner: `arbor.py children`, the parent's
- * integration review (`run --role review --mode sweep --range a..b`, handed
- * off through the codeg MCP delegation like every dispatch) and the
+ * integration review (`run --role review --mode sweep --range a..b`, started
+ * as an Orca worker like every dispatch) and the
  * parent's own gate in the main checkout.
  */
 
@@ -148,9 +148,9 @@ describe.skipIf(!hasPython())(
       );
       expect(prepared.status, prepared.stdout + prepared.stderr).toBe(0);
       expect(JSON.parse(prepared.stdout)).toMatchObject({
-        needs: "delegation",
+        needs: "worker",
         dispatch: "d-001",
-        mcp: { arguments: { working_dir: f.repo } },
+        orca_dispatch: "orca-d-001",
       });
       const sweep = complete(f, prepared);
       expect(sweep.status, sweep.stdout + sweep.stderr).toBe(0);

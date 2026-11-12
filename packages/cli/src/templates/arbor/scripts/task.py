@@ -52,6 +52,7 @@ from common.active_task import (
 )
 from common.arbor_config import get_worktree_config, read_arbor_config
 from common.contract import ContractError, contract_hash, find_contract, load_contract
+from common.driver import orca
 from common.git import current_branch_name, run_git, run_git_retry_index_lock
 from common.io import (
     describe_json_read_failure,
@@ -407,6 +408,7 @@ def _start_in_worktree(args: argparse.Namespace, task_dir: Path, repo_root: Path
         print(colored(f"Error: {e}", Colors.RED))
         return 1
     print(colored(f"✓ Worktree: {wt.path} (branch {wt.branch}, base {wt.base_sha[:12]})", Colors.GREEN))
+    orca.register_worktree(config, wt.path, Path(integration["worktree"]) if integration else main, name)
 
     if run_setup(wt.path, get_worktree_config(config).get("setup")) != 0:
         print(colored("Error: worktree.setup failed; start rolled back", Colors.RED))
@@ -660,8 +662,8 @@ def cmd_start(args: argparse.Namespace) -> int:
         return 1
 
     pending_data, _ = read_json_checked(full_path / FILE_TASK_JSON)
-    if pending_data and pending_data.get("mcp_pending"):
-        print(colored("Error: collect pending MCP delegations before starting this task", Colors.RED))
+    if pending_data and pending_data.get("workers"):
+        print(colored("Error: `arbor.py sync` the pending workers before starting this task", Colors.RED))
         return 1
 
     # The contract is what start approves and freezes; without one there is

@@ -308,7 +308,6 @@ describe("0.4.0 manifest", () => {
     expect(getMigrationMetadata("0.3.0", "0.4.0").breaking).toBe(false);
     expect(getConfigSectionsAddedBetween("0.3.0", "0.4.0")).toEqual([]);
     expect(configYamlTemplate).not.toContain("conductor");
-    expect(configYamlTemplate).toContain("default: codeg\n");
   });
 });
 
@@ -409,8 +408,7 @@ describe("0.9.0 manifest", () => {
 // =============================================================================
 
 describe("0.9.1 manifest", () => {
-  it("is the package version, reached from 0.9.0, breaking, and deletes the verify role", () => {
-    expect(VERSION).toBe("0.9.1");
+  it("is reached from 0.9.0, breaking, and deletes the verify role", () => {
     expect(getAllMigrationVersions()).toContain("0.9.1");
     const migrations = getMigrationsForVersion("0.9.0", "0.9.1");
     expect(migrations).toHaveLength(1);
@@ -432,5 +430,32 @@ describe("0.9.1 manifest", () => {
       expect(changelog).toContain(term);
     expect(getConfigSectionsAddedBetween("0.9.0", "0.9.1")).toEqual([]);
     expect(configYamlTemplate).toContain("max_parallel: 5");
+  });
+});
+
+// =============================================================================
+// 0.10.0 — roles run as Orca workers; codeg MCP, bind / collect and the sync hook are gone
+// =============================================================================
+
+describe("0.10.0 manifest", () => {
+  it("is the package version, reached from 0.9.1, breaking, and deletes the codeg handoff", () => {
+    expect(VERSION).toBe("0.10.0");
+    expect(getAllMigrationVersions()).toContain("0.10.0");
+    expect(
+      getMigrationsForVersion("0.9.1", "0.10.0").map((m) => [m.type, m.from]),
+    ).toEqual([
+      ["safe-file-delete", ".arbor/scripts/common/driver/mcp.py"],
+      ["safe-file-delete", ".claude/hooks/sync-delegation.py"],
+      ["safe-file-delete", ".codex/hooks/sync-delegation.py"],
+    ]);
+    const metadata = getMigrationMetadata("0.9.1", "0.10.0");
+    expect(metadata.breaking).toBe(true);
+    expect(metadata.recommendMigrate).toBe(true);
+    const changelog = metadata.changelog.join("\n");
+    for (const term of ["worker-start", "arbor.py sync", "Report:", "workers"])
+      expect(changelog).toContain(term);
+    expect(getConfigSectionsAddedBetween("0.9.1", "0.10.0")).toEqual([]);
+    expect(configYamlTemplate).toContain("default: orca\n");
+    expect(configYamlTemplate).toContain("type: orca\n");
   });
 });

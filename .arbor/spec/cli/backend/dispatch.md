@@ -3,7 +3,7 @@ sources:
   - packages/cli/src/templates/arbor/scripts/arbor.py
   - packages/cli/src/templates/arbor/scripts/common/dispatch_context.py
   - packages/cli/src/templates/arbor/scripts/common/driver/executor.py
-  - packages/cli/src/templates/arbor/scripts/common/driver/mcp.py
+  - packages/cli/src/templates/arbor/scripts/common/driver/orca.py
   - packages/cli/src/templates/shared-hooks/guard-builtin-agent.py
 last_verified: 2026-11-02
 ---
@@ -23,8 +23,8 @@ Roles are `explore`, `architect`, `implement`, `review`, `fix` and
 in `.arbor/agents/<role>.md` of the driver's own install (the main checkout),
 read at every dispatch (`DRIVER_ARBOR_DIR` in `common/dispatch_context.py`). `arbor.py run` uses the executor named by
 `executors.default` in `.arbor/config.yaml`.
-The main agent (the user's session, normally one codeg conversation per task)
-writes the briefs and runs the loop; roles are its depth-1 codeg delegations.
+The main agent (the user's session, normally one Orca agent session per task)
+writes the briefs and runs the loop; roles are Orca workers the driver starts.
 
 Native Agent/Task/spawn_agent tools cannot dispatch Arbor roles.
 `guard-builtin-agent.py` denies recognisable headers or an `arbor-` agent type
@@ -48,10 +48,12 @@ a diff; explore and architect do not accept it. Before start the task is in the
 main checkout; after start it is inside its task worktree. The assembler
 normalizes the task path, resolves review mode and preserves the dispatch id.
 
-`Prompt:` is written only by the `codeg-mcp` executor: the MCP `task` text is
-the header lines alone, and the `Prompt:` line names the assembled prompt file
-(header, injected context and brief) that the role reads first. Command
-executors receive the assembled file directly and carry no `Prompt:` line.
+`Prompt:` and `Report:` are written by the `orca` executor into the worker's
+task spec (`d-NNN.spec.md`, after Orca's dispatch preamble, under
+`=== TASK ===`): the `Prompt:` line names the assembled prompt file (header,
+injected context and brief) that the role reads first, the `Report:` line the
+reply file (`.arbor/.runtime/replies/<task>/d-NNN.md`) it writes its complete
+final report to.
 
 Role context carries `<!-- arbor-hook-injected -->`. The normal artifact order
 is jsonl entries → `contract.md` → `design.md` if present → `waves.md` if present,
@@ -59,61 +61,75 @@ then `git diff <Range>` when supplied, followed by the brief. Architect and
 implement use `implement.jsonl`; review, fix and simplify use
 `check.jsonl`. Architect also receives task research. Explore receives the spec
 overview and, when a task is supplied, its contract and research file list.
-Without the marker the role pulls its required context itself (with codeg MCP:
+Without the marker the role pulls its required context itself (as an Orca worker:
 by reading the `Prompt:` file first).
 
 ## Resolution order
 
 `--task DIR` selects the task, otherwise the session's active task is resolved.
 The option precedes the subcommand. A child task driven from its own
-conversation passes `--task` on every call.
+Orca agent session passes `--task` on every call.
 
-The only executor type is `codeg-mcp`; `timeout` accepts seconds or an `s`, `m`
-or `h` suffix (missing or zero means no timeout) and bounds one delegation.
+The only executor type is `orca`; `timeout` accepts seconds or an `s`, `m`
+or `h` suffix (missing or zero means no timeout) and bounds one worker.
 
-## The MCP path
+## The Orca worker path
 
-- **codeg MCP**: `type: codeg-mcp` (`executors.default: codeg`)
-  returns `needs=delegation` with durable request metadata and `mcp.arguments`
-  (`task` = header plus `Prompt:` pointer). Call `delegate_to_agent` once,
-  then `arbor.py bind --request <request_path> --task-id <returned id>`. Poll
-  `get_delegation_status`, save its complete terminal JSON at the returned
-  `result_path` outside the task worktree and run
-  `arbor.py collect --request <request_path> --result <file>`. The shared
-  PostToolUse hook `sync-delegation.py` (Claude Code and Codex) performs the
-  bind and the collect itself after those two MCP calls and reports the
-  outcome as `additionalContext`; the manual commands stay valid. Resume bound
-  ids after interruption. If timeout expires, cancel through `cancel_delegation`
-  and collect the terminal report; never replace this flow with a native agent.
+- **Orca**: `type: orca` (`executors.default: orca`). `arbor.py run` writes the
+  prompt and the worker's task spec and starts the worker itself:
+  `orca orchestration worker-start --spec-file <spec> --task-title "<task> d-NNN <role>"
+  --worktree path:<worktree> --agent <agent> [--model m] [--effort e] [--keep-open] --json`.
+  It prints `needs: "worker"` with `orca_dispatch`, `request_path`, `prompt_path`,
+  `reply_path`, `timeout_s` and `started`. The worker writes its report to the
+  `Report:` file and sends `worker_done` (`--outcome succeeded` = report written).
+  The main agent ends its turn; Orca wakes it; it runs `arbor.py sync
+  [--dispatch d-NNN] [--wait DURATION]`, which reads `orca orchestration
+  worker-show --dispatch <id> --json` and validates settled replies, collects
+  failed or `worker_done`-less workers, stops (`worker-stop`) and collects workers
+  past `timeout`, prints `waiting for a person (...)` for a permission prompt, and
+  collects an empty reply file for judgment. A failed start is recorded at once;
+  with the Orca CLI missing or Orca unreachable the request stays prepared
+  (`next`: `needs: worker`, "not started") and `arbor.py run --dispatch d-NNN`
+  starts it; never start a dispatch twice. Worker questions arrive as Orca mail
+  (`orca orchestration reply`). Never replace this flow with a native agent.
+- **Workspaces.** One task = one Orca workspace; every role is a worker in it;
+  CONTRACT-phase roles run in the main checkout's workspace; partitions and child
+  tasks are child workspaces (`orca worktree set --parent-worktree`, display only).
 
 ## Executor configuration
 
 ```yaml
 executors:
-  default: codeg
-  codeg:
-    type: codeg-mcp
-    assistant: arbor-{role}
+  default: orca
+  orca:
+    type: orca
+    command: orca
+    agent: codex
     timeout: 90m
+    max_parallel: 5
+    keep_open: false
+    roles:
+      explore: {agent: omp, model: "@worker"}
 ```
 
-For MCP, `assistant_ids` may map role names to configured assistant ids. Without
-a mapped id, a configured `agent_type` is passed directly; otherwise resolve the
-returned assistant name from the MCP roster. Request and snapshot
-records live in `.arbor/.runtime/delegations/<task>/<dispatch>.json`. A collected
-request cannot be collected twice.
+`command` is the Orca CLI (an absolute path when not on PATH); `agent` is the
+Orca agent id every role starts as, with per-role overrides of `agent`, `model`
+and `effort` under `roles`. Request records live in
+`.arbor/.runtime/workers/<task>/<dispatch>.json` (`task.json` key `workers`). A
+collected request cannot be collected twice.
 
 ## Sub-agent self-identification
 
-A first prompt starting with `Active task:` plus `Role:` identifies a dispatched
-role. It performs that role directly, never delegates, never runs task lifecycle
+A prompt carrying `Active task:` plus `Role:` (after Orca's dispatch preamble)
+identifies a dispatched worker. It performs that role directly, writes its
+complete report to the `Report:` file, sends `worker_done`, never delegates, never runs task lifecycle
 commands and has no `ARBOR_CONTEXT_ID`. Started-task writers commit with
 `Arbor-Dispatch: d-NNN` and stay inside their assigned paths; `review` may
 write only its repro scripts under the task's `research/repro/` (candidates /
 sweep mode; the driver commits them with the report). CONTRACT research
 roles may write only task research and do not commit.
 
-Any other first prompt belongs to a main agent: it writes briefs and calls the
+Any other prompt belongs to a main agent: it writes briefs and calls the
 driver; it never performs a role itself.
 
 ## Parallel variant
@@ -147,8 +163,8 @@ conflicts require a hand merge and `resume`.
 ## Required tests
 
 - Driver prompts preserve normalized headers, manifest/artifact order and diffs.
-- Executor/MCP tests cover preparation, binding, restart, terminal collection and
-  refusal of duplicate collection.
-- MCP request tests cover the `Prompt:` pointer in `mcp.arguments.task`.
+- Executor/Orca tests cover preparation, worker start, restart, `sync` collection
+  and refusal of duplicate collection.
+- Worker spec tests cover the `Prompt:` and `Report:` pointers.
 - The native agent guard denies `Active task:` / `Role:` dispatch prompts.
 - Backend doc regression checks pin these protocols and concrete source paths.

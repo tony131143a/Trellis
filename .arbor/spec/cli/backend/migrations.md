@@ -154,7 +154,7 @@ src/migrations/
     {
       "file": ".arbor/config.yaml",
       "sentinel": "dispatch:",                              // 用户文件里出现这个 substring（注释或活配）就视为已存在
-      "sectionHeading": "Dispatch (codeg assistants)"       // 模板里 #--- 分隔块内 `# <heading>` 行匹配此值
+      "sectionHeading": "Dispatch (executors)"       // 模板里 #--- 分隔块内 `# <heading>` 行匹配此值
     }
   ]
 }

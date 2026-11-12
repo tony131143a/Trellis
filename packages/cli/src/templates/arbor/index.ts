@@ -83,7 +83,7 @@ export const commonDriverMandate = readTemplate(
 export const commonDriverIntegration = readTemplate(
   "scripts/common/driver/integration.py",
 );
-export const commonDriverMcp = readTemplate("scripts/common/driver/mcp.py");
+export const commonDriverOrca = readTemplate("scripts/common/driver/orca.py");
 export const commonDriverValidate = readTemplate(
   "scripts/common/driver/validate.py",
 );
@@ -174,7 +174,7 @@ export function getAllScripts(): Map<string, string> {
   scripts.set("common/driver/executor.py", commonDriverExecutor);
   scripts.set("common/driver/mandate.py", commonDriverMandate);
   scripts.set("common/driver/integration.py", commonDriverIntegration);
-  scripts.set("common/driver/mcp.py", commonDriverMcp);
+  scripts.set("common/driver/orca.py", commonDriverOrca);
   scripts.set("common/driver/validate.py", commonDriverValidate);
   scripts.set("common/driver/gate.py", commonDriverGate);
   scripts.set("common/driver/lock.py", commonDriverLock);

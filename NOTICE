@@ -13,7 +13,7 @@ Principal changes relative to Trellis:
 - Removed the multi-platform matrix (only Claude Code and StarFactory remain
   as main-agent platforms), the `channel` worker runtime, `mem`, `ablate`,
   `upgrade`, the workflow marketplace and remote spec-template registry.
-- Replaced platform-native sub-agents with dispatch to codeg assistants
-  (`delegate_to_agent` inside codeg, `codeg-cli` from a terminal), including
-  a PreToolUse hook that inlines task context into the dispatched prompt.
+- Replaced platform-native sub-agents with roles a driver script dispatches
+  as Orca workers (`orca orchestration worker-start`), with the task context
+  injected into the dispatched prompt.
 - Added a parallel execution variant (child tasks in git worktrees).

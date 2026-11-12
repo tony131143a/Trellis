@@ -1,6 +1,6 @@
 # Change Local Agents (Role Instructions)
 
-When the user wants to change the behavior of one of the six roles (`explore`, `architect`, `implement`, `review`, `fix`, `simplify`), edit the role instruction sources in `.arbor/agents/`. These roles run through the driver as codeg MCP delegations, not as platform sub-agents, so there are no `.claude/agents/` or `.starFactory/agents/` files to edit.
+When the user wants to change the behavior of one of the six roles (`explore`, `architect`, `implement`, `review`, `fix`, `simplify`), edit the role instruction sources in `.arbor/agents/`. These roles run through the driver as Orca workers, not as platform sub-agents, so there are no `.claude/agents/` or `.starFactory/agents/` files to edit.
 
 ## Read These Files First
 

@@ -41,6 +41,7 @@ from ..git import run_git
 from ..io import read_json_checked, write_json
 from ..paths import DIR_TASKS, DIR_WORKFLOW, FILE_TASK_JSON
 from ..worktree import WorktreeError, add_worktree, branch_prefix, remove_worktree, run_setup, task_branch, worktree_root
+from . import orca
 from .executor import utc_now
 
 SPEC_PREFIX = f"{DIR_WORKFLOW}/spec/"
@@ -122,6 +123,7 @@ def ensure(main: Path, config: dict, parent: Path) -> dict:
     if run_setup(path, get_worktree_config(config).get("setup")) != 0:
         remove_worktree(main, path, delete_branch=True)
         raise IntegrationError(f"worktree.setup failed in {path}; integration branch removed")
+    orca.register_worktree(config, path.resolve(), main, parent.name)
     record = {"branch": branch, "worktree": str(path.resolve()), "base_branch": base_branch, "base": base,
               "created": utc_now(), "merged": []}
     data["integration"] = record

@@ -1,8 +1,8 @@
 /**
  * Main-agent judgment around the driver: ambiguous reports (`decide
- * accept|retry`), a contract revised while a plan review is delegated,
+ * accept|retry`), a contract revised while a plan review worker runs,
  * failed dispatches that keep their work, and `run --autopilot` stopping
- * at the codeg MCP handoff and at an ambiguous report.
+ * at a started worker and at an ambiguous report.
  */
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -15,6 +15,7 @@ import {
   dispatch,
   git,
   hasPython,
+  setOrcaState,
   setupFixture,
   writeFile,
   type Fixture,
@@ -30,14 +31,9 @@ describe.skipIf(!hasPython())(
     afterEach(() => f?.cleanup());
 
     it.each([false, true])(
-      "collects revised CONTRACT review without restoring hashes (edit during delegation: %s)",
+      "collects revised CONTRACT review without restoring hashes (edit while the worker runs: %s)",
       (during) => {
         f = setupFixture();
-        writeFile(
-          f.repo,
-          ".arbor/config.yaml",
-          "executors:\n  default: codeg\n  codeg:\n    type: codeg-mcp\n    assistant: arbor-review\n    assistant_ids:\n      review: 6\n",
-        );
         expect(
           f.run("override", "--to", "CONTRACT", "--reason", "revise plan")
             .status,
@@ -63,15 +59,6 @@ describe.skipIf(!hasPython())(
         const prepared = f.run("run");
         expect(prepared.status, prepared.stdout + prepared.stderr).toBe(0);
         const request = JSON.parse(prepared.stdout);
-        expect(
-          f.run(
-            "bind",
-            "--request",
-            request.request_path,
-            "--task-id",
-            "review-plan",
-          ).status,
-        ).toBe(0);
         if (during) {
           fs.appendFileSync(
             contract,
@@ -84,28 +71,17 @@ describe.skipIf(!hasPython())(
           );
         }
         const revised = fs.readFileSync(contract, "utf8");
-        const result = path.join(f.tmp, "result.json");
-        fs.writeFileSync(
-          result,
-          JSON.stringify({
-            task_id: "review-plan",
-            status: "completed",
-            text: PASS,
-          }),
-        );
-        const collected = f.run(
-          "collect",
-          "--request",
-          request.request_path,
-          "--result",
-          result,
-        );
+        fs.writeFileSync(request.reply_path, PASS);
+        setOrcaState(f, request.orca_dispatch, {
+          dispatch: { id: request.orca_dispatch, status: "completed" },
+        });
+        const collected = f.run("sync");
         expect(collected.status, collected.stdout + collected.stderr).toBe(0);
         expect(fs.readFileSync(contract, "utf8")).toBe(revised);
         expect(f.taskJson()).toMatchObject({
           state: "CONTRACT",
           contract_hash: approved,
-          mcp_pending: {},
+          workers: {},
         });
         expect(f.taskJson().stop).toBeUndefined();
         expect(f.taskJson().dispatches[0].observations).toContain(
@@ -118,15 +94,7 @@ describe.skipIf(!hasPython())(
               "utf8",
             ),
           ).toContain("keep this evidence");
-        expect(
-          f.run(
-            "collect",
-            "--request",
-            request.request_path,
-            "--result",
-            result,
-          ).status,
-        ).toBe(1);
+        expect(f.run("sync").stdout).toContain("no pending worker");
       },
     );
 
@@ -301,7 +269,7 @@ describe.skipIf(!hasPython())(
       expect(scorecard).toContain("| 2 review | 1 | 0 | 0 |");
     });
 
-    it("autopilot stops at the MCP handoff, then returns ambiguous output to the main agent without repeating the role", () => {
+    it("autopilot stops at the started worker, then returns ambiguous output to the main agent without repeating the role", () => {
       f = setupFixture();
       expect(
         f.run("override", "--to", "REVIEW", "--reason", "fixture").status,
@@ -310,12 +278,12 @@ describe.skipIf(!hasPython())(
       f.plan({ "d-001": { reply: "unstructured result" } });
       const handoff = f.run("run", "--autopilot");
       expect(handoff.status, handoff.stdout + handoff.stderr).toBe(0);
-      expect(handoff.stdout).toContain("hand off to codeg MCP");
+      expect(handoff.stdout).toContain("stop, needs worker");
       expect(f.next()).toMatchObject({
-        needs: "delegation",
+        needs: "worker",
         dispatch: "d-001",
       });
-      // the host plays the pending delegation (`run` reprints its envelope)
+      // the test plays the running worker (`run` reprints its envelope)
       const played = complete(f, f.run("run"));
       expect(played.status, played.stdout + played.stderr).toBe(0);
       expect(f.taskJson().dispatches).toHaveLength(1);

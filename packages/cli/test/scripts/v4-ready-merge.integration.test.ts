@@ -211,38 +211,16 @@ describe.skipIf(!hasPython())(
         dispatch: "d-002",
         external: true,
       });
-      // Unbound delegations are items to act on; bound ones are running.
-      next = f.next();
-      expect(
-        next.items.map((i: Json) => [i.needs, i.partition, i.dispatch]),
-      ).toEqual([
-        ["delegation", "impl", "d-001"],
-        ["delegation", "tests", "d-002"],
-      ]);
-      expect(next.running).toEqual([]);
-      for (const [res, id] of [
-        [impl, "codeg-d-001"],
-        [tests, "codeg-d-002"],
-      ] as const) {
-        ok(
-          f.run(
-            "bind",
-            "--request",
-            JSON.parse(res.stdout).request_path,
-            "--task-id",
-            id,
-          ),
-        );
-      }
+      // `run` started both workers: nothing is left to act on, both are running.
       next = f.next();
       expect(next.items).toEqual([]);
       expect(
         next.running
-          .map((r: Json) => [r.partition, r.dispatch, r.kind, r.task_id])
+          .map((r: Json) => [r.partition, r.dispatch, r.kind, r.orca_dispatch])
           .sort(),
       ).toEqual([
-        ["impl", "d-001", "delegation", "codeg-d-001"],
-        ["tests", "d-002", "delegation", "codeg-d-002"],
+        ["impl", "d-001", "worker", "orca-d-001"],
+        ["tests", "d-002", "worker", "orca-d-002"],
       ]);
       expect(next.blocked_on).toBe(
         "BUILD wave 1: waiting for d-001 (impl), d-002 (tests)",

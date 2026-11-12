@@ -18,7 +18,7 @@ A bundled skill is a directory under `packages/cli/src/templates/common/bundled-
 | Claude Code | `.claude/skills/<skill>/` |
 | StarFactory | `.starFactory/skills/<skill>/` |
 
-`resolveBundledSkills(ctx)` in `configurators/shared.ts` reads every directory returned by `getBundledSkillTemplates()` (`templates/common/index.ts`), resolves placeholders such as `{{PYTHON_CMD}}`, and returns flat `{relativePath, content}` entries. Each platform collector (`configurators/claude.ts`, `configurators/star.ts`) folds them into its template map via `collectSkillTemplates`. `arbor init` writes that map; `arbor update` diffs it against `.arbor/.template-hashes.json`.
+`resolveBundledSkills(ctx)` in `configurators/shared.ts` reads every directory returned by `getBundledSkillTemplates()` (`templates/common/index.ts`), resolves placeholders such as `python3`, and returns flat `{relativePath, content}` entries. Each platform collector (`configurators/claude.ts`, `configurators/star.ts`) folds them into its template map via `collectSkillTemplates`. `arbor init` writes that map; `arbor update` diffs it against `.arbor/.template-hashes.json`.
 
 Other template sources in `templates/common/`: `skills/` (workflow skills), `commands/` (slash commands written to `commands/arbor/`).
 

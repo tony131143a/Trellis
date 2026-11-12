@@ -250,12 +250,14 @@ def read_arbor_config(repo_root: Optional[Path] = None) -> dict:
 # Defaults for the v2 sections. Every value is a string, as the parser returns.
 DEFAULT_WORKTREE_CONFIG: dict = {"root": "../{repo}-wt", "setup": "", "branch_prefix": "arbor/"}
 DEFAULT_EXECUTORS_CONFIG: dict = {
-    "default": "codeg",
-    "codeg": {
-        "type": "codeg-mcp",
-        "assistant": "arbor-{role}",
+    "default": "orca",
+    "orca": {
+        "type": "orca",
+        "command": "orca",
+        "agent": "codex",
         "timeout": "90m",
         "max_parallel": "5",
+        "keep_open": "false",
     },
 }
 def get_worktree_config(config: dict) -> dict:
@@ -270,7 +272,7 @@ def get_worktree_config(config: dict) -> dict:
 def get_executors_config(config: dict) -> dict:
     """``executors:`` section merged over the defaults.
 
-    The built-in ``codeg`` executor stays available when the section omits
+    The built-in ``orca`` executor stays available when the section omits
     it. A configured executor overlays its built-in fields key by key;
     ``default`` and new executors are taken as written.
     """

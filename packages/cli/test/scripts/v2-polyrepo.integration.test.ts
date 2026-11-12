@@ -16,16 +16,28 @@ import {
   IMPLEMENTED,
   SESSION,
   TASK,
+  complete,
   dispatch,
   git,
+  orcaCalls,
+  setOrcaState,
   setupFixture,
+  worker,
   writeFile,
   type Fixture,
+  type Json,
 } from "./v2-driver-helpers";
 
 let f: Fixture;
 let product: string;
 let execution: string;
+/** The worker wrote its reply and reported done in Orca. */
+function settle(request: Json, reply: string): void {
+  fs.writeFileSync(request.reply_path, reply);
+  setOrcaState(f, request.orca_dispatch, {
+    dispatch: { id: request.orca_dispatch, status: "completed" },
+  });
+}
 function prepare(contract?: string, gate: string[] = []): void {
   f = setupFixture({ start: false, contract });
   product = path.join(f.repo, "product");
@@ -124,16 +136,7 @@ describe("central polyrepo execution", { timeout: 300_000 }, () => {
       const sibling = ".arbor/tasks/other-task/task.json";
       if (scenario === "existing-task") writeFile(f.repo, sibling, "{}");
       f.brief("d-001");
-      const request = JSON.parse(f.run("run").stdout);
-      expect(
-        f.run(
-          "bind",
-          "--request",
-          request.request_path,
-          "--task-id",
-          "child-review",
-        ).status,
-      ).toBe(0);
+      const request = worker(f.run("run"));
       const original = JSON.parse(
         fs.readFileSync(request.request_path, "utf8"),
       ).control_before;
@@ -143,22 +146,8 @@ describe("central polyrepo execution", { timeout: 300_000 }, () => {
       if (scenario === "product-file")
         writeFile(product, "product.txt", "changed");
       if (scenario === "main-ref") git(f.repo, "branch", "unrelated-ref");
-      const result = path.join(f.tmp, "review-result.json");
-      fs.writeFileSync(
-        result,
-        JSON.stringify({
-          task_id: "child-review",
-          status: "completed",
-          text: "PASS\n```json\n[]\n```",
-        }),
-      );
-      const args = [
-        "collect",
-        "--request",
-        request.request_path,
-        "--result",
-        result,
-      ];
+      settle(request, "PASS\n```json\n[]\n```");
+      const args = ["sync", "--dispatch", request.dispatch];
       expect(
         f.run(...args, "--accept-new-control-task", "other-task").status,
       ).toBe(1);
@@ -194,7 +183,7 @@ describe("central polyrepo execution", { timeout: 300_000 }, () => {
         expect(f.taskJson().collection_exceptions).toEqual([
           saved.control_drift_acceptance,
         ]);
-        expect(f.taskJson().mcp_pending).toEqual({});
+        expect(f.taskJson().workers).toEqual({});
       } else {
         expect(saved.status).toBe("pending");
         expect(saved.control_drift_acceptance).toBeUndefined();
@@ -202,9 +191,9 @@ describe("central polyrepo execution", { timeout: 300_000 }, () => {
         const observed = f.run(...args);
         expect(observed.status, observed.stdout + observed.stderr).toBe(0);
         expect(f.taskJson().dispatches[0].observations.join("\n")).toContain(
-          "repository changed during product delegation",
+          "repository changed while the worker ran",
         );
-        expect(f.taskJson().mcp_pending).toEqual({});
+        expect(f.taskJson().workers).toEqual({});
       }
     },
   );
@@ -568,55 +557,22 @@ Build two components.
     expect(f.run("gate").status).toBe(0);
   });
 
-  it("prepares and collects MCP work in the product while protecting control metadata", () => {
+  it("starts and collects a worker in the product while protecting control metadata", () => {
     started();
     f.brief("d-001");
+    f.plan({ "d-001": { write: IMPLEMENTED } });
     const prepared = f.run("run");
     expect(prepared.status, prepared.stdout + prepared.stderr).toBe(0);
-    const request = JSON.parse(prepared.stdout);
-    expect(request.mcp.arguments.working_dir).toBe(execution);
+    // The worker runs in the product worktree, not in the control worktree.
     expect(
-      f.run("bind", "--request", request.request_path, "--task-id", "child-1")
-        .status,
-    ).toBe(0);
-    const prompt = path.join(f.tmp, "prompt.md");
-    fs.writeFileSync(prompt, request.mcp.arguments.task);
-    f.plan({ "d-001": { write: IMPLEMENTED } });
-    const child = spawnSync(
-      "python3",
-      [
-        path.join(f.tmp, "fake_exec.py"),
-        "implement",
-        prompt,
-        execution,
-        TASK,
-        "d-001",
-      ],
-      { encoding: "utf8" },
-    );
-    expect(child.status, child.stderr).toBe(0);
-    const result = path.join(f.tmp, "result.json");
-    fs.writeFileSync(
-      result,
-      JSON.stringify({
-        task_id: "child-1",
-        status: "completed",
-        text: child.stdout,
-      }),
-    );
-    const collect = f.run(
-      "collect",
-      "--request",
-      request.request_path,
-      "--result",
-      result,
-    );
+      orcaCalls(f).find((argv) => argv[1] === "worker-start"),
+    ).toContain(`path:${execution}`);
+    const collect = complete(f, prepared);
     expect(collect.status, collect.stdout + collect.stderr).toBe(0);
     expect(f.next()).toMatchObject({ state: "GATE", needs: "run" });
-    expect(
-      f.run("collect", "--request", request.request_path, "--result", result)
-        .status,
-    ).toBe(1);
+    expect(f.run("sync", "--dispatch", "d-001").stdout).toContain(
+      "no pending worker",
+    );
     const gate = f.run("gate");
     expect(gate.status, gate.stdout + gate.stderr).toBe(0);
     expect(f.next()).toMatchObject({
@@ -625,42 +581,16 @@ Build two components.
       dispatch: "d-002",
     });
     f.brief("d-002");
-    const second = JSON.parse(f.run("run").stdout);
-    expect(
-      f.run("bind", "--request", second.request_path, "--task-id", "child-2")
-        .status,
-    ).toBe(0);
+    const second = worker(f.run("run"));
     const data = f.taskJson();
     data.title = "unauthorized change";
     writeFile(f.taskDir, "task.json", JSON.stringify(data));
-    const rejected = f.run(
-      "collect",
-      "--request",
-      second.request_path,
-      "--result",
-      result,
-    );
-    expect(rejected.status).toBe(1);
-    expect(rejected.stderr).toContain("bound task_id");
-    fs.writeFileSync(
-      result,
-      JSON.stringify({
-        task_id: "child-2",
-        status: "completed",
-        text: "PASS\n```json\n[]\n```\n",
-      }),
-    );
-    const observed = f.run(
-      "collect",
-      "--request",
-      second.request_path,
-      "--result",
-      result,
-    );
+    settle(second, "PASS\n```json\n[]\n```\n");
+    const observed = f.run("sync", "--dispatch", "d-002");
     expect(observed.status, observed.stdout + observed.stderr).toBe(0);
     expect(f.taskJson().title).toBe("unauthorized change");
     expect(f.taskJson().dispatches[1].observations.join("\n")).toContain(
-      "repository changed during product delegation",
+      "repository changed while the worker ran",
     );
   });
 
@@ -686,7 +616,7 @@ Build two components.
     const r = dispatch(f, "d-001");
     expect(r.status, r.stdout + r.stderr).toBe(0);
     expect(f.taskJson().dispatches[0].observations.join("\n")).toContain(
-      "repository changed during product delegation",
+      "repository changed while the worker ran",
     );
     expect(fs.readFileSync(path.join(f.repo, "dirty.txt"), "utf8")).toBe(
       "overwritten",

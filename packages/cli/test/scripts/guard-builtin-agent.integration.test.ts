@@ -148,7 +148,7 @@ describe.skipIf(!hasPython())("guard-builtin-agent.py", () => {
   it("stays silent for other tools", () => {
     const r = runGuard(
       { prompt: "Active task: .arbor/tasks/x" },
-      { toolName: "mcp__codeg-mcp__delegate_to_agent" },
+      { toolName: "mcp__other__tool" },
     );
     expect(r.stdout).toBe("");
   });

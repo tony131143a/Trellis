@@ -306,7 +306,7 @@ Classify each hit:
 
 ### Tests Required
 - **Writer regression**: call creator → assert field NOT in output. Example: `test task.py create does NOT write legacy current_phase / next_action`.
-- **Writer-after-event regression**: simulate the downstream event that historically re-wrote the field (e.g. delegate to a codeg assistant → hook fires) → re-read file → assert field still absent.
+- **Writer-after-event regression**: simulate the downstream event that historically re-wrote the field (e.g. start an Orca worker → hook fires) → re-read file → assert field still absent.
 - **Reader compatibility**: mock a legacy file containing the field → assert reader does not raise.
 
 ### Wrong vs Correct
@@ -316,13 +316,13 @@ Classify each hit:
 task_data = {"status": "planning", ...}  # current_phase removed
 ```
 ```python
-# a hook (hypothetical here) — still writes it on every delegation
+# a hook (hypothetical here) — still writes it on every dispatch
 def update_current_phase(task_dir, subagent_type):
     task = read_json(task_dir / "task.json")
     task["current_phase"] = next_phase(...)  # ← re-populates deprecated field
     write_json(task_dir / "task.json", task)
 ```
-Net: after the first `implement` delegation, `task.json` contains `current_phase` again. Deprecation undone silently.
+Net: after the first `implement` dispatch, `task.json` contains `current_phase` again. Deprecation undone silently.
 
 #### Correct — delete every writer, or route through a single entry point
 Option A: delete the writer function.

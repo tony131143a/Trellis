@@ -280,7 +280,7 @@ Arbor must not rely on categorical breadcrumb invisibility inside assistants.
 |---------|:------------:|:--------------------:|
 | `<workflow-state>` per-turn breadcrumb | ✅ | ⚠️ possible host-dependent exposure |
 | `arbor.py` role assembler (`implement.jsonl`/`check.jsonl` + task artifacts + diff, before executor invocation) | ❌ | ✅ |
-| `Prompt:` pointer in the codeg MCP `task` text (the assembled prompt file the role reads first) | ❌ | ✅ (codeg-mcp only) |
+| `Prompt:` / `Report:` pointers in the Orca worker's task spec (the assembled prompt file the role reads first, the reply file it writes) | ❌ | ✅ (orca executor only) |
 | Pull protocol in `.arbor/agents/<role>.md` (when `<!-- arbor-hook-injected -->` is absent) | N/A | fallback |
 
 **Implication**: dispatch-relevant guidance must be carried by the header
@@ -288,7 +288,7 @@ protocol and the assistant instruction sources, in this artifact order:
 jsonl entries -> `contract.md` -> `design.md if present` -> `waves.md if
 present`. Breadcrumb text must be safe if an assistant sees it: the dispatch
 guidance in `in_progress` and `in_progress-parallel` self-exempts a session
-whose first prompt starts with `Active task:` + `Role:` so it performs the
+whose prompt carries `Active task:` + `Role:` (after Orca's dispatch preamble) so it performs the
 role directly instead of dispatching again. Any other session is a main agent,
 which drives the loop through `arbor.py` rather than performing roles itself.
 The same rule applies to every

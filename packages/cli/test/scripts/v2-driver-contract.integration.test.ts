@@ -1,7 +1,7 @@
 /**
  * arbor.py `run --role`: CONTRACT-phase dispatches (explore / architect /
- * review plan) before `task.py start`, handed off through the codeg MCP
- * delegation (the only executor), run in the main checkout, recorded but
+ * review plan) before `task.py start`, started as Orca workers (the only
+ * executor), run in the main checkout, recorded but
  * never committed, outside the state table.
  */
 
@@ -89,7 +89,7 @@ describe.skipIf(!hasPython())(
         },
         { id: "d-002", role: "architect", status: "ok", phase: "CONTRACT" },
       ]);
-      expect(data.mcp_pending).toEqual({});
+      expect(data.workers).toEqual({});
       expect(fs.existsSync(path.join(f.taskDir, "research/explore-a.md"))).toBe(
         true,
       );

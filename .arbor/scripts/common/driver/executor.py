@@ -1,15 +1,23 @@
 """
-Executor configuration. The only executor type is ``codeg-mcp``: the host's
-real codeg MCP tools drive every role through the durable prepare / bind /
-collect protocol in ``mcp.py``.
+Executor configuration. The only executor type is ``orca``: the driver starts
+every role as an Orca worker (``orca orchestration worker-start``) and reads
+its outcome back with ``arbor.py sync`` (see ``orca.py``).
 
     executors:
-      default: codeg
-      codeg:
-        type: codeg-mcp
-        assistant: "arbor-{role}"   # or assistant_ids: {role: id} / agent_type
-        timeout: 90m                # 90m | 30s | 2h | plain seconds; absent = none
-        max_parallel: 5             # simultaneous delegations of one task
+      default: orca
+      orca:
+        type: orca
+        command: orca        # the Orca CLI (an absolute path when it is not on PATH)
+        agent: codex         # Orca agent id every role starts as
+        model: ""            # optional provider model id (``--model``)
+        effort: ""           # optional reasoning effort (``--effort``, needs model)
+        timeout: 90m         # 90m | 30s | 2h | plain seconds; absent = none
+        max_parallel: 5      # simultaneous workers of one task
+        keep_open: false     # true: a finished worker stays open in Orca
+        roles:               # per-role overrides of agent / model / effort
+          explore:
+            agent: omp
+            model: "@worker"
 """
 
 from __future__ import annotations
@@ -29,13 +37,25 @@ class ExecutorError(ValueError):
 
 
 @dataclass(frozen=True)
+class Launch:
+    """How one role starts in Orca."""
+    agent: str
+    model: str | None = None
+    effort: str | None = None
+
+
+@dataclass(frozen=True)
 class Executor:
     name: str
+    command: str
     timeout: float | None
-    max_parallel: int | None = None  # simultaneous delegations of one task
-    assistant: str = "arbor-{role}"
-    assistant_ids: dict | None = None
-    agent_type: str | None = None
+    max_parallel: int | None  # simultaneous workers of one task
+    keep_open: bool
+    default: Launch
+    roles: dict[str, Launch]
+
+    def launch(self, role: str) -> Launch:
+        return self.roles.get(role, self.default)
 
 
 @dataclass(frozen=True)
@@ -70,6 +90,22 @@ def parse_timeout(value: object) -> float | None:
     return seconds if seconds > 0 else None
 
 
+def _launch(spec: dict, base: Launch | None, where: str) -> Launch:
+    def pick(key: str) -> str | None:
+        value = spec.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        return getattr(base, key) if base else None
+
+    agent = pick("agent")
+    if not agent:
+        raise ExecutorError(f"{where}: agent is not set (an Orca agent id such as codex, claude or omp)")
+    launch = Launch(agent, pick("model"), pick("effort"))
+    if launch.effort and not launch.model:
+        raise ExecutorError(f"{where}: effort needs a model (Orca's --effort requires --model)")
+    return launch
+
+
 def resolve_executor(config: dict) -> Executor:
     """The executor ``executors.default`` names."""
     section = get_executors_config(config)
@@ -79,13 +115,19 @@ def resolve_executor(config: dict) -> Executor:
     spec = section.get(chosen)
     if not isinstance(spec, dict):
         raise ExecutorError(f"executor {chosen!r} is not configured under executors:")
-    kind = str(spec.get("type") or "codeg-mcp")
-    if kind != "codeg-mcp":
-        raise ExecutorError(f"executor {chosen!r}: unknown type {kind!r} (v5 runs roles through codeg MCP only)")
-    if spec.get("assistant_ids") is not None and not isinstance(spec["assistant_ids"], dict):
-        raise ExecutorError("assistant_ids must map role names to codeg assistant ids")
+    kind = str(spec.get("type") or "orca")
+    if kind != "orca":
+        raise ExecutorError(f"executor {chosen!r}: unknown type {kind!r} (roles run as Orca workers only)")
+    command = str(spec.get("command") or "").strip()
+    if not command:
+        raise ExecutorError(f"executor {chosen!r}: command is not set (the Orca CLI)")
+    default = _launch(spec, None, f"executor {chosen!r}")
+    roles = spec.get("roles") or {}
+    if not isinstance(roles, dict) or not all(isinstance(v, dict) for v in roles.values()):
+        raise ExecutorError("roles must map role names to agent / model / effort")
     limit = spec.get("max_parallel")
     max_parallel = int(limit) if isinstance(limit, int) or (isinstance(limit, str) and limit.isdigit()) else None
-    return Executor(chosen, parse_timeout(spec.get("timeout")), max_parallel,
-                    str(spec.get("assistant") or "arbor-{role}"), spec.get("assistant_ids"),
-                    str(spec["agent_type"]) if spec.get("agent_type") else None)
+    return Executor(chosen, command, parse_timeout(spec.get("timeout")), max_parallel,
+                    str(spec.get("keep_open") or "").strip().lower() == "true", default,
+                    {role: _launch(over, default, f"executors.{chosen}.roles.{role}")
+                     for role, over in roles.items()})

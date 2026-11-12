@@ -9,8 +9,7 @@ Usage (from the main checkout or any worktree of the repo):
     python3 ./.arbor/scripts/arbor.py run [--partition P] [--dispatch d-NNN]
     python3 ./.arbor/scripts/arbor.py run --role explore|architect|review [--mode plan] [--dispatch d-NNN]
     python3 ./.arbor/scripts/arbor.py run --autopilot
-    python3 ./.arbor/scripts/arbor.py bind --request <path> --task-id <codeg-task-id>
-    python3 ./.arbor/scripts/arbor.py collect --request <path> --result <terminal-MCP-JSON-file>
+    python3 ./.arbor/scripts/arbor.py sync [--dispatch d-NNN] [--wait 10m]
     python3 ./.arbor/scripts/arbor.py finish [--pr]
     python3 ./.arbor/scripts/arbor.py gate
     python3 ./.arbor/scripts/arbor.py decide <impl|contract|fix|skip> --reason "..."
@@ -33,9 +32,11 @@ journal entry (DONE). Re-running continues at the first missing step.
 dispatch in the main checkout, recorded in task.json and results.jsonl,
 never committed and outside the state table.
 
-Every role runs through codeg MCP: ``run`` prepares the prompt and returns
-``needs=delegation``; the host delegates, ``bind`` records the task id and
-``collect`` validates the terminal report and advances the task.
+Every role runs as an Orca worker: ``run`` prepares the prompt, starts the
+worker (``orca orchestration worker-start``) in the dispatch's worktree and
+returns ``needs=worker``; the worker writes its reply to the request's reply
+file and reports ``worker_done``; ``sync`` reads every pending worker's state
+from Orca, validates the settled replies and advances the task.
 
 A wave of named partitions runs each partition in its own worktree
 (``<root>/<task>-<p>`` on ``arbor/<task>--<p>``): ``run`` creates them, each
@@ -51,7 +52,9 @@ Files:
     <task>/reports/gate-N.md    output of the N-th gate round
     <task>/reports/candidates-rN.json   REVIEW cycle N after the prefilter
     <task>/scorecard.md         FINISH: the task's measurements
-    .arbor/.runtime/prompts/<task>/d-NNN.md   the full prompt sent (main checkout)
+    .arbor/.runtime/prompts/<task>/d-NNN.md   the full prompt (main checkout); d-NNN.spec.md: the worker's task spec
+    .arbor/.runtime/replies/<task>/d-NNN.md   the worker's reply (main checkout)
+    .arbor/.runtime/workers/<task>/d-NNN.json the request record of a dispatch (main checkout)
     .arbor/.runtime/results.jsonl             one row per dispatch (main checkout)
 
 Exit codes: 0 ok, 1 refused / failed dispatch / red gate, 2 usage error.
@@ -64,6 +67,7 @@ import json
 import os
 import re
 import sys
+import time
 from dataclasses import asdict
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -91,13 +95,13 @@ from common.dispatch_context import (
 from common.driver import partitions as pt
 from common.driver import autopilot
 from common.driver import escalate as esc
-from common.driver import mcp
+from common.driver import orca
 from common.driver import finish as fin
 from common.driver import integration as ig
 from common.driver import mandate as md
 from common.driver import state as sm
 from common.driver import validate as rv
-from common.driver.executor import ExecResult, ExecutorError, resolve_executor, utc_now
+from common.driver.executor import ExecResult, ExecutorError, parse_timeout, resolve_executor, utc_now
 from common.driver.gate import CheckResult, format_checks, map_warnings, run_gate
 from common.driver.lock import LockTimeout, pid_alive, task_lock
 from common.config import get_packages
@@ -425,20 +429,20 @@ def build_prompt(worktree: Path, task_dir: Path | None, role: str, mode: str | N
 
 
 def planning_runs(ctx: Ctx) -> list[dict]:
-    """Uncollected MCP requests."""
+    """Uncollected worker requests."""
     runs = []
-    for path in (ctx.data.get("mcp_pending") or {}).values():
-        _, record = mcp.load(ctx.main, path)
+    for path in (ctx.data.get("workers") or {}).values():
+        _, record = orca.load(ctx.main, path)
         runs.append({"dispatch": record["dispatch"], "role": record["role"],
                      "kind": record["kind"], "request_path": str(path),
-                     "task_id": record.get("task_id"), "started": record["started"]})
+                     "orca_dispatch": orca.dispatch_id(record), "started": record["started"]})
     return sorted(runs, key=lambda r: r["dispatch"])
 
 
 def planning_blocker(role: str, runs: list[dict]) -> str | None:
     if runs and (role not in PARALLEL_RESEARCH_ROLES or any(
             r["kind"] != "contract" or r["role"] not in PARALLEL_RESEARCH_ROLES for r in runs)):
-        return "collect pending delegations before a plan review or another kind of dispatch"
+        return "`arbor.py sync` the pending workers before a plan review or another kind of dispatch"
     return None
 
 
@@ -451,7 +455,7 @@ def planning_next(ctx: Ctx, role: str) -> dict:
     return {"task": ctx.name, "state": "CONTRACT", "started": ctx.started,
             "needs": "wait" if blocked else "brief", "role": role,
             "dispatch": dispatch, "brief_path": str(brief_path(ctx, dispatch)),
-            "pending_delegations": runs,
+            "pending_workers": runs,
             "summary": blocked or f"CONTRACT: write {dispatch}'s brief for {role}; "
                 f"run --role {role} --dispatch {dispatch}. Independent research may run concurrently; "
                 "the main agent chooses the number of angles and consolidates their results."}
@@ -476,22 +480,23 @@ def next_payload(ctx: Ctx | None, partition: str | None = None, role: str | None
         pending = None  # other readers of the batch still wait for their brief; poll this one alongside
     if pending:
         path, record = pending
-        out = {"task": ctx.name, "state": record["state"], "needs": "delegation",
+        out = {"task": ctx.name, "state": record["state"], "needs": "worker",
                "dispatch": record["dispatch"], "role": record["role"], "request_path": str(path),
-               "task_id": record.get("task_id"), "started": ctx.started,
-               "delegation_started": record["started"],
-               "pending_delegations": planning_runs(ctx),
-               "summary": f"MCP delegation {record['dispatch']}: " + (
-                   f"poll/resume task {record['task_id']}, then arbor collect --request {path} --result <file>"
-                   if record.get("task_id") else f"read {path}, call codeg MCP once, then arbor bind")}
+               "orca_dispatch": orca.dispatch_id(record), "started": ctx.started,
+               "worker_started": record["started"],
+               "pending_workers": planning_runs(ctx),
+               "summary": f"worker {record['dispatch']} ({record['role']}): " + (
+                   "running in Orca; end your turn, and when Orca wakes you `arbor.py sync`"
+                   if orca.dispatch_id(record) else f"not started; `arbor.py run --dispatch {record['dispatch']}`")}
         if ctx.started:
             out.update(ready_set(ctx, _current_step(ctx, partition)))
         return out
     active_planning = [] if reader_running else planning_runs(ctx)
     if active_planning:
         return {"task": ctx.name, "state": "CONTRACT", "started": ctx.started, "needs": "wait",
-                "pending_delegations": active_planning,
-                "summary": "Planning commands are running; use next --role explore|architect for another angle"}
+                "pending_workers": active_planning,
+                "summary": "Planning workers are running: `arbor.py sync` when Orca wakes you; "
+                           "use next --role explore|architect for another angle"}
     if not ctx.started:
         dispatch = next_dispatch_id(ctx.data, ctx.task_dir)
         out = {"task": ctx.name, "state": "CONTRACT", "needs": "human", "started": False, "dispatch": dispatch,
@@ -539,7 +544,7 @@ def next_payload(ctx: Ctx | None, partition: str | None = None, role: str | None
     running = sorted((sm.batch_of(data).get("running") or {}))
     if running:
         out["readers_running"] = running
-        out["pending_delegations"] = planning_runs(ctx)
+        out["pending_workers"] = planning_runs(ctx)
     if step.decision:
         out["decision"] = step.decision
     if step.human:
@@ -599,23 +604,22 @@ def _item(ctx: Ctx, step: sm.Step) -> dict:
 def ready_set(ctx: Ctx, step: sm.Step | None) -> dict:
     """The task's ready set, computed by the driver from its state (the main
     agent never adds to it): ``items`` = every step that can be acted on now
-    (unbound MCP delegations, the current step and every other partition
+    (workers not started yet, the current step and every other partition
     needing a brief), ``running`` = what is in flight, ``blocked_on`` = what
     the task waits for when there is nothing to act on."""
     items: list[dict] = []
     running: list[dict] = []
     default_busy = False
     readers = sm.batch_of(ctx.data).get("running") or {}
-    for path in (ctx.data.get("mcp_pending") or {}).values():
-        _, record = mcp.load(ctx.main, path)
+    for path in (ctx.data.get("workers") or {}).values():
+        _, record = orca.load(ctx.main, path)
         entry = {"dispatch": record["dispatch"], "role": record["role"],
                  "partition": record.get("partition") or "default", "request_path": str(path)}
-        if record.get("task_id"):
-            running.append({**entry, "kind": "delegation", "task_id": record["task_id"]})
+        if orca.dispatch_id(record):
+            running.append({**entry, "kind": "worker", "orca_dispatch": orca.dispatch_id(record)})
         else:
-            items.append({"needs": "delegation", **entry,
-                          "summary": f"delegate {record['dispatch']} once with codeg MCP delegate_to_agent "
-                                     f"(arguments in {path}), then bind its task_id"})
+            items.append({"needs": "worker", **entry,
+                          "summary": f"start {record['dispatch']}: `arbor.py run --dispatch {record['dispatch']}`"})
         # a reader of the current batch runs alongside the rest of its batch
         default_busy = default_busy or not (record.get("partition") or record["dispatch"] in readers)
     if step is not None and step.needs != "wait" and not (default_busy and step.partition is None):
@@ -628,9 +632,9 @@ def ready_set(ctx: Ctx, step: sm.Step | None) -> dict:
                 items.append(_item(ctx, other))
     if ctx.data.get("execution_binding"):
         # product task: one dispatch at a time (`_begin` refuses a second one)
-        busy = ctx.data.get("mcp_pending") or any(
+        busy = ctx.data.get("workers") or any(
             p.get("running") for p in (ctx.data.get("partitions") or {}).values())
-        items = [i for i in items if i["needs"] == "delegation"] if busy else items[:1]
+        items = [i for i in items if i["needs"] == "worker"] if busy else items[:1]
     out: dict = {"items": items, "running": running}
     if not items:
         out["blocked_on"] = (step.summary if step is not None and step.needs == "wait"
@@ -659,7 +663,7 @@ def cmd_next(args: argparse.Namespace) -> int:
             what = item.get("role") or item.get("needs")
             print(f"    {item.get('dispatch') or '-':<7} {what:<10} [{item.get('partition')}] {item.get('brief_path') or ''}")
     for run in payload.get("running") or []:
-        print(f"  running: {run.get('dispatch')} [{run.get('partition')}] {run.get('task_id') or run.get('kind')}")
+        print(f"  running: {run.get('dispatch')} [{run.get('partition')}] {run.get('orca_dispatch') or run.get('kind')}")
     return 0
 
 
@@ -731,11 +735,11 @@ def record_is_reader(ctx: Ctx, record: dict) -> bool:
 
 
 def _pending(ctx: Ctx, partition: str | None = None, dispatch: str | None = None) -> tuple[Path, dict] | None:
-    """A pending MCP request (of ``partition``). With ``dispatch``, the other
+    """A pending worker request (of ``partition``). With ``dispatch``, the other
     readers of the current batch do not count: they run concurrently with it."""
     readers = set((sm.batch_of(ctx.data).get("running") or {}))
-    for path in (ctx.data.get("mcp_pending") or {}).values():
-        pair = mcp.load(ctx.main, path)
+    for path in (ctx.data.get("workers") or {}).values():
+        pair = orca.load(ctx.main, path)
         if dispatch and pair[1].get("dispatch") != dispatch and pair[1].get("dispatch") in readers:
             continue
         if partition is None or pair[1].get("partition") == partition:
@@ -768,33 +772,42 @@ def require_report_decision(ctx: Ctx) -> None:
 
 
 def require_collected(ctx: Ctx) -> None:
-    if ctx.data.get("mcp_pending"):
-        raise DriverError("an MCP dispatch is pending; cancel/finish it and collect its terminal report first")
+    if ctx.data.get("workers"):
+        raise DriverError("a worker is pending: `arbor.py sync` collects it once it settled "
+                          "(`orca orchestration worker-stop --dispatch <id>` ends one that must not go on)")
 
 
-def prepare_mcp(ctx: Ctx, main: Path, executor, role: str, mode: str | None, dispatch: str,
-                kind: str, worktree: Path, branch: str, prompt: str, prompt_path: Path | None = None,
-                **extra) -> int:
-    """Caller holds the task lock. Persist the handoff before returning to the host."""
+def prepare_worker(ctx: Ctx, main: Path, executor, role: str, mode: str | None, dispatch: str,
+                   kind: str, worktree: Path, branch: str, prompt: str, prompt_path: Path,
+                   **extra) -> Path:
+    """Caller holds the task lock. Persist the request; ``launch`` starts its
+    worker once the lock is released."""
     if kind == "contract":
         blocked = planning_blocker(role, planning_runs(ctx))
         if blocked:
             raise DriverError(blocked)
     elif _pending(ctx, None if ctx.data.get("execution_binding") else extra.get("partition"), dispatch):
-        raise DriverError("an MCP dispatch is already pending; poll/collect it before starting another")
-    path = mcp.pending_path(main, ctx.name, dispatch)
+        raise DriverError("a worker is already pending; `arbor.py sync` it before starting another")
+    path = orca.request_path(main, ctx.name, dispatch)
+    reply_path = runtime_dir(main, "replies", ctx.name) / f"{dispatch}.md"
+    spec_path = prompt_path.with_name(f"{dispatch}.spec.md")
+    # The empty reply file exists before the snapshot: the worker's reply is never a new dirty path.
+    if not (write_text_atomic(reply_path, "")
+            and write_text_atomic(spec_path, orca.spec_text(prompt, prompt_path, reply_path))):
+        raise DriverError(f"cannot write {spec_path}")
     record = {
-        "schema": 1, "main": str(main), "task_dir": str(ctx.task_dir),
+        "schema": 2, "main": str(main), "task_dir": str(ctx.task_dir),
         "task": ctx.name, "dispatch": dispatch, "role": role, "mode": mode,
         "kind": kind, "state": ctx.data.get("state", "CONTRACT"),
         "worktree": str(worktree), "branch": branch, "executor": executor.name,
-        "timeout_s": executor.timeout, "started": utc_now(), "task_id": None, "status": "pending",
-        "prompt_path": str(prompt_path) if prompt_path else None,
-        "before": None, "mcp": mcp.request(executor, role, prompt, worktree, prompt_path),
+        "timeout_s": executor.timeout, "started": utc_now(), "status": "pending",
+        "orca": None, "launcher": os.getpid(),
+        "prompt_path": str(prompt_path), "spec_path": str(spec_path), "reply_path": str(reply_path),
+        "before": None,
         **extra,
     }
-    mcp.store(path, record)
-    ctx.data.setdefault("mcp_pending", {})[dispatch] = str(path)
+    orca.store(path, record)
+    ctx.data.setdefault("workers", {})[dispatch] = str(path)
     _upsert_dispatch(ctx.data, {
         "id": dispatch, "role": role, "mode": mode, "status": "running",
         "started": record["started"], "ended": None, "commit": None,
@@ -806,16 +819,41 @@ def prepare_mcp(ctx: Ctx, main: Path, executor, role: str, mode: str | None, dis
     if isinstance(reader, dict):
         reader["external"] = True
     save(ctx)
-    # Snapshot after the driver's own writes so they are not mistaken for the child's.
-    record["before"] = mcp.snapshot_dict(snapshot_refs(worktree))
+    # Snapshot after the driver's own writes so they are not mistaken for the worker's.
+    record["before"] = orca.snapshot_dict(snapshot_refs(worktree))
     if ctx.started and ctx.data.get("execution_binding"):
         record["control_before"] = ex.snapshot_control(ctx.main, ctx.control_worktree, ctx.task_rel, ctx.execution_main)
-    mcp.store(path, record)
-    print(json.dumps(mcp.envelope(path, record), ensure_ascii=False))
+    orca.store(path, record)
+    return path
+
+
+def claim_start(path: Path, record: dict) -> bool:
+    """Locked: take over the start of a prepared request whose launcher died
+    before Orca answered. False: it is started, or another process starts it."""
+    if orca.dispatch_id(record) or pid_alive(record.get("launcher") or 0):
+        return False
+    record["launcher"] = os.getpid()
+    orca.store(path, record)
+    return True
+
+
+def launch(main: Path, path: Path) -> int:
+    """Start the worker of a prepared request. No task lock is held: Orca
+    answers only once the agent is ready. A failed start is collected as a
+    failed dispatch."""
+    path, record = orca.load(main, str(path))
+    ctx = _request_ctx(record)
+    ids, error = orca.start(resolve_executor(ctx.config), record)
+    record["orca"] = ids
+    record.pop("launcher", None)
+    orca.store(path, record)
+    if error:
+        return collect(main, path, orca.result_of(record, error))
+    print(json.dumps(orca.envelope(path, record), ensure_ascii=False))
     return 0
 
 
-def prepare_run(ctx: Ctx, job: Job, executor) -> int:
+def prepare_run(ctx: Ctx, job: Job, executor) -> Path:
     unit = job.unit
     base = head(ctx, unit.worktree)
     range_spec = f"{job.range_from}..{base}" if job.range_from and job.role in RANGE_ROLES else None
@@ -828,58 +866,40 @@ def prepare_run(ctx: Ctx, job: Job, executor) -> int:
     prompt_file.write_text(prompt, encoding="utf-8")
     job_data = {**asdict(job), "unit": {"partition": unit.partition, "worktree": str(unit.worktree),
                                       "branch": unit.branch}}
-    return prepare_mcp(ctx, ctx.main, executor, job.role, job.mode, job.dispatch, "run", unit.worktree,
-                       unit.branch, prompt, prompt_path=prompt_file, job=job_data,
-                       partition=unit.partition, range_spec=range_spec, head_before=base, paths=paths)
+    return prepare_worker(ctx, ctx.main, executor, job.role, job.mode, job.dispatch, "run", unit.worktree,
+                          unit.branch, prompt, prompt_file, job=job_data,
+                          partition=unit.partition, range_spec=range_spec, head_before=base, paths=paths)
 
 
 def _request_ctx(record: dict) -> Ctx:
     ctx = load_ctx(record["task_dir"])
     if ctx is None:
-        raise DriverError(f"the task of MCP request {record['dispatch']} is gone")
+        raise DriverError(f"the task of worker request {record['dispatch']} is gone")
     return ctx
 
 
-def cmd_bind(args: argparse.Namespace) -> int:
-    main = _main()
-    path, record = mcp.load(main, args.request)
+def collect(main: Path, path: Path, result: ExecResult, sibling: str | None = None,
+            reason: str | None = None) -> int:
+    """Validate the result of a pending request and advance the task."""
+    _, record = orca.load(main, str(path))
     ctx = _request_ctx(record)
-    if not args.task_id.strip():
-        raise DriverError("task_id cannot be empty")
     with editing(ctx):
-        path, record = mcp.load(main, args.request)
+        path, record = orca.load(main, str(path))
         if record["status"] != "pending":
-            raise DriverError("this MCP dispatch has already been collected")
-        if record.get("task_id") not in (None, args.task_id):
-            raise DriverError("dispatch is already bound to a different codeg task_id")
-        record["task_id"] = args.task_id
-        mcp.store(path, record)
-    print(json.dumps(mcp.envelope(path, record), ensure_ascii=False))
-    return 0
-
-
-def cmd_collect(args: argparse.Namespace) -> int:
-    main = _main()
-    path, record = mcp.load(main, args.request)
-    ctx = _request_ctx(record)
-    payload = json.loads(Path(args.result).read_text(encoding="utf-8"))
-    with editing(ctx):
-        path, record = mcp.load(main, args.request)
-        if record["status"] != "pending":
-            raise DriverError("this MCP dispatch has already been collected")
-        if (ctx.data.get("mcp_pending") or {}).get(record["dispatch"]) != str(path):
-            raise DriverError("MCP request is no longer pending in this task")
+            raise DriverError("this dispatch has already been collected")
+        if (ctx.data.get("workers") or {}).get(record["dispatch"]) != str(path):
+            raise DriverError("worker request is no longer pending in this task")
         acceptance = None
         control_observations: list[str] = []
-        sibling = getattr(args, "accept_new_control_task", None)
-        if sibling and (not record.get("control_before") or not (args.reason or "").strip()):
+        reason = (reason or "").strip()
+        if sibling and (not record.get("control_before") or not reason):
             raise DriverError("--accept-new-control-task requires a product dispatch and a non-empty --reason")
         if record.get("control_before"):
             try:
                 if sibling:
                     additions = ex.accept_new_control_task(ctx.main, ctx.control_worktree, ctx.task_rel,
                                                           record["control_before"], ctx.execution_main, sibling)
-                    acceptance = {"new_task": sibling, "reason": args.reason.strip(), "files": additions,
+                    acceptance = {"new_task": sibling, "reason": reason, "files": additions,
                                   "checked_at": utc_now(), "dispatch": record["dispatch"]}
                 else:
                     ex.check_control(ctx.main, ctx.control_worktree, ctx.task_rel, record["control_before"], ctx.execution_main)
@@ -887,9 +907,7 @@ def cmd_collect(args: argparse.Namespace) -> int:
                 if sibling:
                     raise DriverError(str(e)) from None
                 control_observations.append(str(e))
-        result, report = mcp.terminal_result(
-            record, payload, Path(args.text).read_text(encoding="utf-8") if args.text else None)
-        before = mcp.snapshot_from(record["before"])
+        before = orca.snapshot_from(record["before"])
         role, mode, dispatch = record["role"], record["mode"], record["dispatch"]
         if record["kind"] == "run":
             guard_contract(ctx)
@@ -897,11 +915,11 @@ def cmd_collect(args: argparse.Namespace) -> int:
             unit = Unit(data["unit"]["partition"], Path(data["unit"]["worktree"]), data["unit"]["branch"])
             job = Job(**{**data, "unit": unit})
             if ctx.data["state"] != job.state:
-                raise DriverError("task state changed while delegated; resolve the pending task before advancing")
+                raise DriverError("task state changed while the worker ran; resolve the pending dispatch before advancing")
             out = validate_dispatch(ctx, unit, role, dispatch, before, record["paths"],
                                     record["head_before"], record["range_spec"], result, control_observations,
                                     mode)
-            ctx.data["mcp_pending"].pop(dispatch)
+            ctx.data["workers"].pop(dispatch)
             if acceptance:
                 ctx.data.setdefault("collection_exceptions", []).append(acceptance)
             _finish(ctx, job, out)
@@ -912,17 +930,62 @@ def cmd_collect(args: argparse.Namespace) -> int:
                 raise DriverError("task was started before its pending CONTRACT dispatch was collected")
             if ctx.started and ctx.data.get("state") != "CONTRACT":
                 raise DriverError("task left CONTRACT before its pending research was collected")
-            ctx.data["mcp_pending"].pop(dispatch)
+            ctx.data["workers"].pop(dispatch)
             rc = finish_contract(ctx, main, role, mode, dispatch, record["branch"],
                                  record["task_rel"], before, result, Path(record["worktree"]))
         else:
-            raise DriverError(f"unknown MCP dispatch kind {record['kind']!r}")
+            raise DriverError(f"unknown dispatch kind {record['kind']!r}")
         if acceptance:
             record["control_drift_acceptance"] = acceptance
-        record.update(status="collected", driver_exit_code=rc, ended=utc_now(),
-                      child_conversation_id=report.get("child_conversation_id"),
-                      **({"text_recovered": True} if args.text else {}))
-        mcp.store(path, record)
+        record.update(status="collected", driver_exit_code=rc, ended=utc_now())
+        orca.store(path, record)
+    return rc
+
+
+SYNC_POLL_S = 10
+
+
+def cmd_sync(args: argparse.Namespace) -> int:
+    """Read every pending worker's state from Orca and collect the settled ones."""
+    ctx = load_ctx(args.task)
+    if ctx is None:
+        raise DriverError("no active task (pass --task)")
+    if args.accept_new_control_task and not args.dispatch:
+        raise DriverError("--accept-new-control-task goes with --dispatch")
+    executor = resolve_executor(ctx.config)
+    deadline = time.monotonic() + (parse_timeout(args.wait) or 0)
+    while True:
+        reload(ctx)
+        rc, collected, waiting, open_lines = 0, 0, False, []
+        for dispatch, request in sorted((ctx.data.get("workers") or {}).items()):
+            if args.dispatch and dispatch != args.dispatch:
+                continue
+            path, record = orca.load(ctx.main, request)
+            label = f"{dispatch} {record['role']}"
+            if not orca.dispatch_id(record):
+                open_lines.append(f"{label}: not started (`arbor.py run --dispatch {dispatch}`)")
+                continue
+            state, detail = orca.observe(executor, record)
+            if state == "running":
+                open_lines.append(f"{label}: running (orca dispatch {orca.dispatch_id(record)})")
+            elif state == "waiting":
+                waiting = True
+                open_lines.append(f"{label}: waiting for a person ({detail}); answer it in the worker's Orca tab")
+            else:
+                result = orca.result_of(record, None if state == "done" else detail)
+                if state == "done" and not result.stdout.strip():
+                    print(f"{label}: no reply in {record['reply_path']}"
+                          + (f" (worker_done said: {detail})" if detail else "")
+                          + f"; its output: `orca orchestration worker-read --dispatch {orca.dispatch_id(record)}`")
+                rc |= collect(ctx.main, path, result, args.accept_new_control_task, args.reason)
+                collected += 1
+        if collected or waiting or not open_lines or time.monotonic() >= deadline:
+            break
+        time.sleep(min(SYNC_POLL_S, max(0.0, deadline - time.monotonic())))
+    for line in open_lines:
+        print(line)
+    if not collected and not open_lines:
+        print("no pending worker")
     return rc
 
 
@@ -962,7 +1025,7 @@ def _concurrent_moves(ctx: Ctx, unit: Unit, before, violations: list[str]) -> li
 def validate_dispatch(ctx: Ctx, unit: Unit, role: str, dispatch: str, before, paths,
                       head_before: str, range_spec: str | None, result: ExecResult,
                       observations: list[str] | None = None, mode: str | None = None) -> Outcome:
-    """Acceptance checks on a collected MCP reply."""
+    """Acceptance checks on a collected worker reply."""
     reply = result.stdout
     violations = check_after_dispatch(role, before, unit.worktree, own_branch=unit.branch,
                                       task_rel_dir=(f"__control__/{ctx.name}" if ctx.data.get("execution_binding") else ctx.task_rel),
@@ -1105,7 +1168,7 @@ def _begin(ctx: Ctx, step: sm.Step, requested: str | None) -> Job:
     """Locked: pick the dispatch id, check the brief and the worktree, mark a
     partition running, commit the brief."""
     data = ctx.data
-    if data.get("execution_binding") and (data.get("mcp_pending") or any(
+    if data.get("execution_binding") and (data.get("workers") or any(
             p.get("running") for p in (data.get("partitions") or {}).values())):
         raise DriverError("product task dispatches are serialized; collect/finish the running dispatch first")
     dispatch = step.dispatch or next_dispatch_id(data, ctx.task_dir)
@@ -1225,24 +1288,28 @@ def cmd_run(args: argparse.Namespace) -> int:
         if pending and not args.dispatch and record_is_reader(ctx, pending[1]) and sm.batch_of(ctx.data).get("ids"):
             pending = None  # start the next reader of the batch; the pending one runs alongside
         if pending:
-            print(json.dumps(mcp.envelope(*pending), ensure_ascii=False))
-            return 0
-        step = plan_for(ctx, args.partition)
-        if step.action == "start_wave":
-            return start_wave(ctx)
-        if step.action == "merge":
-            return merge_wave(ctx)
-        if step.action == "gate":
-            return cmd_gate(args, ctx)
-        if step.needs != "brief":
-            print(colored(step.summary, Colors.YELLOW))
-            return 1
-        executor = resolve_executor(ctx.config)
-        limit = executor.max_parallel
-        if limit and len(ctx.data.get("mcp_pending") or {}) >= limit:
-            raise DriverError(f"MCP max_parallel={limit} reached; collect an existing delegation first")
-        job = _begin(ctx, step, args.dispatch)
-        return prepare_run(ctx, job, executor)
+            path = pending[0]
+            if not claim_start(*pending):
+                print(json.dumps(orca.envelope(*pending), ensure_ascii=False))
+                return 0
+        else:
+            step = plan_for(ctx, args.partition)
+            if step.action == "start_wave":
+                return start_wave(ctx)
+            if step.action == "merge":
+                return merge_wave(ctx)
+            if step.action == "gate":
+                return cmd_gate(args, ctx)
+            if step.needs != "brief":
+                print(colored(step.summary, Colors.YELLOW))
+                return 1
+            executor = resolve_executor(ctx.config)
+            limit = executor.max_parallel
+            if limit and len(ctx.data.get("workers") or {}) >= limit:
+                raise DriverError(f"max_parallel={limit} reached; `arbor.py sync` a running worker first")
+            job = _begin(ctx, step, args.dispatch)
+            path = prepare_run(ctx, job, executor)
+    return launch(ctx.main, path)
 
 
 # ======================================================================# waves: partition worktrees and merge-back
@@ -1260,6 +1327,7 @@ def start_wave(ctx: Ctx) -> int:
     for name in parts:
         try:
             rec = pt.create_partition(ctx.execution_main, ctx.execution_config, ctx.name, name, start)
+            orca.register_worktree(ctx.config, Path(rec["worktree"]), ctx.worktree, f"{ctx.name}/{name}")
         except WorktreeError as e:
             raise DriverError(f"wave {wave}: {e}") from None
         rec["step"] = "implement"
@@ -1378,38 +1446,46 @@ def cmd_run_contract(args: argparse.Namespace) -> int:
         if existing:
             if existing["role"] != role or existing["kind"] != "contract":
                 raise DriverError("pending dispatch belongs to another role; use next --role to prepare a new angle")
-            path, record = mcp.load(main, existing["request_path"])
+            path, record = orca.load(main, existing["request_path"])
             if record["mode"] != mode:
                 raise DriverError("pending dispatch has a different review mode")
-            print(json.dumps(mcp.envelope(path, record), ensure_ascii=False))
-            return 0
-        blocked = planning_blocker(role, runs)
-        if blocked:
-            raise DriverError(blocked)
-        dispatch = requested or next_dispatch_id(ctx.data, ctx.task_dir)
-        used = any(d.get("id") == dispatch for d in ctx.data.get("dispatches") or [])
-        if used or (ctx.task_dir / "reports" / f"{dispatch}.md").exists():
-            raise DriverError(f"dispatch {dispatch} has already been used; obtain a new id with next --role")
-        brief = _read_brief(ctx, dispatch)
-        record = _live_integration(ctx) if mode == "sweep" else None
-        if record:
-            brief = (f"The merged children are checked out at {record['worktree']} (branch {record['branch']}); "
-                     "read the code there, not in the main checkout.\n\n" + brief)
-        task_dir = ctx.task_dir
-        worktree = ctx.control_worktree if ctx.started else main
-        task_rel = task_dir.relative_to(worktree).as_posix()
-        before = snapshot_refs(worktree)
-        if before.head_ref is None or not before.head_ref.startswith("refs/heads/"):
-            raise DriverError(f"{worktree} is on a detached HEAD; check out a branch first")
-        branch = before.head_ref[len("refs/heads/"):]
-        executor = resolve_executor(ctx.config)
-        prompt = build_prompt(worktree, task_dir, role, mode, range_spec, dispatch, brief)
-        prompt_file = runtime_dir(main, "prompts", ctx.name) / f"{dispatch}.md"
-        if not write_text_atomic(prompt_file, prompt):
-            raise DriverError(f"cannot write {prompt_file}")
-        return prepare_mcp(ctx, main, executor, role, mode, dispatch, "contract", worktree, branch,
-                           prompt, prompt_path=prompt_file, task_rel=task_rel,
-                           planning_started=ctx.started)
+            if not claim_start(path, record):
+                print(json.dumps(orca.envelope(path, record), ensure_ascii=False))
+                return 0
+        else:
+            path = _prepare_contract(ctx, main, role, mode, requested, range_spec, runs)
+    return launch(main, path)
+
+
+def _prepare_contract(ctx: Ctx, main: Path, role: str, mode: str | None, requested: str | None,
+                      range_spec: str | None, runs: list[dict]) -> Path:
+    """Locked: allocate the dispatch, assemble its prompt and persist the request."""
+    blocked = planning_blocker(role, runs)
+    if blocked:
+        raise DriverError(blocked)
+    dispatch = requested or next_dispatch_id(ctx.data, ctx.task_dir)
+    used = any(d.get("id") == dispatch for d in ctx.data.get("dispatches") or [])
+    if used or (ctx.task_dir / "reports" / f"{dispatch}.md").exists():
+        raise DriverError(f"dispatch {dispatch} has already been used; obtain a new id with next --role")
+    brief = _read_brief(ctx, dispatch)
+    record = _live_integration(ctx) if mode == "sweep" else None
+    if record:
+        brief = (f"The merged children are checked out at {record['worktree']} (branch {record['branch']}); "
+                 "read the code there, not in the main checkout.\n\n" + brief)
+    task_dir = ctx.task_dir
+    worktree = ctx.control_worktree if ctx.started else main
+    task_rel = task_dir.relative_to(worktree).as_posix()
+    before = snapshot_refs(worktree)
+    if before.head_ref is None or not before.head_ref.startswith("refs/heads/"):
+        raise DriverError(f"{worktree} is on a detached HEAD; check out a branch first")
+    branch = before.head_ref[len("refs/heads/"):]
+    executor = resolve_executor(ctx.config)
+    prompt = build_prompt(worktree, task_dir, role, mode, range_spec, dispatch, brief)
+    prompt_file = runtime_dir(main, "prompts", ctx.name) / f"{dispatch}.md"
+    if not write_text_atomic(prompt_file, prompt):
+        raise DriverError(f"cannot write {prompt_file}")
+    return prepare_worker(ctx, main, executor, role, mode, dispatch, "contract", worktree, branch,
+                          prompt, prompt_file, task_rel=task_rel, planning_started=ctx.started)
 
 
 def finish_contract(ctx: Ctx, main: Path, role: str, mode: str | None, dispatch: str,
@@ -2001,20 +2077,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--autopilot", action="store_true",
                    help="keep going until a decision, a human gate, STOP, red or a failed dispatch")
     p.set_defaults(func=cmd_run)
-    p = sub.add_parser("bind", help="bind a prepared MCP dispatch to codeg's returned task_id")
-    p.add_argument("--request", required=True)
-    p.add_argument("--task-id", required=True)
-    p.set_defaults(func=cmd_bind)
-    p = sub.add_parser("collect", help="validate a terminal codeg MCP report and advance the task")
-    p.add_argument("--request", required=True)
-    p.add_argument("--result", required=True, help="file containing the complete get_delegation_status JSON")
+    p = sub.add_parser("sync", help="read the pending workers' state from Orca, collect the settled ones")
+    p.add_argument("--dispatch", help="only this dispatch (d-NNN)")
+    p.add_argument("--wait", metavar="DURATION",
+                   help="poll until a worker settles or needs a person, at most this long (10m, 90s)")
     p.add_argument("--accept-new-control-task", metavar="NAME",
                    help="explicitly accept only a newly created sibling task in control main; audit hashes are recorded")
     p.add_argument("--reason", help="required justification for --accept-new-control-task")
-    p.add_argument("--text", metavar="FILE",
-                   help="the child's reply recovered by hand when the completed report has no text "
-                        "(codeg result cache expired: get_session_info)")
-    p.set_defaults(func=cmd_collect)
+    p.set_defaults(func=cmd_sync)
     p = sub.add_parser("children", help="one line per child task: state, merged; the parent's integration branch")
     p.add_argument("--json", action="store_true")
     p.add_argument("--cleanup", action="store_true",

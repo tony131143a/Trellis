@@ -14,7 +14,7 @@
 
 ```text
 Phase 1: Plan    -> INTAKE (tier light / standard / full, consent) -> CONTRACT (explore, one question list, contract.md, + design.md for standard, + waves.md for full, seed-context, validation, plan review, human approval, task.py start)
-Phase 2: Drive   -> `arbor.py next` loop: BUILD (implement: code + tests) -> GATE -> REVIEW (light: self-check -> fix; standard / full: candidates -> verify (with repros) -> fix; full: + sweep; after a fix: GATE with the repros -> recheck of the delta, skipped when the repros cover the fix; a light task escalates to standard on its own signals); an integration child: BUILD -> GATE -> FINISH, its parent reviews all children at once after `task.py integrate`
+Phase 2: Drive   -> `arbor.py next` loop: BUILD (implement: code + tests) -> GATE -> REVIEW (light: self-check -> fix; standard / full: candidates (self-verified, with repros) -> fix; full: + sweep; after a fix: GATE with the repros -> recheck of the delta, skipped when the repros cover the fix; a light task escalates to standard on its own signals); an integration child: BUILD -> GATE -> FINISH, its parent reviews all children at once after `task.py integrate`
 Phase 3: Finish  -> scorecard, spec update, PR, human --no-ff merge, cleanup
 ```
 

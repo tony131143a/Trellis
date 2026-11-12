@@ -1,7 +1,7 @@
 /**
- * CONTRACT planning through the codeg MCP executor: independent explore /
- * architect angles fan out without a count limit, each a delegation the host
- * binds and collects in any order; a plan review waits for all of them.
+ * CONTRACT planning through Orca workers: independent explore / architect
+ * angles fan out without a count limit, each a worker `sync` collects in any
+ * order; a plan review waits for all of them.
  */
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -13,6 +13,8 @@ import {
   TASK,
   git,
   hasPython,
+  orcaCalls,
+  setOrcaState,
   setupFixture,
   writeFile,
   type Fixture,
@@ -21,6 +23,14 @@ import {
 const T = ["--task", `.arbor/tasks/${TASK}`];
 const EXPLORE = "## Explore Results\nIndependent evidence.\n";
 const ARCHITECT = "## Architect: latency\nIndependent design.\n";
+
+interface Worker {
+  request_path: string;
+  dispatch: string;
+  prompt_path: string;
+  reply_path: string;
+  orca_dispatch: string;
+}
 
 describe.skipIf(!hasPython())(
   "parallel planning angles",
@@ -31,10 +41,12 @@ describe.skipIf(!hasPython())(
 
     function setup(limit = 3, start = false) {
       f = setupFixture({ start });
-      writeFile(
-        f.repo,
-        ".arbor/config.yaml",
-        `executors:\n  default: codeg\n  codeg:\n    type: codeg-mcp\n    assistant: arbor-{role}\n    max_parallel: ${limit}\n    assistant_ids:\n      explore: 2\n      architect: 3\n      review: 6\n`,
+      const config = path.join(f.repo, ".arbor/config.yaml");
+      fs.writeFileSync(
+        config,
+        fs
+          .readFileSync(config, "utf8")
+          .replace("    timeout: 30s\n", `    timeout: 30s\n    max_parallel: ${limit}\n`),
       );
     }
     function prepare(id: string, role = "explore") {
@@ -49,32 +61,34 @@ describe.skipIf(!hasPython())(
         id,
       );
       expect(result.status, result.stdout + result.stderr).toBe(0);
-      return JSON.parse(result.stdout) as {
-        request_path: string;
-        dispatch: string;
-        prompt_path: string;
-        mcp: { arguments: { task: string } };
-      };
+      return JSON.parse(result.stdout) as Worker;
     }
-    // The MCP task text is only the header plus a `Prompt:` pointer; the injected context lives in that file.
+    // The worker's spec is only the header plus pointers; the injected context lives in the prompt file.
     const promptOf = (p: { prompt_path: string }) =>
       fs.readFileSync(p.prompt_path, "utf8");
-    function collect(request: string, id: string, role = "explore") {
-      expect(f.run("bind", "--request", request, "--task-id", id).status).toBe(
-        0,
+    const specOf = (p: { request_path: string }) =>
+      fs.readFileSync(
+        JSON.parse(fs.readFileSync(p.request_path, "utf8")).spec_path,
+        "utf8",
       );
-      const file = path.join(f.tmp, `${id}.json`);
-      fs.writeFileSync(
-        file,
-        JSON.stringify({
-          task_id: id,
-          status: "completed",
-          text: role === "architect" ? ARCHITECT : EXPLORE,
-        }),
-      );
-      const result = f.run("collect", "--request", request, "--result", file);
+    /** The worker writes its reply and reports done in Orca. */
+    function settle(p: Worker, role = "explore") {
+      fs.writeFileSync(p.reply_path, role === "architect" ? ARCHITECT : EXPLORE);
+      setOrcaState(f, p.orca_dispatch, {
+        dispatch: { id: p.orca_dispatch, status: "completed" },
+      });
+    }
+    const syncArgs = (p: Worker) => [
+      "--task",
+      f.taskDir,
+      "sync",
+      "--dispatch",
+      p.dispatch,
+    ];
+    function collect(p: Worker, role = "explore") {
+      settle(p, role);
+      const result = f.run(...syncArgs(p));
       expect(result.status, result.stdout + result.stderr).toBe(0);
-      return file;
     }
     function asyncRun(id: string, role = "explore") {
       return asyncDriver([...T, "run", "--role", role, "--dispatch", id]);
@@ -112,12 +126,12 @@ describe.skipIf(!hasPython())(
         b = prepare("d-002", "architect"),
         c = prepare("d-003");
       for (const p of [a, b, c]) {
-        expect(p.mcp.arguments.task).toContain(`Prompt: ${p.prompt_path}`);
+        expect(specOf(p)).toContain(`Prompt: ${p.prompt_path}`);
         expect(promptOf(p)).toContain(`/research/${p.dispatch}-`);
       }
       const pending = JSON.parse(f.run(...T, "next", "--json").stdout);
       expect(
-        pending.pending_delegations.map(
+        pending.pending_workers.map(
           (d: { dispatch: string }) => d.dispatch,
         ),
       ).toEqual(["d-001", "d-002", "d-003"]);
@@ -136,8 +150,8 @@ describe.skipIf(!hasPython())(
         { cwd: f.repo, env: { ...process.env, ...SESSION }, encoding: "utf8" },
       );
       expect(start.status).toBe(1);
-      expect(start.stdout).toContain("collect pending MCP");
-      collect(c.request_path, "three");
+      expect(start.stdout).toContain("the pending workers");
+      collect(c);
       expect(
         JSON.parse(f.run(...T, "next", "--role", "architect", "--json").stdout),
       ).toMatchObject({ needs: "brief", dispatch: "d-004" });
@@ -147,29 +161,22 @@ describe.skipIf(!hasPython())(
           `d-${String(n).padStart(3, "0")}`,
           n % 2 ? "explore" : "architect",
         );
-        collect(p.request_path, `angle-${n}`, n % 2 ? "explore" : "architect");
+        collect(p, n % 2 ? "explore" : "architect");
       }
-      collect(b.request_path, "two", "architect");
-      const result = collect(a.request_path, "one");
+      collect(b, "architect");
+      collect(a);
       expect(f.taskJson().dispatches).toHaveLength(8);
       expect(
         f.taskJson().dispatches.map((d: { status: string }) => d.status),
       ).toEqual(Array(8).fill("ok"));
-      expect(f.taskJson().mcp_pending).toEqual({});
+      expect(f.taskJson().workers).toEqual({});
       expect(git(f.repo, "rev-parse", "HEAD")).toBe(before);
-      expect(
-        f.run("collect", "--request", a.request_path, "--result", result)
-          .status,
-      ).toBe(1);
+      expect(f.run(...syncArgs(a)).stdout).toContain("no pending worker");
     });
 
     it("ignores max_parallel for research while keeping dispatch replay idempotent", () => {
       setup(1);
       const a = prepare("d-001");
-      expect(
-        f.run("bind", "--request", a.request_path, "--task-id", "bound-one")
-          .status,
-      ).toBe(0);
       const replay = f.run(
         ...T,
         "run",
@@ -179,15 +186,14 @@ describe.skipIf(!hasPython())(
         "d-001",
       );
       expect(JSON.parse(replay.stdout)).toMatchObject({
-        task_id: "bound-one",
-        mcp: null,
+        orca_dispatch: "orca-d-001",
         request_path: a.request_path,
       });
       expect(
         f.run(...T, "run", "--role", "architect", "--dispatch", "d-001").status,
       ).toBe(1);
       for (let n = 2; n <= 6; n++) prepare(`d-00${n}`, "architect");
-      expect(Object.keys(f.taskJson().mcp_pending)).toHaveLength(6);
+      expect(Object.keys(f.taskJson().workers)).toHaveLength(6);
       expect(
         f.run(...T, "run", "--role", "explore", "--dispatch", "../escape")
           .status,
@@ -210,22 +216,20 @@ describe.skipIf(!hasPython())(
         (r) => JSON.parse(r.out) as { request_path: string; dispatch: string },
       );
       expect(new Set(requests.map((r) => r.request_path)).size).toBe(3);
-      expect(Object.keys(f.taskJson().mcp_pending).sort()).toEqual([
+      expect(Object.keys(f.taskJson().workers).sort()).toEqual([
         "d-001",
         "d-002",
         "d-003",
       ]);
       for (const r of requests)
-        expect(fs.readFileSync(r.request_path, "utf8")).toContain(
-          `Dispatch: ${r.dispatch}`,
-        );
+        expect(specOf(r)).toContain(`Dispatch: ${r.dispatch}`);
       expect(
         JSON.parse(f.run(...T, "next", "--role", "explore", "--json").stdout)
           .dispatch,
       ).toBe("d-004");
     });
 
-    it("two retries of the same id prepare exactly one MCP request", async () => {
+    it("two retries of the same id prepare one request and start one worker", async () => {
       setup(3);
       f.brief("d-001");
       const results = await Promise.all([asyncRun("d-001"), asyncRun("d-001")]);
@@ -234,6 +238,9 @@ describe.skipIf(!hasPython())(
         JSON.parse(results[1].out).request_path,
       );
       expect(f.taskJson().dispatches).toHaveLength(1);
+      expect(
+        orcaCalls(f).filter((argv) => argv[1] === "worker-start"),
+      ).toHaveLength(1);
     });
 
     it("does not inject an unfinished sibling's output into another architecture perspective", () => {
@@ -252,7 +259,7 @@ describe.skipIf(!hasPython())(
       const b = prepare("d-002", "architect");
       expect(promptOf(b)).not.toContain("UNFINISHED_SIBLING_EVIDENCE");
       expect(promptOf(b)).toContain("COMPLETED_PREVIOUS_EVIDENCE");
-      collect(a.request_path, "completed");
+      collect(a);
       const c = prepare("d-003", "architect");
       expect(promptOf(c)).toContain("UNFINISHED_SIBLING_EVIDENCE");
       expect(
@@ -271,17 +278,17 @@ describe.skipIf(!hasPython())(
       const a = prepare("d-001"),
         b = prepare("d-002", "architect");
       expect(f.run("resume").status).toBe(1);
-      collect(b.request_path, "design", "architect");
-      collect(a.request_path, "facts");
+      collect(b, "architect");
+      collect(a);
       expect(f.taskJson()).toMatchObject({
         state: "CONTRACT",
-        mcp_pending: {},
+        workers: {},
       });
       expect(f.run("resume").status).toBe(0);
       expect(f.taskJson().state).toBe("BUILD");
     });
 
-    it("collects multiple MCP reports concurrently without dropping a sibling result", async () => {
+    it("collects several settled workers concurrently without dropping a sibling result", async () => {
       setup(3);
       const requests = [
         prepare("d-001"),
@@ -289,29 +296,17 @@ describe.skipIf(!hasPython())(
         prepare("d-003"),
       ];
       const commands = requests.map((p, i) => {
-        const id = `reader-${i}`;
-        expect(
-          f.run("bind", "--request", p.request_path, "--task-id", id).status,
-        ).toBe(0);
-        const file = path.join(f.tmp, `${id}.json`);
-        fs.writeFileSync(
-          file,
-          JSON.stringify({
-            task_id: id,
-            status: "completed",
-            text: i === 1 ? ARCHITECT : EXPLORE,
-          }),
-        );
+        settle(p, i === 1 ? "architect" : "explore");
         writeFile(
           f.taskDir,
           `research/${p.dispatch}-findings.md`,
           `Independent output ${i}`,
         );
-        return ["collect", "--request", p.request_path, "--result", file];
+        return syncArgs(p);
       });
       const results = await Promise.all(commands.reverse().map(asyncDriver));
       for (const r of results) expect(r.code, r.out + r.err).toBe(0);
-      expect(f.taskJson().mcp_pending).toEqual({});
+      expect(f.taskJson().workers).toEqual({});
       expect(
         f.taskJson().dispatches.map((d: { status: string }) => d.status),
       ).toEqual(["ok", "ok", "ok"]);
@@ -336,31 +331,15 @@ describe.skipIf(!hasPython())(
       const a = prepare("d-001");
       prepare("d-002", "architect");
       writeFile(f.taskDir, "research/d-001-aborted.md", "ABORTED_DRAFT");
-      expect(
-        f.run(
-          "bind",
-          "--request",
-          a.request_path,
-          "--task-id",
-          "canceled-reader",
-        ).status,
-      ).toBe(0);
-      const file = path.join(f.tmp, "cancel.json");
-      fs.writeFileSync(
-        file,
-        JSON.stringify({
-          task_id: "canceled-reader",
-          status: "canceled",
-          message: "cancel only this angle",
-        }),
-      );
-      expect(
-        f.run("collect", "--request", a.request_path, "--result", file).status,
-      ).toBe(1);
-      expect(Object.keys(f.taskJson().mcp_pending)).toEqual(["d-002"]);
+      setOrcaState(f, a.orca_dispatch, {
+        dispatch: { id: a.orca_dispatch, status: "failed" },
+        lastReport: "cancel only this angle",
+      });
+      expect(f.run(...syncArgs(a)).status).toBe(1);
+      expect(Object.keys(f.taskJson().workers)).toEqual(["d-002"]);
       expect(f.taskJson().dispatches[0].status).toBe("fail");
       const c = prepare("d-003", "architect");
-      expect(c.mcp.arguments.task).not.toContain("ABORTED_DRAFT");
+      expect(promptOf(c)).not.toContain("ABORTED_DRAFT");
       expect(f.taskJson().stop).toBeUndefined();
     });
   },

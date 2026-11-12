@@ -1,6 +1,6 @@
 # Change Local Agents (Role Instructions)
 
-When the user wants to change the behavior of one of the six roles (`explore`, `architect`, `implement`, `review`, `fix`, `simplify`), edit the role instruction sources in `.arbor/agents/`. These roles run through the driver as codeg MCP delegations, not as platform sub-agents, so there are no `.claude/agents/` or `.starFactory/agents/` files to edit.
+When the user wants to change the behavior of one of the six roles (`explore`, `architect`, `implement`, `review`, `fix`, `simplify`), edit the role instruction sources in `.arbor/agents/`. These roles run through the driver as Orca workers, not as platform sub-agents, so there are no `.claude/agents/` or `.starFactory/agents/` files to edit.
 
 ## Read These Files First
 
@@ -23,7 +23,7 @@ When the user wants to change the behavior of one of the six roles (`explore`, `
 | Certain local specs must be read before implementation | `implement.jsonl` of the task, or spec rules |
 | Tests must use a fixture style or naming | `test.md`, or `.arbor/spec/` |
 | Review must apply extra angles or severity rules | `review.md` |
-| Verify or fix must follow stricter rules | `verify.md` / `fix.md` |
+| Review verdicts or fix must follow stricter rules | `review.md` / `fix.md` |
 | Specific commands must run at the gate | `gate.commands` in `.arbor/config.yaml`, or the contract's Verification map; roles do not own them |
 | Role must not modify certain directories | The write-boundary section of that role file (the driver enforces test paths and `.arbor/` itself) |
 | Role output format must be fixed | The report section of that role file |
@@ -31,7 +31,7 @@ When the user wants to change the behavior of one of the six roles (`explore`, `
 
 ## Modification Principles
 
-1. Preserve role boundaries: explore investigates and persists; architect designs; test writes failing tests; implement makes them pass; review finds, verify filters, fix applies, simplify cleans up. Only `explore` and `architect` write under `<task>/research/`; only writers commit.
+1. Preserve role boundaries: explore investigates and persists; architect designs; test writes failing tests; implement makes them pass; review finds and verifies, fix applies, simplify cleans up. Only `explore` and `architect` write under `<task>/research/`; only writers commit.
 2. Do not hard-code project specs into role files; long-term rules belong in `.arbor/spec/`.
 3. Keep the read order explicit: injected payload (or task JSONL) then `contract.md`, `design.md`, `waves.md`, `git diff <Range>`.
 4. Keep the hard limits: no push, merge, rebase or branch switch; never write under `.arbor/` outside the task directory; never dispatch.

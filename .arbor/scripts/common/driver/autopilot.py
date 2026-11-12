@@ -69,11 +69,6 @@ def run(next_payload: Callable[[], dict], run_step: Callable[[], int], finish: C
             if output.strip():
                 print(output.rstrip())
             return 1
-        if next_payload().get("needs") == "delegation":
-            print(f"{label}: hand off to codeg MCP")
-            if output.strip():
-                print(output.rstrip())
-            return 0
         print(f"{label}: ok")
     print(f"[autopilot] stop: {max_iterations} iterations without reaching a gate")
     return 1

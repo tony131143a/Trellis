@@ -158,7 +158,7 @@ describe.skipIf(!hasPython())(
       expect(
         f.run("run", "--partition", "tests", "--dispatch", "d-001").stderr,
       ).toContain("is d-002, not d-001");
-      // both partitions are delegated before either is collected
+      // both partition workers are started before either is collected
       const implRun = f.run("run", "--partition", "impl");
       ok(implRun);
       const testsRun = f.run(
@@ -179,7 +179,7 @@ describe.skipIf(!hasPython())(
         external: true,
       });
       expect(f.next()).toMatchObject({
-        needs: "delegation",
+        needs: "worker",
         dispatch: "d-001",
       });
       ok(complete(f, implRun));
@@ -427,15 +427,18 @@ describe.skipIf(!hasPython())(
         ["d-002", "tests", "running"],
       ]);
       const pending = f.next();
-      expect(pending.needs).toBe("delegation");
-      expect(pending.blocked_on).toBeUndefined();
+      expect(pending.needs).toBe("worker");
+      expect(pending.blocked_on).toBe(
+        "BUILD wave 1: waiting for d-001 (impl), d-002 (tests)",
+      );
+      expect(pending.items).toEqual([]);
       expect(
-        pending.items
-          .map((i: Json) => [i.dispatch, i.needs, i.partition])
+        pending.running
+          .map((r: Json) => [r.dispatch, r.kind, r.partition])
           .sort(),
       ).toEqual([
-        ["d-001", "delegation", "impl"],
-        ["d-002", "delegation", "tests"],
+        ["d-001", "worker", "impl"],
+        ["d-002", "worker", "tests"],
       ]);
       ok(complete(f, a));
       ok(complete(f, b));
@@ -450,7 +453,7 @@ describe.skipIf(!hasPython())(
         "done",
         "done",
       ]);
-      expect(data.mcp_pending).toEqual({});
+      expect(data.workers).toEqual({});
       expect(fs.existsSync(path.join(partitionWt(f, "impl"), IMPL.path))).toBe(
         true,
       );
@@ -655,7 +658,7 @@ print("ok")
         },
         "d-006": { reply: review("PASS", []) },
       });
-      // three candidate readers, all delegated before any is collected
+      // three candidate readers, all started before any is collected
       const candidates = f.next();
       expect(candidates).toMatchObject({
         state: "REVIEW",
@@ -674,12 +677,13 @@ print("ok")
         ok(res);
         return res;
       });
-      const delegated = f.next();
-      expect(delegated.needs).toBe("delegation");
-      expect(delegated.items.map((i: Json) => [i.dispatch, i.needs])).toEqual([
-        ["d-001", "delegation"],
-        ["d-002", "delegation"],
-        ["d-003", "delegation"],
+      const started = f.next();
+      expect(started.needs).toBe("worker");
+      expect(started.items).toEqual([]);
+      expect(started.running.map((r: Json) => [r.dispatch, r.kind])).toEqual([
+        ["d-001", "worker"],
+        ["d-002", "worker"],
+        ["d-003", "worker"],
       ]);
       expect(Object.keys(f.taskJson().batch.running)).toEqual([
         "d-001",

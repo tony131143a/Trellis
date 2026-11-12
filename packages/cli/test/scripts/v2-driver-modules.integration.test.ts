@@ -23,7 +23,7 @@ function probe(body: string, cwd = os.tmpdir()): string {
 }
 
 describe.skipIf(!hasPython())("driver modules", { timeout: 30_000 }, () => {
-  it("executor: timeouts, the built-in codeg executor, overlays, rejected configurations", () => {
+  it("executor: timeouts, the built-in orca executor, role overrides, rejected configurations", () => {
     const out = probe(`
 from common.driver.executor import *
 assert parse_timeout("90m") == 5400 and parse_timeout("30s") == 30 and parse_timeout("2h") == 7200
@@ -32,24 +32,31 @@ try:
     parse_timeout("soon"); raise SystemExit("bad timeout accepted")
 except ExecutorError: pass
 ex = resolve_executor({})
-assert (ex.name, ex.timeout, ex.max_parallel, ex.assistant, ex.assistant_ids, ex.agent_type) == \\
-    ("codeg", 5400, 5, "arbor-{role}", None, None), ex
-ex = resolve_executor({"executors": {"codeg": {"timeout": "30s", "agent_type": "coder"}}})
-assert (ex.name, ex.timeout, ex.assistant, ex.agent_type) == ("codeg", 30, "arbor-{role}", "coder"), ex
-ex = resolve_executor({"executors": {"default": "x", "x": {"type": "codeg-mcp", "assistant_ids": {"fix": "a-1"}}}})
-assert (ex.name, ex.timeout, ex.assistant_ids) == ("x", None, {"fix": "a-1"}), ex
+assert (ex.name, ex.command, ex.timeout, ex.max_parallel, ex.keep_open, ex.default, ex.roles) == \\
+    ("orca", "orca", 5400, 5, False, Launch("codex"), {}), ex
+ex = resolve_executor({"executors": {"orca": {"timeout": "30s", "agent": "claude", "keep_open": "true"}}})
+assert (ex.name, ex.timeout, ex.keep_open, ex.launch("fix")) == ("orca", 30, True, Launch("claude")), ex
+ex = resolve_executor({"executors": {"default": "x", "x": {
+    "type": "orca", "command": "/opt/orca", "agent": "codex", "model": "m-1",
+    "roles": {"explore": {"agent": "omp", "model": "@worker"}, "fix": {"effort": "high"}}}}})
+assert (ex.name, ex.command, ex.timeout) == ("x", "/opt/orca", None), ex
+assert ex.launch("explore") == Launch("omp", "@worker") and ex.launch("fix") == Launch("codex", "m-1", "high")
+assert ex.launch("review") == Launch("codex", "m-1")
 for cfg in (
     {"executors": {"default": "nope"}},
     {"executors": {"default": "x", "x": {"type": "command", "command": "sh run.sh"}}},
-    {"executors": {"default": "x", "x": {"type": "codeg-cli"}}},
-    {"executors": {"codeg": {"assistant_ids": "a-1"}}},
+    {"executors": {"default": "x", "x": {"type": "orca", "command": "orca"}}},
+    {"executors": {"default": "x", "x": {"type": "orca", "agent": "codex"}}},
+    {"executors": {"orca": {"effort": "high"}}},
+    {"executors": {"orca": {"roles": "explore"}}},
+    {"executors": {"orca": {"roles": {"explore": "omp"}}}},
 ):
     try:
         resolve_executor(cfg); raise SystemExit("bad executor accepted: %r" % (cfg,))
     except ExecutorError: pass
-r = ExecResult("codeg", "mcp", 0, "ok", "", "t0", "t1", 1.0)
-assert r.ok and not ExecResult("codeg", "mcp", 1, "", "", "t0", "t1", 1.0).ok
-assert not ExecResult("codeg", "mcp", 0, "", "", "t0", "t1", 1.0, error="timed out").ok
+r = ExecResult("orca", "worker", 0, "ok", "", "t0", "t1", 1.0)
+assert r.ok and not ExecResult("orca", "worker", 1, "", "", "t0", "t1", 1.0).ok
+assert not ExecResult("orca", "worker", 0, "", "", "t0", "t1", 1.0, error="timed out").ok
 print("ok")
 `);
     expect(out).toBe("ok");

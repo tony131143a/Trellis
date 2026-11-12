@@ -82,18 +82,9 @@ describe("settingsTemplate PreToolUse hooks", () => {
     expect(preToolUseNames).not.toContain("delegate_to_agent");
   });
 
-  it("syncs codeg MCP delegations after delegate_to_agent / get_delegation_status", () => {
-    const postToolUse = settings.hooks.PostToolUse as {
-      matcher: string;
-      hooks: { type: string; command: string; timeout: number }[];
-    }[];
-    const entry = postToolUse.find((e) => e.matcher.includes("delegate_to_agent"));
-    expect(entry?.matcher).toBe("^mcp__.+__(delegate_to_agent|get_delegation_status)$");
-    expect(entry?.hooks[0].command).toBe(
-      "{{PYTHON_CMD}} .claude/hooks/sync-delegation.py",
-    );
-    // `arbor.py collect` validates the reply and may run the contract's red check.
-    expect(entry?.hooks[0].timeout).toBeGreaterThanOrEqual(300);
+  it("registers no PostToolUse hook (the driver starts and syncs Orca workers itself)", () => {
+    expect(settings.hooks.PostToolUse).toBeUndefined();
+    expect(settingsTemplate).not.toContain("sync-delegation");
   });
 
   it("guards the built-in Agent|Task tool and drops the bare Task / Agent matchers", () => {

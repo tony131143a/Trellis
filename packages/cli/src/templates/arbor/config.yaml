@@ -113,22 +113,40 @@ max_journal_lines: 2000
 #-------------------------------------------------------------------------------
 # Executors
 #-------------------------------------------------------------------------------
-# How `arbor.py run` executes a role: through codeg MCP (`type: codeg-mcp`).
-# `arbor.py run` prepares a delegate_to_agent request, the host session calls
-# codeg MCP, the sync hook binds the task_id and collects the terminal report.
-# Model, effort and permissions belong to codeg: configure one `arbor-<role>`
-# assistant per role. Optional assistant_ids maps role names to codeg
-# assistant ids; without it the host resolves `assistant` from the MCP roster.
-# `timeout` bounds one dispatch; max_parallel bounds simultaneous delegations
-# of one task (BUILD partitions, reader batches). CONTRACT explore/architect
-# readers have no cap; the main agent chooses their scopes and fan-out.
+# How `arbor.py run` executes a role: as an Orca worker (`type: orca`).
+# `arbor.py run` starts the worker itself with `orca orchestration
+# worker-start` in the dispatch's worktree; the worker writes its reply to
+# the request's reply file and reports `worker_done`; `arbor.py sync` reads
+# the workers' state from Orca and collects the settled ones.
+#   command       the Orca CLI; an absolute path when it is not on PATH
+#                 (macOS: /Applications/Orca.app/Contents/Resources/bin/orca)
+#   agent         the Orca agent id every role starts as (codex, claude, omp, ...)
+#   model/effort  optional `--model` / `--effort` of the launch (effort needs model)
+#   roles         per-role overrides of agent / model / effort
+#   timeout       bounds one dispatch; `sync` stops a worker past it
+#   max_parallel  bounds simultaneous workers of one task (BUILD partitions,
+#                 reader batches). CONTRACT explore/architect readers have no
+#                 cap; the main agent chooses their scopes and fan-out.
+#   keep_open     true: a finished worker stays open in Orca (default: Orca
+#                 closes it shortly after it reports; its output stays readable)
+# Permissions belong to Orca: set each agent's permission mode under
+# Settings > Agents so that workers do not stop on prompts. The main agent
+# must itself run inside Orca, and the repository must be added to Orca with
+# non-Orca worktrees shown (`orca repo add`, `orca repo set
+# --external-worktree-visibility show`).
 executors:
-  default: codeg
-  codeg:
-    type: codeg-mcp
-    assistant: "arbor-{role}"
+  default: orca
+  orca:
+    type: orca
+    command: orca
+    agent: codex
     timeout: 90m
     max_parallel: 5
+    keep_open: false
+    # roles:
+    #   explore:
+    #     agent: omp
+    #     model: "@worker"
 
 #-------------------------------------------------------------------------------
 # Gate

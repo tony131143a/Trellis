@@ -54,7 +54,7 @@ This repository runs Arbor on itself:
 └── settings.json        # Hook configuration
 
 .arbor/                  # Arbor workflow (installed copy + this repo's own specs)
-├── agents/              # Instruction sources for the codeg assistants
+├── agents/              # Instruction sources for the Orca workers
 ├── scripts/             # Python scripts (copy of templates/arbor/scripts)
 │   ├── common/          # Shared utilities (paths.py, developer.py, dispatch_context.py, etc.)
 │   ├── hooks/           # Lifecycle hook scripts (project-specific)

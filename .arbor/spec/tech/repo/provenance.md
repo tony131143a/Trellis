@@ -41,7 +41,7 @@ e.g. `packages/cli/src/templates/trellis/` → `templates/arbor/`,
   manifests older than `0.1.0`.
 - 21 main-agent platforms; only `claude-code` and `star` remain.
 - Platform-native sub-agent definitions (`.claude/agents/*.md`,
-  `.starFactory/agents/*.md`); replaced by dispatch to codeg assistants.
+  `.starFactory/agents/*.md`); replaced by roles the driver dispatches as Orca workers.
 
 ## What still says "Trellis"
 

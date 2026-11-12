@@ -169,7 +169,7 @@ describe("arbor template constants", () => {
     }
   });
 
-  it("workflow.md drops v1 dispatch machinery and describes codeg MCP handoffs", () => {
+  it("workflow.md drops v1 dispatch machinery and describes Orca workers", () => {
     for (const gone of [
       "dispatch.py",
       "Diff:",
@@ -186,12 +186,18 @@ describe("arbor template constants", () => {
         `workflow.md must not mention ${gone}`,
       ).not.toContain(gone);
     }
-    expect(workflowMdTemplate).toContain("delegate_to_agent");
-    expect(workflowMdTemplate).toContain("arbor.py collect --request");
-    expect(workflowMdTemplate).toContain(
-      "Claude Code and Codex both use this same MCP flow",
-    );
-    expect(workflowMdTemplate).not.toContain("codeg-cli run -A");
+    expect(workflowMdTemplate).toContain("orca orchestration worker-start");
+    expect(workflowMdTemplate).toContain("arbor.py sync");
+    expect(workflowMdTemplate).toContain("worker_done");
+    for (const gone of [
+      "codeg",
+      "delegate_to_agent",
+      "arbor.py collect",
+      "arbor.py bind",
+      "sync-delegation",
+    ]) {
+      expect(workflowMdTemplate).not.toContain(gone);
+    }
   });
 
   it("workflow.md ships the reference tables", () => {
@@ -518,12 +524,14 @@ describe("configYamlTemplate: executors and gate", () => {
     );
     const parsed = parseTemplate();
     expect(parsed.executors).toEqual({
-      default: "codeg",
-      codeg: {
-        type: "codeg-mcp",
-        assistant: "arbor-{role}",
+      default: "orca",
+      orca: {
+        type: "orca",
+        command: "orca",
+        agent: "codex",
         timeout: "90m",
         max_parallel: "5",
+        keep_open: "false",
       },
     });
     expect(parsed).not.toHaveProperty("conductor");
@@ -552,9 +560,9 @@ describe("configYamlTemplate: executors and gate", () => {
     expect(r.stderr).toBe("");
   });
 
-  it("ships only the codeg MCP executor", () => {
+  it("ships only the Orca executor", () => {
     expect(configYamlTemplate).not.toContain("type: command");
-    expect(configYamlTemplate).not.toContain("codeg-cli");
-    expect(configYamlTemplate).toContain("type: codeg-mcp");
+    expect(configYamlTemplate).not.toContain("codeg");
+    expect(configYamlTemplate).toContain("type: orca");
   });
 });

@@ -14,12 +14,12 @@ Platform files do not store business state.
 | Category | Paths | Purpose |
 | --- | --- | --- |
 | settings | `.claude/settings.json`, `.starFactory/settings.json` | Register hooks. Hook commands use the project-relative path of the platform directory. |
-| hooks | `.claude/hooks/`, `.starFactory/hooks/` | Session-start context, per-turn workflow-state (the `arbor next` summary), built-in Agent/Task guard, codeg delegation sync (bind/collect), shell session bridge. |
+| hooks | `.claude/hooks/`, `.starFactory/hooks/` | Session-start context, per-turn workflow-state (the `arbor next` summary), built-in Agent/Task guard, shell session bridge. |
 | skills | `.claude/skills/`, `.starFactory/skills/` | Workflow skills (brainstorm, before-dev, check, update-spec, break-loop) plus bundled skills (`arbor-meta`, `arbor-spec-bootstrap`). |
 | commands | `.claude/commands/arbor/`, `.starFactory/commands/arbor/` | Explicit entry points such as `/arbor:continue`, `/arbor:finish-work`, `/arbor:start`, `/arbor:workflow [request]`. |
 | root files | `CLAUDE.md`, `AGENTS.md` | Managed block between `<!-- ARBOR:START -->` and `<!-- ARBOR:END -->`; content outside the block is user-owned. |
 
-There are no platform-native sub-agent files. The six roles (explore, architect, implement, review, fix, simplify) use codeg MCP delegation after driver preparation (see `../local-architecture/dispatch.md`). Their instruction text lives in `.arbor/agents/*.md`.
+There are no platform-native sub-agent files. The six roles (explore, architect, implement, review, fix, simplify) run as Orca workers the driver starts after preparation (see `../local-architecture/dispatch.md`). Their instruction text lives in `.arbor/agents/*.md`.
 
 ## Integration Mode
 

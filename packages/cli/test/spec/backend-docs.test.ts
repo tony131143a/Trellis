@@ -61,14 +61,13 @@ describe("backend driver documentation", () => {
       "resume",
       "abandon",
       "prompt",
-      "bind",
-      "collect",
+      "sync",
       "finish",
       "children",
     ];
     const options = ["--task"];
     const retiredOptions = ["--as-conductor"];
-    const retiredCommands = ["conduct", "canary"];
+    const retiredCommands = ["conduct", "canary", "bind", "collect"];
     const missing: string[] = [];
     if (!doc.includes("arbor.py")) missing.push("arbor.py entry point");
     for (const command of commands) {
@@ -85,7 +84,7 @@ describe("backend driver documentation", () => {
         missing.push(`option ${option}`);
       }
     }
-    // The conductor layer is gone: its option and subcommand must stay absent.
+    // The conductor layer and the codeg handoff are gone: their option and subcommands must stay absent.
     for (const option of retiredOptions) {
       if (new RegExp(`${option}(?![\\w-])`).test(doc)) {
         missing.push(`retired option ${option} still documented`);

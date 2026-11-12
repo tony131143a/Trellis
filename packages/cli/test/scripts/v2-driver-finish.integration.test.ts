@@ -2,8 +2,8 @@
  * arbor.py FINISH: one `finish` before the merge (scorecard + merge command
  * or PR), merge detection, one `finish` after the merge for the cleanup
  * (worktree, archive, session pointer, journal), idempotent re-runs, and
- * `run --autopilot` from BUILD to the merge gate (handing each dispatch to
- * codeg MCP).
+ * `run --autopilot` from BUILD to the merge gate (starting each dispatch as
+ * an Orca worker).
  */
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -471,7 +471,7 @@ describe.skipIf(!hasPython())("arbor.py FINISH", { timeout: 90_000 }, () => {
     expect(fs.existsSync(path.join(archived(f), "task.json"))).toBe(true);
   });
 
-  it("--autopilot runs a light task from BUILD to the merge gate with default briefs, handing each dispatch to codeg", () => {
+  it("--autopilot runs a light task from BUILD to the merge gate with default briefs, starting each dispatch as a worker", () => {
     f = setupFixture();
     f.plan({
       "d-001": { write: IMPLEMENTED },
@@ -490,37 +490,39 @@ describe.skipIf(!hasPython())("arbor.py FINISH", { timeout: 90_000 }, () => {
       );
     let r = f.run("run", "--autopilot");
     expect(r.status, r.stdout + r.stderr).toBe(0);
-    // the hand-off line is followed by the delegation envelope the host must play
+    // it starts the worker, then stops until the worker is collected
     let lines = r.stdout.trim().split("\n");
-    expect(lines[0]).toBe(
-      "[autopilot 1] BUILD implement d-001: hand off to codeg MCP",
-    );
-    expect(lines).toHaveLength(2);
-    expect(JSON.parse(lines[1])).toMatchObject({ needs: "delegation" });
+    expect(lines).toEqual([
+      "[autopilot 1] BUILD implement d-001: ok",
+      expect.stringMatching(
+        /^\[autopilot 2\] BUILD implement d-001: stop, needs worker: /,
+      ),
+    ]);
     expect(
       fs.readFileSync(path.join(f.taskDir, "briefs/d-001.md"), "utf-8"),
     ).toBe("Default implement brief.\n");
     expect(f.taskJson().dispatches.map((d: Json) => [d.id, d.status])).toEqual([
       ["d-001", "running"],
     ]);
-    expect(
-      complete(f, { status: 0, stdout: lines[1], stderr: "" }).status,
-    ).toBe(0);
+    expect(complete(f, f.run("run")).status).toBe(0);
     r = f.run("run", "--autopilot");
     expect(r.status, r.stdout + r.stderr).toBe(0);
     lines = r.stdout.trim().split("\n");
-    expect(lines.slice(0, 2)).toEqual([
+    expect(lines).toEqual([
       "[autopilot 1] GATE: ok",
-      "[autopilot 2] REVIEW review/self-check d-002: hand off to codeg MCP",
+      "[autopilot 2] REVIEW review/self-check d-002: ok",
+      expect.stringMatching(
+        /^\[autopilot 3\] REVIEW review d-002: stop, needs worker: /,
+      ),
     ]);
-    expect(lines).toHaveLength(3);
     expect(
       fs.readFileSync(path.join(f.taskDir, "briefs/d-002.md"), "utf-8"),
     ).toBe("Default review brief.\n");
-    // `run` while a delegation is pending repeats its envelope
+    // `run` while its worker runs repeats the envelope and starts nothing
     expect(JSON.parse(f.run("run").stdout)).toMatchObject({
-      needs: "delegation",
-      request_path: JSON.parse(lines[2]).request_path,
+      needs: "worker",
+      dispatch: "d-002",
+      orca_dispatch: "orca-d-002",
     });
     expect(complete(f, f.run("run")).status).toBe(0);
     r = f.run("run", "--autopilot");
@@ -550,7 +552,7 @@ describe.skipIf(!hasPython())("arbor.py FINISH", { timeout: 90_000 }, () => {
       "Default implement brief.\n",
     );
     expect(f.run("run", "--autopilot").stdout).toContain(
-      "[autopilot 1] BUILD implement d-001: hand off to codeg MCP",
+      "[autopilot 2] BUILD implement d-001: stop, needs worker",
     );
     expect(complete(f, f.run("run")).status).toBe(0);
     const r = f.run("run", "--autopilot");

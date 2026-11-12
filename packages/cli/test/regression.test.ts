@@ -7122,8 +7122,7 @@ describe("regression: sub-agent context injection fallback (0.5.3)", () => {
   it("dispatch_context.py emits the marker for every role prompt", () => {
     const src = getAllScripts().get("common/dispatch_context.py") ?? "";
     expect(src).toContain(`MARKER = "${HOOK_INJECTED_MARKER}"`);
-    // The one role template opens with the marker, so the delegation hook
-    // stays idempotent on retries.
+    // The one role template opens with the marker.
     const body = src.split("def build_role_prompt(")[1] ?? "";
     expect(body, "build_role_prompt must exist").not.toBe("");
     expect(body.slice(0, 600)).toContain('return f"""{MARKER}');
@@ -7148,7 +7147,7 @@ describe("regression: sub-agent context injection fallback (0.5.3)", () => {
     expect(wf).toContain("Range: <base>..<head>");
     expect(wf).toContain("Dispatch: d-NNN");
     expect(wf).toContain("never use the built-in Agent/Task tool");
-    expect(wf).toContain("executed through codeg MCP");
+    expect(wf).toContain("started by the driver as an Orca worker");
   });
 });
 

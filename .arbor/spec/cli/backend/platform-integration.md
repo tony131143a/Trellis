@@ -159,7 +159,7 @@ Python scripts run in user projects at runtime and cannot import from the TS reg
 
 The shipped script tree (`packages/cli/src/templates/arbor/scripts/`) and Arbor's own dogfood copy (`.arbor/scripts/`) must stay byte-identical. This is build-enforced, see `script-conventions.md` → "Two script trees, one content".
 
-`task.py create` always seeds empty `implement.jsonl` / `check.jsonl` (every Arbor project dispatches to codeg assistants), see `task_store.py`.
+`task.py create` always seeds empty `implement.jsonl` / `check.jsonl` (every Arbor project dispatches Orca workers), see `task_store.py`.
 
 
 ## Active Task Resolution
@@ -450,9 +450,9 @@ leave every unrelated path on normal repository-root resolution.
 
 The dispatch context assembler caps how much task context is inlined into a
 dispatched assistant's prompt. It lives in `common/dispatch_context.py` and is
-called by the driver (`arbor.py`) before either command execution or MCP
-delegation, so injection formatting, caps, binary detection and config keys
-apply consistently to both executor types.
+called by the driver (`arbor.py`) before the Orca worker is started, so
+injection formatting, caps, binary detection and config keys apply to every
+dispatch.
 
 ### 2. Signatures
 
@@ -818,7 +818,7 @@ One line inside the block that is already contracted to become spoken output; id
 
 The native agent guard uses the same nested `hookSpecificOutput` envelope for
 `permissionDecision: deny`. Role context is assembled by the driver before
-execution; it does not depend on a hook rewriting delegation input.
+execution; it does not depend on a hook rewriting dispatch input.
 
 ### Constraint
 
@@ -919,7 +919,7 @@ Breadcrumb text lives in `workflow.md` as `[workflow-state:STATUS]...[/workflow-
 [workflow-state:in_progress]
 Flow: dispatch implement → dispatch check → arbor-update-spec → finish
 Next required action: inspect conversation history + git status, then execute the next uncompleted step in that sequence.
-Do NOT edit code in the main session; dispatch the implement role to a codeg assistant and dispatch the check role before reporting completion.
+Do NOT edit code in the main session; dispatch the implement role to an Orca worker and dispatch the check role before reporting completion.
 [/workflow-state:in_progress]
 ```
 

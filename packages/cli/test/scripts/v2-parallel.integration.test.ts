@@ -1,6 +1,6 @@
 /**
  * arbor.py reader batches: the REVIEW candidate readers (standard: 2) get
- * their dispatch ids up front, are all delegated through codeg MCP before
+ * their dispatch ids up front, are all started as Orca workers before
  * any is collected, and may be collected in any order; the step completes
  * when the last reader is in.
  */
@@ -15,6 +15,8 @@ import {
   dispatch,
   git,
   hasPython,
+  orcaCalls,
+  setOrcaState,
   setupFixture,
   writeFile,
   type Fixture,
@@ -140,7 +142,7 @@ describe.skipIf(!hasPython())(
         cycle_ids: [FINDING_ID],
       });
       expect(data.cycle.candidate_dispatches).toEqual(["d-002", "d-001"]);
-      expect(data.mcp_pending).toEqual({});
+      expect(data.workers).toEqual({});
       expect(
         data.dispatches.map((d: { id: string; status: string }) => [
           d.id,
@@ -220,22 +222,24 @@ describe.skipIf(!hasPython())(
       expect(f.taskJson().cycle.candidates_done).toBe(1);
     });
 
-    it("codeg MCP: next lists the delegated reader beside the other's brief; collected out of order", () => {
+    it("next lists the running reader beside the other's brief; collected out of order", () => {
       f = setupFixture({ tier: "standard" });
-      writeFile(
-        f.repo,
-        ".arbor/config.yaml",
-        "executors:\n  default: codeg\n  codeg:\n    type: codeg-mcp\n    assistant: arbor-{role}\n    max_parallel: 3\n" +
-          "mandate:\n  standard:\n    contract: ask\n    plausible: ask\n    merge: ask\n",
+      const config = path.join(f.repo, ".arbor/config.yaml");
+      fs.writeFileSync(
+        config,
+        fs
+          .readFileSync(config, "utf8")
+          .replace("    timeout: 30s\n", "    timeout: 30s\n    max_parallel: 3\n"),
       );
       seedCandidates(f);
       f.brief("d-001");
       f.brief("d-002");
       const first = JSON.parse(f.run("run", "--dispatch", "d-001").stdout);
-      expect(first).toMatchObject({ needs: "delegation", dispatch: "d-001" });
-      expect(first.mcp.arguments.task).toContain(
-        `Prompt: ${first.prompt_path}`,
-      );
+      expect(first).toMatchObject({
+        needs: "worker",
+        dispatch: "d-001",
+        orca_dispatch: "orca-d-001",
+      });
       const between = f.next();
       expect(between).toMatchObject({
         needs: "brief",
@@ -243,79 +247,53 @@ describe.skipIf(!hasPython())(
         readers_running: ["d-001"],
       });
       expect(
-        between.pending_delegations.map(
-          (d: { dispatch: string }) => d.dispatch,
-        ),
+        between.pending_workers.map((d: { dispatch: string }) => d.dispatch),
       ).toEqual(["d-001"]);
-      // Ready set: the unsent delegation of d-001 and d-002's brief, side by side.
+      // Ready set: d-002's brief is actionable while d-001's worker runs.
       expect(
         between.items.map((i: { needs: string; dispatch: string }) => [
           i.needs,
           i.dispatch,
         ]),
-      ).toEqual([
-        ["delegation", "d-001"],
-        ["brief", "d-002"],
-      ]);
+      ).toEqual([["brief", "d-002"]]);
+      const running = (payload: {
+        running: { dispatch: string; orca_dispatch: string }[];
+      }) => payload.running.map((r) => [r.dispatch, r.orca_dispatch]);
+      expect(running(between)).toEqual([["d-001", "orca-d-001"]]);
       // `run` without --dispatch starts the next reader instead of repeating d-001's envelope.
       const second = JSON.parse(f.run("run").stdout);
-      expect(second).toMatchObject({ needs: "delegation", dispatch: "d-002" });
+      expect(second).toMatchObject({ needs: "worker", dispatch: "d-002" });
       const both = f.next();
-      expect(both).toMatchObject({ needs: "delegation" });
-      expect(
-        both.items.map((i: { needs: string; dispatch: string }) => [
-          i.needs,
-          i.dispatch,
-        ]),
-      ).toEqual([
-        ["delegation", "d-001"],
-        ["delegation", "d-002"],
+      expect(both).toMatchObject({ needs: "worker" });
+      expect(both.items).toEqual([]);
+      expect(running(both)).toEqual([
+        ["d-001", "orca-d-001"],
+        ["d-002", "orca-d-002"],
       ]);
-      expect(both.running).toEqual([]);
-      // Asking for d-001 again returns its own envelope, not a new delegation.
+      // Asking for d-001 again returns its own envelope, not a new worker.
       expect(
         JSON.parse(f.run("run", "--dispatch", "d-001").stdout),
       ).toMatchObject({ dispatch: "d-001", request_path: first.request_path });
+      expect(
+        orcaCalls(f).filter((argv) => argv[1] === "worker-start"),
+      ).toHaveLength(2);
       // A third reader does not exist: the gate and decisions wait for the batch.
-      expect(f.run("gate").stderr).toContain("an MCP dispatch is pending");
+      expect(f.run("gate").stderr).toContain("a worker is pending");
 
       const collect = (
-        p: { request_path: string },
-        id: string,
+        p: { dispatch: string; reply_path: string; orca_dispatch: string },
         text: string,
       ) => {
-        expect(
-          f.run("bind", "--request", p.request_path, "--task-id", id).status,
-        ).toBe(0);
-        const bound = f.next();
-        expect(
-          bound.running.map((r: { dispatch: string; task_id: string }) => [
-            r.dispatch,
-            r.task_id,
-          ]),
-        ).toContainEqual([p === first ? "d-001" : "d-002", id]);
-        const file = path.join(f.tmp, `${id}.json`);
-        fs.writeFileSync(
-          file,
-          JSON.stringify({
-            tasks: [{ task_id: id, status: "completed", text }],
-          }),
-        );
-        const r = f.run(
-          "collect",
-          "--request",
-          p.request_path,
-          "--result",
-          file,
-        );
+        fs.writeFileSync(p.reply_path, text);
+        setOrcaState(f, p.orca_dispatch, {
+          dispatch: { id: p.orca_dispatch, status: "completed" },
+        });
+        const r = f.run("sync", "--dispatch", p.dispatch);
         expect(r.status, r.stdout + r.stderr).toBe(0);
-        expect(r.stdout).toContain(
-          `${p === first ? "d-001" : "d-002"} review: ok; report:`,
-        );
+        expect(r.stdout).toContain(`${p.dispatch} review: ok; report:`);
       };
       collect(
         second,
-        "codeg-2",
         reviewReply("FAIL", [finding("src/app.txt", 2, "PLAUSIBLE")]),
       );
       expect(f.taskJson()).toMatchObject({
@@ -323,18 +301,18 @@ describe.skipIf(!hasPython())(
         step: "candidates",
         cycle: { candidates_done: 1 },
       });
-      collect(first, "codeg-1", reviewReply("PASS", []));
+      collect(first, reviewReply("PASS", []));
       expect(f.taskJson()).toMatchObject({
         state: "REVIEW",
         step: "plausible",
-        mcp_pending: {},
+        workers: {},
         cycle_ids: [FINDING_ID],
       });
       expect(
         f.results().map((r) => [r.dispatch, r.executor, r.status]),
       ).toEqual([
-        ["d-002", "codeg", "ok"],
-        ["d-001", "codeg", "ok"],
+        ["d-002", "fake", "ok"],
+        ["d-001", "fake", "ok"],
       ]);
     });
   },

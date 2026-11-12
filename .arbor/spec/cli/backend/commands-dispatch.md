@@ -2,7 +2,7 @@
 sources:
   - packages/cli/src/templates/arbor/scripts/arbor.py
   - packages/cli/src/templates/arbor/scripts/common/driver/executor.py
-  - packages/cli/src/templates/arbor/scripts/common/driver/mcp.py
+  - packages/cli/src/templates/arbor/scripts/common/driver/orca.py
   - packages/cli/src/templates/arbor/scripts/common/dispatch_context.py
 last_verified: 2026-11-02
 ---
@@ -20,8 +20,8 @@ contract is in [dispatch.md](./dispatch.md).
 `packages/cli/src/templates/arbor/scripts/arbor.py` ships as
 `.arbor/scripts/arbor.py`. Its helpers live under `common/driver/`; role context
 is assembled by `common/dispatch_context.py`. Run it from the repository or a
-task worktree. Roles run through the codeg MCP executor configured under
-`executors:` in `.arbor/config.yaml` (`executors.default: codeg`, `type: codeg-mcp`;
+task worktree. Roles run as Orca workers through the executor configured under
+`executors:` in `.arbor/config.yaml` (`executors.default: orca`, `type: orca`;
 the only executor type).
 
 ## 2. Signatures
@@ -42,15 +42,14 @@ status
 resume
 abandon [--reason TEXT]
 prompt --dispatch d-NNN [--print]
-bind --request FILE --task-id ID
-collect --request FILE --result FILE [--accept-new-control-task NAME] [--reason TEXT]
+sync [--dispatch d-NNN] [--wait DURATION] [--accept-new-control-task NAME --reason TEXT]
 finish [--pr]
 children [--json] [--cleanup]
 ```
 
 | Global option | Contract |
 | --- | --- |
-| `--task DIR` | Explicit task directory; otherwise the session's active task. A child task driven from its own conversation passes it on every call. |
+| `--task DIR` | Explicit task directory; otherwise the session's active task. A child task driven from its own Orca agent session passes it on every call. |
 
 | Subcommand | Behavior |
 | --- | --- |
@@ -63,8 +62,7 @@ children [--json] [--cleanup]
 | `resume` | Leave STOP with another round, or record approval of the revised contract. |
 | `abandon` | Record abandonment, optionally with a reason. |
 | `prompt` | Rebuild a dispatch prompt; `--print` prints its text. |
-| `bind` | Bind a prepared MCP request to the returned codeg task id. |
-| `collect` | Validate the complete terminal MCP JSON and advance; optional sibling-task acceptance requires `--reason`. |
+| `sync` | Read every pending Orca worker, validate settled replies and advance, collect failed, timed-out or empty-reply workers; `--wait` polls; `--accept-new-control-task` (with `--dispatch` and `--reason`) records a narrowly checked sibling-task acceptance. |
 | `finish` | In FINISH, one run writes the scorecard and prints the merge command, opens a PR with `--pr`, or (`merge=auto`, a child of a parent) merges itself. After the merge, one more run cleans up, archives and journals; repeated calls continue missing steps. |
 | `children` | List each child's state and merge status and the parent's integration branch; `--json` emits structured output; `--cleanup`, after a human merged the integration branch into the baseline, writes the journal entry and removes its worktree and branch. |
 
@@ -75,17 +73,17 @@ children [--json] [--cleanup]
   live at `<task>/briefs/d-NNN.md` and `<task>/reports/d-NNN.md`; assembled prompts
   live under `.arbor/.runtime/prompts/<task>/` in the main checkout. Runtime
   dispatch measurements are appended to `.arbor/.runtime/results.jsonl`.
-- **Executors.** The default `type: codeg-mcp` executor (`codeg`) makes `run`
-  return `needs=delegation`: `mcp.arguments.task` is the dispatch header plus a
-  `Prompt:` line naming the assembled prompt file. Delegate once using
-  `mcp.arguments`, immediately `bind`, poll the bound task, save the complete
-  terminal response at the returned `result_path` outside the task worktree, then
-  `collect`. Resume bound requests after interruptions; never launch them twice.
+- **Executors.** The `type: orca` executor makes `run` assemble the prompt, write
+  the worker's task spec (header plus `Prompt:` and `Report:` lines) and start the
+  worker (`orca orchestration worker-start`); it returns `needs: "worker"`. The
+  main agent ends its turn, Orca wakes it, then `sync` validates the reply at the
+  `Report:` file and advances. `run --dispatch d-NNN` starts a prepared request
+  that was not started; never start one twice.
   See [dispatch.md](./dispatch.md).
 - **The loop.** After `task.py start` the main agent runs `next`, does the one
-  thing it names (`brief` → write it, `run`; `delegation` → delegate, `bind`,
-  `collect`; `run` → `gate` or wave merge; `decide`; `human`) and runs `next`
-  again. `needs` is one of `delegation`, `brief`, `run`, `wait`, `decide`,
+  thing it names (`brief` → write it, `run`; `worker` → end the turn, then
+  `sync`; `run` → `gate` or wave merge; `decide`; `human`) and runs `next`
+  again. `needs` is one of `worker`, `brief`, `run`, `wait`, `decide`,
   `human`, `done`; `human.kind` is one of `approve_contract`, `plausible`, `stop`,
   `merge_conflict`, `merge`. A round cap or two rounds without progress enter
   STOP (`needs=human`, `human.kind=stop`); `resume` grants one more round,
@@ -97,7 +95,7 @@ children [--json] [--cleanup]
   (`common/driver/mandate.py`). Merge into the baseline defaults to `ask` in
   every tier. After start, `next --json` also carries the ready set: `items`
   (every actionable step: the current one, every other partition needing a
-  brief, unbound MCP requests), `running` (in-flight dispatches) and
+  brief, prepared workers not yet started), `running` (in-flight workers and readers, `kind: worker`) and
   `blocked_on` when nothing is actionable. The driver computes it; the caller
   acts on every item, then waits.
 - **Merge checks.** Before a wave merge, a partition branch changing files
@@ -136,7 +134,7 @@ children [--json] [--cleanup]
 | 1 | Refused command, failed dispatch or red gate | Inspect the report and next step; no automatic pass. |
 | 2 | Invalid CLI usage | argparse prints usage and the offending argument. |
 
-Missing/invalid executors, duplicate collection and invalid reports are
+Missing/invalid executors, an unreachable Orca CLI, duplicate collection and invalid reports are
 failures to inspect. A red rung cannot advance to a higher verification rung.
 Contract scope changes require approval; observations alone do not justify
 resetting or deleting work.
@@ -144,20 +142,20 @@ resetting or deleting work.
 ## 5. Good / Base / Bad Cases
 
 - **Good**: `python3 .arbor/scripts/arbor.py --task <task> next --json` names a
-  brief; write it, invoke `run`, delegate the returned request once, `bind`,
-  poll, `collect`, then `next` again.
+  brief; write it, invoke `run` (it starts the worker), end the turn, `sync` when Orca wakes you,
+  then `next` again.
 - **Base**: `python3 .arbor/scripts/arbor.py --task <task> finish` in FINISH
   writes the scorecard and prints the `--no-ff` merge command in one run; the
   same command after the merge cleans up and archives.
-- **Bad**: delegating a bound request a second time, or treating an MCP
-  delegation request as a completed role report.
+- **Bad**: starting a dispatch a second time, or treating a started worker as a
+  completed role report before `sync` validates its `Report:` file.
 
 ## 6. Tests Required
 
 - `test/spec/backend-docs.test.ts`: retired surfaces stay absent, all commands
   and protocols are documented, sources exist and scoped spec lint is clean.
 - `test/scripts/v2-driver-*.integration.test.ts`: build, CONTRACT, review,
-  partitions, executor/MCP protocol, report handling and finish behavior.
+  partitions, executor/Orca protocol, report handling and finish behavior.
 - `test/scripts/v2-children.integration.test.ts`: parent child visibility and
   merge status.
 - `test/scripts/guard-builtin-agent.integration.test.ts`: native role dispatches
