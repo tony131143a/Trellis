@@ -59,10 +59,14 @@ print(json.dumps(dict(hook=hook, shell=shell, other=other, override=override)))
     expect(result.override).toBe("explicit-child");
   });
 
-  it("inlines role instructions while keeping the dispatch header first", () => {
-    const instructions =
-      "Role boundary: inspect only. Report: findings and essential files.";
-    fs.writeFileSync(path.join(root, ".arbor/agents/explore.md"), instructions);
+  it("inlines the driver's role instructions, not a worktree copy, keeping the dispatch header first", () => {
+    // Role instructions come from the install the driver runs from; a copy in
+    // the task worktree (here: cwd) is never read.
+    const instructions = fs
+      .readFileSync(path.join(scripts, "../agents/explore.md"), "utf8")
+      .trim();
+    const decoy = "Role boundary: decoy copy from the task worktree.";
+    fs.writeFileSync(path.join(root, ".arbor/agents/explore.md"), decoy);
     const result = python(`
 import json
 from pathlib import Path
@@ -73,6 +77,7 @@ print(json.dumps(dict(prompt=reply.text)))
 `);
     expect(result.prompt).toMatch(/^Role: explore\n/);
     expect(result.prompt).toContain(instructions);
+    expect(result.prompt).not.toContain(decoy);
     expect(result.prompt).toContain("Find the entry point.");
   });
 
