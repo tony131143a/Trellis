@@ -654,7 +654,7 @@ def finish_before_merge(main: Path, worktree: Path, task_dir: Path, task_rel: st
         why, lines = auto_merge_blocked(main, data["branch"], base, auto_merge_max_lines)
         if why is None:
             why, files = merge_checks(worktree, task_rel, data, base, scope)
-            if files:
+            if why and files:
                 why += ": " + ", ".join(files[:10])
         if why is None:
             # Recorded and committed on the task branch first, so the merge commit carries it

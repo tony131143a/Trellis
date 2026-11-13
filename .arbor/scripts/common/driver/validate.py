@@ -212,7 +212,7 @@ def prefilter(findings: list[dict], worktree: Path, range_spec: str) -> tuple[li
             dropped.append((f, f"file {rel or '?'} does not exist"))
             continue
         try:
-            line = int(f.get("line"))
+            line = int(f.get("line", ""))
         except (TypeError, ValueError):
             dropped.append((f, "no line number"))
             continue

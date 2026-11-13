@@ -724,8 +724,8 @@ def resume(data: dict) -> str:
         for rec in (data.get("partitions") or {}).values():
             if isinstance(rec, dict) and isinstance(rec.get("counters"), dict):
                 rec["counters"]["no_progress"] = 0
-        prev_state = prev.get("state") if prev.get("state") in DEFAULT_STEP else "BUILD"
-        if prev_state == "STOP":
+        prev_state = prev.get("state")
+        if prev_state not in DEFAULT_STEP or prev_state == "STOP":
             prev_state = "BUILD"
         data["state"], data["step"] = prev_state, prev.get("step") or DEFAULT_STEP[prev_state]
         return f"resumed {data['state']}/{data['step']}"
@@ -783,9 +783,10 @@ def reap_stale(data: dict, alive) -> list[str]:
             rec.pop("running")
             reaped.append(str(running.get("dispatch")))
     batch = data.get("batch")
-    for dispatch, run in list(((batch or {}).get("running") or {}).items()) if isinstance(batch, dict) else []:
+    batch_running = (batch.get("running") if isinstance(batch, dict) else None) or {}
+    for dispatch, run in list(batch_running.items()):
         if isinstance(run, dict) and not run.get("external") and not alive(int(run.get("pid") or 0)):
-            batch["running"].pop(dispatch)
+            batch_running.pop(dispatch)
             reaped.append(str(dispatch))
     for entry in data.get("dispatches") or []:
         if entry.get("id") in reaped and entry.get("status") == "running":

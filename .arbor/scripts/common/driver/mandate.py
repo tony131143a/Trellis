@@ -66,7 +66,7 @@ def resolve(config: dict, tier: str, task_data: dict | None = None) -> dict:
     ``auto_merge_max_lines``. Invalid config values are ignored; an invalid
     task override raises :class:`MandateError`."""
     section = _section(config)
-    merged = dict(DEFAULTS.get(tier, DEFAULTS["light"]))
+    merged: dict = dict(DEFAULTS.get(tier, DEFAULTS["light"]))
     per_tier = section.get(tier)
     if isinstance(per_tier, dict):
         for gate in GATES:

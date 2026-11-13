@@ -381,7 +381,9 @@ def next_dispatch_id(data: dict, task_dir: Path | None = None) -> str:
     still reserves its id)."""
     ids = [str(d.get("id", "")) for d in data.get("dispatches") or [] if isinstance(d, dict)]
     ids += [str(r.get("next_dispatch") or "") for r in (data.get("partitions") or {}).values()]
-    batch = data.get("batch") if isinstance(data.get("batch"), dict) else {}
+    batch = data.get("batch")
+    if not isinstance(batch, dict):
+        batch = {}
     ids += [str(i) for i in (batch.get("ids") or [])] + [str(i) for i in (batch.get("running") or {})]
     if task_dir is not None and (task_dir / "reports").is_dir():
         ids += [p.stem for p in (task_dir / "reports").glob("d-*.md")]
@@ -513,7 +515,7 @@ def next_payload(ctx: Ctx | None, partition: str | None = None, role: str | None
                 out["needs"] = "run"
                 out["summary"] = (f"every child of {ctx.name} is merged into {view['branch']}: "
                                   f"`task.py integrate {ctx.name}` starts the integration review")
-            else:
+            elif view:
                 out["summary"] = (f"parent {ctx.name}: {view['children_merged']}/{len(ctx.data['children'])} "
                                   "children merged; drive the children, then `task.py integrate`")
         return out
@@ -579,7 +581,7 @@ def _current_step(ctx: Ctx, partition: str | None = None) -> sm.Step:
 def _human(ctx: Ctx, human: dict) -> dict:
     """``human`` plus the mandate of its gate; a blocked automatic merge always asks."""
     out = dict(human)
-    gate = md.HUMAN_KIND_GATE.get(human.get("kind"))
+    gate = md.HUMAN_KIND_GATE.get(human.get("kind", ""))
     out["mandate"] = "ask" if human.get("blocked") else (ctx.mandate[gate] if gate else "ask")
     return out
 
@@ -1153,6 +1155,8 @@ def _advance(ctx: Ctx, state: str, step: str, role: str, dispatch: str, out: Out
     """Apply the state table after an ok dispatch on the task branch; returns extra report lines."""
     data, notes = ctx.data, []
     if (state, step) == ("REVIEW", "review"):
+        if out.range_spec is None:
+            raise DriverError(f"{dispatch}: a review without a Range")
         ids = [rv.finding_id(f) for f in out.check.findings
                if str(f.get("verdict", "")).upper() in ("CONFIRMED", "PLAUSIBLE")]
         sm.on_review(data, out.check.verdict or "FAIL", ids, out.range_spec.split("..")[0], out.head_before,
@@ -1548,7 +1552,7 @@ def finish_contract(ctx: Ctx, main: Path, role: str, mode: str | None, dispatch:
         "violations": violations,
     })
     color = Colors.GREEN if status == "ok" else Colors.RED
-    out = Outcome(status, result.stdout, check, result, violations, problem, None, before.head, after.head)
+    out = Outcome(status, result.stdout, check, result, violations, problem, None, before.head or "", after.head or "")
     _write_report(ctx, dispatch, role, out, [])
     _upsert_dispatch(ctx.data, {
         "id": dispatch, "role": role, "mode": mode, "commit": None, "status": status,
@@ -1575,7 +1579,7 @@ def _gate_parent(ctx: Ctx) -> int:
         raise DriverError(f"{ctx.name} has no contract.md")
     record = _live_integration(ctx)
     where = Path(record["worktree"]) if record and Path(record["worktree"]).is_dir() else ctx.main
-    if where != ctx.main:
+    if record and where != ctx.main:
         print(f"gate in the integration worktree {where} ({record['branch']})")
     result = run_gate(get_gate_commands(ctx.config), load_contract(contract_path), where)
     print(format_checks(result.checks) or "no gate commands and no auto checks")
@@ -1991,15 +1995,17 @@ def cmd_finish(args: argparse.Namespace) -> int:
     """The next FINISH action: scorecard + PR / merge command, or cleanup after the merge."""
     main = _main()
     name = Path(args.task).name if args.task else None
-    if name and fin.load_record(main, name):
-        return fin.cleanup(main, fin.load_record(main, name))
+    record = fin.load_record(main, name) if name else None
+    if record:
+        return fin.cleanup(main, record)
     ctx = load_ctx(args.task)
     if ctx is None:  # the worktree (and the session's pointer into it) may already be gone
         pending = fin.pending_records(main)
         if len(pending) > 1:
             raise DriverError(f"cleanup pending for {', '.join(pending)}; pass --task")
-        if pending:
-            return fin.cleanup(main, fin.load_record(main, pending[0]))
+        record = fin.load_record(main, pending[0]) if pending else None
+        if record:
+            return fin.cleanup(main, record)
     ctx = require_started(ctx)
     require_collected(ctx)
     require_report_decision(ctx)
@@ -2058,6 +2064,8 @@ def cmd_prompt(args: argparse.Namespace) -> int:
         partition = entry.get("partition")
     else:
         step = _step_of_dispatch(ctx, args.dispatch)
+        if step.role is None:
+            raise DriverError(f"{args.dispatch} is not a dispatch step: {step.summary}")
         role, mode = step.role, step.mode
         worktree = ctx.unit(step.partition).worktree
         range_spec = (f"{step.range_from}..{head(ctx, worktree)}"
