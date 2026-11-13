@@ -118,8 +118,8 @@ default_package: cli
 #   command       the Orca CLI; an absolute path when it is not on PATH
 #                 (macOS: /Applications/Orca.app/Contents/Resources/bin/orca)
 #   agent         the Orca agent id every role starts as (codex, claude, omp, ...)
-#   model/effort  optional `--model` / `--effort` of the launch (effort needs model)
-#   roles         per-role overrides of agent / model / effort
+#                 (model and reasoning effort are the agent's own settings in Orca)
+#   roles         per-role agent override
 #   timeout       bounds one dispatch; `sync` stops a worker past it
 #   max_parallel  bounds simultaneous workers of one task (BUILD partitions,
 #                 reader batches). CONTRACT explore/architect readers have no
@@ -136,14 +136,13 @@ executors:
   orca:
     type: orca
     command: /Applications/Orca.app/Contents/Resources/bin/orca
-    agent: omp
+    agent: codex
     timeout: 90m
     max_parallel: 5
     keep_open: false
-    # roles:
-    #   explore:
-    #     agent: omp
-    #     model: "@worker"
+    roles:
+      explore:
+        agent: omp
 
 #-------------------------------------------------------------------------------
 # Gate

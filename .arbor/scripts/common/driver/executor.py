@@ -9,15 +9,14 @@ its outcome back with ``arbor.py sync`` (see ``orca.py``).
         type: orca
         command: orca        # the Orca CLI (an absolute path when it is not on PATH)
         agent: codex         # Orca agent id every role starts as
-        model: ""            # optional provider model id (``--model``)
-        effort: ""           # optional reasoning effort (``--effort``, needs model)
         timeout: 90m         # 90m | 30s | 2h | plain seconds; absent = none
         max_parallel: 5      # simultaneous workers of one task
         keep_open: false     # true: a finished worker stays open in Orca
-        roles:               # per-role overrides of agent / model / effort
+        roles:               # per-role agent override
           explore:
             agent: omp
-            model: "@worker"
+
+Model and reasoning effort are not set here: they are the agent's own settings in Orca.
 """
 
 from __future__ import annotations
@@ -37,25 +36,17 @@ class ExecutorError(ValueError):
 
 
 @dataclass(frozen=True)
-class Launch:
-    """How one role starts in Orca."""
-    agent: str
-    model: str | None = None
-    effort: str | None = None
-
-
-@dataclass(frozen=True)
 class Executor:
     name: str
     command: str
     timeout: float | None
     max_parallel: int | None  # simultaneous workers of one task
     keep_open: bool
-    default: Launch
-    roles: dict[str, Launch]
+    agent: str  # Orca agent id every role starts as
+    roles: dict[str, str]  # role -> agent id, where it differs from ``agent``
 
-    def launch(self, role: str) -> Launch:
-        return self.roles.get(role, self.default)
+    def agent_for(self, role: str) -> str:
+        return self.roles.get(role, self.agent)
 
 
 @dataclass(frozen=True)
@@ -90,20 +81,11 @@ def parse_timeout(value: object) -> float | None:
     return seconds if seconds > 0 else None
 
 
-def _launch(spec: dict, base: Launch | None, where: str) -> Launch:
-    def pick(key: str) -> str | None:
-        value = spec.get(key)
-        if isinstance(value, str) and value.strip():
-            return value.strip()
-        return getattr(base, key) if base else None
-
-    agent = pick("agent")
-    if not agent:
+def _agent(spec: dict, where: str) -> str:
+    agent = spec.get("agent")
+    if not isinstance(agent, str) or not agent.strip():
         raise ExecutorError(f"{where}: agent is not set (an Orca agent id such as codex, claude or omp)")
-    launch = Launch(agent, pick("model"), pick("effort"))
-    if launch.effort and not launch.model:
-        raise ExecutorError(f"{where}: effort needs a model (Orca's --effort requires --model)")
-    return launch
+    return agent.strip()
 
 
 def resolve_executor(config: dict) -> Executor:
@@ -121,13 +103,12 @@ def resolve_executor(config: dict) -> Executor:
     command = str(spec.get("command") or "").strip()
     if not command:
         raise ExecutorError(f"executor {chosen!r}: command is not set (the Orca CLI)")
-    default = _launch(spec, None, f"executor {chosen!r}")
+    agent = _agent(spec, f"executor {chosen!r}")
     roles = spec.get("roles") or {}
     if not isinstance(roles, dict) or not all(isinstance(v, dict) for v in roles.values()):
-        raise ExecutorError("roles must map role names to agent / model / effort")
+        raise ExecutorError("roles must map role names to {agent: <Orca agent id>}")
     limit = spec.get("max_parallel")
     max_parallel = int(limit) if isinstance(limit, int) or (isinstance(limit, str) and limit.isdigit()) else None
     return Executor(chosen, command, parse_timeout(spec.get("timeout")), max_parallel,
-                    str(spec.get("keep_open") or "").strip().lower() == "true", default,
-                    {role: _launch(over, default, f"executors.{chosen}.roles.{role}")
-                     for role, over in roles.items()})
+                    str(spec.get("keep_open") or "").strip().lower() == "true", agent,
+                    {role: _agent(over, f"executors.{chosen}.roles.{role}") for role, over in roles.items()})

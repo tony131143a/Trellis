@@ -68,13 +68,12 @@ executors:
     timeout: 90m
     max_parallel: 5
     keep_open: false       # true: a finished worker stays open in Orca
-    roles:                 # per-role overrides of agent / model / effort
+    roles:                 # per-role agent override
       explore:
         agent: omp
-        model: "@worker"
 ```
 
-`type: orca` is the only executor: `arbor.py run` assembles the prompt, writes the worker's task spec `<dispatch>.spec.md` beside it (the dispatch header plus `Prompt:` and `Report:` lines) and starts the worker itself with `orca orchestration worker-start --spec-file <spec> --task-title "<task> d-NNN <role>" --worktree path:<the dispatch's worktree> --agent <agent> [--model m] [--effort e] [--keep-open] --json`. It prints `needs: "worker"`, `dispatch`, `role`, `request_path`, `orca_dispatch`, `prompt_path`, `reply_path`, `timeout_s`, `started` and `instructions`. The worker reads the `Prompt:` file, writes its complete final report to the `Report:` file (`.arbor/.runtime/replies/<task>/d-NNN.md` in the main checkout; the only reply the driver reads) and sends Orca's `worker_done` (`--report-path <file> --outcome succeeded`). The main agent ends its turn after starting every ready item; Orca wakes it when a worker reports, asks a question or stops (run the `orca orchestration check` command a wake names), then `arbor.py sync`, then `arbor.py next`.
+`type: orca` is the only executor: `arbor.py run` assembles the prompt, writes the worker's task spec `<dispatch>.spec.md` beside it (the dispatch header plus `Prompt:` and `Report:` lines) and starts the worker itself with `orca orchestration worker-start --spec-file <spec> --task-title "<task> d-NNN <role>" --worktree path:<the dispatch's worktree> --agent <agent> [--keep-open] --json`. It prints `needs: "worker"`, `dispatch`, `role`, `request_path`, `orca_dispatch`, `prompt_path`, `reply_path`, `timeout_s`, `started` and `instructions`. The worker reads the `Prompt:` file, writes its complete final report to the `Report:` file (`.arbor/.runtime/replies/<task>/d-NNN.md` in the main checkout; the only reply the driver reads) and sends Orca's `worker_done` (`--report-path <file> --outcome succeeded`). The main agent ends its turn after starting every ready item; Orca wakes it when a worker reports, asks a question or stops (run the `orca orchestration check` command a wake names), then `arbor.py sync`, then `arbor.py next`.
 
 `arbor.py sync [--dispatch d-NNN] [--wait <duration>]` reads each pending worker with `orca orchestration worker-show --dispatch <id> --json`: a settled worker's reply is validated (reply format, writer's commit, boundaries) and the task advances; a failed or `worker_done`-less exit is collected as a failed dispatch; past `timeout` it is stopped (`orca orchestration worker-stop`) and collected as failed; `waiting for a person (...)` is a permission prompt the user answers in the worker's Orca tab; `running (orca dispatch <id>)` keeps waiting; an empty reply file is collected for judgment (`decide retry` or `decide accept --report <file>`; the output is readable with `orca orchestration worker-read --dispatch <id>`). `--wait` polls until a worker settles or needs a person. Exit code 1 when a collected dispatch failed. `sync --dispatch d-NNN --accept-new-control-task <name> --reason "..."` records a narrowly checked sibling-task acceptance.
 
@@ -82,7 +81,7 @@ A failed `worker-start` is recorded at once as a failed dispatch. If the Orca CL
 
 One task = one Orca workspace (its worktree and branch `arbor/<task>`); every role is a worker inside it. CONTRACT-phase roles run as workers in the main checkout's workspace; a partition and a child task are child workspaces (`task.py start`, wave start and the parent integration branch register them with `orca worktree set --parent-worktree`, display only). The main agent must run inside Orca (an agent tab in the repository's workspace). One-time setup per repository: `orca repo add --path <repo>`, `orca repo set --repo path:<repo> --external-worktree-visibility show`; in Orca Settings, Agents, set each agent's permission mode so workers do not stop on prompts (codex and claude have a Yolo preset; omp needs `--approval-mode yolo` as launch arguments).
 
-Agent, model and effort come from the `executors.orca` entry and its per-role overrides. `run --autopilot` stops at worker handoffs; the host ends its turn and resumes the driver after Orca wakes it.
+The agent comes from the `executors.orca` entry and its per-role overrides; model and reasoning effort are the agent's own settings in Orca. `run --autopilot` stops at worker handoffs; the host ends its turn and resumes the driver after Orca wakes it.
 
 ## Invariants And Commit Format
 

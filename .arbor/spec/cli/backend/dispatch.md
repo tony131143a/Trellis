@@ -78,7 +78,7 @@ or `h` suffix (missing or zero means no timeout) and bounds one worker.
 - **Orca**: `type: orca` (`executors.default: orca`). `arbor.py run` writes the
   prompt and the worker's task spec and starts the worker itself:
   `orca orchestration worker-start --spec-file <spec> --task-title "<task> d-NNN <role>"
-  --worktree path:<worktree> --agent <agent> [--model m] [--effort e] [--keep-open] --json`.
+  --worktree path:<worktree> --agent <agent> [--keep-open] --json`.
   It prints `needs: "worker"` with `orca_dispatch`, `request_path`, `prompt_path`,
   `reply_path`, `timeout_s` and `started`. The worker writes its report to the
   `Report:` file and sends `worker_done` (`--outcome succeeded` = report written).
@@ -109,12 +109,12 @@ executors:
     max_parallel: 5
     keep_open: false
     roles:
-      explore: {agent: omp, model: "@worker"}
+      explore: {agent: omp}
 ```
 
 `command` is the Orca CLI (an absolute path when not on PATH); `agent` is the
-Orca agent id every role starts as, with per-role overrides of `agent`, `model`
-and `effort` under `roles`. Request records live in
+Orca agent id every role starts as, with per-role overrides of `agent` under
+`roles`. Model and reasoning effort are the agent's own settings in Orca. Request records live in
 `.arbor/.runtime/workers/<task>/<dispatch>.json` (`task.json` key `workers`). A
 collected request cannot be collected twice.
 

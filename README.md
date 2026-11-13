@@ -50,10 +50,9 @@ executors:
     timeout: 90m
     max_parallel: 5
     keep_open: false       # true: a finished worker stays open in Orca
-    roles:                 # per-role overrides of agent / model / effort
+    roles:                 # per-role agent override
       explore:
         agent: omp
-        model: "@worker"
 ```
 
 One-time setup per repository: `orca repo add --path <repo>` and `orca repo set --repo path:<repo> --external-worktree-visibility show`; in Orca Settings, Agents, set each agent's permission mode so workers do not stop on prompts (codex and claude have a Yolo preset; omp needs `--approval-mode yolo` as its launch arguments).

@@ -115,7 +115,6 @@ describe.skipIf(!hasPython())("Orca workers", { timeout: 90_000 }, () => {
       "--task-title": `${TASK} d-001 explore`,
     });
     expect(start["--keep-open"]).toBeUndefined();
-    expect(start["--model"]).toBeUndefined();
     const spec = fs.readFileSync(start["--spec-file"], "utf-8");
     expect(spec).toContain(
       `Active task: ${f.taskDir}\nRole: explore\nDispatch: d-001`,
@@ -328,15 +327,13 @@ describe.skipIf(!hasPython())("Orca workers", { timeout: 90_000 }, () => {
   it("starts each role as its configured agent, in the task worktree, and keeps commit validation in the driver", () => {
     configure(
       true,
-      "    keep_open: true\n    roles:\n      implement:\n        agent: omp\n        model: \"@worker\"\n        effort: high\n",
+      "    keep_open: true\n    roles:\n      implement:\n        agent: omp\n",
     );
     f.brief("d-001");
     const p = JSON.parse(f.run("run").stdout);
     expect(starts()[0]).toMatchObject({
       "--worktree": `path:${f.wt}`,
       "--agent": "omp",
-      "--model": "@worker",
-      "--effort": "high",
       "--keep-open": "",
     });
     f.plan({ "d-001": { write: IMPLEMENTED } });

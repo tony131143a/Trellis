@@ -134,14 +134,10 @@ def _call(executor: Executor, args: list[str], timeout: float = CALL_TIMEOUT_S) 
 def start(executor: Executor, record: dict) -> tuple[dict | None, str | None]:
     """Start the worker of ``record``: (its Orca ids, None) once Orca accepted
     the dispatch, otherwise (ids when a Dispatch exists, why the start failed)."""
-    launch = executor.launch(record["role"])
+    agent = executor.agent_for(record["role"])
     args = ["orchestration", "worker-start", "--spec-file", record["spec_path"],
             "--task-title", f"{record['task']} {record['dispatch']} {record['role']}",
-            "--worktree", f"path:{record['worktree']}", "--agent", launch.agent]
-    if launch.model:
-        args += ["--model", launch.model]
-    if launch.effort:
-        args += ["--effort", launch.effort]
+            "--worktree", f"path:{record['worktree']}", "--agent", agent]
     if executor.keep_open:
         args.append("--keep-open")
     result, error = _call(executor, args, START_TIMEOUT_S)
@@ -149,7 +145,7 @@ def start(executor: Executor, record: dict) -> tuple[dict | None, str | None]:
     if result.get("dispatchId"):
         ids = {"dispatch_id": result["dispatchId"], "task_id": result.get("taskId"),
                "run_id": result.get("runId") or (result.get("run") or {}).get("id"),
-               "agent": launch.agent, "model": launch.model, "effort": launch.effort}
+               "agent": agent}
     # A start whose first turn was not observed yet is usually slow, not dead: Orca exits 0 for it.
     if ids and result.get("state") != "failed" and (error is None or result.get("state") == "outcome_unknown"):
         return ids, None
