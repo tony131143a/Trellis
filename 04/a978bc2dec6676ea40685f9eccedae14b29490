@@ -1,0 +1,23 @@
+README.md
+  s_8a3a4a7c5e9e27::t_8ff4d3a591e512 58,60-62
+packages/cli/test/scripts/v2-driver-modules.integration.test.ts
+  s_8a3a4a7c5e9e27::t_580aefd778b8e8 35-36,38,40-41,43-44,52
+packages/cli/test/templates/arbor.test.ts
+  s_8a3a4a7c5e9e27::t_dac5d9d3425570 539
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "04a978bc2dec6676ea40685f9eccedae14b29490",
+  "prompts": {},
+  "sessions": {
+    "s_8a3a4a7c5e9e27": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1d43f-6f1c-73a1-b58a-9921d6f4c027",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
