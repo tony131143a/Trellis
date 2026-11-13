@@ -61,7 +61,7 @@ Do not assume the user has the Arbor source repository. Do not default to modify
 ## Current Rules
 
 - `.arbor/workflow.md` is the local workflow source of truth.
-- `.arbor/config.yaml` is the project-level configuration entry point: task lifecycle hooks (`hooks.after_*`), journal shape, packages, `context_injection` limits, `prompt_injection.skip_keyword`, `executors:` (the Orca agent per role, timeout, `max_parallel`), `mandate:` (which human gates ask per tier), `gate.commands` (project-wide GATE checks), and `worktree:` (task worktree root and setup command).
+- `.arbor/config.yaml` is the project-level configuration entry point: task lifecycle hooks (`hooks.after_*`), journal shape, packages, `context_injection` limits, `prompt_injection.skip_keyword`, `executors:` (the Orca agent per role, timeout, `max_parallel`), `mandate:` (which human gates ask per tier), `gate.commands` (project-wide GATE checks), and `worktree:` (branch prefix and setup command).
 - `.arbor/spec/` stores project-specific coding conventions and design constraints.
 - `.arbor/tasks/` stores task contracts (`contract.md`), design notes, `waves.md`, research files (written by `explore` / `architect` or the main agent), briefs, scorecards, and JSONL context. A started task's directory lives in its worktree on branch `arbor/<task>`. Tasks form parent/child trees (`task.py create --parent <slug>`).
 - `.arbor/workspace/` stores deliberately written developer journals.

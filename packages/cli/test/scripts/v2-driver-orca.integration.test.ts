@@ -3,7 +3,10 @@
  * worker with `orca orchestration worker-start` (the only executor kind);
  * `arbor.py sync` reads the worker's state with `worker-show`, takes the reply
  * from the reply file, validates the writer's commit, the task boundary and
- * the reply, and advances the task.
+ * the reply, and advances the task. Every worker of a task starts in the
+ * task's Orca Run with its own request id; a failed start stays prepared and
+ * is retried on the same Orca Task. Orca also creates every worktree
+ * (`worktree create --parent-worktree`).
  */
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -82,20 +85,24 @@ describe.skipIf(!hasPython())("Orca workers", { timeout: 90_000 }, () => {
       });
   }
 
-  /** Settle a worker in the fake Orca (with its reply), then sync. */
+  /** Settle a worker in the fake Orca (with its reply and `dispatch` fields), then sync. */
   function settle(
     p: Json,
     status: "completed" | "failed",
     reply?: string,
-    lastReport?: string,
     args: string[] = T,
+    dispatch: Json = {},
   ) {
     if (reply !== undefined) fs.writeFileSync(p.reply_path, reply);
     setOrcaState(f, p.orca_dispatch, {
-      dispatch: { id: p.orca_dispatch, status },
-      lastReport,
+      dispatch: { id: p.orca_dispatch, status, ...dispatch },
     });
     return f.run(...args, "sync");
+  }
+
+  /** The request record of an envelope. */
+  function record(p: Json): Json {
+    return JSON.parse(fs.readFileSync(p.request_path, "utf-8"));
   }
 
   it("starts a worker from a spec that points at the prompt and the reply file, persists across processes and collects it once", () => {
@@ -151,6 +158,7 @@ describe.skipIf(!hasPython())("Orca workers", { timeout: 90_000 }, () => {
     const r = settle(p, "completed", EXPLORE);
     expect(r.status, r.stdout + r.stderr).toBe(0);
     expect(r.stdout).toContain("d-001 explore: ok");
+    expect(r.stdout).not.toContain("no reply in");
     expect(f.taskJson().dispatches).toMatchObject([
       { id: "d-001", status: "ok", phase: "CONTRACT" },
     ]);
@@ -203,9 +211,8 @@ describe.skipIf(!hasPython())("Orca workers", { timeout: 90_000 }, () => {
   it("a worker that reports done without a reply waits for the main agent's judgment", () => {
     configure();
     const p = prepare();
-    const r = settle(p, "completed", undefined, "explored the parser");
+    const r = settle(p, "completed");
     expect(r.stdout).toContain(`d-001 explore: no reply in ${p.reply_path}`);
-    expect(r.stdout).toContain("worker_done said: explored the parser");
     expect(r.stdout).toContain(
       "orca orchestration worker-read --dispatch orca-d-001",
     );
@@ -267,7 +274,7 @@ describe.skipIf(!hasPython())("Orca workers", { timeout: 90_000 }, () => {
       "-qm",
       `implement(${TASK}): work\n\nArbor-Dispatch: d-001`,
     );
-    const r = settle(p, "completed", "## Implementation Complete\n", "done", []);
+    const r = settle(p, "completed", "## Implementation Complete\n", []);
     expect(r.status, r.stdout + r.stderr).toBe(0);
     expect(f.next()).toMatchObject({ state: "GATE", needs: "run" });
     expect(git(f.repo, "rev-parse", "HEAD")).toBe(mainHead);
@@ -277,15 +284,20 @@ describe.skipIf(!hasPython())("Orca workers", { timeout: 90_000 }, () => {
     expect(fs.existsSync(path.join(f.wt, "b.txt"))).toBe(false);
   });
 
-  it("a worker that reports failed, or exits without worker_done, is a failed dispatch with its diagnostics", () => {
+  it("a worker that settles failed without a report, or exits without worker_done, is a failed dispatch with Orca's reason", () => {
     configure();
     const p = prepare();
-    const r = settle(p, "failed", undefined, "user canceled");
+    const r = settle(p, "failed", undefined, T, {
+      lastFailure: JSON.stringify({
+        subject: "user canceled",
+        body: "stopped from the Orca tab",
+      }),
+    });
     expect(r.status).toBe(1);
     expect(f.taskJson().dispatches[0].status).toBe("fail");
     expect(
       fs.readFileSync(path.join(f.taskDir, "reports/d-001.md"), "utf-8"),
-    ).toContain("user canceled");
+    ).toContain("the worker settled as failed: user canceled");
     expect(f.taskJson().workers).toEqual({});
 
     f.brief("d-002", "Second angle.");
@@ -350,7 +362,7 @@ describe.skipIf(!hasPython())("Orca workers", { timeout: 90_000 }, () => {
       { encoding: "utf-8" },
     );
     expect(child.status, child.stderr).toBe(0);
-    const r = settle(p, "completed", child.stdout, "done", []);
+    const r = settle(p, "completed", child.stdout, []);
     expect(r.status, r.stdout + r.stderr).toBe(0);
     expect(r.stdout).toContain("d-001 implement: ok");
     expect(f.next()).toMatchObject({ state: "GATE", needs: "run" });
@@ -367,7 +379,7 @@ describe.skipIf(!hasPython())("Orca workers", { timeout: 90_000 }, () => {
     f.brief("d-001");
     const p = JSON.parse(f.run("run").stdout);
     writeFile(f.wt, "wrong.txt", "stray");
-    const r = settle(p, "completed", "## Implementation Complete\n", "done", []);
+    const r = settle(p, "completed", "## Implementation Complete\n", []);
     expect(r.status, r.stdout + r.stderr).toBe(0);
     expect(f.taskJson().dispatches[0].status).toBe("judgment");
     expect(f.taskJson().report_pending).toHaveProperty("d-001");
@@ -379,35 +391,166 @@ describe.skipIf(!hasPython())("Orca workers", { timeout: 90_000 }, () => {
     );
   });
 
-  it("records a failed start as a failed dispatch and allows a new one", () => {
+  const FAILED_START = {
+    state: "failed",
+    failedStage: "agent_readiness",
+    lastError: "agent unavailable",
+  };
+  const START_ERROR = "worker-start failed at agent_readiness: agent unavailable";
+
+  it("a failed start stays prepared; the retry releases it and starts again on the same Orca Task", () => {
     configure();
-    f.plan({
-      "d-001": {
-        start: {
-          state: "failed",
-          failedStage: "agent_readiness",
-          lastError: "agent unavailable",
-        },
-      },
-    });
+    f.plan({ "d-001": { starts: [FAILED_START, {}] } });
     f.brief("d-001", "Inspect the parser.");
     const r = f.run(...T, "run", "--role", "explore");
     expect(r.status).toBe(1);
+    expect(r.stderr).toContain(`d-001 explore: ${START_ERROR}`);
+    const p = JSON.parse(r.stdout);
+    expect(p).toMatchObject({
+      needs: "worker",
+      dispatch: "d-001",
+      orca_dispatch: null,
+    });
+    expect(p.instructions).toContain(`The last start failed (${START_ERROR})`);
+    expect(p.instructions).toContain("`arbor.py run --dispatch d-001`");
+    const failed = record(p);
+    expect(failed).toMatchObject({
+      status: "pending",
+      orca: null,
+      failed_starts: [
+        { dispatch_id: "orca-d-001", task_id: "task-d-001", error: START_ERROR },
+      ],
+    });
+    expect(failed.launcher).toBeUndefined();
+    // the next start is a new request, not a replay of the failed answer
+    expect(failed.request_id).not.toBe(starts()[0]["--retry-request"]);
+    expect(f.taskJson().workers).toHaveProperty("d-001");
+    expect(f.taskJson().dispatches[0].status).toBe("running");
+    expect(fs.existsSync(path.join(f.taskDir, "reports/d-001.md"))).toBe(false);
+    expect(f.run(...T, "sync").stdout).toContain("d-001 explore: not started");
+
+    const again = f.run(...T, "run", "--dispatch", "d-001", "--role", "explore");
+    expect(again.status, again.stdout + again.stderr).toBe(0);
+    expect(JSON.parse(again.stdout)).toMatchObject({
+      dispatch: "d-001",
+      orca_dispatch: "orca-d-001-r1",
+    });
+    const names = orcaCalls(f).map((argv) => argv.slice(0, 2).join(" "));
+    expect(names).toEqual([
+      "orchestration run-create",
+      "orchestration worker-start",
+      "orchestration worker-release",
+      "orchestration worker-start",
+    ]);
+    expect(
+      orcaCalls(f).find((argv) => argv[1] === "worker-release"),
+    ).toEqual(["orchestration", "worker-release", "--dispatch", "orca-d-001"]);
+    const retry = starts()[1];
+    expect(retry).toMatchObject({
+      "--task": "task-d-001",
+      "--retry-of": "orca-d-001",
+      "--run": "run-1",
+      "--retry-request": failed.request_id,
+      "--agent": "codex",
+    });
+    expect(retry["--spec-file"]).toBeUndefined();
+    expect(retry["--task-title"]).toBeUndefined();
+    expect(record(p).orca).toMatchObject({ dispatch_id: "orca-d-001-r1" });
+  });
+
+  it("the third failed start fails the dispatch and allows a new one", () => {
+    configure();
+    f.plan({ "d-001": { start: FAILED_START } });
+    f.brief("d-001", "Inspect the parser.");
+    for (const n of [1, 2]) {
+      const r = f.run(...T, "run", "--role", "explore");
+      expect(r.status, `start ${n}`).toBe(1);
+      expect(JSON.parse(r.stdout)).toMatchObject({ orca_dispatch: null });
+      expect(f.taskJson().dispatches[0].status).toBe("running");
+    }
+    const third = f.run(...T, "run", "--role", "explore");
+    expect(third.status).toBe(1);
+    expect(starts().map((s) => s["--retry-of"])).toEqual([
+      undefined,
+      "orca-d-001",
+      "orca-d-001-r1",
+    ]);
     expect(f.taskJson().workers).toEqual({});
-    const report = fs.readFileSync(
-      path.join(f.taskDir, "reports/d-001.md"),
-      "utf-8",
-    );
-    expect(report).toContain(
-      "worker-start failed at agent_readiness: agent unavailable",
-    );
-    expect(report).toContain("worker-show --dispatch orca-d-001");
+    expect(f.taskJson().dispatches[0].status).toBe("fail");
+    expect(
+      fs.readFileSync(path.join(f.taskDir, "reports/d-001.md"), "utf-8"),
+    ).toContain(START_ERROR);
     expect(JSON.parse(f.run(...T, "next", "--json").stdout)).toMatchObject({
       dispatch: "d-002",
     });
   });
 
-  it("keeps a prepared request when the Orca CLI is missing and starts it on the next run", () => {
+  it("creates one Orca Run per task and starts every worker in it with its own request id", () => {
+    configure();
+    const p = prepare();
+    expect(f.taskJson().orca_run).toBe("run-1");
+    f.brief("d-002", "Second angle.");
+    const q = f.run(...T, "run", "--role", "explore", "--dispatch", "d-002");
+    expect(q.status, q.stdout + q.stderr).toBe(0);
+    expect(
+      orcaCalls(f).filter((argv) => argv[1] === "run-create"),
+    ).toEqual([["orchestration", "run-create", "--objective", `arbor ${TASK}`]]);
+    const [a, b] = starts();
+    expect([a["--run"], b["--run"]]).toEqual(["run-1", "run-1"]);
+    expect(record(p)).toMatchObject({ run: "run-1" });
+    expect(a["--retry-request"]).toBe(record(p).request_id);
+    expect(b["--retry-request"]).toBe(record(JSON.parse(q.stdout)).request_id);
+    expect(a["--retry-request"]).toMatch(/^[0-9a-f-]{36}$/);
+    expect(a["--retry-request"]).not.toBe(b["--retry-request"]);
+  });
+
+  it("a start fenced to another coordinator binds this one to the task's Run (run-use) and starts", () => {
+    configure();
+    f.plan({ "d-001": { fenced: true } });
+    const p = prepare();
+    expect(p.orca_dispatch).toBe("orca-d-001");
+    expect(orcaCalls(f).map((argv) => argv[1])).toEqual([
+      "run-create",
+      "worker-start",
+      "run-use",
+      "worker-start",
+    ]);
+    expect(orcaCalls(f).find((argv) => argv[1] === "run-use")).toEqual([
+      "orchestration",
+      "run-use",
+      "--id",
+      "run-1",
+    ]);
+    const [fenced, started] = starts();
+    expect(started["--run"]).toBe("run-1");
+    expect(started["--retry-request"]).not.toBe(fenced["--retry-request"]);
+    expect(record(p).failed_starts).toBeUndefined();
+  });
+
+  it("re-running a request whose launcher died mid-start replays its request id instead of starting a second worker", () => {
+    configure();
+    const p = prepare();
+    const dead = spawnSync("true").pid;
+    // as if the launcher died after Orca started the worker, before it stored the answer
+    fs.writeFileSync(
+      p.request_path,
+      JSON.stringify({ ...record(p), orca: null, launcher: dead }),
+    );
+    expect(f.run(...T, "sync").stdout).toContain("d-001 explore: not started");
+    const again = f.run(...T, "run", "--role", "explore");
+    expect(again.status, again.stdout + again.stderr).toBe(0);
+    expect(JSON.parse(again.stdout)).toMatchObject({
+      dispatch: "d-001",
+      orca_dispatch: "orca-d-001",
+    });
+    const [first, second] = starts();
+    expect(second["--retry-request"]).toBe(first["--retry-request"]);
+    expect(second["--spec-file"]).toBe(first["--spec-file"]);
+    expect(fs.existsSync(orcaState(f, "orca-d-001-r1"))).toBe(false);
+    expect(record(p)).toMatchObject({ orca: { dispatch_id: "orca-d-001" } });
+  });
+
+  it("fails at run-create, before any request exists, when the Orca CLI is missing; the next run starts normally", () => {
     configure();
     const config = path.join(f.repo, ".arbor/config.yaml");
     const good = fs.readFileSync(config, "utf-8");
@@ -419,14 +562,17 @@ describe.skipIf(!hasPython())("Orca workers", { timeout: 90_000 }, () => {
     const missing = f.run(...T, "run", "--role", "explore");
     expect(missing.status).toBe(1);
     expect(missing.stderr).toContain("Orca CLI not found");
-    const next = JSON.parse(f.run(...T, "next", "--json").stdout);
-    expect(next).toMatchObject({
-      needs: "worker",
+    expect(
+      fs.existsSync(path.join(f.repo, ".arbor/.runtime/workers", TASK, "d-001.json")),
+    ).toBe(false);
+    // nothing was recorded: no Run, no worker, no dispatch; d-001 is still the next angle
+    expect(f.taskJson().orca_run).toBeUndefined();
+    expect(f.taskJson().workers ?? {}).toEqual({});
+    expect(f.taskJson().dispatches ?? []).toEqual([]);
+    expect(JSON.parse(f.run(...T, "next", "--json").stdout)).toMatchObject({
       dispatch: "d-001",
-      orca_dispatch: null,
     });
-    expect(next.summary).toContain("not started");
-    expect(f.run(...T, "sync").stdout).toContain("d-001 explore: not started");
+    expect(f.run(...T, "sync").stdout).toContain("no pending worker");
 
     fs.writeFileSync(config, good);
     const started = f.run(...T, "run", "--role", "explore");
@@ -436,6 +582,145 @@ describe.skipIf(!hasPython())("Orca workers", { timeout: 90_000 }, () => {
       orca_dispatch: "orca-d-001",
     });
     expect(starts()).toHaveLength(1);
+  });
+
+  /** The worker's turn ended (Orca: `activity: done`) `ago` ms after it started, without `worker_done`. */
+  function endTurn(p: Json, ago: number) {
+    const r = record(p);
+    r.orca.started = new Date(Date.now() - ago).toISOString();
+    fs.writeFileSync(p.request_path, JSON.stringify(r));
+    setOrcaState(f, p.orca_dispatch, {
+      projection: {
+        stage: { activity: "done" },
+        liveness: { verdict: "live" },
+      },
+    });
+  }
+  const TEN_MINUTES = 10 * 60 * 1000;
+
+  it("a worker whose turn just ended is still running (Orca's idle grace)", () => {
+    configure();
+    const p = prepare();
+    endTurn(p, 0);
+    const r = f.run(...T, "sync");
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+    expect(r.stdout).toContain(
+      "d-001 explore: running (orca dispatch orca-d-001)",
+    );
+    expect(f.taskJson().workers).toHaveProperty("d-001");
+  });
+
+  it("an idle worker without a report is not collected and is named for a nudge; sync --wait returns at once", () => {
+    configure();
+    const p = prepare();
+    endTurn(p, TEN_MINUTES);
+    const t0 = Date.now();
+    const r = f.run(...T, "sync", "--wait", "60s");
+    expect(Date.now() - t0).toBeLessThan(30_000);
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+    expect(r.stdout).toContain(
+      "d-001 explore: its turn ended without a report or worker_done.",
+    );
+    expect(r.stdout).toContain(
+      "`orca orchestration send --to dispatch:orca-d-001",
+    );
+    expect(r.stdout).toContain(`Write the report to ${p.reply_path}`);
+    expect(f.taskJson().workers).toHaveProperty("d-001");
+    expect(f.taskJson().dispatches[0].status).toBe("running");
+    expect(orcaCalls(f).some((argv) => argv[1] === "worker-stop")).toBe(false);
+  });
+
+  it("an idle worker that wrote its report is stopped and collected through reply validation", () => {
+    configure();
+    const p = prepare();
+    fs.writeFileSync(p.reply_path, EXPLORE);
+    endTurn(p, TEN_MINUTES);
+    const r = f.run(...T, "sync");
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+    expect(r.stdout).toContain(
+      "d-001 explore: its turn ended without worker_done; its report is written and is validated as the reply",
+    );
+    expect(r.stdout).toContain("d-001 explore: ok");
+    expect(r.stdout).not.toContain("no reply in");
+    expect(
+      orcaCalls(f).filter((argv) => argv[1] === "worker-stop"),
+    ).toEqual([
+      ["orchestration", "worker-stop", "--dispatch", "orca-d-001"],
+    ]);
+    expect(f.taskJson().dispatches[0].status).toBe("ok");
+    expect(f.taskJson().workers).toEqual({});
+  });
+
+  it("a worker past the timeout that Orca cannot prove stopped is not collected", () => {
+    configure();
+    writeFile(
+      f.repo,
+      ".arbor/config.yaml",
+      fs
+        .readFileSync(path.join(f.repo, ".arbor/config.yaml"), "utf-8")
+        .replace("timeout: 90m", "timeout: 1s"),
+    );
+    f.plan({ "d-001": { stop: "unknown" } });
+    const p = prepare();
+    spawnSync("sleep", ["1.2"]);
+    const t0 = Date.now();
+    const r = f.run(...T, "sync", "--wait", "60s");
+    expect(Date.now() - t0).toBeLessThan(30_000);
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+    expect(r.stdout).toContain(
+      "d-001 explore: timeout after 1s, and Orca could not prove the worker stopped; not collected. " +
+        "Inspect `orca orchestration worker-show --dispatch orca-d-001`",
+    );
+    expect(
+      orcaCalls(f).some(
+        (argv) => argv[1] === "worker-stop" && argv.includes(p.orca_dispatch),
+      ),
+    ).toBe(true);
+    expect(f.taskJson().workers).toHaveProperty("d-001");
+    expect(f.taskJson().dispatches[0].status).toBe("running");
+    expect(fs.existsSync(path.join(f.taskDir, "reports/d-001.md"))).toBe(false);
+  });
+
+  it("a review that settled failed but wrote its FAIL report goes down the FAIL path with its findings", () => {
+    configure(true);
+    writeFile(f.wt, "src/app.txt", "one\ntwo\nthree\n");
+    git(f.wt, "add", "src/app.txt");
+    git(f.wt, "commit", "-qm", `implement(${TASK}): seed\n\nArbor-Dispatch: d-000`);
+    expect(
+      f.run("override", "--reason", "test setup", "--to", "REVIEW").status,
+    ).toBe(0);
+    f.brief("d-001");
+    const p = JSON.parse(f.run("run").stdout);
+    expect(p).toMatchObject({ role: "review", orca_dispatch: "orca-d-001" });
+    const finding = {
+      file: "src/app.txt",
+      line: 2,
+      angle: "A",
+      summary: "off by one",
+      failure_scenario: "x -> y",
+      verdict: "CONFIRMED",
+      evidence: "two",
+      fix: "z",
+    };
+    const reply = `FAIL\n\n\`\`\`json\n${JSON.stringify([finding])}\n\`\`\`\nMode: self-check; angles: A; single-context pass.\n`;
+    const r = settle(p, "failed", reply, [], {
+      lastFailure: JSON.stringify({ subject: "review failed", body: "1 finding" }),
+    });
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+    expect(r.stdout).toContain(
+      "d-001 review: the worker settled as failed: review failed; its report is written and is validated as the reply",
+    );
+    expect(f.taskJson()).toMatchObject({
+      state: "REVIEW",
+      step: "fix",
+      review_ids: ["src/app.txt:2:off by one"],
+    });
+    expect(f.taskJson().dispatches[0]).toMatchObject({
+      id: "d-001",
+      role: "review",
+      status: "ok",
+    });
+    expect(f.next()).toMatchObject({ role: "fix" });
   });
 
   it("blocks task start and state overrides until the worker has been collected", () => {
@@ -465,18 +750,42 @@ describe.skipIf(!hasPython())("Orca workers", { timeout: 90_000 }, () => {
     configure(true, "", contract);
     expect(f.run("run").status).toBe(0);
     const wtA = path.join(f.tmp, "proj-wt", `${TASK}-a`);
+    // each partition is cut from the task branch HEAD the wave started at
+    const head = f.taskJson().partitions.a.base;
+    expect(head).toBe(f.taskJson().partitions.b.base);
     expect(
-      orcaCalls(f).filter((argv) => argv.slice(0, 2).join(" ") === "worktree set"),
-    ).toContainEqual([
-      "worktree",
-      "set",
-      "--worktree",
-      `path:${wtA}`,
-      "--parent-worktree",
-      `path:${f.wt}`,
-      "--display-name",
-      `${TASK}/a`,
+      orcaCalls(f).filter((argv) => argv.slice(0, 2).join(" ") === "worktree create"),
+    ).toEqual([
+      [
+        "worktree",
+        "create",
+        "--repo",
+        `path:${f.repo}`,
+        "--name",
+        TASK,
+        "--branch",
+        `arbor/${TASK}`,
+        "--base-branch",
+        git(f.repo, "rev-parse", "main"),
+        "--parent-worktree",
+        `path:${f.repo}`,
+      ],
+      ...["a", "b"].map((p) => [
+        "worktree",
+        "create",
+        "--repo",
+        `path:${f.repo}`,
+        "--name",
+        `${TASK}-${p}`,
+        "--branch",
+        `arbor/${TASK}--${p}`,
+        "--base-branch",
+        head,
+        "--parent-worktree",
+        `path:${f.wt}`,
+      ]),
     ]);
+    expect(f.taskJson().partitions.a.worktree).toBe(wtA);
     f.brief("d-001");
     f.brief("d-002");
     const a = f.run("run", "--partition", "a");

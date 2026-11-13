@@ -44,11 +44,12 @@ from pathlib import Path
 
 from .. import lessons as ls
 from ..active_task import clear_task_from_sessions
+from ..arbor_config import read_arbor_config
 from ..contract import find_contract, load_contract
 from ..git import run_git
 from ..io import read_json_checked, write_json
 from ..paths import DIR_TASKS, DIR_WORKFLOW, FILE_TASK_JSON
-from ..worktree import WorktreeError, is_ancestor, remove_worktree
+from ..worktree import WorktreeError, branch_worktree, is_ancestor, remove_worktree
 from ..worktree import merge_no_ff as merge_into_worktree
 from . import integration as ig
 from . import validate as rv
@@ -111,7 +112,7 @@ def is_merged(main: Path, branch: str, base_branch: str) -> bool:
 
 
 def merge_command(main: Path, branch: str, base_branch: str) -> str:
-    landing = ig.checkout_of(main, base_branch)
+    landing = branch_worktree(main, base_branch)
     if landing is not None and landing.resolve() != main.resolve():
         return f"git -C {landing} merge --no-ff {branch}"
     cmd = f"git -C {main} merge --no-ff {branch}"
@@ -736,7 +737,7 @@ def start_cleanup(main: Path, task_dir: Path, data: dict) -> dict:
         "summary": scorecard_summary(task_dir),
         "gate_rounds": len(gate_rounds(task_dir, data)), "done": [], "product": product_record,
         # The checkout of the target branch: the merged copy of the task lives there.
-        "landing": str(ig.checkout_of(main, base) or main),
+        "landing": str(branch_worktree(main, base) or main),
         "integration_parent": (data.get("integration_target") or {}).get("parent"),
         # An integrated parent: the children its integration branch carried.
         "children": [{"task": m.get("task"), "summary": m.get("summary")}
@@ -755,6 +756,7 @@ def _script(main: Path, script: str, *args: str, cwd: Path | None = None) -> tup
 def cleanup(main: Path, record: dict) -> int:
     """Run the missing cleanup steps; 0 when DONE."""
     name = record["task"]
+    config = read_arbor_config(main)
     done: list[str] = record.setdefault("done", [])
     _save_record(main, record)
 
@@ -778,7 +780,7 @@ def cleanup(main: Path, record: dict) -> int:
                 raise FinishError("product worktree identity/tip changed; cleanup refused")
             if dirty_paths(wt):
                 raise FinishError("product worktree is dirty; cleanup refused")
-            remove_worktree(root, wt, delete_branch=True)
+            remove_worktree(config, root, wt, delete_branch=True)
         elif branch_exists(root, product["branch"]):
             if _git(root, "rev-parse", product["branch"]) != tip:
                 raise FinishError("product branch moved; cleanup refused")
@@ -792,7 +794,7 @@ def cleanup(main: Path, record: dict) -> int:
                 dirty = dirty_paths(worktree)
                 if dirty:
                     raise FinishError(f"{worktree} has uncommitted changes:\n  " + "\n  ".join(dirty))
-                remove_worktree(main, worktree, delete_branch=True)
+                remove_worktree(config, main, worktree, delete_branch=True)
             elif branch_exists(main, branch):
                 _git(main, "worktree", "prune")
                 _git(main, "branch", "-D", branch)

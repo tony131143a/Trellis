@@ -5,7 +5,7 @@ A wave naming more than one partition (or any partition other than
 ``default``) runs each partition on its own branch in its own worktree:
 
     branch    arbor/<task>--<partition>
-    worktree  <root>/<task>-<partition>
+    worktree  the Orca workspace <task>-<partition>, a child of the task's
 
 created from the task branch HEAD when the wave starts, merged back into the
 task branch with ``--no-ff`` (in wave order) when every partition is done,
@@ -24,13 +24,12 @@ from ..git import run_git
 from ..invariants import changed_files
 from ..worktree import (
     WorktreeError,
-    _worktree_branch,
     add_worktree,
     branch_prefix,
+    branch_worktree,
     is_ancestor,
     merge_no_ff,
     partition_branch,
-    partition_worktree_path,
     remove_worktree,
     run_setup,
 )
@@ -65,13 +64,16 @@ def _rev(worktree: Path, ref: str) -> str:
     return out.strip()
 
 
-def create_partition(main: Path, config: dict, task: str, partition: str, start_point: str) -> dict:
-    """Branch + worktree (+ ``worktree.setup``) for one partition; returns
-    ``{branch, worktree, base}``. A pair left by an interrupted wave start is
-    reused as long as it has no commits of its own."""
+def create_partition(control: dict, main: Path, config: dict, task: str, partition: str, start_point: str,
+                     parent: Path) -> dict:
+    """Branch + worktree (+ ``worktree.setup``) for one partition, a child
+    workspace of the task worktree ``parent``; returns ``{branch, worktree,
+    base}``. ``control`` is the control checkout's config (the Orca CLI),
+    ``config`` the execution repository's. A pair left by an interrupted wave
+    start is reused as long as it has no commits of its own."""
     branch = partition_branch(task, partition, branch_prefix(config))
-    path = partition_worktree_path(main, config, task, partition)
-    if path.exists() and _worktree_branch(main, path) == branch:
+    path = branch_worktree(main, branch)
+    if path is not None:
         base = _rev(main, branch)
         if not is_ancestor(main, base, start_point):
             raise WorktreeError(f"{branch} already exists with commits of its own; remove it first")
@@ -79,12 +81,10 @@ def create_partition(main: Path, config: dict, task: str, partition: str, start_
     rc, _, _ = run_git(["rev-parse", "--verify", "--quiet", f"refs/heads/{branch}"], cwd=main)
     if rc == 0:
         raise WorktreeError(f"branch {branch} already exists")
-    if path.exists():
-        raise WorktreeError(f"worktree path already exists: {path}")
-    add_worktree(main, path, branch, start_point)
+    path = add_worktree(control, main, f"{task}-{partition}", branch, start_point, parent)
     if run_setup(path, get_worktree_config(config).get("setup")) != 0:
         raise WorktreeError(f"worktree.setup failed in {path}")
-    return {"branch": branch, "worktree": str(path.resolve()), "base": start_point}
+    return {"branch": branch, "worktree": str(path), "base": start_point}
 
 
 def merge_partitions(task_worktree: Path, task: str, wave: int, order: list[str],
@@ -109,15 +109,15 @@ def merge_partitions(task_worktree: Path, task: str, wave: int, order: list[str]
     return WaveMerge(merged, None)
 
 
-def remove_partitions(main: Path, records: dict[str, dict]) -> list[str]:
+def remove_partitions(control: dict, main: Path, records: dict[str, dict]) -> list[str]:
     """Remove the partition worktrees and branches; returns warnings for what
-    git refused to remove (a worktree with untracked files is never forced)."""
+    Orca refused to remove (a worktree with untracked files is never forced)."""
     warnings: list[str] = []
     for rec in records.values():
         path = Path(rec["worktree"])
         try:
             if path.exists():
-                remove_worktree(main, path, delete_branch=True)
+                remove_worktree(control, main, path, delete_branch=True)
             else:
                 run_git(["worktree", "prune"], cwd=main)
                 run_git(["branch", "-D", rec["branch"]], cwd=main)

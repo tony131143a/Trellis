@@ -112,8 +112,8 @@ from common.log import Colors, colored
 from common.paths import DIR_TASKS, DIR_WORKFLOW, FILE_TASK_JSON
 from common.task_utils import started_copy_by_name
 from common.tasks import resolve_tier
-from common.worktree import (WorktreeError, branch_prefix, is_ancestor, main_checkout, partition_branch, partition_worktree_path, remove_worktree,
-                             worktree_root)
+from common.worktree import (WorktreeError, branch_prefix, branch_worktree, is_ancestor, main_checkout, partition_branch,
+                             remove_worktree, task_branch)
 
 RUNTIME = f"{DIR_WORKFLOW}/.runtime"
 CONTRACT_ROLES = ("explore", "architect", "review")
@@ -789,6 +789,8 @@ def prepare_worker(ctx: Ctx, main: Path, executor, role: str, mode: str | None, 
     elif _pending(ctx, None if ctx.data.get("execution_binding") else extra.get("partition"), dispatch):
         raise DriverError("a worker is already pending; `arbor.py sync` it before starting another")
     path = orca.request_path(main, ctx.name, dispatch)
+    if not ctx.data.get("orca_run"):
+        ctx.data["orca_run"] = orca.create_run(executor, ctx.name)
     reply_path = runtime_dir(main, "replies", ctx.name) / f"{dispatch}.md"
     spec_path = prompt_path.with_name(f"{dispatch}.spec.md")
     # The empty reply file exists before the snapshot: the worker's reply is never a new dirty path.
@@ -802,6 +804,7 @@ def prepare_worker(ctx: Ctx, main: Path, executor, role: str, mode: str | None, 
         "worktree": str(worktree), "branch": branch, "executor": executor.name,
         "timeout_s": executor.timeout, "started": utc_now(), "status": "pending",
         "orca": None, "launcher": os.getpid(),
+        "run": ctx.data["orca_run"], "request_id": orca.new_request_id(),
         "prompt_path": str(prompt_path), "spec_path": str(spec_path), "reply_path": str(reply_path),
         "before": None,
         **extra,
@@ -828,8 +831,9 @@ def prepare_worker(ctx: Ctx, main: Path, executor, role: str, mode: str | None, 
 
 
 def claim_start(path: Path, record: dict) -> bool:
-    """Locked: take over the start of a prepared request whose launcher died
-    before Orca answered. False: it is started, or another process starts it."""
+    """Locked: take over the start of a prepared request whose start failed or
+    whose launcher died before Orca answered (the request id then replays
+    Orca's answer). False: it is started, or another process starts it."""
     if orca.dispatch_id(record) or pid_alive(record.get("launcher") or 0):
         return False
     record["launcher"] = os.getpid()
@@ -839,18 +843,28 @@ def claim_start(path: Path, record: dict) -> bool:
 
 def launch(main: Path, path: Path) -> int:
     """Start the worker of a prepared request. No task lock is held: Orca
-    answers only once the agent is ready. A failed start is collected as a
-    failed dispatch."""
+    answers only once the agent is ready. A failed start leaves the request
+    prepared (`run --dispatch` retries it, on the same Orca Task once Orca
+    created one); the third failed start in a row fails the dispatch."""
     path, record = orca.load(main, str(path))
     ctx = _request_ctx(record)
     ids, error = orca.start(resolve_executor(ctx.config), record)
-    record["orca"] = ids
     record.pop("launcher", None)
+    if error is None:
+        record["orca"] = ids
+        orca.store(path, record)
+        print(json.dumps(orca.envelope(path, record), ensure_ascii=False))
+        return 0
+    # Orca answered: the next start is a new request, not a replay of this answer.
+    record["request_id"] = orca.new_request_id()
+    failed = record.setdefault("failed_starts", [])
+    failed.append({**(ids or {}), "error": error})
     orca.store(path, record)
-    if error:
+    if sum(1 for f in failed if f.get("dispatch_id")) >= orca.MAX_FAILED_STARTS:
         return collect(main, path, orca.result_of(record, error))
+    print(colored(f"{record['dispatch']} {record['role']}: {error}", Colors.RED), file=sys.stderr)
     print(json.dumps(orca.envelope(path, record), ensure_ascii=False))
-    return 0
+    return 1
 
 
 def prepare_run(ctx: Ctx, job: Job, executor) -> Path:
@@ -966,17 +980,36 @@ def cmd_sync(args: argparse.Namespace) -> int:
                 open_lines.append(f"{label}: not started (`arbor.py run --dispatch {dispatch}`)")
                 continue
             state, detail = orca.observe(executor, record)
+            orca_id = orca.dispatch_id(record)
+            replied = bool(orca.result_of(record, None).stdout.strip())
             if state == "running":
-                open_lines.append(f"{label}: running (orca dispatch {orca.dispatch_id(record)})")
+                open_lines.append(f"{label}: running (orca dispatch {orca_id})")
             elif state == "waiting":
                 waiting = True
                 open_lines.append(f"{label}: waiting for a person ({detail}); answer it in the worker's Orca tab")
+            elif state == "unstopped":
+                waiting = True
+                open_lines.append(f"{label}: {detail}; not collected. Inspect `orca orchestration worker-show "
+                                  f"--dispatch {orca_id}`, then `arbor.py sync` again")
+            elif state == "idle" and not replied:
+                waiting = True
+                open_lines.append(
+                    f"{label}: its turn ended without a report or worker_done. Answer its question if it asked "
+                    f"one (`orca orchestration reply`), else `orca orchestration send --to dispatch:{orca_id} "
+                    f"--subject \"finish\" --body \"Write the report to {record['reply_path']}, then send "
+                    "worker_done.\"`")
             else:
-                result = orca.result_of(record, None if state == "done" else detail)
-                if state == "done" and not result.stdout.strip():
-                    print(f"{label}: no reply in {record['reply_path']}"
-                          + (f" (worker_done said: {detail})" if detail else "")
-                          + f"; its output: `orca orchestration worker-read --dispatch {orca.dispatch_id(record)}`")
+                # The report file is the reply: a worker that wrote it is collected whatever it told Orca.
+                if not replied:
+                    if state == "done":
+                        print(f"{label}: no reply in {record['reply_path']}; its output: "
+                              f"`orca orchestration worker-read --dispatch {orca_id}`")
+                elif state != "done":
+                    print(f"{label}: {detail or 'its turn ended without worker_done'}; its report is written "
+                          "and is validated as the reply")
+                    if state == "idle":
+                        orca.stop(executor, record)  # settle the Dispatch Orca still holds open
+                result = orca.result_of(record, None if replied or state == "done" else detail)
                 rc |= collect(ctx.main, path, result, args.accept_new_control_task, args.reason)
                 collected += 1
         if collected or waiting or not open_lines or time.monotonic() >= deadline:
@@ -1076,13 +1109,17 @@ def _partition_paths(contract: Contract | None, partition: str | None) -> tuple[
 
 def _partition_brief(ctx: Ctx, partition: str | None, brief: str) -> str:
     """``brief`` as a partition dispatch receives it (``prompt --print`` rebuilds it
-    after the partition worktree is gone: the names are deterministic)."""
+    after the partition worktree is gone: the wave history keeps where it was)."""
     if not partition:
         return brief
     contract_path = find_contract(ctx.task_dir)
     paths = _partition_paths(load_contract(contract_path) if contract_path else None, partition)
-    worktree = partition_worktree_path(ctx.execution_main, ctx.execution_config, ctx.name, partition)
-    line = pt.scope_line(worktree.resolve(), partition_branch(ctx.name, partition, branch_prefix(ctx.execution_config)), paths)
+    past = (w["partitions"][partition] for w in reversed(ctx.data.get("wave_history") or [])
+            if partition in (w.get("partitions") or {}))
+    rec = (ctx.data.get("partitions") or {}).get(partition) or next(past, None)
+    if rec is None:
+        raise DriverError(f"partition {partition} has no worktree yet (`arbor.py run` starts the wave)")
+    line = pt.scope_line(rec["worktree"], partition_branch(ctx.name, partition, branch_prefix(ctx.execution_config)), paths)
     return line + "\n\n" + brief.strip()
 
 
@@ -1326,8 +1363,8 @@ def start_wave(ctx: Ctx) -> int:
     records: dict[str, dict] = {}
     for name in parts:
         try:
-            rec = pt.create_partition(ctx.execution_main, ctx.execution_config, ctx.name, name, start)
-            orca.register_worktree(ctx.config, Path(rec["worktree"]), ctx.worktree, f"{ctx.name}/{name}")
+            rec = pt.create_partition(ctx.config, ctx.execution_main, ctx.execution_config, ctx.name, name, start,
+                                      ctx.worktree)
         except WorktreeError as e:
             raise DriverError(f"wave {wave}: {e}") from None
         rec["step"] = "implement"
@@ -1369,7 +1406,7 @@ def _merge_remaining(ctx: Ctx) -> int:
         commit_task_dir(ctx, f"arbor({ctx.name}): wave {wave} merge conflict in {result.conflict['partition']}")
         print(colored(plan_for(ctx).summary, Colors.RED))
         return 1
-    warnings = pt.remove_partitions(ctx.execution_main, data["partitions"])
+    warnings = pt.remove_partitions(ctx.config, ctx.execution_main, data["partitions"])
     for warning in warnings:
         print(colored(f"  warning: {warning}", Colors.YELLOW))
     if warnings:
@@ -1803,8 +1840,9 @@ def cmd_abandon(args: argparse.Namespace) -> int:
 def find_task_anywhere(main: Path, config: dict, name: str, roots: tuple[Path, ...] = ()) -> tuple[Path, dict] | None:
     """A task directory by name: main checkout, its task worktree, the archive,
     then the same places in ``roots`` (a parent's integration worktree)."""
+    worktree = branch_worktree(main, task_branch(name, branch_prefix(config)))
     candidates = [main / DIR_WORKFLOW / DIR_TASKS / name,
-                  worktree_root(main, config) / name / DIR_WORKFLOW / DIR_TASKS / name,
+                  *([worktree / DIR_WORKFLOW / DIR_TASKS / name] if worktree else []),
                   *sorted((main / DIR_WORKFLOW / DIR_TASKS / "archive").glob(f"*/{name}"))]
     for root in roots:
         candidates += [root / DIR_WORKFLOW / DIR_TASKS / name,
@@ -1867,7 +1905,7 @@ def _integration_cleanup(ctx: Ctx) -> int:
     print("  journal: ok")
     try:
         if wt.exists():
-            remove_worktree(ctx.main, wt, delete_branch=True)
+            remove_worktree(ctx.config, ctx.main, wt, delete_branch=True)
         else:
             fin._git(ctx.main, "worktree", "prune")
             fin._git(ctx.main, "branch", "-D", branch)

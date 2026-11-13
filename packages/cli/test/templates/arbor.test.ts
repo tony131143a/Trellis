@@ -536,8 +536,8 @@ describe("configYamlTemplate: executors and gate", () => {
     });
     expect(parsed).not.toHaveProperty("conductor");
     expect(parsed.gate).toEqual({ commands: [] });
+    // no `root`: Orca chooses where a worktree goes
     expect(parsed.worktree).toEqual({
-      root: "../{repo}-wt",
       setup: "",
       branch_prefix: "arbor/",
     });

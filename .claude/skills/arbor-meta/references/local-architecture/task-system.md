@@ -34,7 +34,7 @@ The Arbor task system is stored entirely under `.arbor/tasks/` in the user proje
 | `reports/` | `d-NNN.md`: the role's reply plus the driver's verdict; `gate-N.md`: output of the N-th gate round; `candidates-rN.json`: REVIEW cycle N after the prefilter. Committed by the driver; CONTRACT-phase files are committed by `task.py start`. The assembled prompts stay uncommitted in `.arbor/.runtime/prompts/<task>/` of the main checkout. |
 | `scorecard.md` | Written at FINISH: dispatches per role, rounds, findings per rung, AC automation rate, overrides, violations. |
 
-`task.py start` moves the whole directory into the task worktree (`<worktree.root>/<task>`, branch `arbor/<task>`) and commits it there; from then on the task's artifacts travel with its code into the PR.
+`task.py start` moves the whole directory into the task worktree (an Orca workspace `<task>`, branch `arbor/<task>`; the path is `worktree_path` in `task.json`) and commits it there; from then on the task's artifacts travel with its code into the PR.
 
 ## `task.json`
 

@@ -827,7 +827,8 @@ def on_wave_merged(data: dict, wave_count: int, tier: str | None) -> None:
     data.setdefault("wave_history", []).append({
         "wave": wave,
         "partitions": {
-            name: {"branch": rec.get("branch"), "base": rec.get("base"), "merge": rec.get("merged"),
+            name: {"branch": rec.get("branch"), "worktree": rec.get("worktree"), "base": rec.get("base"),
+                   "merge": rec.get("merged"),
                    "dispatches": rec.get("dispatches", [])}
             for name, rec in (data.get("partitions") or {}).items()
         },

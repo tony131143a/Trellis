@@ -454,6 +454,42 @@ describe("central polyrepo execution", { timeout: 300_000 }, () => {
   it("writes code and gates in product, artifacts in control, and finishes only after both merges", () => {
     started();
     expect(execution).not.toBe(f.wt);
+    // Orca creates the product worktree, a child workspace of the control task worktree
+    expect(execution).toBe(path.join(f.repo, "product-wt", TASK));
+    expect(
+      orcaCalls(f).filter(
+        (argv) => argv.slice(0, 2).join(" ") === "worktree create",
+      ),
+    ).toEqual([
+      [
+        "worktree",
+        "create",
+        "--repo",
+        `path:${f.repo}`,
+        "--name",
+        TASK,
+        "--branch",
+        `arbor/${TASK}`,
+        "--base-branch",
+        expect.any(String),
+        "--parent-worktree",
+        `path:${f.repo}`,
+      ],
+      [
+        "worktree",
+        "create",
+        "--repo",
+        `path:${product}`,
+        "--name",
+        TASK,
+        "--branch",
+        `arbor/${TASK}`,
+        "--base-branch",
+        git(product, "rev-parse", "dev"),
+        "--parent-worktree",
+        `path:${f.wt}`,
+      ],
+    ]);
     expect(fs.existsSync(path.join(execution, "product.txt"))).toBe(true);
     expect(fs.existsSync(path.join(execution, ".arbor"))).toBe(false);
     expect(f.taskJson().base).toBe(git(product, "rev-parse", "dev"));

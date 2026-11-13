@@ -32,24 +32,24 @@ try:
     parse_timeout("soon"); raise SystemExit("bad timeout accepted")
 except ExecutorError: pass
 ex = resolve_executor({})
-assert (ex.name, ex.command, ex.timeout, ex.max_parallel, ex.keep_open, ex.default, ex.roles) == \\
-    ("orca", "orca", 5400, 5, False, Launch("codex"), {}), ex
+assert (ex.name, ex.command, ex.timeout, ex.max_parallel, ex.keep_open, ex.agent, ex.roles) == \\
+    ("orca", "orca", 5400, 5, False, "codex", {}), ex
 ex = resolve_executor({"executors": {"orca": {"timeout": "30s", "agent": "claude", "keep_open": "true"}}})
-assert (ex.name, ex.timeout, ex.keep_open, ex.launch("fix")) == ("orca", 30, True, Launch("claude")), ex
+assert (ex.name, ex.timeout, ex.keep_open, ex.agent_for("fix")) == ("orca", 30, True, "claude"), ex
 ex = resolve_executor({"executors": {"default": "x", "x": {
-    "type": "orca", "command": "/opt/orca", "agent": "codex", "model": "m-1",
-    "roles": {"explore": {"agent": "omp", "model": "@worker"}, "fix": {"effort": "high"}}}}})
+    "type": "orca", "command": "/opt/orca", "agent": "codex",
+    "roles": {"explore": {"agent": "omp"}, "fix": {"agent": "claude"}}}}})
 assert (ex.name, ex.command, ex.timeout) == ("x", "/opt/orca", None), ex
-assert ex.launch("explore") == Launch("omp", "@worker") and ex.launch("fix") == Launch("codex", "m-1", "high")
-assert ex.launch("review") == Launch("codex", "m-1")
+assert ex.roles == {"explore": "omp", "fix": "claude"}, ex
+assert (ex.agent_for("explore"), ex.agent_for("fix"), ex.agent_for("review")) == ("omp", "claude", "codex")
 for cfg in (
     {"executors": {"default": "nope"}},
     {"executors": {"default": "x", "x": {"type": "command", "command": "sh run.sh"}}},
     {"executors": {"default": "x", "x": {"type": "orca", "command": "orca"}}},
     {"executors": {"default": "x", "x": {"type": "orca", "agent": "codex"}}},
-    {"executors": {"orca": {"effort": "high"}}},
     {"executors": {"orca": {"roles": "explore"}}},
     {"executors": {"orca": {"roles": {"explore": "omp"}}}},
+    {"executors": {"orca": {"roles": {"explore": {"effort": "high"}}}}},
 ):
     try:
         resolve_executor(cfg); raise SystemExit("bad executor accepted: %r" % (cfg,))

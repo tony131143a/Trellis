@@ -1,7 +1,8 @@
 /**
  * Integration tests for `common/worktree.py` and the v2 config accessors in
  * `common/arbor_config.py`, run through the real `python3` and `git` against
- * a throwaway repository.
+ * a throwaway repository. Worktrees are created and removed through the fake
+ * Orca CLI (`fakeOrca`), never the real one.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -9,6 +10,8 @@ import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+
+import { fakeOrca, orcaCalls } from "./v2-driver-helpers";
 
 const TEMPLATE_SCRIPTS = path.resolve(
   __dirname,
@@ -54,6 +57,8 @@ function py(cwd: string, code: string, ...args: string[]): unknown {
 describe.skipIf(!hasPython())("common/worktree.py", () => {
   let tmp: string;
   let repo: string;
+  /** The config naming the fake Orca CLI, which creates and removes the worktrees. */
+  let config: string;
 
   beforeEach(() => {
     tmp = fs.realpathSync(
@@ -61,6 +66,7 @@ describe.skipIf(!hasPython())("common/worktree.py", () => {
     );
     repo = path.join(tmp, "proj");
     initRepo(repo);
+    config = fakeOrca(tmp);
   });
 
   afterEach(() => {
@@ -72,106 +78,179 @@ describe.skipIf(!hasPython())("common/worktree.py", () => {
     });
   });
 
-  it("names branches arbor/<task> and arbor/<task>--<partition>; root defaults to ../<repo>-wt", () => {
+  /** `py` with `CFG`, the parsed config that uses the fake Orca. */
+  function pyOrca(cwd: string, code: string, ...args: string[]): unknown {
+    return py(
+      cwd,
+      `from common.arbor_config import parse_simple_yaml\nCFG = parse_simple_yaml(${JSON.stringify(config)})\n${code}`,
+      ...args,
+    );
+  }
+
+  /** The `orca worktree <verb>` calls the code under test made. */
+  function worktreeCalls(verb: string): string[][] {
+    return orcaCalls({ tmp }).filter(
+      (argv) => argv[0] === "worktree" && argv[1] === verb,
+    );
+  }
+
+  it("names branches arbor/<task> and arbor/<task>--<partition>", () => {
     const out = py(
       repo,
       `
-from common.worktree import partition_branch, task_branch, worktree_root
-repo = Path(".").resolve()
-print(json.dumps({
-    "task": task_branch("10-30-foo"),
-    "part": partition_branch("10-30-foo", "impl"),
-    "default_root": str(worktree_root(repo, {})),
-    "custom_root": str(worktree_root(repo, {"worktree": {"root": "../wt/{repo}"}})),
-    "abs_root": str(worktree_root(repo, {"worktree": {"root": sys.argv[1]}})),
-}))
+from common.worktree import partition_branch, task_branch
+print(json.dumps({"task": task_branch("10-30-foo"), "part": partition_branch("10-30-foo", "impl")}))
 `,
-      path.join(tmp, "elsewhere"),
     );
     expect(out).toEqual({
       task: "arbor/10-30-foo",
       part: "arbor/10-30-foo--impl",
-      default_root: path.join(tmp, "proj-wt"),
-      custom_root: path.join(tmp, "wt", "proj"),
-      abs_root: path.join(tmp, "elsewhere"),
     });
   });
 
-  it("worktree_root resolves against the main checkout even from a linked worktree", () => {
+  it("branch_worktree finds the checkout of a branch, the main checkout included, from a linked worktree", () => {
     const linked = path.join(tmp, "linked");
     git(repo, "worktree", "add", "-q", "-b", "side", linked);
     const out = py(
       linked,
       `
-from common.worktree import worktree_root
-print(json.dumps(str(worktree_root(Path(".").resolve(), {}))))
+from common.worktree import branch_worktree
+here = Path(".").resolve()
+print(json.dumps([str(branch_worktree(here, b)) for b in ("main", "side", "nope")]))
 `,
     );
-    expect(out).toBe(path.join(tmp, "proj-wt"));
+    expect(out).toEqual([repo, linked, "None"]);
   });
 
-  it("add_worktree creates the branch; list_worktrees sees it; remove_worktree removes both", () => {
+  it("add_worktree creates the branch in an Orca workspace under its parent; remove_worktree removes both through Orca", () => {
     const wt = path.join(tmp, "proj-wt", "10-30-foo");
-    const out = py(
+    const out = pyOrca(
       repo,
       `
 from common.worktree import add_worktree, list_worktrees, remove_worktree
 repo = Path(".").resolve()
-wt = Path(sys.argv[1])
-add_worktree(repo, wt, "arbor/10-30-foo", "HEAD")
+wt = add_worktree(CFG, repo, "10-30-foo", "arbor/10-30-foo", "HEAD", repo)
 listed = [str(p) for p in list_worktrees(repo)]
 exists = wt.is_dir()
-remove_worktree(repo, wt, delete_branch=True)
-print(json.dumps({"listed": listed, "exists": exists, "gone": not wt.exists()}))
+remove_worktree(CFG, repo, wt, delete_branch=True)
+print(json.dumps({"path": str(wt), "listed": listed, "exists": exists, "gone": not wt.exists()}))
 `,
-      wt,
     );
-    expect(out).toEqual({ listed: [repo, wt], exists: true, gone: true });
+    expect(out).toEqual({ path: wt, listed: [repo, wt], exists: true, gone: true });
     expect(git(repo, "branch", "--list", "arbor/*")).toBe("");
+    expect(worktreeCalls("create")).toEqual([
+      [
+        "worktree",
+        "create",
+        "--repo",
+        `path:${repo}`,
+        "--name",
+        "10-30-foo",
+        "--branch",
+        "arbor/10-30-foo",
+        "--base-branch",
+        "HEAD",
+        "--parent-worktree",
+        `path:${repo}`,
+      ],
+    ]);
+    expect(worktreeCalls("rm")).toEqual([
+      ["worktree", "rm", "--worktree", `path:${wt}`],
+    ]);
+  });
+
+  it("add_worktree without a parent creates a top-level Orca workspace", () => {
+    pyOrca(
+      repo,
+      `
+from common.worktree import add_worktree
+print(json.dumps(str(add_worktree(CFG, Path(".").resolve(), "solo", "arbor/solo", "HEAD", None))))
+`,
+    );
+    expect(worktreeCalls("create")[0]).toContain("--no-parent");
+    expect(worktreeCalls("create")[0]).not.toContain("--parent-worktree");
   });
 
   it("remove_worktree keeps the branch by default and refuses a dirty worktree", () => {
     const wt = path.join(tmp, "wt-a");
     git(repo, "worktree", "add", "-q", "-b", "arbor/a", wt);
     fs.writeFileSync(path.join(wt, "untracked.txt"), "x\n");
-    const out = py(
+    const out = pyOrca(
       repo,
       `
 from common.worktree import WorktreeError, remove_worktree
 repo, wt = Path(".").resolve(), Path(sys.argv[1])
 try:
-    remove_worktree(repo, wt)
+    remove_worktree(CFG, repo, wt)
     refused = None
 except WorktreeError as e:
     refused = str(e)
 (wt / "untracked.txt").unlink()
-remove_worktree(repo, wt)
+remove_worktree(CFG, repo, wt)
 print(json.dumps({"refused": refused, "gone": not wt.exists()}))
 `,
       wt,
     );
     expect((out as { refused: string }).refused).toContain(
-      "git worktree remove",
+      `orca worktree rm ${wt} failed`,
     );
     expect((out as { gone: boolean }).gone).toBe(true);
     expect(git(repo, "branch", "--list", "arbor/a")).toContain("arbor/a");
+    // never forced unless asked
+    expect(worktreeCalls("rm").every((argv) => !argv.includes("--force"))).toBe(
+      true,
+    );
   });
 
-  it("add_worktree raises WorktreeError when the branch already exists", () => {
+  it("add_worktree refuses when Orca answers with another branch (a taken name) and leaves nothing behind", () => {
     git(repo, "branch", "arbor/dup");
-    const out = py(
+    const out = pyOrca(
       repo,
       `
 from common.worktree import WorktreeError, add_worktree
 try:
-    add_worktree(Path(".").resolve(), Path(sys.argv[1]), "arbor/dup", "HEAD")
+    add_worktree(CFG, Path(".").resolve(), "dup", "arbor/dup", "HEAD", None)
     print(json.dumps(None))
 except WorktreeError as e:
     print(json.dumps(str(e)))
 `,
-      path.join(tmp, "wt-dup"),
     );
-    expect(out).toContain("already exists");
+    expect(out).toContain("Orca already has a workspace or branch named dup / arbor/dup");
+    expect(out).toContain("arbor/dup-2");
+    expect(git(repo, "branch", "--list", "arbor/dup-2")).toBe("");
+    expect(fs.existsSync(path.join(tmp, "proj-wt", "dup-2"))).toBe(false);
+    expect(git(repo, "worktree", "list", "--porcelain")).not.toContain("dup-2");
+    expect(worktreeCalls("rm")).toEqual([
+      [
+        "worktree",
+        "rm",
+        "--worktree",
+        `path:${path.join(tmp, "proj-wt", "dup-2")}`,
+        "--force",
+      ],
+    ]);
+  });
+
+  it("add_worktree names the fix when the repository is not a project in Orca", () => {
+    fs.writeFileSync(
+      path.join(tmp, "fake.json"),
+      JSON.stringify({ unregistered: ["proj"] }),
+    );
+    const out = pyOrca(
+      repo,
+      `
+from common.worktree import WorktreeError, add_worktree
+try:
+    add_worktree(CFG, Path(".").resolve(), "x", "arbor/x", "HEAD", None)
+    print(json.dumps(None))
+except WorktreeError as e:
+    print(json.dumps(str(e)))
+`,
+    );
+    expect(out).toBe(
+      `orca worktree create x failed: ${repo} is not a project in Orca (\`orca repo add --path ${repo}\`)`,
+    );
+    expect(git(repo, "branch", "--list", "arbor/*")).toBe("");
   });
 
   describe("merge_no_ff", () => {
@@ -241,16 +320,16 @@ print(json.dumps([run_setup(wt, None), run_setup(wt, "  "), run_setup(wt, "touch
     expect(r.stderr).toContain("setup-broke");
   });
 
-  it("create_task_worktree branches from HEAD under the configured root and refuses a second time", () => {
-    const out = py(
+  it("create_task_worktree branches from HEAD in an Orca workspace under the main checkout and refuses a second time", () => {
+    const out = pyOrca(
       repo,
       `
 from common.worktree import WorktreeError, create_task_worktree
 repo = Path(".").resolve()
 task_dir = repo / ".arbor" / "tasks" / "10-30-foo"
-wt = create_task_worktree(repo, task_dir, {})
+wt = create_task_worktree(repo, task_dir, CFG)
 try:
-    create_task_worktree(repo, task_dir, {})
+    create_task_worktree(repo, task_dir, CFG)
     again = None
 except WorktreeError as e:
     again = str(e)
@@ -262,6 +341,12 @@ print(json.dumps({"path": str(wt.path), "branch": wt.branch, "base": wt.base_sha
     expect(out.base).toBe(git(repo, "rev-parse", "HEAD"));
     expect(git(out.path, "branch", "--show-current")).toBe("arbor/10-30-foo");
     expect(out.again).toContain("already exists");
+    const created = worktreeCalls("create");
+    expect(created).toHaveLength(1);
+    expect(created[0]).toEqual(
+      expect.arrayContaining(["--parent-worktree", `path:${repo}`]),
+    );
+    expect(created[0][created[0].indexOf("--base-branch") + 1]).toBe(out.base);
   });
 });
 
@@ -307,9 +392,8 @@ print(json.dumps({
       keep_open: "false",
     };
     expect(out).toEqual({
-      wt_default: { root: "../{repo}-wt", setup: "", branch_prefix: "arbor/" },
+      wt_default: { setup: "", branch_prefix: "arbor/" },
       wt: {
-        root: "../{repo}-wt",
         setup: "pnpm install --offline",
         branch_prefix: "arbor/",
       },
@@ -338,7 +422,7 @@ print(json.dumps([get_worktree_config(cfg), get_executors_config(cfg)]))
       template,
     );
     expect(out).toEqual([
-      { root: "../{repo}-wt", setup: "", branch_prefix: "arbor/" },
+      { setup: "", branch_prefix: "arbor/" },
       {
         default: "orca",
         orca: {

@@ -14,7 +14,7 @@ If your prompt starts with `Active task: <absolute path>`, that is the task dire
 
 ## Context loading
 
-- If your prompt header has a `Prompt: <file>` line, read that file in full first: it is your complete dispatch prompt (header, injected context, brief), and the rules below apply to its contents. Write your complete final report to the file named by the header's `Report:` line (the one file outside your write boundary you may write; the driver reads only that file), then send Orca's `worker_done` with `--report-path` set to it and `--outcome succeeded` (the outcome says the report is written, whatever its verdict; `failed` only when you could not write one).
+- If your prompt header has a `Prompt: <file>` line, read that file in full first: it is your complete dispatch prompt (header, injected context, brief), and the rules below apply to its contents. Write your complete final report to the file named by the header's `Report:` line (the one file outside your write boundary you may write; the driver reads only that file), then send Orca's `worker_done` once with `--report-path` set to it (the driver takes the verdict from the report file, not from `--outcome`).
 - If your prompt contains `<!-- arbor-hook-injected -->`, the spec overview and, with a task, `contract.md` plus the list of existing research files are already inlined.
 - Otherwise, with a task, read `<task>/contract.md` (older tasks: `prd.md`) and list `<task>/research/` so you do not repeat earlier work.
 - Read `.arbor/spec/` indexes only as far as the question needs.

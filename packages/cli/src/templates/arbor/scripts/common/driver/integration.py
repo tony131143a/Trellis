@@ -5,7 +5,7 @@ automatic merge passes.
 A parent task (one with children) is never started. When its first child
 starts, the driver creates the parent's integration branch
 ``<branch_prefix><parent>`` from the branch checked out in the main checkout
-(the baseline) plus a worktree ``<worktree.root>/<parent>``. Every child is
+(the baseline) plus its worktree (an Orca workspace ``<parent>``). Every child is
 cut from the integration branch and ``arbor finish`` merges it back with
 ``--no-ff`` itself, without asking, once the merge checks hold. The only
 human merge is the integration branch into the baseline; until then the
@@ -40,8 +40,7 @@ from ..contract import path_matches
 from ..git import run_git
 from ..io import read_json_checked, write_json
 from ..paths import DIR_TASKS, DIR_WORKFLOW, FILE_TASK_JSON
-from ..worktree import WorktreeError, add_worktree, branch_prefix, remove_worktree, run_setup, task_branch, worktree_root
-from . import orca
+from ..worktree import WorktreeError, add_worktree, branch_prefix, remove_worktree, run_setup, task_branch
 from .executor import utc_now
 
 SPEC_PREFIX = f"{DIR_WORKFLOW}/spec/"
@@ -55,25 +54,6 @@ class IntegrationError(RuntimeError):
 def _git(cwd: Path, *args: str) -> tuple[int, str]:
     rc, out, _ = run_git(list(args), cwd=cwd)
     return rc, out.strip()
-
-
-# =============================================================================
-# Where a branch is checked out
-# =============================================================================
-
-
-def checkout_of(repo: Path, branch: str) -> Path | None:
-    """The worktree (the main checkout included) that has ``branch`` checked out."""
-    rc, out = _git(repo, "worktree", "list", "--porcelain")
-    if rc != 0:
-        return None
-    path: Path | None = None
-    for line in out.splitlines():
-        if line.startswith("worktree "):
-            path = Path(line[len("worktree "):])
-        elif line == f"branch refs/heads/{branch}" and path is not None:
-            return path
-    return None
 
 
 # =============================================================================
@@ -103,28 +83,24 @@ def ensure(main: Path, config: dict, parent: Path) -> dict:
     record = data.get("integration")
     if isinstance(record, dict) and not record.get("cleaned"):
         if not Path(record["worktree"]).is_dir():
-            raise IntegrationError(f"integration worktree {record['worktree']} is missing; recreate it with "
-                                   f"`git worktree add {record['worktree']} {record['branch']}`")
+            raise IntegrationError(f"integration worktree {record['worktree']} is missing "
+                                   f"(branch {record['branch']})")
         return record
     rc, base_branch = _git(main, "symbolic-ref", "-q", "--short", "HEAD")
     if rc != 0 or not base_branch:
         raise IntegrationError("the main checkout is on a detached HEAD; check out the baseline branch first")
     _, base = _git(main, "rev-parse", "HEAD")
     branch = task_branch(parent.name, branch_prefix(config))
-    path = worktree_root(main, config) / parent.name
     if _git(main, "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}")[0] == 0:
         raise IntegrationError(f"branch {branch} already exists; remove it or link the children elsewhere")
-    if path.exists():
-        raise IntegrationError(f"worktree path already exists: {path}")
     try:
-        add_worktree(main, path, branch, base)
+        path = add_worktree(config, main, parent.name, branch, base, main)
     except WorktreeError as e:
         raise IntegrationError(str(e)) from None
     if run_setup(path, get_worktree_config(config).get("setup")) != 0:
-        remove_worktree(main, path, delete_branch=True)
+        remove_worktree(config, main, path, delete_branch=True, force=True)
         raise IntegrationError(f"worktree.setup failed in {path}; integration branch removed")
-    orca.register_worktree(config, path.resolve(), main, parent.name)
-    record = {"branch": branch, "worktree": str(path.resolve()), "base_branch": base_branch, "base": base,
+    record = {"branch": branch, "worktree": str(path), "base_branch": base_branch, "base": base,
               "created": utc_now(), "merged": []}
     data["integration"] = record
     if not write_json(json_path, data):

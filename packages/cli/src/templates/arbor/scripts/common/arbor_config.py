@@ -248,7 +248,7 @@ def read_arbor_config(repo_root: Optional[Path] = None) -> dict:
 
 
 # Defaults for the v2 sections. Every value is a string, as the parser returns.
-DEFAULT_WORKTREE_CONFIG: dict = {"root": "../{repo}-wt", "setup": "", "branch_prefix": "arbor/"}
+DEFAULT_WORKTREE_CONFIG: dict = {"setup": "", "branch_prefix": "arbor/"}
 DEFAULT_EXECUTORS_CONFIG: dict = {
     "default": "orca",
     "orca": {
@@ -261,7 +261,7 @@ DEFAULT_EXECUTORS_CONFIG: dict = {
     },
 }
 def get_worktree_config(config: dict) -> dict:
-    """``worktree:`` section over its defaults (``root``, ``setup``, ``branch_prefix``)."""
+    """``worktree:`` section over its defaults (``setup``, ``branch_prefix``)."""
     section = config.get("worktree") if isinstance(config, dict) else None
     merged = dict(DEFAULT_WORKTREE_CONFIG)
     if isinstance(section, dict):

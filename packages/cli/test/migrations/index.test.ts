@@ -438,8 +438,7 @@ describe("0.9.1 manifest", () => {
 // =============================================================================
 
 describe("0.10.0 manifest", () => {
-  it("is the package version, reached from 0.9.1, breaking, and deletes the codeg handoff", () => {
-    expect(VERSION).toBe("0.10.0");
+  it("is reached from 0.9.1, breaking, and deletes the codeg handoff", () => {
     expect(getAllMigrationVersions()).toContain("0.10.0");
     expect(
       getMigrationsForVersion("0.9.1", "0.10.0").map((m) => [m.type, m.from]),
@@ -457,5 +456,34 @@ describe("0.10.0 manifest", () => {
     expect(getConfigSectionsAddedBetween("0.9.1", "0.10.0")).toEqual([]);
     expect(configYamlTemplate).toContain("default: orca\n");
     expect(configYamlTemplate).toContain("type: orca\n");
+  });
+});
+
+// =============================================================================
+// 0.11.0 — Orca creates the worktrees; one Orca Run per task; idempotent, retried starts
+// =============================================================================
+
+describe("0.11.0 manifest", () => {
+  it("is the package version, reached from 0.10.0 without migrations, breaking, and drops worktree.root", () => {
+    expect(VERSION).toBe("0.11.0");
+    expect(getAllMigrationVersions()).toContain("0.11.0");
+    expect(getMigrationsForVersion("0.10.0", "0.11.0")).toEqual([]);
+    const metadata = getMigrationMetadata("0.10.0", "0.11.0");
+    expect(metadata.breaking).toBe(true);
+    expect(metadata.recommendMigrate).toBe(false);
+    const changelog = metadata.changelog.join("\n");
+    for (const term of [
+      "orca worktree create",
+      "--retry-request",
+      "--retry-of",
+      "orca_run",
+    ])
+      expect(changelog).toContain(term);
+    expect(getConfigSectionsAddedBetween("0.10.0", "0.11.0")).toEqual([]);
+    const worktree = configYamlTemplate.slice(
+      configYamlTemplate.search(/^worktree:/m),
+    );
+    expect(worktree).toMatch(/^worktree:\n {2}setup: /);
+    expect(worktree.split(/\n(?=\S)/)[0]).not.toMatch(/^\s+root:/m);
   });
 });

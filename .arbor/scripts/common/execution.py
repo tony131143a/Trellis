@@ -13,7 +13,7 @@ from pathlib import Path
 
 from .config import _is_true_config_value
 from .git import run_git
-from .worktree import add_worktree, branch_prefix, task_branch, worktree_root
+from .worktree import add_worktree, branch_prefix, task_branch
 
 
 class ExecutionError(RuntimeError):
@@ -95,20 +95,22 @@ def prepare(main: Path, task_dir: Path, data: dict, config: dict, mode: str | No
     git(root, 'rev-parse', '--verify', f'refs/heads/{merge_target}')
     branch = task_branch(task_dir.name, branch_prefix(config))
     effective = frozen_execution(entry)
-    path = worktree_root(root, effective) / task_dir.name
-    if path.exists():
-        raise ExecutionError(f'product worktree already exists: {path}')
     rc, _, _ = run_git(['show-ref', '--verify', '--quiet', f'refs/heads/{branch}'], cwd=root)
     if rc == 0:
         raise ExecutionError(f'product branch already exists: {branch}')
     return {'version': 1, 'package': data['package'], 'repo': str(root), 'repo_id': identity(root),
             'base_ref': base_ref, 'base': sha, 'base_branch': merge_target,
-            'branch': branch, 'worktree_path': str(path), 'policy_hash': policy_hash(entry),
+            'branch': branch, 'policy_hash': policy_hash(entry),
             'config': effective}
 
 
-def create(binding: dict) -> None:
-    add_worktree(Path(binding['repo']), Path(binding['worktree_path']), binding['branch'], binding['base'])
+def create(config: dict, binding: dict, name: str) -> None:
+    """The product worktree: an Orca workspace ``name`` of the product
+    repository, shown under the control worktree. ``config`` is the control
+    checkout's."""
+    path = add_worktree(config, Path(binding['repo']), name, binding['branch'], binding['base'],
+                        Path(binding['control']['worktree_path']))
+    binding['worktree_path'] = str(path)
 
 
 def validate(main: Path, config: dict, data: dict) -> dict | None:

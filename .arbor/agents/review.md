@@ -22,7 +22,7 @@ Your prompt starts with a header:
 
 ## Context loading
 
-- If your prompt header has a `Prompt: <file>` line, read that file in full first: it is your complete dispatch prompt (header, injected context, brief), and the rules below apply to its contents. Write your complete final report to the file named by the header's `Report:` line (the one file outside your write boundary you may write; the driver reads only that file), then send Orca's `worker_done` with `--report-path` set to it and `--outcome succeeded` (the outcome says the report is written, whatever its verdict; `failed` only when you could not write one).
+- If your prompt header has a `Prompt: <file>` line, read that file in full first: it is your complete dispatch prompt (header, injected context, brief), and the rules below apply to its contents. Write your complete final report to the file named by the header's `Report:` line (the one file outside your write boundary you may write; the driver reads only that file), then send Orca's `worker_done` once with `--report-path` set to it (the driver takes the verdict from the report file, not from `--outcome`).
 - If your prompt contains `<!-- arbor-hook-injected -->`, the curated `check.jsonl` specs, `contract.md`, `design.md`, `waves.md`, and `git diff <Range>` are already inlined.
 - Otherwise read `<task>/check.jsonl` and every file it lists, then `contract.md` (older tasks: `prd.md`), `design.md` and `waves.md` if present, then run `git diff <Range>`.
 

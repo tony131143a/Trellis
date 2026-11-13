@@ -6,6 +6,9 @@
  *   - `create` writing contract.md
  *   - `archive` of a task that lives in its worktree
  *   - `active_task` / `paths` accepting task dirs in registered worktrees
+ *
+ * Orca creates and removes the task worktree; the fake Orca CLI
+ * (`fakeOrca`) puts it at `<tmp>/proj-wt/<task>`.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -14,6 +17,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fakeOrca, orcaCalls } from "./v2-driver-helpers";
 
 const TEMPLATE_SCRIPTS = path.resolve(
   __dirname,
@@ -65,6 +69,8 @@ describe.skipIf(!hasPython())(
     let repo: string;
     let wt: string;
     let wtTask: string;
+    /** The `executors:` config that names the fake Orca CLI. */
+    let executors: string;
 
     beforeEach(() => {
       tmp = fs.realpathSync(
@@ -84,6 +90,8 @@ describe.skipIf(!hasPython())(
         recursive: true,
       });
       writeFile(repo, ".arbor/spec/guides/index.md", "# Guides\n");
+      executors = fakeOrca(tmp);
+      writeFile(repo, ".arbor/config.yaml", executors);
       const r = spawnSync(
         "python3",
         [".arbor/scripts/init_developer.py", "tester"],
@@ -135,7 +143,7 @@ describe.skipIf(!hasPython())(
       writeFile(
         repo,
         ".arbor/config.yaml",
-        'worktree:\n  branch_prefix: "task/"\n',
+        executors + 'worktree:\n  branch_prefix: "task/"\n',
       );
       const r = runTask(repo, ["start", TASK]);
       expect(r.status, r.stdout + r.stderr).toBe(0);
@@ -160,6 +168,23 @@ describe.skipIf(!hasPython())(
       expect(fs.existsSync(path.join(repo, rel))).toBe(false);
       expect(fs.existsSync(path.join(wtTask, "contract.md"))).toBe(true);
       expect(git(wt, "branch", "--show-current")).toBe(`arbor/${TASK}`);
+      // Orca creates the worktree, a child workspace of the main checkout
+      expect(orcaCalls({ tmp })).toEqual([
+        [
+          "worktree",
+          "create",
+          "--repo",
+          `path:${repo}`,
+          "--name",
+          TASK,
+          "--branch",
+          `arbor/${TASK}`,
+          "--base-branch",
+          base,
+          "--parent-worktree",
+          `path:${repo}`,
+        ],
+      ]);
 
       // one commit on the task branch, task dir only, no trailer
       expect(git(wt, "rev-list", "--count", `${base}..HEAD`)).toBe("1");
@@ -203,6 +228,41 @@ describe.skipIf(!hasPython())(
         branch: `arbor/${TASK}`,
       });
       expect(json.stale).toBe(false);
+    });
+
+    it("refuses when Orca offers a suffixed workspace (the name is taken) and leaves nothing behind", () => {
+      const rel = makeTask();
+      fs.mkdirSync(wt, { recursive: true }); // a leftover workspace directory
+      const r = runTask(repo, ["start", TASK]);
+      expect(r.status).toBe(1);
+      expect(r.stdout).toContain(
+        `Orca already has a workspace or branch named ${TASK} / arbor/${TASK} (it offered arbor/${TASK}-2)`,
+      );
+      expect(readJson(path.join(repo, rel, "task.json")).status).toBe(
+        "planning",
+      );
+      expect(git(repo, "branch", "--list", "arbor/*")).toBe("");
+      expect(fs.existsSync(`${wt}-2`)).toBe(false);
+      expect(git(repo, "worktree", "list", "--porcelain")).not.toContain(
+        "proj-wt",
+      );
+      expect(
+        orcaCalls({ tmp }).filter((argv) => argv[1] === "rm"),
+      ).toEqual([["worktree", "rm", "--worktree", `path:${wt}-2`, "--force"]]);
+    });
+
+    it("names `orca repo add` when the repository is not a project in Orca", () => {
+      const rel = makeTask();
+      writeFile(tmp, "fake.json", JSON.stringify({ unregistered: ["proj"] }));
+      const r = runTask(repo, ["start", TASK]);
+      expect(r.status).toBe(1);
+      expect(r.stdout).toContain(
+        `${repo} is not a project in Orca (\`orca repo add --path ${repo}\`)`,
+      );
+      expect(readJson(path.join(repo, rel, "task.json")).status).toBe(
+        "planning",
+      );
+      expect(git(repo, "branch", "--list", "arbor/*")).toBe("");
     });
 
     it("refuses without a contract and leaves everything in place", () => {
@@ -287,12 +347,12 @@ describe.skipIf(!hasPython())(
       expect(readJson(path.join(wtTask, "task.json")).state).toBe("BUILD");
     });
 
-    it("runs worktree.setup under a configured root; a failing setup rolls the start back", () => {
+    it("runs worktree.setup in the new worktree; a failing setup rolls the start back through Orca", () => {
       const rel = makeTask();
       writeFile(
         repo,
         ".arbor/config.yaml",
-        'worktree:\n  root: "../trees"\n  setup: "echo setup-tail-line; exit 7"\n',
+        executors + 'worktree:\n  setup: "echo setup-tail-line; exit 7"\n',
       );
       const originalJson = fs.readFileSync(
         path.join(repo, rel, "task.json"),
@@ -307,22 +367,24 @@ describe.skipIf(!hasPython())(
       expect(fs.readFileSync(path.join(repo, rel, "task.json"), "utf-8")).toBe(
         originalJson,
       );
-      expect(fs.existsSync(path.join(tmp, "trees", TASK))).toBe(false);
+      expect(fs.existsSync(wt)).toBe(false);
       expect(git(repo, "branch", "--list", "arbor/*")).toBe("");
       expect(git(repo, "worktree", "list", "--porcelain")).not.toContain(
-        "trees",
+        "proj-wt",
       );
+      // the worktree this start just made is removed forced, through Orca
+      expect(
+        orcaCalls({ tmp }).filter((argv) => argv[1] === "rm"),
+      ).toEqual([["worktree", "rm", "--worktree", `path:${wt}`, "--force"]]);
 
       writeFile(
         repo,
         ".arbor/config.yaml",
-        'worktree:\n  root: "../trees"\n  setup: "touch setup-ran"\n',
+        executors + 'worktree:\n  setup: "touch setup-ran"\n',
       );
       const ok = runTask(repo, ["start", TASK]);
       expect(ok.status, ok.stdout + ok.stderr).toBe(0);
-      expect(fs.existsSync(path.join(tmp, "trees", TASK, "setup-ran"))).toBe(
-        true,
-      );
+      expect(fs.existsSync(path.join(wt, "setup-ran"))).toBe(true);
     });
 
     it("--no-worktree keeps the v1 behaviour", () => {

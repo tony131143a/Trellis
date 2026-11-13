@@ -3,10 +3,18 @@
  * a started task in its own worktree, and the Orca executor configured in
  * `.arbor/config.yaml` with a fake Orca CLI (`fake_orca.py`).
  *
- * The fake CLI answers `orchestration worker-start` with a receipt (Orca
- * dispatch id `orca-<dispatch>`; `fake.json` `<dispatch>.start` overrides the
- * receipt, e.g. `{ "state": "failed" }`), keeps each worker's state in
- * `<tmp>/orca/<id>.json` for `worker-show` and logs every call in
+ * The fake CLI answers with the shapes Orca 1.4.258 gave in a live run. It
+ * creates and removes worktrees (`worktree create` puts workspace `<name>` of
+ * repository `<repo>` at `<repo>-wt/<name>`; like Orca it suffixes a taken name
+ * or branch with `-2`), creates Runs (`run-create` -> `run-<n>`) and answers
+ * `orchestration worker-start` with a receipt (Orca dispatch id
+ * `orca-<dispatch>`, a retry on the same Task `orca-<dispatch>-r<n>`;
+ * `fake.json` `<dispatch>.start` overrides the receipt, e.g.
+ * `{ "state": "failed" }`, `<dispatch>.starts` gives one override per attempt,
+ * `<dispatch>.fenced` refuses the start until `run-use`, `<dispatch>.stop:
+ * "unknown"` makes `worker-stop` unable to prove the stop). The same
+ * `--retry-request` id replays the first answer. It keeps each worker's
+ * state in `<tmp>/orca/<id>.json` for `worker-show` and logs every call in
  * `<tmp>/orca/calls.jsonl`. It never runs a role.
  *
  * `dispatch()` plays the worker: `arbor.py run` starts it, the fake role
@@ -15,9 +23,9 @@
  * (keyed by dispatch id): `sleep` seconds first, `write` files and commit
  * them with the pinned format (or `message`), leave `dirty` files
  * uncommitted, print `reply` (default: a valid report for the role), exit
- * with `exit`. The helper writes the reply to the request's reply file,
- * settles the worker (`completed`, or `failed` on a non-zero exit) and runs
- * `arbor.py sync`.
+ * with `exit`. The helper writes the reply to the request's reply file and
+ * settles the worker as `completed`; on a non-zero exit the worker died
+ * before it wrote a report (`failed`, no reply). Then it runs `arbor.py sync`.
  */
 
 import { execFileSync, spawn, spawnSync } from "node:child_process";
@@ -91,7 +99,7 @@ sys.stdout.write(spec.get("reply", DEFAULT.get(role, "ok\n")))
 sys.exit(spec.get("exit", 0))
 `;
 
-const FAKE_ORCA = String.raw`import json, pathlib, re, sys
+const FAKE_ORCA = String.raw`import json, pathlib, re, subprocess, sys
 here = pathlib.Path(__file__).resolve().parent
 state = here / "orca"
 state.mkdir(exist_ok=True)
@@ -100,41 +108,111 @@ with (state / "calls.jsonl").open("a") as f:
     f.write(json.dumps(argv) + "\n")
 def flag(name):
     return argv[argv.index(name) + 1] if name in argv else None
-def out(result, ok=True, code=0):
-    print(json.dumps({"ok": ok, "result": result} if ok else {"ok": False, "error": result}))
+def emit(payload, code):
+    print(json.dumps(payload))
     sys.exit(code)
+def out(result):
+    emit({"ok": True, "result": result}, 0)
+def fail(code, message):
+    emit({"ok": False, "error": {"code": code, "message": message}}, 1)
+def git(cwd, *args):
+    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)
+plan_file = here / "fake.json"
+plan = json.loads(plan_file.read_text()) if plan_file.exists() else {}
 command = " ".join(argv[:2])
+if command == "worktree create":
+    repo = pathlib.Path(flag("--repo")[len("path:"):])
+    if repo.name in plan.get("unregistered", []):
+        fail("repo_not_found", "repo_not_found")
+    name, branch = flag("--name"), flag("--branch")
+    path = repo.parent / (repo.name + "-wt") / name
+    # Orca suffixes a taken workspace name or branch instead of refusing
+    if path.exists() or git(repo, "rev-parse", "--verify", "--quiet", "refs/heads/" + branch).returncode == 0:
+        path, branch = path.with_name(name + "-2"), branch + "-2"
+    made = git(repo, "worktree", "add", "--no-track", "-q", "-b", branch, str(path), flag("--base-branch"))
+    if made.returncode:
+        fail("runtime_error", "Command failed: git worktree add\n" + made.stderr)
+    parent = flag("--parent-worktree")
+    out({"worktree": {"path": str(path), "branch": "refs/heads/" + branch, "displayName": name,
+                      "parentWorktreeId": parent and "repo::" + parent[len("path:"):]}})
+if command == "worktree rm":
+    path = flag("--worktree")[len("path:"):]
+    common = git(path, "rev-parse", "--path-format=absolute", "--git-common-dir") if pathlib.Path(path).is_dir() else None
+    if common is None or common.returncode:
+        fail("selector_not_found", "selector_not_found")
+    done = git(pathlib.Path(common.stdout.strip()).parent, "worktree", "remove",
+               *(["--force"] if "--force" in argv else []), path)
+    if done.returncode:
+        fail("runtime_error", "Failed to delete worktree at " + path + ". " + done.stderr.strip())
+    out({"removed": True})
+if command == "orchestration run-create":
+    run = "run-%d" % (len(list(state.glob("run-*"))) + 1)
+    (state / run).write_text(flag("--objective"))
+    out({"runId": run, "objective": flag("--objective")})
+if command == "orchestration run-use":
+    (state / ("used-" + flag("--id"))).write_text("")
+    out({"runId": flag("--id")})
 if command == "orchestration worker-start":
-    spec = pathlib.Path(flag("--spec-file")).read_text()
-    dispatch = re.search(r"^Dispatch: (\S+)", spec, re.M).group(1)
-    plan_file = here / "fake.json"
-    plan = json.loads(plan_file.read_text()) if plan_file.exists() else {}
-    receipt = {"dispatchId": "orca-" + dispatch, "taskId": "task-" + dispatch, "runId": "run-1",
-               "state": "ready", **plan.get(dispatch, {}).get("start", {})}
+    request = state / ("req-%s.json" % flag("--retry-request"))
+    if request.exists():  # the same request again: Orca replays its answer
+        emit(*json.loads(request.read_text()))
+    if flag("--task"):  # a retry on the same Orca Task
+        dispatch = flag("--task")[len("task-"):]
+    else:
+        dispatch = re.search(r"^Dispatch: (\S+)", pathlib.Path(flag("--spec-file")).read_text(), re.M).group(1)
+    spec = plan.get(dispatch, {})
+    if spec.get("fenced") and not (state / ("used-" + flag("--run"))).exists():
+        fail("consumer_fenced", "worker-start needs the coordinator bound to the Run")
+    attempt = len(list(state.glob("orca-" + dispatch + "*.json")))
+    overrides = spec.get("starts") or [spec.get("start", {})]
+    receipt = {"dispatchId": "orca-" + dispatch + ("-r%d" % attempt if attempt else ""),
+               "taskId": "task-" + dispatch, "runId": flag("--run"), "state": "ready",
+               **overrides[min(attempt, len(overrides) - 1)]}
     if receipt.get("dispatchId"):
         (state / (receipt["dispatchId"] + ".json")).write_text(json.dumps(
-            {"dispatch": {"id": receipt["dispatchId"], "taskId": receipt["taskId"],
+            {"arbor": dispatch,
+             "dispatch": {"id": receipt["dispatchId"], "taskId": receipt["taskId"],
                           "status": "failed" if receipt["state"] == "failed" else "dispatched"},
-             "worker": {"state": "running"}, "projection": {"liveness": {"verdict": "live"}}}))
-    out(receipt, code=0 if receipt["state"] == "ready" else 1)
-if command in ("orchestration worker-show", "orchestration worker-stop"):
+             "worker": {"state": receipt["state"]},
+             "projection": {"stage": {"activity": "working"}, "liveness": {"verdict": "live"}},
+             "observation": {"agentWait": None}}))
+    answer = ({"ok": receipt["state"] == "ready", "result": receipt}, 0 if receipt["state"] == "ready" else 1)
+    request.write_text(json.dumps(answer))
+    emit(*answer)
+if command in ("orchestration worker-show", "orchestration worker-stop", "orchestration worker-release"):
     file = state / (flag("--dispatch") + ".json")
     if not file.exists():
-        out({"code": "dispatch_not_found", "message": "no such dispatch"}, ok=False, code=1)
+        fail("dispatch_not_found", "Worker Dispatch %s was not found." % flag("--dispatch"))
     data = json.loads(file.read_text())
+    if command.endswith("release"):
+        out({"dispatchId": data["dispatch"]["id"], "state": "released"})
     if command.endswith("stop"):
-        data["projection"] = {"liveness": {"verdict": "exited"}}
+        if plan.get(data.get("arbor"), {}).get("stop") == "unknown":
+            emit({"ok": False, "result": {"dispatchId": data["dispatch"]["id"], "state": "stop_unknown"}}, 1)
+        data["dispatch"]["status"] = "failed"
+        data["projection"] = {"stage": {"activity": "unknown"}, "liveness": {"verdict": "exited", "source": "worker_stop"}}
         file.write_text(json.dumps(data))
-    if command.endswith("show") and "--full" not in argv:
+        out({"dispatchId": data["dispatch"]["id"], "state": "stopped", "alreadySettled": False,
+             "processAction": "closed_agent_terminal"})
+    if "--full" not in argv:
         # Orca >= 1.4.257: the default view is concise and flat (no dispatch / projection objects)
-        out({"dispatchId": data["dispatch"]["id"], "taskId": data["dispatch"]["taskId"],
-             "state": {"completed": "succeeded"}.get(data["dispatch"]["status"], data["dispatch"]["status"]),
-             "liveness": data["projection"]["liveness"]["verdict"]})
+        out({"dispatchId": data["dispatch"]["id"], "taskId": data["dispatch"].get("taskId"),
+             "state": {"completed": "succeeded"}.get(data["dispatch"]["status"], data["dispatch"]["status"])})
     out(data)
-if command == "worktree set":
-    out({})
-out({"code": "unknown_command", "message": command}, ok=False, code=1)
+fail("unknown_command", command)
 `;
+
+/**
+ * Write the fake Orca CLI to `<dir>/fake_orca.py` and return the
+ * `executors:` section of `.arbor/config.yaml` that uses it. For tests with
+ * their own repository setup: `task.py start`, wave starts, integration and
+ * finish cleanup create and remove worktrees through Orca, and the real Orca
+ * must never be called.
+ */
+export function fakeOrca(dir: string): string {
+  writeFile(dir, "fake_orca.py", FAKE_ORCA);
+  return `executors:\n  default: fake\n  fake:\n    type: orca\n    command: "python3 ${path.join(dir, "fake_orca.py")}"\n    agent: codex\n`;
+}
 
 export const CONTRACT = `# Feature
 
@@ -220,7 +298,7 @@ export function setupFixture(
     recursive: true,
   });
   writeFile(tmp, "fake_exec.py", FAKE_EXEC);
-  writeFile(tmp, "fake_orca.py", FAKE_ORCA);
+  const executors = fakeOrca(tmp);
   const gate = opts.gate?.length
     ? `gate:\n  commands:\n${opts.gate.map((c) => `    - "${c}"`).join("\n")}\n`
     : "";
@@ -234,7 +312,7 @@ export function setupFixture(
   writeFile(
     repo,
     ".arbor/config.yaml",
-    `executors:\n  default: fake\n  fake:\n    type: orca\n    command: "python3 ${path.join(tmp, "fake_orca.py")}"\n    agent: codex\n    timeout: 30s\n${gate}${mandate}`,
+    `${executors}    timeout: 30s\n${gate}${mandate}`,
   );
   const rel = `.arbor/tasks/${TASK}`;
   writeFile(
@@ -346,7 +424,7 @@ export function setOrcaState(
 }
 
 /** Every call the driver made to the fake Orca CLI (argv without `--json`). */
-export function orcaCalls(f: Fixture): string[][] {
+export function orcaCalls(f: Pick<Fixture, "tmp">): string[][] {
   const file = path.join(f.tmp, "orca", "calls.jsonl");
   if (!fs.existsSync(file)) return [];
   return fs
@@ -383,13 +461,16 @@ export function complete(
   );
   if (fake.status === null)
     throw new Error(`fake role did not run: ${fake.stderr}`);
-  fs.writeFileSync(env.reply_path, fake.stdout);
+  if (fake.status === 0) fs.writeFileSync(env.reply_path, fake.stdout);
   setOrcaState(f, env.orca_dispatch, {
-    dispatch: {
-      id: env.orca_dispatch,
-      status: fake.status === 0 ? "completed" : "failed",
-    },
-    lastReport: fake.status === 0 ? "done" : fake.stderr || `exit ${fake.status}`,
+    dispatch:
+      fake.status === 0
+        ? { id: env.orca_dispatch, status: "completed" }
+        : {
+            id: env.orca_dispatch,
+            status: "failed",
+            terminationReason: fake.stderr || `exit ${fake.status}`,
+          },
   });
   return f.run(
     "--task",

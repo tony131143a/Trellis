@@ -22,6 +22,7 @@ import {
   dispatch,
   git,
   hasPython,
+  orcaCalls,
   setupFixture,
   writeFile,
   type Fixture,
@@ -368,6 +369,41 @@ describe.skipIf(!hasPython())(
         base_branch: "main",
         merged: [],
       });
+      // Orca creates both: the integration worktree under the main checkout,
+      // the child's worktree under the integration worktree.
+      const created = orcaCalls(f).filter(
+        (argv) => argv.slice(0, 2).join(" ") === "worktree create",
+      );
+      expect(created).toEqual([
+        [
+          "worktree",
+          "create",
+          "--repo",
+          `path:${f.repo}`,
+          "--name",
+          TASK,
+          "--branch",
+          integration,
+          "--base-branch",
+          mainBefore,
+          "--parent-worktree",
+          `path:${f.repo}`,
+        ],
+        [
+          "worktree",
+          "create",
+          "--repo",
+          `path:${f.repo}`,
+          "--name",
+          a,
+          "--branch",
+          `arbor/${a}`,
+          "--base-branch",
+          git(f.repo, "rev-parse", integration),
+          "--parent-worktree",
+          `path:${landing}`,
+        ],
+      ]);
       expect(childJson(f, a)).toMatchObject({
         base_branch: integration,
         base_branch_source: "integration",

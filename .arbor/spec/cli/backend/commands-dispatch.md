@@ -62,7 +62,7 @@ children [--json] [--cleanup]
 | `resume` | Leave STOP with another round, or record approval of the revised contract. |
 | `abandon` | Record abandonment, optionally with a reason. |
 | `prompt` | Rebuild a dispatch prompt; `--print` prints its text. |
-| `sync` | Read every pending Orca worker, validate settled replies and advance, collect failed, timed-out or empty-reply workers; `--wait` polls; `--accept-new-control-task` (with `--dispatch` and `--reason`) records a narrowly checked sibling-task acceptance. |
+| `sync` | Read every pending Orca worker, validate the report of each settled worker and advance (the report file is the reply, whatever the worker told Orca), collect a settled worker without a report as a failed dispatch; `--wait` polls; `--accept-new-control-task` (with `--dispatch` and `--reason`) records a narrowly checked sibling-task acceptance. |
 | `finish` | In FINISH, one run writes the scorecard and prints the merge command, opens a PR with `--pr`, or (`merge=auto`, a child of a parent) merges itself. After the merge, one more run cleans up, archives and journals; repeated calls continue missing steps. |
 | `children` | List each child's state and merge status and the parent's integration branch; `--json` emits structured output; `--cleanup`, after a human merged the integration branch into the baseline, writes the journal entry and removes its worktree and branch. |
 
@@ -77,8 +77,8 @@ children [--json] [--cleanup]
   the worker's task spec (header plus `Prompt:` and `Report:` lines) and start the
   worker (`orca orchestration worker-start`); it returns `needs: "worker"`. The
   main agent ends its turn, Orca wakes it, then `sync` validates the reply at the
-  `Report:` file and advances. `run --dispatch d-NNN` starts a prepared request
-  that was not started; never start one twice.
+  `Report:` file and advances. A failed start leaves the request prepared (`run`
+  exits 1); `run --dispatch d-NNN` is safe to repeat and starts or retries it.
   See [dispatch.md](./dispatch.md).
 - **The loop.** After `task.py start` the main agent runs `next`, does the one
   thing it names (`brief` → write it, `run`; `worker` → end the turn, then
@@ -147,8 +147,9 @@ resetting or deleting work.
 - **Base**: `python3 .arbor/scripts/arbor.py --task <task> finish` in FINISH
   writes the scorecard and prints the `--no-ff` merge command in one run; the
   same command after the merge cleans up and archives.
-- **Bad**: starting a dispatch a second time, or treating a started worker as a
-  completed role report before `sync` validates its `Report:` file.
+- **Bad**: retrying a failed start with a new dispatch instead of
+  `run --dispatch d-NNN`, or treating a started worker as a completed role
+  report before `sync` validates its `Report:` file.
 
 ## 6. Tests Required
 

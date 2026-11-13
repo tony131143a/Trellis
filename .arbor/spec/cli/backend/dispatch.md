@@ -78,23 +78,46 @@ or `h` suffix (missing or zero means no timeout) and bounds one worker.
 - **Orca**: `type: orca` (`executors.default: orca`). `arbor.py run` writes the
   prompt and the worker's task spec and starts the worker itself:
   `orca orchestration worker-start --spec-file <spec> --task-title "<task> d-NNN <role>"
-  --worktree path:<worktree> --agent <agent> [--keep-open] --json`.
+  --run <run> --worktree path:<worktree> --agent <agent> [--keep-open]
+  --retry-request <request id> --json`. The first dispatch of a task creates its
+  Orca Run (`orca orchestration run-create`, `task.json` key `orca_run`); every
+  worker of the task starts in it, and when another agent session drives the task
+  later, the driver takes the Run over (`run-use`) on the first start.
   It prints `needs: "worker"` with `orca_dispatch`, `request_path`, `prompt_path`,
   `reply_path`, `timeout_s` and `started`. The worker writes its report to the
-  `Report:` file and sends `worker_done` (`--outcome succeeded` = report written).
+  `Report:` file and sends `worker_done` once; the driver takes the verdict from
+  the report file, not from `--outcome`.
   The main agent ends its turn; Orca wakes it; it runs `arbor.py sync
   [--dispatch d-NNN] [--wait DURATION]`, which reads `orca orchestration
-  worker-show --dispatch <id> --json` and validates settled replies, collects
-  failed or `worker_done`-less workers, stops (`worker-stop`) and collects workers
-  past `timeout`, prints `waiting for a person (...)` for a permission prompt, and
-  collects an empty reply file for judgment. A failed start is recorded at once;
-  with the Orca CLI missing or Orca unreachable the request stays prepared
-  (`next`: `needs: worker`, "not started") and `arbor.py run --dispatch d-NNN`
-  starts it; never start a dispatch twice. Worker questions arrive as Orca mail
-  (`orca orchestration reply`). Never replace this flow with a native agent.
+  worker-show --dispatch <id> --full --json` and validates the report of every
+  settled worker (a worker that failed in Orca, exited, timed out or ended its
+  turn without `worker_done` but wrote its report is collected the same way),
+  collects a settled worker with an empty report file as a failed dispatch (one
+  that sent `worker_done` with an empty report file for judgment), prints
+  `waiting for a person (...)` for a permission prompt and `its turn ended without
+  a report or worker_done` for a worker that stopped silently, and past `timeout`
+  stops the worker (`worker-stop`) and collects it as failed only when Orca
+  confirms the stop. A failed start is not a failed dispatch: `run` exits 1 with
+  the reason on stderr and the request stays prepared (`next`: `needs: worker`,
+  not started); `arbor.py run --dispatch d-NNN` is safe to repeat (the request id
+  replays Orca's answer) and retries it on the same Orca Task after
+  `worker-release`; the third failed start in a row fails the dispatch. Worker
+  questions arrive as Orca mail (`orca orchestration reply`). Never replace this
+  flow with a native agent.
 - **Workspaces.** One task = one Orca workspace; every role is a worker in it;
-  CONTRACT-phase roles run in the main checkout's workspace; partitions and child
-  tasks are child workspaces (`orca worktree set --parent-worktree`, display only).
+  CONTRACT-phase roles run in the main checkout's workspace. Orca creates and
+  removes every worktree (`orca worktree create --repo path:<repo> --name <name>
+  --branch <branch> --base-branch <start> --parent-worktree path:<parent>`,
+  `orca worktree rm`; removal is never forced except to roll back a worktree the
+  same command just made, and arbor then deletes the branch) and chooses its path;
+  arbor records it (`worktree_path`, partition records) and finds a task worktree
+  again by its branch. Workspace names: task `<task>`, partition
+  `<task>-<partition>`, integration `<parent task>`. Parents: a task, the main
+  checkout's workspace (a child task, the parent's integration workspace); a
+  partition, the task workspace; an integration workspace, the main checkout; a
+  polyrepo product worktree, the control task workspace. A taken workspace name or
+  branch refuses the start. `worktree:` in config holds `setup` (run synchronously;
+  a non-zero exit fails the start) and `branch_prefix`.
 
 ## Executor configuration
 
@@ -114,7 +137,15 @@ executors:
 
 `command` is the Orca CLI (an absolute path when not on PATH); `agent` is the
 Orca agent id every role starts as, with per-role overrides of `agent` under
-`roles`. Model and reasoning effort are the agent's own settings in Orca. Request records live in
+`roles`. Model and reasoning effort are the agent's own settings in Orca.
+One-time setup: the repository (and every `git: true` package repository) is a
+project in Orca (`orca repo add --path <repo>`), the main agent runs inside Orca,
+and each agent's permission mode is set in Orca. A project with Arbor's Codex
+hooks (`.codex/hooks.json`) needs them trusted once in Codex ("Trust all and
+continue"), otherwise a Codex worker fails to start with
+`agent_readiness: Agent startup blocked: agent-hooks-review-prompt`.
+
+Request records live in
 `.arbor/.runtime/workers/<task>/<dispatch>.json` (`task.json` key `workers`). A
 collected request cannot be collected twice.
 

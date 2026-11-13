@@ -112,9 +112,10 @@ default_package: cli
 #-------------------------------------------------------------------------------
 # How `arbor.py run` executes a role: as an Orca worker (`type: orca`).
 # `arbor.py run` starts the worker itself with `orca orchestration
-# worker-start` in the dispatch's worktree; the worker writes its reply to
-# the request's reply file and reports `worker_done`; `arbor.py sync` reads
-# the workers' state from Orca and collects the settled ones.
+# worker-start` in the dispatch's worktree (in the task's Orca Run); the
+# worker writes its reply to the request's reply file and reports
+# `worker_done`; `arbor.py sync` reads the workers' state from Orca and
+# collects the settled ones. Worktrees are Orca workspaces too (Task worktrees).
 #   command       the Orca CLI; an absolute path when it is not on PATH
 #                 (macOS: /Applications/Orca.app/Contents/Resources/bin/orca)
 #   agent         the Orca agent id every role starts as (codex, claude, omp, ...)
@@ -128,9 +129,8 @@ default_package: cli
 #                 closes it shortly after it reports; its output stays readable)
 # Permissions belong to Orca: set each agent's permission mode under
 # Settings > Agents so that workers do not stop on prompts. The main agent
-# must itself run inside Orca, and the repository must be added to Orca with
-# non-Orca worktrees shown (`orca repo add`, `orca repo set
-# --external-worktree-visibility show`).
+# must itself run inside Orca, and the repository (every `git: true` package
+# repository too) must be a project in Orca (`orca repo add --path <repo>`).
 executors:
   default: orca
   orca:
@@ -167,13 +167,16 @@ gate:
 #-------------------------------------------------------------------------------
 # Task worktrees
 #-------------------------------------------------------------------------------
-# `task.py start` creates branch <branch_prefix><task> and its worktree at
-# <root>/<task>, starting from the current HEAD. `root` is resolved relative
-# to the main checkout; {repo} is its directory name. `setup` runs once in
-# every new worktree (e.g. "pnpm install --offline --frozen-lockfile"); a
-# non-zero exit fails the start.
+# `task.py start` creates branch <branch_prefix><task> and its worktree,
+# starting from the current HEAD. Orca creates the worktree (`orca worktree
+# create`, a workspace named <task> under the main checkout's) and chooses its
+# path; Orca's own setup hooks follow the repository's policy in Orca. `setup`
+# runs once in every new worktree and is waited for (e.g. "pnpm install
+# --offline --frozen-lockfile"); a non-zero exit fails the start.
+# `branch_prefix` defaults to "arbor/"; set another one (e.g. "task/") when
+# the repository already has a branch named `arbor`, which blocks
+# `arbor/<task>` refs.
 worktree:
-  root: "../{repo}-wt"
   setup: "pnpm install --offline"
   branch_prefix: "task/"
 

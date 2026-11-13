@@ -313,15 +313,15 @@ def started_task_in_worktree(task_input: str, repo_root: Path) -> Path | None:
 
 
 def started_copy_by_name(task_name: str, repo_root: Path) -> Path | None:
-    """``<worktree.root>/<name>/.arbor/tasks/<name>`` when that started copy exists."""
+    """``<task worktree>/.arbor/tasks/<name>`` when that started copy exists
+    (the task worktree is the one on the task's branch)."""
     from .arbor_config import read_arbor_config
-    from .worktree import worktree_root
+    from .worktree import branch_prefix, branch_worktree, task_branch
 
-    try:
-        root = worktree_root(repo_root, read_arbor_config(repo_root))
-    except OSError:
+    worktree = branch_worktree(repo_root, task_branch(task_name, branch_prefix(read_arbor_config(repo_root))))
+    if worktree is None:
         return None
-    candidate = root / task_name / DIR_WORKFLOW / DIR_TASKS / task_name
+    candidate = worktree / DIR_WORKFLOW / DIR_TASKS / task_name
     return candidate if (candidate / FILE_TASK_JSON).is_file() else None
 
 

@@ -52,7 +52,6 @@ from common.active_task import (
 )
 from common.arbor_config import get_worktree_config, read_arbor_config
 from common.contract import ContractError, contract_hash, find_contract, load_contract
-from common.driver import orca
 from common.git import current_branch_name, run_git, run_git_retry_index_lock
 from common.io import (
     describe_json_read_failure,
@@ -95,6 +94,7 @@ from common.worktree import (
     WorktreeError,
     create_task_worktree,
     main_checkout,
+    remove_worktree,
     run_setup,
 )
 
@@ -287,12 +287,11 @@ def _rollback_start(
             shutil.move(str(dest), str(source))
     # Forced: the worktree is the one this command just made, and setup output
     # or a half-staged commit must not keep it alive.
-    rc, _, err = run_git(["worktree", "remove", "--force", str(wt.path)], cwd=main)
-    if rc == 0:
-        rc, _, err = run_git(["branch", "-D", wt.branch], cwd=main)
-    if rc != 0:
-        print(colored(f"Warning: cleanup incomplete: {err.strip()}", Colors.YELLOW), file=sys.stderr)
-        print(f"  git worktree remove --force {wt.path}", file=sys.stderr)
+    try:
+        remove_worktree(read_arbor_config(main), main, wt.path, delete_branch=True, force=True)
+    except WorktreeError as e:
+        print(colored(f"Warning: cleanup incomplete: {e}", Colors.YELLOW), file=sys.stderr)
+        print(f"  orca worktree rm --worktree path:{wt.path} --force", file=sys.stderr)
         print(f"  git branch -D {wt.branch}", file=sys.stderr)
 
 
@@ -403,12 +402,12 @@ def _start_in_worktree(args: argparse.Namespace, task_dir: Path, repo_root: Path
                       "this child skips REVIEW (the parent reviews the integration branch)", Colors.GREEN))
     try:
         wt = create_task_worktree(repo_root, task_dir, config,
-                                  integration["branch"] if integration else "HEAD")
+                                  integration["branch"] if integration else "HEAD",
+                                  Path(integration["worktree"]) if integration else None)
     except WorktreeError as e:
         print(colored(f"Error: {e}", Colors.RED))
         return 1
     print(colored(f"✓ Worktree: {wt.path} (branch {wt.branch}, base {wt.base_sha[:12]})", Colors.GREEN))
-    orca.register_worktree(config, wt.path, Path(integration["worktree"]) if integration else main, name)
 
     if run_setup(wt.path, get_worktree_config(config).get("setup")) != 0:
         print(colored("Error: worktree.setup failed; start rolled back", Colors.RED))
@@ -425,7 +424,7 @@ def _start_in_worktree(args: argparse.Namespace, task_dir: Path, repo_root: Path
             print("Error: cannot persist product start intent; control worktree preserved")
             return 1
         try:
-            ex.create(binding)
+            ex.create(config, binding, name)
             if run_setup(Path(binding["worktree_path"]),
                          get_worktree_config(binding["config"]).get("setup")) != 0:
                 raise ex.ExecutionError("product setup failed")
@@ -561,8 +560,7 @@ def cmd_integrate(args: argparse.Namespace) -> int:
         return 1
     wt = Path(record["worktree"])
     if not wt.is_dir():
-        print(colored(f"Error: integration worktree {wt} is missing; recreate it with "
-                      f"`git worktree add {wt} {record['branch']}`", Colors.RED))
+        print(colored(f"Error: integration worktree {wt} is missing (branch {record['branch']})", Colors.RED))
         return 1
     rc, status, _ = run_git(["status", "--porcelain", "--untracked-files=no"], cwd=wt)
     if rc != 0 or status.strip():

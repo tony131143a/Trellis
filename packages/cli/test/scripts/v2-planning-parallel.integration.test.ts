@@ -311,7 +311,7 @@ describe.skipIf(!hasPython())(
         f.taskJson().dispatches.map((d: { status: string }) => d.status),
       ).toEqual(["ok", "ok", "ok"]);
       expect(
-        new Set(f.results().map((r: { dispatch: string }) => r.dispatch)).size,
+        new Set(f.results().map((r) => r.dispatch)).size,
       ).toBe(3);
       for (const [i, p] of requests.entries()) {
         expect(
@@ -332,12 +332,18 @@ describe.skipIf(!hasPython())(
       prepare("d-002", "architect");
       writeFile(f.taskDir, "research/d-001-aborted.md", "ABORTED_DRAFT");
       setOrcaState(f, a.orca_dispatch, {
-        dispatch: { id: a.orca_dispatch, status: "failed" },
-        lastReport: "cancel only this angle",
+        dispatch: {
+          id: a.orca_dispatch,
+          status: "failed",
+          lastFailure: JSON.stringify({ subject: "cancel only this angle" }),
+        },
       });
       expect(f.run(...syncArgs(a)).status).toBe(1);
       expect(Object.keys(f.taskJson().workers)).toEqual(["d-002"]);
       expect(f.taskJson().dispatches[0].status).toBe("fail");
+      expect(
+        fs.readFileSync(path.join(f.taskDir, "reports/d-001.md"), "utf8"),
+      ).toContain("cancel only this angle");
       const c = prepare("d-003", "architect");
       expect(promptOf(c)).not.toContain("ABORTED_DRAFT");
       expect(f.taskJson().stop).toBeUndefined();
