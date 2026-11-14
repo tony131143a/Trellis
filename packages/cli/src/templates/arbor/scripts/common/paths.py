@@ -341,138 +341,11 @@ def resolve_task_ref(task_ref: str, repo_root: Path | None = None) -> Path | Non
     try:
         rel = resolved.relative_to(workflow_real)
     except ValueError:
-        # Third base: a started task lives in its own worktree, and any
-        # worktree registered for this repo is legitimate (kept absolute).
-        from .active_task import in_registered_worktree
-
-        return resolved if in_registered_worktree(resolved, root) else None
+        return None
 
     # Map back to the in-repo (lexical) form so callers store the same
     # repo-relative ref as in the non-symlinked layout.
     return root / DIR_WORKFLOW / rel
-
-
-def get_current_task(
-    repo_root: Path | None = None,
-    platform_input: dict | None = None,
-    platform: str | None = None,
-) -> str | None:
-    """Get current task directory path (relative to repo_root).
-
-    Args:
-        repo_root: Repository root path. Defaults to auto-detected.
-
-    Returns:
-        Relative path to current task directory or None.
-    """
-    if repo_root is None:
-        repo_root = get_repo_root()
-
-    from .active_task import resolve_active_task
-
-    return resolve_active_task(repo_root, platform_input, platform).task_path
-
-
-def get_current_task_abs(
-    repo_root: Path | None = None,
-    platform_input: dict | None = None,
-    platform: str | None = None,
-) -> Path | None:
-    """Get current task directory absolute path.
-
-    Args:
-        repo_root: Repository root path. Defaults to auto-detected.
-
-    Returns:
-        Absolute path to current task directory or None.
-    """
-    if repo_root is None:
-        repo_root = get_repo_root()
-
-    relative = get_current_task(repo_root, platform_input, platform)
-    if relative:
-        return resolve_task_ref(relative, repo_root)
-    return None
-
-
-def get_current_task_source(
-    repo_root: Path | None = None,
-    platform_input: dict | None = None,
-    platform: str | None = None,
-) -> tuple[str, str | None, str | None]:
-    """Get active task source as (`source`, `context_key`, `task_path`)."""
-    if repo_root is None:
-        repo_root = get_repo_root()
-
-    from .active_task import get_current_task_source as _get_source
-
-    return _get_source(repo_root, platform_input, platform)
-
-
-def set_current_task(
-    task_path: str,
-    repo_root: Path | None = None,
-    platform_input: dict | None = None,
-    platform: str | None = None,
-) -> bool:
-    """Set current task in session scope.
-
-    Args:
-        task_path: Task directory path (relative to repo_root).
-        repo_root: Repository root path. Defaults to auto-detected.
-
-    Returns:
-        True on success, False on error.
-    """
-    if repo_root is None:
-        repo_root = get_repo_root()
-
-    from .active_task import set_active_task
-
-    return set_active_task(
-        task_path,
-        repo_root,
-        platform_input=platform_input,
-        platform=platform,
-    ) is not None
-
-
-def clear_current_task(
-    repo_root: Path | None = None,
-    platform_input: dict | None = None,
-    platform: str | None = None,
-) -> bool:
-    """Clear current task in session scope.
-
-    Args:
-        repo_root: Repository root path. Defaults to auto-detected.
-
-    Returns:
-        True on success.
-    """
-    if repo_root is None:
-        repo_root = get_repo_root()
-
-    from .active_task import clear_active_task
-
-    clear_active_task(
-        repo_root,
-        platform_input=platform_input,
-        platform=platform,
-    )
-    return True
-
-
-def has_current_task(repo_root: Path | None = None) -> bool:
-    """Check if has current task.
-
-    Args:
-        repo_root: Repository root path. Defaults to auto-detected.
-
-    Returns:
-        True if current task is set.
-    """
-    return get_current_task(repo_root) is not None
 
 
 # =============================================================================
@@ -545,4 +418,3 @@ if __name__ == "__main__":
     print(f"Tasks dir: {get_tasks_dir(repo)}")
     print(f"Workspace dir: {get_workspace_dir(repo)}")
     print(f"Journal file: {get_active_journal_file(repo)}")
-    print(f"Current task: {get_current_task(repo)}")

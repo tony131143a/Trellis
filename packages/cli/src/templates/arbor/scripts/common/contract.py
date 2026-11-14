@@ -1,22 +1,20 @@
 """
 Contract: the task's acceptance contract (``contract.md``) — parse, validate, hash.
 
-``contract.md`` is the planning artifact a human approves (it replaces
-``prd.md``). After approval its hash is frozen into ``task.json``; every later
-phase (test, implement, gate, review) reads it.
+``contract.md`` is what a human approves: the goal and the checks that say
+when it is reached. After approval its hash is recorded in ``task.json``.
 
 Sections (``## `` headings). Order is free; optional sections may be absent.
 
     ## Goal                 one paragraph
     ## Scope                "- in: …" / "- out: …" bullets (free text allowed)
     ## Acceptance criteria  "- AC-1: Given … When … Then …"
-    ## Verification map     table: | id | kind | check | file |
-                            kind = auto | manual; auto → check is a shell command
+    ## Verification map     table: | id | kind | check | file | [repo |]
+                            kind = auto | manual; auto → check is a shell command;
+                            repo = where it runs (absent/empty: the task's repo)
     ## Interface pins       bullets; may be the single line "existing interfaces"
-    ## Partitions           "- <name>: <glob>, <glob>"   (absent → one partition
-                            "default" owning "**")
-    ## Waves                "- 1: [name, name]"          (absent → one wave with
-                            every partition)
+
+Other sections (e.g. the Partitions / Waves of arbor < 1.0) are ignored.
 
 Parsing is markdown-light: ``## `` headings (case-insensitive), ``- ``
 bullets, and the one Verification map table. HTML comments are ignored.
@@ -33,8 +31,6 @@ from typing import Literal, Sequence
 
 CONTRACT_FILE = "contract.md"
 LEGACY_CONTRACT_FILE = "prd.md"
-
-DEFAULT_PARTITION = "default"
 
 CRITERION_ID_PATTERN = r"^AC-\d+$"
 
@@ -55,12 +51,7 @@ class MapEntry:
     kind: Literal["auto", "manual"]
     check: str
     file: str | None = None
-
-
-@dataclass(frozen=True)
-class Partition:
-    name: str
-    paths: tuple[str, ...]
+    repo: str = ""  # "": the task's default repo
 
 
 @dataclass(frozen=True)
@@ -72,17 +63,9 @@ class Contract:
     criteria: tuple[Criterion, ...]
     verification_map: tuple[MapEntry, ...]
     interface_pins: tuple[str, ...]
-    partitions: tuple[Partition, ...]
-    waves: tuple[tuple[str, ...], ...]
 
     def auto_checks(self) -> tuple[MapEntry, ...]:
         return tuple(e for e in self.verification_map if e.kind == "auto")
-
-    def partition(self, name: str) -> Partition | None:
-        for p in self.partitions:
-            if p.name == name:
-                return p
-        return None
 
     def criterion_ids(self) -> tuple[str, ...]:
         return tuple(c.id for c in self.criteria)
@@ -101,7 +84,7 @@ _COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 _SECTION_RE = re.compile(r"^##(?!#)\s*(.*?)\s*:?\s*$")
 _BULLET_RE = re.compile(r"^\s*[-*]\s+(.*?)\s*$")
 _TABLE_SEPARATOR_RE = re.compile(r"^:?-+:?$")
-_MAP_COLUMNS = ("id", "kind", "check", "file")
+_MAP_COLUMNS = ("id", "kind", "check", "file", "repo")
 
 
 def _sections(text: str) -> tuple[list[str], dict[str, list[str]]]:
@@ -236,19 +219,9 @@ def _parse_map(lines: list[str]) -> tuple[MapEntry, ...]:
             )
         file = _unquote(cells[column["file"]]) if "file" in column else ""
         check = _unquote(cells[column["check"]])
-        entries.append(MapEntry(entry_id, kind, check, file or None))  # type: ignore[arg-type]
+        repo = _unquote(cells[column["repo"]]) if "repo" in column else ""
+        entries.append(MapEntry(entry_id, kind, check, file or None, repo))  # type: ignore[arg-type]
     return tuple(entries)
-
-
-def _parse_wave(item: str) -> tuple[str, ...]:
-    _, sep, rest = item.partition(":")
-    names = (rest if sep else item).strip()
-    if names.startswith("[") and names.endswith("]"):
-        names = names[1:-1]
-    wave = tuple(_unquote(name) for name in names.split(",") if name.strip())
-    if not wave:
-        raise ContractError(f"Waves: wave names no partition: {item!r}")
-    return wave
 
 
 def parse_contract(text: str, path: Path) -> Contract:
@@ -279,20 +252,6 @@ def parse_contract(text: str, path: Path) -> Contract:
         for item in _bullets(sections.get("acceptance criteria", []))
     )
 
-    partitions: list[Partition] = []
-    for item in _bullets(sections.get("partitions", [])):
-        name, rest = _split_labelled(item, "Partitions")
-        paths = tuple(_unquote(p) for p in rest.split(",") if p.strip())
-        if not paths:
-            raise ContractError(f"Partitions: {name} lists no paths")
-        partitions.append(Partition(name, paths))
-    if not partitions:
-        partitions = [Partition(DEFAULT_PARTITION, ("**",))]
-
-    waves = tuple(_parse_wave(item) for item in _bullets(sections.get("waves", [])))
-    if not waves:
-        waves = (tuple(p.name for p in partitions),)
-
     return Contract(
         path=path,
         goal=goal,
@@ -301,8 +260,6 @@ def parse_contract(text: str, path: Path) -> Contract:
         criteria=criteria,
         verification_map=_parse_map(sections.get("verification map", [])),
         interface_pins=tuple(_bullets(sections.get("interface pins", []))),
-        partitions=tuple(partitions),
-        waves=waves,
     )
 
 
@@ -318,11 +275,7 @@ def validate_contract(contract: Contract) -> list[str]:
       - at least one criterion; ids match CRITERION_ID_PATTERN and are unique
       - every criterion has >= 1 map entry; every map entry names a criterion
       - auto entries have a non-empty check (their ``file`` may not exist yet:
-        implement creates it)
-      - partition names unique; partition path sets pairwise non-overlapping
-        (compare literal prefixes before the first glob character)
-      - every wave names existing partitions; every partition appears in
-        exactly one wave
+        a node creates it)
     """
     errors: list[str] = []
 
@@ -349,39 +302,21 @@ def validate_contract(contract: Contract) -> list[str]:
         if entry.kind == "auto" and not entry.check:
             errors.append(f"Verification map: {entry.id} is auto but its check is empty")
 
-    names = [p.name for p in contract.partitions]
-    for name in dict.fromkeys(names):
-        if names.count(name) > 1:
-            errors.append(f"Partitions: duplicate name {name}")
-    for i, first in enumerate(contract.partitions):
-        for second in contract.partitions[i + 1:]:
-            if first.name == second.name:
-                continue
-            for a in first.paths:
-                for b in second.paths:
-                    pa, pb = _literal_prefix(a), _literal_prefix(b)
-                    if pa.startswith(pb) or pb.startswith(pa):
-                        errors.append(
-                            f"Partitions: {first.name} ({a}) overlaps {second.name} ({b})"
-                        )
-
-    placed: dict[str, int] = {}
-    for number, wave in enumerate(contract.waves, start=1):
-        for name in wave:
-            if name not in names:
-                errors.append(f"Waves: wave {number} names unknown partition {name!r}")
-            placed[name] = placed.get(name, 0) + 1
-    for name in dict.fromkeys(names):
-        count = placed.get(name, 0)
-        if count == 0:
-            errors.append(f"Waves: partition {name} is in no wave")
-        elif count > 1:
-            errors.append(f"Waves: partition {name} is listed {count} times (once expected)")
-
     return errors
 
 
 _GLOB_CHARS = "*?"
+
+
+def paths_overlap(a: Sequence[str], b: Sequence[str]) -> bool:
+    """Whether two glob sets may name a common path: one literal prefix
+    (the pattern up to its first glob character) starts the other."""
+    for x in a:
+        for y in b:
+            px, py = _literal_prefix(x), _literal_prefix(y)
+            if px.startswith(py) or py.startswith(px):
+                return True
+    return False
 
 
 def _literal_prefix(pattern: str) -> str:
@@ -437,7 +372,7 @@ def _glob_regex(pattern: str) -> re.Pattern[str]:
 
 
 def default_contract_content(title: str, description: str | None = None) -> str:
-    """The contract.md written by ``task.py create``."""
+    """The contract.md written by ``arbor.py new``."""
     goal = (description or "").strip() or "<one paragraph: what changes and why>"
     return CONTRACT_TEMPLATE.format(title=title.strip(), goal=goal)
 
@@ -463,15 +398,9 @@ CONTRACT_TEMPLATE = """# {title}
 |------|--------|-----------------------------------------|------|
 | AC-1 | auto   | `<command that fails before, passes after>` | <test file path> |
 
+<!-- optional last column | repo |: the package whose integration branch runs the check (empty: the task's repo) -->
+
 ## Interface pins
 
 <!-- optional; signatures, paths, CLI / HTTP shapes the design fixes up front -->
-
-## Partitions
-
-<!-- optional; absent = one partition "default" owning everything (serial) -->
-
-## Waves
-
-<!-- optional; absent = one wave with every partition -->
 """

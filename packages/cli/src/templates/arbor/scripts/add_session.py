@@ -38,9 +38,8 @@ Retry convergence:
 
 Branch resolution order:
     1. --branch CLI arg (explicit)
-    2. task.json branch field (from active task, if still exists)
-    3. git branch --show-current (auto-detect)
-    4. None (omitted gracefully)
+    2. git branch --show-current (auto-detect)
+    3. None (omitted gracefully)
 """
 
 from __future__ import annotations
@@ -58,7 +57,6 @@ from common.paths import (
     DIR_WORKFLOW,
     FILE_JOURNAL_PREFIX,
     get_repo_root,
-    get_current_task,
     get_developer,
     get_workspace_dir,
 )
@@ -71,8 +69,6 @@ from common.safe_commit import (
     safe_git_add,
     safe_arbor_paths_to_add,
 )
-from common.tasks import load_task
-from common.types import TaskInfo
 from common.config import (
     get_packages,
     get_session_auto_commit,
@@ -210,45 +206,8 @@ def get_current_git_branch(repo_root: Path) -> str | None:
     return detected or None
 
 
-def branch_ref_exists(repo_root: Path, branch: str) -> bool:
-    """Return True when branch exists locally or as the local origin ref."""
-    for ref in (f"refs/heads/{branch}", f"refs/remotes/origin/{branch}"):
-        rc, _, _ = run_git(["show-ref", "--verify", "--quiet", ref], cwd=repo_root)
-        if rc == 0:
-            return True
-    return False
-
-
-def resolve_session_branch(
-    repo_root: Path,
-    cli_branch: str | None,
-    task_data: TaskInfo | None,
-) -> str | None:
-    """Resolve journal branch without trusting stale task.json branch fields."""
-    if cli_branch:
-        return cli_branch
-
-    current_branch = get_current_git_branch(repo_root)
-    raw_task_branch = task_data.raw.get("branch") if task_data else None
-    task_branch = raw_task_branch.strip() if isinstance(raw_task_branch, str) else ""
-    if not task_branch:
-        return current_branch
-
-    if branch_ref_exists(repo_root, task_branch):
-        return task_branch
-
-    if current_branch:
-        print(
-            f"Warning: task.json branch '{task_branch}' no longer exists locally or as origin/{task_branch}; using current branch '{current_branch}'.",
-            file=sys.stderr,
-        )
-        return current_branch
-
-    print(
-        f"Warning: task.json branch '{task_branch}' no longer exists locally or as origin/{task_branch}; omitting branch.",
-        file=sys.stderr,
-    )
-    return None
+def resolve_session_branch(repo_root: Path, cli_branch: str | None) -> str | None:
+    return cli_branch or get_current_git_branch(repo_root)
 
 
 def is_git_worktree(repo_root: Path) -> bool:
@@ -1068,14 +1027,13 @@ def update_index(
 # =============================================================================
 
 def _auto_commit_workspace(repo_root: Path) -> str:
-    """Stage Arbor-owned workspace + current-task paths and commit.
+    """Stage Arbor-owned workspace paths and commit.
 
-    Path scope is restricted to specific products: the current developer's
-    journal files + index.md, and ONLY the current task directory (resolved
-    via ``get_current_task``). We never `git add` the whole `.arbor/` tree
-    or iterate over all active task dirs (#303: parallel-window dirty task
-    dirs must not be bundled into the session auto-commit). If `.gitignore`
-    blocks the specific paths we warn + skip — never retry with ``-f``.
+    Path scope is restricted to the current developer's journal files +
+    index.md; task directories are never staged (#303: dirty task dirs must
+    not be bundled into the session auto-commit; arbor.py commits a task
+    directory itself when it archives it). If `.gitignore` blocks the
+    specific paths we warn + skip — never retry with ``-f``.
 
     Honors ``session_auto_commit`` in ``.arbor/config.yaml``: when set to
     ``false``, this function returns immediately without touching git
@@ -1106,23 +1064,11 @@ def _auto_commit_workspace(repo_root: Path) -> str:
         return COMMIT_BLOCKED
 
     commit_msg = get_session_commit_message(repo_root)
-    # Resolve the current task so staging is scoped to its dir only. The ref
-    # is ``.arbor/tasks/<name>`` (or under archive/) — pass the bare name.
-    current = get_current_task(repo_root)
-    if current:
-        task_name = Path(current).name
-        paths = safe_arbor_paths_to_add(repo_root, task_name=task_name)
-    else:
-        # Current task unknown (0 or >=2 parallel sessions — exactly the
-        # parallel-window case #303 is about). Do NOT fall back to the wide
-        # `tasks_dir.iterdir()` scan; that would re-leak other tasks' dirty
-        # dirs into the session commit. Stage only the developer's journal/
-        # index and skip every task dir.
-        paths = [
-            p
-            for p in safe_arbor_paths_to_add(repo_root, task_name=None)
-            if not p.startswith(f"{DIR_WORKFLOW}/{DIR_TASKS}/")
-        ]
+    paths = [
+        p
+        for p in safe_arbor_paths_to_add(repo_root, task_name=None)
+        if not p.startswith(f"{DIR_WORKFLOW}/{DIR_TASKS}/")
+    ]
     if not paths:
         print("[OK] No workspace changes to commit.", file=sys.stderr)
         return COMMIT_SKIPPED
@@ -1506,10 +1452,7 @@ def main() -> int:
     elif args.stdin:
         extra_content = sys.stdin.read()
 
-    # Load active task once — shared by package and branch resolution
     repo_root = get_repo_root()
-    current = get_current_task(repo_root)
-    task_data = load_task(repo_root / current) if current else None
 
     package = args.package
     if package:
@@ -1523,11 +1466,9 @@ def main() -> int:
             print(f"Error: unknown package '{package}'. Available: {available}", file=sys.stderr)
             return 1
     else:
-        # Inferred: active task's task.json.package → default_package → None
-        task_package = task_data.package if task_data else None
-        package = resolve_package(task_package, repo_root)
+        package = resolve_package(None, repo_root)
 
-    branch = resolve_session_branch(repo_root, args.branch, task_data)
+    branch = resolve_session_branch(repo_root, args.branch)
 
     return add_session(
         args.title, args.commit, args.summary,

@@ -37,76 +37,42 @@ export const scriptsInit = readTemplate("scripts/__init__.py");
 export const commonInit = readTemplate("scripts/common/__init__.py");
 export const commonPaths = readTemplate("scripts/common/paths.py");
 export const commonDeveloper = readTemplate("scripts/common/developer.py");
-export const commonGitContext = readTemplate("scripts/common/git_context.py");
-export const commonTaskQueue = readTemplate("scripts/common/task_queue.py");
-export const commonTaskUtils = readTemplate("scripts/common/task_utils.py");
-export const commonActiveTask = readTemplate("scripts/common/active_task.py");
 export const commonConfig = readTemplate("scripts/common/config.py");
 export const commonIo = readTemplate("scripts/common/io.py");
 export const commonLog = readTemplate("scripts/common/log.py");
 export const commonGit = readTemplate("scripts/common/git.py");
 export const commonTypes = readTemplate("scripts/common/types.py");
-export const commonTasks = readTemplate("scripts/common/tasks.py");
-export const commonTaskContext = readTemplate("scripts/common/task_context.py");
-export const commonLessons = readTemplate("scripts/common/lessons.py");
-export const commonTaskStore = readTemplate("scripts/common/task_store.py");
-export const commonSessionContext = readTemplate(
-  "scripts/common/session_context.py",
-);
-export const commonPackagesContext = readTemplate(
-  "scripts/common/packages_context.py",
-);
-export const commonWorkflowPhase = readTemplate(
-  "scripts/common/workflow_phase.py",
-);
 export const commonArborConfig = readTemplate("scripts/common/arbor_config.py");
 export const commonSafeCommit = readTemplate("scripts/common/safe_commit.py");
 export const commonSpecMeta = readTemplate("scripts/common/spec_meta.py");
 export const commonSpecLint = readTemplate("scripts/common/spec_lint.py");
 export const commonSpecTrace = readTemplate("scripts/common/spec_trace.py");
-export const commonDispatchContext = readTemplate(
-  "scripts/common/dispatch_context.py",
-);
 export const commonContract = readTemplate("scripts/common/contract.py");
+export const commonExecution = readTemplate("scripts/common/execution.py");
 export const commonWorktree = readTemplate("scripts/common/worktree.py");
 export const commonInvariants = readTemplate("scripts/common/invariants.py");
 export const commonDriverInit = readTemplate(
   "scripts/common/driver/__init__.py",
 );
-export const commonDriverState = readTemplate("scripts/common/driver/state.py");
 export const commonDriverExecutor = readTemplate(
   "scripts/common/driver/executor.py",
 );
-export const commonDriverMandate = readTemplate(
-  "scripts/common/driver/mandate.py",
-);
-export const commonDriverIntegration = readTemplate(
-  "scripts/common/driver/integration.py",
-);
 export const commonDriverOrca = readTemplate("scripts/common/driver/orca.py");
-export const commonDriverValidate = readTemplate(
-  "scripts/common/driver/validate.py",
-);
 export const commonDriverGate = readTemplate("scripts/common/driver/gate.py");
 export const commonDriverLock = readTemplate("scripts/common/driver/lock.py");
-export const commonDriverPartitions = readTemplate(
-  "scripts/common/driver/partitions.py",
-);
+export const commonDriverPlan = readTemplate("scripts/common/driver/plan.py");
+export const commonDriverRepos = readTemplate("scripts/common/driver/repos.py");
+export const commonDriverSync = readTemplate("scripts/common/driver/sync.py");
 export const commonDriverFinish = readTemplate(
   "scripts/common/driver/finish.py",
 );
-export const commonDriverEscalate = readTemplate(
-  "scripts/common/driver/escalate.py",
-);
-export const commonDriverAutopilot = readTemplate(
-  "scripts/common/driver/autopilot.py",
+export const commonDriverPrompt = readTemplate(
+  "scripts/common/driver/prompt.py",
 );
 
 // Python scripts - main
 export const getDeveloperScript = readTemplate("scripts/get_developer.py");
 export const initDeveloperScript = readTemplate("scripts/init_developer.py");
-export const taskScript = readTemplate("scripts/task.py");
-export const getContextScript = readTemplate("scripts/get_context.py");
 export const addSessionScript = readTemplate("scripts/add_session.py");
 export const specScript = readTemplate("scripts/spec.py");
 export const arborScript = readTemplate("scripts/arbor.py");
@@ -135,73 +101,41 @@ export const implementAgentTemplate = readTemplate("agents/implement.md");
  * Get all script templates as a map of relative path to content
  */
 export function getAllScripts(): Map<string, string> {
-  const scripts = new Map<string, string>();
-
-  // Package init
-  scripts.set("__init__.py", scriptsInit);
-
-  // Common
-  scripts.set("common/__init__.py", commonInit);
-  scripts.set("common/paths.py", commonPaths);
-  scripts.set("common/developer.py", commonDeveloper);
-  scripts.set("common/git_context.py", commonGitContext);
-  scripts.set("common/task_queue.py", commonTaskQueue);
-  scripts.set("common/task_utils.py", commonTaskUtils);
-  scripts.set("common/active_task.py", commonActiveTask);
-  scripts.set("common/config.py", commonConfig);
-  scripts.set("common/io.py", commonIo);
-  scripts.set("common/log.py", commonLog);
-  scripts.set("common/git.py", commonGit);
-  scripts.set("common/types.py", commonTypes);
-  scripts.set("common/tasks.py", commonTasks);
-  scripts.set("common/task_context.py", commonTaskContext);
-  scripts.set("common/lessons.py", commonLessons);
-  scripts.set("common/task_store.py", commonTaskStore);
-  scripts.set("common/session_context.py", commonSessionContext);
-  scripts.set("common/packages_context.py", commonPackagesContext);
-  scripts.set("common/workflow_phase.py", commonWorkflowPhase);
-  scripts.set("common/arbor_config.py", commonArborConfig);
-  scripts.set("common/safe_commit.py", commonSafeCommit);
-  scripts.set("common/spec_meta.py", commonSpecMeta);
-  scripts.set("common/spec_lint.py", commonSpecLint);
-  scripts.set("common/spec_trace.py", commonSpecTrace);
-  scripts.set("common/dispatch_context.py", commonDispatchContext);
-  scripts.set("common/contract.py", commonContract);
-  scripts.set("common/worktree.py", commonWorktree);
-  scripts.set("common/invariants.py", commonInvariants);
-  scripts.set("common/driver/__init__.py", commonDriverInit);
-  scripts.set("common/driver/state.py", commonDriverState);
-  scripts.set("common/driver/executor.py", commonDriverExecutor);
-  scripts.set("common/driver/mandate.py", commonDriverMandate);
-  scripts.set("common/driver/integration.py", commonDriverIntegration);
-  scripts.set("common/driver/orca.py", commonDriverOrca);
-  scripts.set("common/driver/validate.py", commonDriverValidate);
-  scripts.set("common/driver/gate.py", commonDriverGate);
-  scripts.set("common/driver/lock.py", commonDriverLock);
-  scripts.set("common/driver/partitions.py", commonDriverPartitions);
-  scripts.set("common/driver/finish.py", commonDriverFinish);
-  scripts.set("common/driver/escalate.py", commonDriverEscalate);
-  scripts.set("common/driver/autopilot.py", commonDriverAutopilot);
-
-  // Main
-  scripts.set("get_developer.py", getDeveloperScript);
-  scripts.set("init_developer.py", initDeveloperScript);
-  scripts.set("task.py", taskScript);
-  scripts.set("get_context.py", getContextScript);
-  scripts.set("add_session.py", addSessionScript);
-  scripts.set("spec.py", specScript);
-  scripts.set("arbor.py", arborScript);
-  scripts.set("check_report.py", readTemplate("scripts/check_report.py"));
-  scripts.set(
-    "hooks/linear_sync.py",
-    readTemplate("scripts/hooks/linear_sync.py"),
-  );
-  scripts.set(
-    "common/execution.py",
-    readTemplate("scripts/common/execution.py"),
-  );
-
-  return scripts;
+  return new Map<string, string>([
+    ["__init__.py", scriptsInit],
+    ["common/__init__.py", commonInit],
+    ["common/paths.py", commonPaths],
+    ["common/developer.py", commonDeveloper],
+    ["common/config.py", commonConfig],
+    ["common/io.py", commonIo],
+    ["common/log.py", commonLog],
+    ["common/git.py", commonGit],
+    ["common/types.py", commonTypes],
+    ["common/arbor_config.py", commonArborConfig],
+    ["common/safe_commit.py", commonSafeCommit],
+    ["common/spec_meta.py", commonSpecMeta],
+    ["common/spec_lint.py", commonSpecLint],
+    ["common/spec_trace.py", commonSpecTrace],
+    ["common/contract.py", commonContract],
+    ["common/execution.py", commonExecution],
+    ["common/worktree.py", commonWorktree],
+    ["common/invariants.py", commonInvariants],
+    ["common/driver/__init__.py", commonDriverInit],
+    ["common/driver/executor.py", commonDriverExecutor],
+    ["common/driver/orca.py", commonDriverOrca],
+    ["common/driver/gate.py", commonDriverGate],
+    ["common/driver/lock.py", commonDriverLock],
+    ["common/driver/plan.py", commonDriverPlan],
+    ["common/driver/repos.py", commonDriverRepos],
+    ["common/driver/sync.py", commonDriverSync],
+    ["common/driver/finish.py", commonDriverFinish],
+    ["common/driver/prompt.py", commonDriverPrompt],
+    ["get_developer.py", getDeveloperScript],
+    ["init_developer.py", initDeveloperScript],
+    ["add_session.py", addSessionScript],
+    ["spec.py", specScript],
+    ["arbor.py", arborScript],
+  ]);
 }
 
 /**
