@@ -127,10 +127,15 @@ class Known:
     checks: dict[str, tuple[str, str]]  # map row id -> (kind, repo)
 
 
+def canonical_tier(tier: str) -> str:
+    """`strong` is the old name of `write`."""
+    return "write" if tier == "strong" else tier
+
+
 def _check(node: NodeFile, known: Known) -> str | None:
     if node.repo not in known.repos:
         return f"unknown repo {node.repo!r} (known: {', '.join(sorted(known.repos))})"
-    if node.tier and node.tier not in known.tiers:
+    if node.tier and canonical_tier(node.tier) not in known.tiers:
         return f"unknown tier {node.tier!r} (known: {', '.join(sorted(known.tiers))})"
     for cid in node.checks:
         kind, repo = known.checks.get(cid, ("", ""))
@@ -199,7 +204,7 @@ def update(nodes: dict, nodes_dir: Path, default_repo: str, known: Known) -> tup
             events.append(f"{nid} is valid now")
         elif error and rec.get("reason") != error:
             events.append(f"{nid} invalid: {error}")
-        tier = f.tier or ("explore" if not f.paths and "explore" in known.tiers else "write")
+        tier = canonical_tier(f.tier) or ("explore" if not f.paths and "explore" in known.tiers else "write")
         rec.update(title=f.title, repo=f.repo, tier=tier, paths=f.paths, after=f.after, checks=f.checks,
                    status="invalid" if error else "pending", reason=error)
     for nid, rec in nodes.items():

@@ -70,10 +70,12 @@ class Executor:
 
     def options_for(self, tier: str) -> tuple[str, str]:
         """(model, effort) of ``tier``; ("", "") leaves both to the agent's Orca setting."""
+        tier = "write" if tier == "strong" else tier  # the old name
         own = tier != "write" and (tier in self.tiers or tier not in FALLBACK_TO_WRITE)
         return self.options.get(tier if own else "write", ("", ""))
 
     def agent_for(self, tier: str) -> str:
+        tier = "write" if tier == "strong" else tier  # the old name
         if tier == "write" or (tier in FALLBACK_TO_WRITE and tier not in self.tiers):
             return self.agent
         if tier not in self.tiers:

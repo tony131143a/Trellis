@@ -131,6 +131,13 @@ describe.skipIf(!hasPython())("arbor 1.0 sync", { timeout: 180_000 }, () => {
     expect(out.nodes.look.reason).toContain("left changes in");
   });
 
+  it("still reads `tier: strong`, the old name of write, in node files and old task records", () => {
+    p = setupProject({ executor: "    agents:\n      write: codex\n      review: claude\n" });
+    p.node("old", { paths: "[src/**]", tier: "strong" });
+    const out = p.sync();
+    expect(out.nodes.old).toMatchObject({ status: "running", tier: "write", agent: "codex" });
+  });
+
   it("refuses an effort without a model", () => {
     p = setupProject({
       executor: "    agents:\n      write: codex\n      review:\n        agent: claude\n        effort: high\n",
