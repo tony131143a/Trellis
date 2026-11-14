@@ -6,11 +6,12 @@ Not for a change you can make and verify yourself.
 
 ## Loop
 
-1. **Contract.** `arbor new "<title>"`. Explore first: read the code, or use your built-in exploration sub-agent. Ask the user only what the code cannot answer, once, in one message. Write `contract.md`: Goal, Scope, Acceptance criteria, Verification map (one command per criterion; `manual` for what only a person can judge). The user approves it, then `arbor start`. The contract is now frozen: changing it needs the user, then `arbor start --reapprove`.
+1. **Contract.** `arbor new "<title>"`. Explore first: a question you can answer in a few reads, or one your built-in exploration sub-agent can, you answer yourself; a larger survey is a read-only node (see Node file), several in parallel when it spans repositories. Ask the user only what the code cannot answer, once, in one message. Write `contract.md`: Goal, Scope, Acceptance criteria, Verification map (one command per criterion; `manual` for what only a person can judge). The user approves it, then `arbor start`. The contract is now frozen: changing it needs the user, then `arbor start --reapprove`.
 2. **Plan.** Write node files in the task's `nodes/` directory; `arbor sync` starts every ready node.
 3. **Wait.** Run `arbor sync --wait` as a background command and end your turn. Its exit calls you again.
 4. **React** to `next:`
    - `decide`: read the node's report in `reports/` and the reason. Then `arbor retry <id>` (fix the brief first when it caused the failure), replace the node with others, or `arbor cancel <id>`. A worker waiting for a person: pass its question to the user.
+   - `inline`: a read-only node uses your own agent. Run each such node in your built-in sub-agent (in parallel, with the model named), have its result in the report file, then `arbor sync`.
    - `fix`: the gate is red. Write fix nodes that quote the failing check and its output.
    - `plan`: work is missing. Add nodes.
    - `review`: `arbor review`, `arbor sync`, step 3. Reviewers run code. A finding marked `shown` carries the command that demonstrates it: quote it in a fix node. A finding marked `read`: verify it in the code first. None left: `arbor review --pass`.
@@ -27,13 +28,13 @@ title: Add the redis channel adapter
 repo: server            # a package with its own git repository, or "."; default: the task's repo
 paths: [src/channel/**, tests/channel/**]
 after: [api-types]      # nodes that must be merged first
-tier: strong            # strong (default) | light
+tier: write             # write (default) | light | explore | review | a name from the config
 checks: [AC-2]          # optional: Verification-map rows this node can make green alone
 ---
 The brief.
 ```
 
-A node without `paths` is read-only: research or review by another model, kept on record. It runs in the repository's existing checkout, also before `arbor start`.
+A node without `paths` is read-only: research or review by another model, kept on record. Without `tier` it runs on the `explore` agent of the config when there is one, else on the `write` agent. It runs in the repository's existing checkout, also before `arbor start`.
 
 ## Splitting
 

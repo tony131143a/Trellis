@@ -64,6 +64,17 @@ describe.skipIf(!hasPython())("arbor 1.0 review and finish", { timeout: 180_000 
     expect(res.stderr).toContain("no review of the current integration HEADs");
   });
 
+  it("reviews on the write agent, not the explore one, when no review tier exists", () => {
+    p = setupProject({ executor: "    tiers:\n      explore:\n        agent: omp\n" });
+    p.node("n1", { paths: "[src/**]" });
+    p.sync();
+    work(p, "n1", { write: [{ path: "src/feature.txt", content: "f\n" }] });
+    p.sync();
+    p.ok("review");
+    expect(fs.readFileSync(path.join(p.taskDir, "nodes/review-1.md"), "utf-8")).toContain("tier: write");
+    expect(p.sync().events).toContain("started review-1 [write codex]");
+  });
+
   it("writes one reviewer node per repo with the range and the review tier", () => {
     p = setupProject({ executor: "    tiers:\n      review:\n        agent: claude\n" });
     p.node("n1", { paths: "[src/**]" });

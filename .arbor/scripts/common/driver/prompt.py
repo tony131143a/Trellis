@@ -34,7 +34,7 @@ End the report with the line `findings: <n>` (0 is a valid result), then what yo
 
 
 def worker_spec(task: str, node: str, contract: Path, paths: list[str], checks: list[tuple[str, str]],
-                report: Path, brief: str, workdir: Path) -> str:
+                report: Path, brief: str, workdir: Path, inline: bool = False) -> str:
     """``paths`` empty: a read-only node working in ``workdir``."""
     if paths:
         scope = f"Paths you own: {', '.join(paths)}"
@@ -54,8 +54,11 @@ def worker_spec(task: str, node: str, contract: Path, paths: list[str], checks: 
     ]
     if checks:
         lines += ["Checks that must pass:", *(f"{cid}: {command}" for cid, command in checks)]
+    rules = READER_RULES.split("- Finish by")[0] + (
+        "- Finish by writing the report file (findings with file:line references); it is your result. "
+        "When you are blocked, write why in the report." if inline else "- Finish by" + READER_RULES.split("- Finish by")[1])
     lines += [f"Report file: {report}", "", "Rules",
-              (WRITER_RULES if paths else READER_RULES).format(task=task, node=node), "", "Brief", brief.strip(), ""]
+              (WRITER_RULES if paths else rules).format(task=task, node=node), "", "Brief", brief.strip(), ""]
     return "\n".join(lines)
 
 

@@ -138,6 +138,8 @@ def start(executor: Executor, record: dict) -> tuple[dict | None, str | None]:
                 "--task-title", f"{record['task']} {record['node']}"]
     args = ["orchestration", "worker-start", *what, "--run", record["run"],
             "--worktree", f"path:{record['worktree']}", "--agent", agent]
+    if record.get("model"):
+        args += ["--model", record["model"], *(["--effort", record["effort"]] if record.get("effort") else [])]
     if executor.keep_open:
         args.append("--keep-open")
 
@@ -165,6 +167,8 @@ def start(executor: Executor, record: dict) -> tuple[dict | None, str | None]:
 def stop(executor: Executor, record: dict) -> bool:
     """Stop the worker; True only when Orca proved it stopped (a request to
     stop is not proof: ``stop_unknown``)."""
+    if record.get("inline"):
+        return True  # no worker: the main agent runs it in its own sub-agent
     result, error = call(executor, ["orchestration", "worker-stop", "--dispatch", str(dispatch_id(record))])
     return error is None and (result.get("state") == "stopped" or bool(result.get("alreadySettled")))
 

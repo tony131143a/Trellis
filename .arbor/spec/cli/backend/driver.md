@@ -60,14 +60,14 @@ nodes: {id: {seq, status: pending | invalid | running | merged | done | failed |
 ```text
 ---
 title: ...          repo: <key>        paths: [glob, ...]   after: [id, ...]
-tier: strong | light | <executors.<default>.tiers name>     checks: [AC-1]
+tier: write | light | explore | review | <executors.<default>.agents name>   checks: [AC-1]
 ---
 <brief: free text>
 ```
 
 - Id = file stem, `[a-z0-9][a-z0-9-]{0,39}`. Lists: `[a, b]`, `a, b`, or `- item` lines;
   `# ...` after whitespace is a comment. Unknown or duplicate keys are an error. Defaults:
-  `repo` = the task's `default_repo`, `tier` = `strong`.
+  `repo` = the task's `default_repo`, `tier` = `write`.
 - A node is `invalid` (reason stored, never started, other nodes unaffected) when: bad id
   or frontmatter, unknown repo or tier, a `checks` id that is not an `auto` row of the
   contract's Verification map or whose row runs in another repo, a path that is absolute
@@ -170,6 +170,7 @@ without further bookkeeping.
 | `done` / `abandoned` | `the task is ...` | terminal status |
 | `stopped` | `ask the user:` | budget used up; `arbor.py resume` grants more |
 | `decide` | `decide:` | failed or invalid nodes, attention items, nodes with `start_error`; each lists `retry <id> \| cancel <id> \| edit or add nodes` |
+| `inline` | `inline:` | a running read-only node is `inline` (its agent is the main agent): lists each node's brief and report path; the main agent runs it in its own sub-agent and the report file settles it |
 | `wait` | `wait:` | a node is running: run `arbor.py sync --wait` in the background |
 | `contract` | `contract:` | status `planning`: fill and get the contract approved, then `start` |
 | `plan` | `plan:` | no pending, running, merged or done node |
@@ -187,7 +188,7 @@ node are reported as unchecked (when the task has any repo).
 - `review`: status `active`, no pending or running node, gates as above. For every repo whose
   HEAD is neither in `review.heads` nor covered by a live reviewer node it writes
   `nodes/review-<n>[-<k>].md` (`k` only when several repos): read-only, `title: Review <repo> <base7>..<head7>`,
-  `repo`, `tier: review` only when `executors.<default>.tiers.review` exists, brief =
+  `repo`, `tier: review` when `executors.<default>.agents.review` exists (else `tier: write`, never `explore`), brief =
   `prompt.review_brief` (contract path, worktree, `git diff <base>..<head>`, the `GATE-n` and
   `auto` checks already green). Records `reviewers[id] = {repo, head}`. Prints `next: arbor.py sync`.
 - `review --pass`: status `active`, no node `pending`, `running`, `failed` or `invalid`,
@@ -239,10 +240,14 @@ node are reported as unchecked (when the task has any repo).
   `add_worktree` fails when Orca answered with a different branch (it suffixes taken names)
   and removes what it just made.
 - **Executor** (`executor.py`): `executors.default` names the entry; it must be `type: orca`
-  with `command` and `agent` (the `strong` tier). Optional `timeout`, `max_parallel`,
-  `max_nodes` (default 30), `keep_open`, `tiers.<name>.agent`. `agent_for(tier)` returns
-  `agent` for `strong` and for a `light` that has no entry, and raises `ExecutorError` for
-  any other unknown tier.
+  with `command` and `agents.write` (or the older `agent`). `agents.<tier>` is an agent id or
+  `{agent, model, effort}` (`effort` needs `model`: Orca takes `--effort` only with `--model`;
+  `worker-start` gets `--model` and `--effort` when set); the older `tiers.<name>.agent` still
+  works. Optional `timeout`, `max_parallel`, `max_nodes` (default 30), `keep_open`. A node that
+  names no tier gets `explore` when it is read-only (no `paths`) and `agents.explore` exists,
+  else `write`. `main` (optional) is the agent of the session that runs the driver; unset, `executor.main_agent()` is `claude` when `CLAUDECODE` is set, else unknown; `none` disables. A read-only node whose agent is the main agent is `inline`: `start_one` records `inline: true` and `spec` and starts no Orca worker (`orca.stop` is a no-op), `observe` settles it when its report is non-empty, `judge` is unchanged, `wait` ignores it. Writers never inline. `agent_for(tier)` / `options_for(tier)` return the `write` entry for `write` and
+  for `explore`, `review`, `light` when they are not configured, and `agent_for` raises
+  `ExecutorError` for any other unknown tier.
 - **Orca calls** (`orca.call` runs `<command> <args> --json`, 60 s unless noted; a missing
   binary is an `ExecutorError`): `repo list` (`start`); `worktree create` and `worktree rm`
   (`worktree.py`, 120 s); `orchestration run-create --objective "arbor <task>"`;

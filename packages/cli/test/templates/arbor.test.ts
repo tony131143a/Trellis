@@ -153,12 +153,14 @@ describe("configYamlTemplate: 1.0 sections", () => {
     }
   });
 
-  it("shows the optional tiers and max_nodes keys, commented out", () => {
+  it("shows the optional agents of each kind of work and max_nodes, commented out", () => {
     for (const line of [
       "    # max_nodes: 30",
-      "    # tiers:",
-      "    #   light:",
-      "    #   review:",
+      "      # explore: omp",
+      "      # review:",
+      "      #   model: opus",
+      "      #   effort: high",
+      "      # light: omp",
     ]) {
       expect(configYamlTemplate).toContain(`\n${line}`);
     }
@@ -235,7 +237,7 @@ describe("configYamlTemplate: executors and gate", () => {
       orca: {
         type: "orca",
         command: "orca",
-        agent: "codex",
+        agents: { write: "codex" },
         timeout: "90m",
         max_parallel: "5",
         keep_open: "false",

@@ -6,7 +6,7 @@ The plan is the task's ``nodes/`` directory: one file per node.
     repo: api                     # default: the task's default repo
     paths: [src/channel/**]       # absent or empty: a read-only node
     after: [n1, n2]
-    tier: strong
+    tier: write
     checks: [AC-1]
     ---
     <the brief>
@@ -43,7 +43,7 @@ class NodeFile:
     repo: str = ""
     paths: list[str] = field(default_factory=list)
     after: list[str] = field(default_factory=list)
-    tier: str = "strong"
+    tier: str = ""  # as written; "" = the default of its kind (see `update`)
     checks: list[str] = field(default_factory=list)
     brief: str = ""
     error: str | None = None
@@ -130,7 +130,7 @@ class Known:
 def _check(node: NodeFile, known: Known) -> str | None:
     if node.repo not in known.repos:
         return f"unknown repo {node.repo!r} (known: {', '.join(sorted(known.repos))})"
-    if node.tier not in known.tiers:
+    if node.tier and node.tier not in known.tiers:
         return f"unknown tier {node.tier!r} (known: {', '.join(sorted(known.tiers))})"
     for cid in node.checks:
         kind, repo = known.checks.get(cid, ("", ""))
@@ -199,7 +199,8 @@ def update(nodes: dict, nodes_dir: Path, default_repo: str, known: Known) -> tup
             events.append(f"{nid} is valid now")
         elif error and rec.get("reason") != error:
             events.append(f"{nid} invalid: {error}")
-        rec.update(title=f.title, repo=f.repo, tier=f.tier, paths=f.paths, after=f.after, checks=f.checks,
+        tier = f.tier or ("explore" if not f.paths and "explore" in known.tiers else "write")
+        rec.update(title=f.title, repo=f.repo, tier=tier, paths=f.paths, after=f.after, checks=f.checks,
                    status="invalid" if error else "pending", reason=error)
     for nid, rec in nodes.items():
         f = files.get(nid)

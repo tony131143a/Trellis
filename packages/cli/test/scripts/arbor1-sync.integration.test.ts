@@ -36,7 +36,112 @@ function patchRequest(key: string, patch: (r: Json) => void): void {
 describe.skipIf(!hasPython())("arbor 1.0 sync", { timeout: 180_000 }, () => {
   afterEach(() => p?.cleanup());
 
-  it("runs a light node on the strong agent when the light tier has no agent", () => {
+  it("gives a read-only node without a tier the explore tier, a writer the write one", () => {
+    p = setupProject({ executor: "    tiers:\n      explore:\n        agent: omp\n" });
+    p.node("look", {});
+    p.node("edit", { paths: "[src/**]" });
+    p.node("pinned", { tier: "write" });
+    const out = p.sync();
+    expect(out.events).toContain("started look [explore omp]");
+    expect(out.events).toContain("started edit [write codex]");
+    expect(out.events).toContain("started pinned [write codex]");
+  });
+
+  it("starts each kind of work with its agents entry, model and effort", () => {
+    p = setupProject({
+      executor:
+        "    agents:\n      write: codex\n      explore: omp\n      review:\n        agent: claude\n        model: opus\n        effort: high\n",
+    });
+    p.node("look", {});
+    p.node("edit", { paths: "[src/**]" });
+    const out = p.sync();
+    expect(out.events).toContain("started look [explore omp]");
+    expect(out.events).toContain("started edit [write codex]");
+    const starts = orcaCalls(p).filter((c) => c[1] === "worker-start");
+    expect(starts.some((c) => c.includes("omp") && !c.includes("--model"))).toBe(true);
+    expect(starts.some((c) => c.includes("codex") && !c.includes("--effort"))).toBe(true);
+  });
+
+  it("passes the model and effort of the review entry to the reviewer worker", () => {
+    p = setupProject({ executor: "    agents:\n      write: codex\n      review:\n        agent: claude\n        model: opus\n        effort: high\n" });
+    p.node("n1", { paths: "[src/**]" });
+    p.sync();
+    work(p, "n1", { write: [{ path: "src/feature.txt", content: "f\n" }] });
+    p.sync();
+    p.ok("review");
+    expect(p.sync().events).toContain("started review-1 [review claude opus high]");
+    const start = orcaCalls(p).filter((c) => c[1] === "worker-start" && c.includes("claude"))[0];
+    expect(start.slice(start.indexOf("--model"), start.indexOf("--model") + 4)).toEqual(["--model", "opus", "--effort", "high"]);
+  });
+
+  it("leaves a read-only node whose agent is the main agent to the main agent, no Orca worker", () => {
+    p = setupProject({
+      executor: "    main: claude\n    agents:\n      write: codex\n      explore:\n        agent: claude\n        model: sonnet\n",
+    });
+    p.node("look", {});
+    p.node("edit", { paths: "[src/**]" });
+    let out = p.sync();
+    expect(out.events).toContain("started look [explore claude sonnet] in this session");
+    expect(out.events).toContain("started edit [write codex]");
+    const starts = orcaCalls(p).filter((c) => c[1] === "worker-start");
+    expect(starts).toHaveLength(1);
+    expect(starts[0]).toContain("codex");
+    expect(out.nodes.look).toMatchObject({ status: "running", inline: true });
+    const spec = fs.readFileSync(out.nodes.look.spec as string, "utf-8");
+    expect(spec).toContain("Arbor node:");
+    expect(spec).not.toContain("worker_done");
+
+    work(p, "edit", { write: [{ path: "src/a.txt", content: "a\n" }] });
+    out = p.sync();
+    expect(out.nodes.edit.status).toBe("merged");
+    expect(out.next.kind).toBe("inline");
+    expect(out.next.text).toContain("look [claude sonnet]");
+    expect(out.next.text).toContain("reports/look.md");
+
+    fs.writeFileSync(path.join(p.taskDir, "reports/look.md"), "found it: src/x.ts:3\n");
+    out = p.sync();
+    expect(out.nodes.look.status).toBe("done");
+    expect(out.next.kind).not.toBe("inline");
+  });
+
+  it("runs the node in Orca when `main: none` or the main agent is another one", () => {
+    for (const main of ["    main: none\n", "    main: codex\n"]) {
+      p = setupProject({ executor: `${main}    agents:\n      write: codex\n      explore: claude\n` });
+      p.node("look", {});
+      const out = p.sync();
+      expect(out.events).toContain("started look [explore claude]");
+      expect(out.nodes.look.inline).toBeFalsy();
+      expect(orcaCalls(p).filter((c) => c[1] === "worker-start")).toHaveLength(1);
+      p.cleanup();
+    }
+  });
+
+  it("a read-only node that left changes behind fails even when the main agent ran it", () => {
+    p = setupProject({ executor: "    main: claude\n    agents:\n      write: codex\n      explore: claude\n" });
+    p.node("n1", { paths: "[src/**]" });
+    p.sync();
+    work(p, "n1", { write: [{ path: "src/a.txt", content: "a\n" }] });
+    p.sync();
+    p.node("look", {});
+    p.sync();
+    fs.writeFileSync(path.join(integration(), "stray.txt"), "x\n");
+    fs.writeFileSync(path.join(p.taskDir, "reports/look.md"), "done\n");
+    const out = p.sync();
+    expect(out.nodes.look.status).toBe("failed");
+    expect(out.nodes.look.reason).toContain("left changes in");
+  });
+
+  it("refuses an effort without a model", () => {
+    p = setupProject({
+      executor: "    agents:\n      write: codex\n      review:\n        agent: claude\n        effort: high\n",
+      start: false,
+    });
+    const res = p.run("start");
+    expect(res.status).toBe(1);
+    expect(res.stderr).toContain("effort needs a model");
+  });
+
+  it("runs a light node on the write agent when the light tier has no agent", () => {
     p = setupProject();
     p.node("n1", { paths: "[src/**]", tier: "light" });
     expect(p.sync().events).toContain("started n1 [light codex]");
@@ -50,7 +155,7 @@ describe.skipIf(!hasPython())("arbor 1.0 sync", { timeout: 180_000 }, () => {
     p.node("n1", { paths: "[src/**]" });
     out = p.sync();
     expect(out.status).toBe("active");
-    expect(out.events).toContain("started n1 [strong codex]");
+    expect(out.events).toContain("started n1 [write codex]");
     expect(out.next.kind).toBe("wait");
     expect(out.next.text).toContain('run "arbor.py sync --wait" in the background');
     p.node("n2", { paths: "[docs/**]" });

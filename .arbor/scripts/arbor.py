@@ -187,7 +187,7 @@ def cmd_status(args: argparse.Namespace) -> int:
     print(f"{task.name}: {d['status']} ({d.get('title')})")
     for nid, rec in sorted(d["nodes"].items(), key=lambda kv: kv[1]["seq"]):
         note = rec.get("reason") or rec.get("attention") or rec.get("start_error") or ""
-        print(f"  {nid:<14} {rec['status']:<9} {rec['repo']:<10} {rec.get('tier') or 'strong':<7} "
+        print(f"  {nid:<14} {rec['status']:<9} {rec['repo']:<10} {rec.get('tier') or 'write':<7} "
               f"#{rec.get('attempt', 1)}  {note}".rstrip())
     for key, repo in sorted(d["repos"].items()):
         g = repo.get("gate") or {}

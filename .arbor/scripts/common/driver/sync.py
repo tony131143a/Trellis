@@ -28,7 +28,7 @@ from ..contract import Contract, parse_contract, path_matches
 from ..invariants import changed_files, snapshot_refs
 from ..worktree import WorktreeError, add_worktree, is_ancestor, merge_no_ff, remove_worktree, run_setup
 from . import orca, plan
-from .executor import ExecutorError, parse_timeout, utc_now
+from .executor import FALLBACK_TO_WRITE, ExecutorError, parse_timeout, utc_now
 from .gate import format_checks, run_check, run_gate
 from .lock import LockTimeout, task_lock
 from .prompt import worker_spec
@@ -61,7 +61,7 @@ def node_checks(contract: Contract, rec: dict) -> list[tuple[str, str]]:
 
 
 def known(task: Task, contract: Contract) -> plan.Known:
-    return plan.Known(set(repo_keys(task.config)), {"strong", "light", *task.executor.tiers},
+    return plan.Known(set(repo_keys(task.config)), {"write", *FALLBACK_TO_WRITE, *task.executor.tiers},
                       {e.id: (e.kind, e.repo or default_repo(task)) for e in contract.verification_map})
 
 
@@ -85,6 +85,11 @@ def observe(task: Task, events: list[str]) -> list[tuple[str, str | None]]:
     notes: dict[str, str | None] = {}
     for nid, rec in sorted(task.data["nodes"].items()):
         if rec["status"] != "running":
+            continue
+        if rec.get("inline"):  # run by the main agent: done when its report is there
+            report = report_path(task, nid, rec)
+            if report.is_file() and report.read_text(encoding="utf-8", errors="replace").strip():
+                settled.append((nid, None))
             continue
         try:
             _, record = orca.load(task.main, rec["request"])
@@ -240,6 +245,9 @@ def start_one(task: Task, contract: Contract, nid: str, rec: dict, repo: dict | 
         workdir = Path(repo["worktree"]) if repo else settings(task.main, task.config, rec["repo"]).root
         changes.update(worktree=str(workdir), base=head(workdir), tree=git(workdir, "status", "--porcelain"))
     workdir = Path(changes.get("worktree") or rec["worktree"])
+    tier = rec.get("tier") or "write"
+    agent = executor.agent_for(tier)
+    inline = not plan.is_writer(rec) and agent == executor.main_agent()
     name = f"{nid}{suffix(rec)}"
     report = report_path(task, nid, rec)
     report.parent.mkdir(parents=True, exist_ok=True)
@@ -248,21 +256,27 @@ def start_one(task: Task, contract: Contract, nid: str, rec: dict, repo: dict | 
     if not spec.is_file():  # a start retried after a failure keeps the spec of its first try
         brief = plan.read(task.dir / "nodes" / f"{nid}.md", rec["repo"]).brief
         spec.write_text(worker_spec(task.name, nid, task.dir / "contract.md", rec.get("paths") or [],
-                                    node_checks(contract, rec), report, brief, workdir), encoding="utf-8")
+                                    node_checks(contract, rec), report, brief, workdir, inline), encoding="utf-8")
     path = orca.request_path(task.main, task.name, name)
     record = orca.load(task.main, str(path))[1] if path.is_file() else {
         "schema": 3, "main": str(task.main), "task": task.name, "node": nid, "attempt": attempt,
         "executor": executor.name, "spec_path": str(spec), "report_path": str(report),
         "request_id": orca.new_request_id(), "failed_starts": [], "orca": None}
-    record.update(run=task.data["orca_run"], worktree=str(workdir), agent=executor.agent_for(rec.get("tier") or "strong"),
-                  timeout_s=executor.timeout, started=utc_now())
-    ids, error = orca.start(executor, record)
+    model, effort = executor.options_for(tier)
+    record.update(run=task.data["orca_run"], worktree=str(workdir), agent=agent, model=model,
+                  effort=effort, timeout_s=executor.timeout, started=utc_now())
     changes["request"] = str(path)
+    if inline:  # the main agent is this agent: its own sub-agent does the node, no Orca worker
+        record["inline"] = True
+        orca.store(path, record)
+        return {**changes, "status": "running", "started": record["started"], "agent": agent, "model": model,
+                "effort": effort, "inline": True, "spec": str(spec), "start_error": None, "attention": None}
+    ids, error = orca.start(executor, record)
     if error is None:
         record["orca"] = ids
         orca.store(path, record)
         return {**changes, "status": "running", "started": record["started"], "agent": record["agent"],
-                "start_error": None, "attention": None}
+                "model": model, "effort": effort, "start_error": None, "attention": None}
     record["request_id"] = orca.new_request_id()  # Orca answered: the next start is a new request
     record["failed_starts"].append({**(ids or {}), "error": error})
     orca.store(path, record)
@@ -344,7 +358,8 @@ def start(task: Task, contract: Contract, events: list[str]) -> int:
                 continue
             rec.update(results[nid])
             if rec["status"] == "running":
-                events.append(f"started {nid} [{rec.get('tier') or 'strong'} {rec['agent']}]")
+                events.append(f"started {nid} [{' '.join(x for x in (rec.get('tier') or 'write', rec['agent'], rec.get('model'), rec.get('effort')) if x)}]"
+                              + (" in this session" if rec.get("inline") else ""))
             elif rec["status"] == "failed":
                 events.append(f"{nid} failed: {rec['reason']}")
             else:
@@ -420,6 +435,15 @@ def next_step(task: Task) -> tuple[str, str]:
     if items:
         listed = "; ".join(f"{nid}: {why} (retry {nid} | cancel {nid} | edit or add nodes)" for nid, why in items)
         return "decide", f"decide: {listed}"
+    inline = [(nid, r) for nid, r in sorted(d["nodes"].items(), key=lambda kv: kv[1]["seq"])
+              if r["status"] == "running" and r.get("inline")]
+    if inline:
+        listed = "; ".join(f"{nid} [{r['agent']}{' ' + r['model'] if r.get('model') else ''}]: brief {r['spec']}, "
+                           f"report {report_path(task, nid, r)}" for nid, r in inline)
+        return "inline", ("inline: these read-only nodes use your own agent, so run each in your built-in sub-agent "
+                          "(one each, in parallel; the model after the agent id is the sub-agent's model): " + listed
+                          + ". The report file must hold the result (write it yourself when the sub-agent only returns "
+                          "text); then arbor.py sync")
     if any(r["status"] == "running" for r in nodes):
         return "wait", 'wait: run "arbor.py sync --wait" in the background and end your turn'
     contract = task.dir / "contract.md"
@@ -476,7 +500,7 @@ def wait(task: Task, duration: str | None) -> None:
     executor = task.executor
     while time.monotonic() < deadline:
         task.reload()
-        running = [r for r in task.data["nodes"].values() if r["status"] == "running"]
+        running = [r for r in task.data["nodes"].values() if r["status"] == "running" and not r.get("inline")]
         if not running:
             return
         for rec in running:

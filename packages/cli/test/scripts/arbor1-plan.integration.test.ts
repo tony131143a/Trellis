@@ -31,7 +31,7 @@ describe.skipIf(!hasPython())("arbor 1.0 plan", { timeout: 120_000 }, () => {
         "title: Add the redis channel adapter",
         "repo: .      # optional; default: the task's default_repo",
         "paths: [src/channel/**, tests/channel/**]   # globs relative to the repo root",
-        "tier: strong                  # optional",
+        "tier: write                   # optional",
         "checks: [AC-1]                # optional",
         "---",
         "The brief.",

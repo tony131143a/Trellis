@@ -79,7 +79,6 @@ def review_write(task: Task) -> int:
     nodes_dir = task.dir / "nodes"
     taken = [int(m.group(1)) for p in nodes_dir.glob("review-*.md") if (m := re.fullmatch(r"review-(\d+)(?:-\d+)?", p.stem))]
     number = max(taken, default=0) + 1
-    tiers = (get_executors_config(task.config).get(task.executor.name) or {}).get("tiers") or {}
     contract = task.contract()
     written: dict[str, dict] = {}
     for k, key in enumerate(todo, start=1):
@@ -90,7 +89,7 @@ def review_write(task: Task) -> int:
         checks += [(e.id, e.check) for e in map_rows(task, contract, key) if e.kind == "auto" and e.check]
         brief = review_brief(task.dir / "contract.md", Path(repo["worktree"]), repo["base"], sha, checks)
         front = [f"title: Review {key} {repo['base'][:7]}..{sha[:7]}", f"repo: {key}"]
-        front += ["tier: review"] if isinstance(tiers, dict) and "review" in tiers else []
+        front += ["tier: review" if "review" in task.executor.tiers else "tier: write"]  # never `explore`
         path = nodes_dir / f"{nid}.md"
         path.write_text("---\n" + "\n".join(front) + "\n---\n" + brief + "\n", encoding="utf-8")
         written[nid] = {"repo": key, "head": sha}

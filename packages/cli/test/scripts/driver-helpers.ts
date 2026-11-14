@@ -296,7 +296,8 @@ export function setupProject(opts: ProjectOptions = {}): Project {
     const res = spawnSync(
       "python3",
       [path.join(repo, ".arbor/scripts/arbor.py"), ...args],
-      { cwd: repo, encoding: "utf-8" },
+      { cwd: repo, encoding: "utf-8", // a Claude Code session running the suite must not make the driver inline nodes
+        env: { ...process.env, CLAUDECODE: "" } },
     );
     return { status: res.status, stdout: res.stdout, stderr: res.stderr };
   };

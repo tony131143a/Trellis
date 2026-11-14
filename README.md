@@ -41,7 +41,7 @@ title: Add the redis channel adapter
 repo: server                              # package with its own git repository, or "."
 paths: [src/channel/**, tests/channel/**] # no paths = read-only node (research, review)
 after: [api-types]                        # nodes that must be merged first
-tier: strong                              # strong (default) | a tier from the config, e.g. light
+tier: write                               # write (default) | light | explore | review | a name from the config
 checks: [AC-2]                            # optional: Verification-map rows it can make green alone
 ---
 The brief: the outcome, the files to read first, interfaces to match, what is out of scope.
@@ -72,15 +72,18 @@ executors:
   orca:
     type: orca
     command: orca          # the Orca CLI; an absolute path when not on PATH
-    agent: codex           # Orca agent id of the `strong` tier
+    agents:                # the agent of each kind of work: an id, or {agent, model, effort}
+      write: codex         # nodes with paths, the default
+      explore: omp         # read-only nodes that name no tier
+      review:              # reviewer nodes
+        agent: claude
+        model: opus        # optional; else the agent's own Orca setting
+        effort: high       # optional; needs model
+      light: omp           # optional: mechanical edits (tier: light)
+    main: claude           # optional: the agent that runs the driver (default: detected); its own read-only nodes skip Orca
     timeout: 90m
     max_parallel: 5
     max_nodes: 30          # nodes of one task before sync stops and asks
-    tiers:
-      light:               # mechanical edits; a cheaper agent
-        agent: omp
-      review:              # reviewer nodes; an agent other than the writers'
-        agent: claude
 ```
 
 Several independent repositories under one control repository are supported: declare each as a package with `git: true` (optionally `execution.base_ref` and `execution.merge_target`), name it in a node's `repo` and in the Verification map's `repo` column. Each (task, repository) pair gets its own integration branch, gate and merge command.

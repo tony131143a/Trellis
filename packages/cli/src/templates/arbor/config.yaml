@@ -73,12 +73,20 @@ max_journal_lines: 2000
 # Orca and merges the finished ones.
 #   command       the Orca CLI; an absolute path when it is not on PATH
 #                 (macOS: /Applications/Orca.app/Contents/Resources/bin/orca)
-#   agent         the Orca agent id of the `strong` tier, the default of every
-#                 node (codex, claude, omp, ...); model and reasoning effort
-#                 are the agent's own settings in Orca
-#   tiers         more tiers a node can name with `tier: <name>`, each with
-#                 its own agent (example below); `light` without an entry
-#                 runs on `agent`
+#   agents        which agent does each kind of work (codex, claude, omp, ...):
+#                   write    nodes with `paths`; the default of every node
+#                   explore  read-only nodes (no `paths`) that name no tier
+#                   review   the reviewer nodes of `arbor.py review`
+#                   light    optional: `tier: light`, mechanical edits
+#                 An entry is an agent id, or `agent` with `model` and `effort`
+#                 (the agent's own Orca settings apply to what is left out;
+#                 `effort` needs `model`). explore, review and light run on
+#                 `write` until they are set. Any other name is a tier a node
+#                 can name with `tier: <name>`.
+#   main          the agent of the session that runs the driver (default: detected,
+#                 claude under Claude Code). A read-only node whose agent is the
+#                 main agent is not started in Orca: the main agent runs it in its
+#                 own sub-agent. `main: none` always uses Orca.
 #   timeout       bounds one node; `sync` stops a worker past it
 #   max_parallel  bounds simultaneous workers of one task
 #   max_nodes     bounds the nodes of one task (default 30); `arbor.py resume`
@@ -94,16 +102,18 @@ executors:
   orca:
     type: orca
     command: orca
-    agent: codex
+    agents:
+      write: codex
+      # explore: omp
+      # review:
+      #   agent: claude
+      #   model: opus
+      #   effort: high
+      # light: omp
     timeout: 90m
     max_parallel: 5
     keep_open: false
     # max_nodes: 30
-    # tiers:
-    #   light:            # mechanical edits a check proves; a cheaper agent
-    #     agent: omp
-    #   review:           # reviewer nodes of `arbor.py review`; an agent
-    #     agent: claude   # other than the writers'
 
 #-------------------------------------------------------------------------------
 # Gate
