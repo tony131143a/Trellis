@@ -1,0 +1,99 @@
+README.md
+  s_8e00d359bcb022::t_fccb1e22abf436 3,14,16,18-19,21,25,27,29-34,36,38-62,64-67,74-75,78-80,82-83,86,88,90-94,96
+packages/cli/src/cli/index.ts
+  s_8e00d359bcb022::t_958d3706586f6d 68
+packages/cli/test/regression.test.ts
+  s_8d99e8ca12e10d::t_fa0e71d6284b2d 15,35,105-106,454,458-469,477-478,481-483,487,500-508,510-535,538-558,560-564,567-584,588-602,604,606-608,610-616,620-621,624,629-645,653-657,659-661,663-665,667-669,671-685,688-690,692-693,695-707,710-712,714-716,718-721,724-740,742,744-746,748-755,757-765,768,770-777,781-782,785-794,796,798-808,811-817,819-822,824-838,840-844,847,850-858,860,862-865,867-875,877-883,885-891,893,895,897-899,901-908,911-916,918-924,926-936,938-939,941-942,944-952,954-956,958-965,968-970,972-992,995-1005,1007-1012,1014,1016,1018-1020,1022-1024,1026-1033,1036-1039,1043-1053,1055,1057-1061,1064-1068,1071,1073,1076-1080,1082-1086,1089-1107,1110-1115,1118-1123,1125-1141,1144-1146,1149-1166,1168-1172,1175-1181,1184-1190,1193-1197,1200-1210,2000-2001,2054-2055,2206-2207,2251,2253-2254,2265,2275-2276,2279-2282,2296,2304,2315,2323,2326,2329-2330,2332,2338,2340-2343,2348-2350,2355-2357,2364-2375,2387-2390,2418-2421,2427-2430
+packages/cli/test/templates/arbor.test.ts
+  s_d9bd186bd746d0::t_28807b88da1f2c 12,33,50,103-104,124
+.arbor/.template-hashes.json
+  s_aed41e493cfa72::t_32462fa35a56c0 4,7-9,11,13,17-18,31-32,34,38,41-42,44-50
+.arbor/.version
+  s_aed41e493cfa72::t_b9c6cc5cbb4aca 1
+.arbor/scripts/arbor.py
+  s_aed41e493cfa72::t_31c4ad6f20b75c 4-5,7,9-15,17-18,26,28,31,33-40,42,45,49,53-83,86-114,117-138,140-157,160-161,164-166,169-170,173-177,180-189,191,193-206,210-212,214-225,228-236,238-239,241-250,255-261,266-277,281-284,286-295,298-302,304-312,316-317,319-320,323-324
+.arbor/scripts/common/driver/finish.py
+  s_aed41e493cfa72::t_f07a12d1441fe5 2-9,14,21-27,29-77,79-100,104-117,121-125,128-169,173-193,195-198,200-202,204-227,230-269
+.arbor/scripts/common/driver/repos.py
+  s_aed41e493cfa72::t_a2d5fd73054710 2-9,14-15,18,20-23,25-76,78-81,83-86,89-95,98-99,102-136,138,142-163,165,167-170
+.arbor/scripts/common/driver/sync.py
+  s_aed41e493cfa72::t_194fc106e1bc3f 2-17,20,23-24,27-35,37-39,42-43,46-47,50-51,54-60,63-167,169-487,490-530
+.arbor/scripts/add_session.py
+  s_aed41e493cfa72::t_7cc76f7083f0e3 41-42,209-210,1030,1032-1036,1067-1071,1469,1471
+.arbor/scripts/common/contract.py
+  s_aed41e493cfa72::t_1d6ac545c028a1 4-5,12-14,16-17,54,87,222-223,278,311-321,375,401-402
+.arbor/scripts/common/driver/executor.py
+  s_aed41e493cfa72::t_eaac42469a2ca6 3,11,14,16-17,46-48,50-55,96-99,101-106
+.arbor/scripts/common/driver/orca.py
+  s_aed41e493cfa72::t_db76fd88236c12 1,3,5-6,25,54,111,119,209-211
+.arbor/scripts/common/driver/plan.py
+  s_aed41e493cfa72::t_d79f4858e3ee8b 2-15,20,22-23,25,27-31,34-35,38-49,52-56,59-63,66-68,70-80,82-85,87-96,98-242
+.arbor/scripts/common/driver/prompt.py
+  s_aed41e493cfa72::t_ca521a3fa6e8bf 1,7-65
+.arbor/scripts/common/execution.py
+  s_aed41e493cfa72::t_ff8684a60866da 1-2,39
+.claude/skills/arbor-spec-bootstrap/SKILL.md
+  s_aed41e493cfa72::t_438c425902191f 8,31
+.claude/skills/arbor-spec-bootstrap/references/mcp-setup.md
+  s_aed41e493cfa72::t_9bc6062fd5192d 3
+.claude/skills/arbor-spec-bootstrap/references/spec-task-planning.md
+  s_aed41e493cfa72::t_2208cad8cd4585 53,58
+.claude/skills/arbor-update-spec/SKILL.md
+  s_aed41e493cfa72::t_594f99da640eb5 114,356,360,363-364
+.claude/skills/arbor/SKILL.md
+  s_aed41e493cfa72::t_307ecfaa419b41 1-54
+AGENTS.md
+  s_aed41e493cfa72::t_f089478be4ba3a 2,4
+CLAUDE.md
+  s_aed41e493cfa72::t_3380ff267b0330 68,70,72-73
+packages/cli/src/templates/arbor/scripts/arbor.py
+  s_aed41e493cfa72::t_25ad0cb5967b94 26,102,107-109
+packages/cli/src/templates/arbor/scripts/common/driver/finish.py
+  s_aed41e493cfa72::t_ff8499bc7af8ba 22-23,25,236,241-242,245-248
+packages/cli/src/templates/arbor/scripts/common/driver/repos.py
+  s_aed41e493cfa72::t_7879dc6ea107c7 25,92
+packages/cli/src/templates/arbor/scripts/common/driver/sync.py
+  s_aed41e493cfa72::t_56f8ac8b232c8a 302-304
+packages/cli/src/templates/claude/hooks/statusline.py
+  s_aed41e493cfa72::t_e278f936960c69 8-9,69-70,73-89,206,208,254-256
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "602224f4f31fce782f53babf3a7595bc4713d9d2",
+  "prompts": {},
+  "sessions": {
+    "s_8d99e8ca12e10d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1d86f-1ea8-76e2-8500-e67c629fe319",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_8e00d359bcb022": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1d858-3937-76f0-8d44-86b48a36e662",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_aed41e493cfa72": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-aspec-docs-2dbff06b14607e8c",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_d9bd186bd746d0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1d85f-ebb8-7282-aa72-d2eec9f29796",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
