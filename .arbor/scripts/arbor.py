@@ -136,20 +136,13 @@ def cmd_start(args: argparse.Namespace) -> int:
         for e in errors:
             print(f"  {e}", file=sys.stderr)
         return refuse("contract.md is not ready")
+    named = sorted({".", d["default_repo"], *(e.repo for e in contract.verification_map if e.repo)})
     try:
-        result, error = orca.call(task.executor, ["repo", "list"])
+        added = orca.ensure_projects(task.executor, [settings(task.main, task.config, k).root for k in named])
     except ExecutorError as e:
         return refuse(str(e))
-    if error:
-        return refuse(f"the Orca CLI does not answer: {error}")
-    projects = {Path(r["path"]).resolve() for r in result.get("repos") or [] if isinstance(r, dict) and r.get("path")}
-    named = sorted({".", d["default_repo"], *(e.repo for e in contract.verification_map if e.repo)})
-    missing = [settings(task.main, task.config, k).root for k in named]
-    missing = [root for root in missing if root.resolve() not in projects]
-    if missing:
-        for root in missing:
-            print(f"  orca repo add --path {root}", file=sys.stderr)
-        return refuse("these repositories are not Orca projects yet")
+    for root in added:
+        print(f"added {root} to Orca")
     with task.edit() as d:
         d.update(status="active", contract_hash=contract_hash(path) if path else None, approved=utc_now())
     print(f"{task.name} is active")

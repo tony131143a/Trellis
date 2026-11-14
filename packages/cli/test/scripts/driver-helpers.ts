@@ -5,7 +5,8 @@
  *
  * The fake CLI answers with the shapes Orca 1.4.258 gave in a live run:
  * - `repo list` lists the projects in `<tmp>/orca-repos.json` (the control
- *   repository by default); `worktree create` for any other repository
+ *   repository by default); `repo add` appends to it (`fake.json`
+ *   `repo_add: "fail"` refuses); `worktree create` for any other repository
  *   fails with `repo_not_found`.
  * - `worktree create` puts workspace `<name>` of repository `<repo>` at
  *   `<repo>-wt/<name>`; like Orca it suffixes a taken name or branch with
@@ -79,6 +80,11 @@ projects = json.loads(repos_file.read_text()) if repos_file.exists() else []
 command = " ".join(argv[:2])
 if command == "repo list":
     out({"repos": [{"id": "repo-%d" % i, "path": p} for i, p in enumerate(projects)]})
+if command == "repo add":
+    if plan.get("repo_add") == "fail":
+        fail("invalid_argument", "not a git repository")
+    repos_file.write_text(json.dumps([*projects, flag("--path")]))
+    out({"repo": {"id": "repo-%d" % len(projects), "path": flag("--path")}})
 if command == "worktree create":
     repo = pathlib.Path(flag("--repo")[len("path:"):])
     if str(repo.resolve()) not in [str(pathlib.Path(p).resolve()) for p in projects]:

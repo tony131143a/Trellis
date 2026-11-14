@@ -92,7 +92,7 @@ several is an error naming them. `--task` also finds archived tasks.
 | Command | Contract |
 |---------|----------|
 | `new "<title>" [--slug s] [--repo key]` | Creates `<MM-DD>-<slug>` (slug derived from the title, cut to 40 chars; `--slug` matches `[a-z0-9][a-z0-9-]{0,59}`) with `contract.md` from `contract.default_contract_content`, empty `nodes/` and `reports/`, `task.json` status `planning`. Refuses an existing directory or unknown repo. |
-| `start [--reapprove]` | Planning only. Refuses unless `validate_contract` passes (every criterion has a map row, every `auto` row a command), every map `repo` exists, `orca repo list` answers, and `.`, the default repo and every map repo are Orca projects (resolved paths compared; prints `orca repo add --path <root>` for a missing one). Records `contract_hash`, `approved`, status `active`. Creates no worktree and no Orca Run. `--reapprove` on an active task only re-records the hash. |
+| `start [--reapprove]` | Planning only. Refuses unless `validate_contract` passes (every criterion has a map row, every `auto` row a command), every map `repo` exists, and `orca.ensure_projects` succeeds for `.`, the default repo and every map repo: it compares resolved paths with `orca repo list` and runs `orca repo add --path <root>` for a missing one (prints `added <root> to Orca`; a refused add refuses the start). `sync` does the same for the repos of the nodes it is about to start (event `added <root> to Orca`; a failure is the nodes' `start_error`). Records `contract_hash`, `approved`, status `active`. Creates no worktree and no Orca Run. `--reapprove` on an active task only re-records the hash. |
 | `sync [--wait [DURATION]] [--json]` | Section 5. |
 | `review` | Section 6. |
 | `review --pass` | Section 6. |

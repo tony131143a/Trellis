@@ -85,15 +85,38 @@ function setup(): void {
 describe.skipIf(!hasPython())("arbor 1.0 polyrepo", { timeout: 240_000 }, () => {
   afterEach(() => p?.cleanup());
 
-  it("refuses start for a repo Orca does not know and prints how to add it", () => {
+  it("start adds the repos Orca does not know; a refused add refuses the start", () => {
     setup();
+    p.plan({ repo_add: "fail" });
     const res = p.run("start");
     expect(res.status).toBe(1);
-    expect(res.stderr).toContain(`orca repo add --path ${api()}`);
-    expect(res.stderr).toContain(`orca repo add --path ${web()}`);
-    expect(res.stderr).not.toContain(`orca repo add --path ${p.repo}\n`);
-    p.orcaRepos([p.repo, api(), web()]);
-    expect(p.ok("start")).toContain("is active");
+    expect(res.stderr).toContain(`\`orca repo add --path ${api()}\` failed: invalid_argument: not a git repository`);
+    expect(p.taskJson().status).toBe("planning");
+
+    p.plan({});
+    const out = p.ok("start");
+    expect(out).toContain(`added ${api()} to Orca`);
+    expect(out).toContain(`added ${web()} to Orca`);
+    expect(out).not.toContain(`added ${p.repo} to Orca`);
+    expect(out).toContain("is active");
+    const known = JSON.parse(fs.readFileSync(path.join(p.tmp, "orca-repos.json"), "utf-8"));
+    expect(known).toEqual([p.repo, api(), web()]);
+  });
+
+  it("sync adds the repo of a node that start did not name", () => {
+    p = setupProject({
+      config: PACKAGES,
+      start: false,
+      before: (repo) => {
+        initRepo(path.join(repo, "web"), "dev");
+        fs.appendFileSync(path.join(repo, ".gitignore"), "/web/\n");
+      },
+    });
+    p.ok("start");
+    p.node("w", { repo: "web", paths: "[src/**]" });
+    const out = p.sync();
+    expect(out.events).toContain(`added ${web()} to Orca`);
+    expect(out.nodes.w.status).toBe("running");
   });
 
   it("runs nodes of three repos in parallel, gates each repo by its map rows, and merges per repo", () => {

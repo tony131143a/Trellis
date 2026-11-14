@@ -294,15 +294,17 @@ def start(task: Task, contract: Contract, events: list[str]) -> int:
         missing = sorted({nodes[n]["repo"] for n in chosen if plan.is_writer(nodes[n])} - set(d["repos"]))
         snapshot = {nid: dict(nodes[nid]) for nid in chosen}
         run = d.get("orca_run")
-    if not run:
-        try:
-            run = orca.create_run(executor, task.name)
-        except ExecutorError as e:
-            events.append(f"no node started: {e}")
-            with task.edit() as d:  # shown as the next step until a start succeeds
-                for nid in chosen:
-                    d["nodes"][nid]["start_error"] = str(e)
-            return 0
+    try:
+        roots = [settings(task.main, task.config, k).root for k in sorted({rec["repo"] for rec in snapshot.values()})]
+        events += [f"added {root} to Orca" for root in orca.ensure_projects(executor, roots)]
+        run = run or orca.create_run(executor, task.name)
+    except ExecutorError as e:
+        events.append(f"no node started: {e}")
+        with task.edit() as d:  # shown as the next step until a start succeeds
+            for nid in chosen:
+                d["nodes"][nid]["start_error"] = str(e)
+        return 0
+    if run != task.data.get("orca_run"):
         with task.edit() as d:
             d["orca_run"] = run
     broken: dict[str, str] = {}

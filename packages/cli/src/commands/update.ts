@@ -971,6 +971,7 @@ const BACKUP_FILES = [FILE_NAMES.AGENTS, FILE_NAMES.CLAUDE] as const;
  */
 const BACKUP_EXCLUDE_PATTERNS = [
   ".backup-", // Previous backups
+  "/.runtime/", // Driver runtime records (worker logs, prompts); never managed
   "/node_modules", // Installed dependencies; restore via package manager
   "/workspace/", // Developer workspace (user data)
   "/tasks/", // Task data (user data)

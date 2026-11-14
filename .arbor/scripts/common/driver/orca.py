@@ -96,6 +96,25 @@ def call(executor: Executor, args: list[str], timeout: float = CALL_TIMEOUT_S) -
     return result, str(error or (tail[0] if tail else f"`orca {name}` exited {proc.returncode}"))
 
 
+def ensure_projects(executor: Executor, roots: list[Path]) -> list[Path]:
+    """Make every repository in ``roots`` an Orca project (Orca creates
+    worktrees only for the projects it knows); returns the ones it added."""
+    result, error = call(executor, ["repo", "list"])
+    if error:
+        raise ExecutorError(f"the Orca CLI does not answer: {error}")
+    known = {Path(r["path"]).resolve() for r in result.get("repos") or [] if isinstance(r, dict) and r.get("path")}
+    added = []
+    for root in roots:
+        if root.resolve() in known:
+            continue
+        _, error = call(executor, ["repo", "add", "--path", str(root)])
+        if error:
+            raise ExecutorError(f"`orca repo add --path {root}` failed: {error}")
+        known.add(root.resolve())
+        added.append(root)
+    return added
+
+
 def create_run(executor: Executor, task: str) -> str:
     """A new Orca Run for ``task``, bound to this coordinator (the agent
     session that runs the driver)."""

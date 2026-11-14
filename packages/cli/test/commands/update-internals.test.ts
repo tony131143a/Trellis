@@ -265,6 +265,7 @@ describe("shouldExcludeFromBackup", () => {
     ".arbor/spec/cli/backend/index.md",
     ".arbor/backlog/idea.md",
     ".arbor/agent-traces/trace.jsonl",
+    ".arbor/.runtime/workers/11-13-foo/n1/output.log",
   ])("excludes user data %s", (p) => {
     expect(shouldExcludeFromBackup(p)).toBe(true);
   });

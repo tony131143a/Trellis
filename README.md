@@ -52,7 +52,7 @@ A writer node gets a worktree and a branch and may only change files inside its 
 | Command | What it does |
 |---|---|
 | `new "<title>" [--repo key]` | create the task directory and the contract skeleton |
-| `start` | contract approved: validate it, check that every repository is an Orca project, activate |
+| `start` | contract approved: validate it, add the repositories Orca does not know yet as Orca projects, activate |
 | `sync [--wait] [--json]` | observe, judge, merge, start, gate; print `next:` |
 | `review` / `review --pass` | write reviewer nodes / record that the current HEADs were reviewed |
 | `finish` | merge commands per repository; then clean up, archive, journal |
@@ -61,7 +61,7 @@ A writer node gets a worktree and a branch and may only change files inside its 
 
 ## Prerequisites and configuration
 
-- Orca with its CLI (`orca`). The main agent runs inside Orca, and the control repository and every `git: true` package repository must be an Orca project: `orca repo add --path <repo>`. In Orca Settings, Agents, set each agent's permission mode so workers do not stop on prompts.
+- Orca with its CLI (`orca`). The main agent runs inside Orca. Orca creates worktrees only for its projects: the driver adds the control repository and the `git: true` package repositories a task touches itself (`orca repo add`). In Orca Settings, Agents, set each agent's permission mode so workers do not stop on prompts.
 - Python 3 for the scripts under `.arbor/scripts/`.
 
 `.arbor/config.yaml`:
@@ -90,7 +90,6 @@ Several independent repositories under one control repository are supported: dec
 ```bash
 # 1. finish or abandon every started task with the old version: 1.0 refuses a pre-1.0 task.json
 arbor update --migrate   # 2. removes hooks, role files, workflow.md, slash commands; config.yaml is never overwritten
-orca repo add --path <repo>   # 3. every repository a task touches must be an Orca project
 ```
 
 ## Maintenance
