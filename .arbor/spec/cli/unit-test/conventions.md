@@ -1,6 +1,10 @@
 ---
-sources: []
-last_verified: 2026-08-06
+sources:
+  - packages/cli/vitest.config.ts
+  - packages/cli/test/setup.ts
+  - packages/cli/eslint.config.js
+  - packages/cli/test/commands/init.integration.test.ts
+last_verified: 2026-11-13
 ---
 # Test Conventions
 
@@ -15,14 +19,15 @@ last_verified: 2026-08-06
 | Framework | Vitest 4.x |
 | Config | `vitest.config.ts` |
 | Include | `test/**/*.test.ts` |
-| Exclude | `third/**` |
-| Setup files | `test/setup.ts` (runs before any test, strips host-shell session env vars — see "Test Isolation" below) |
+| Exclude | `third/**`, `node_modules/**` |
+| Setup files | `test/setup.ts` (runs before any test, isolates the host shell environment — see "Test Isolation" below) |
 | Lint scope | `eslint src/ test/` |
 | Module system | ESM (`"type": "module"` + `"module": "NodeNext"`) |
 | Coverage provider | `@vitest/coverage-v8` |
 | Coverage command | `pnpm test:coverage` |
 | Coverage scope | `src/**/*.ts` (excludes `src/cli/index.ts`) |
 | Coverage reports | `text` (terminal), `html` (`./coverage/index.html`), `json-summary` |
+| Test timeout | `10_000` ms (`testTimeout`) |
 
 ---
 
@@ -30,56 +35,24 @@ last_verified: 2026-08-06
 
 ### Strip host-shell env vars at process start
 
-`test/setup.ts` is registered via `setupFiles` in `vitest.config.ts` and
-unconditionally `delete`s a list of env vars before any test loads. The list is
-currently 4 entries in three groups, and each group exists for a *different*
-reason — which is what makes the "when to extend" rule easy to get wrong.
+`test/setup.ts` is registered via `setupFiles` in `vitest.config.ts` and runs
+before any test loads. It does two things:
 
-**Group 1 — vars production resolvers honor as a user override.**
+1. **Deletes a fixed list of host-session env vars** (`CLAUDE_PROJECT_DIR`,
+   `CODEX_THREAD_ID`, ...), so a suite run from inside an agent session sees the
+   same environment as CI.
+2. **Sets `GIT_TRACE2_EVENT=0`.** Global Trace2 listeners (e.g. git-ai) can keep
+   writing Git objects after a fixture's command exits, racing `rmSync` with
+   `ENOTEMPTY`. An explicit `"0"` overrides `trace2.eventTarget` for the test
+   process and its Git descendants; deleting the variable would still inherit
+   the user's global configuration. `test/git-isolation.integration.test.ts`
+   proves the override reaches a Git child process.
 
-```ts
-delete process.env.ARBOR_CONTEXT_ID;
-```
-
-`common.active_task.resolve_context_key` treats it as the highest-priority
-override — production behavior, by design. When the suite runs inside a Claude
-Code or StarFactory session it leaks in from the parent shell and hijacks the
-resolver, ignoring the test's mocked `platformInput`. Symptom: a test expecting
-`star_<session-id>` receives `claude_<host-session-id>`, failing
-deterministically only on dev machines.
-
-**Group 2 — vars a hook *writes to*.**
-
-```ts
-delete process.env.CLAUDE_ENV_FILE;
-```
-
-Not an override at all. `shared-hooks/session-start.py` **appends** `export
-ARBOR_CONTEXT_ID=…` to whatever this points at, so a dev running the suite
-inside a Claude Code session wrote fixture keys (`claude_session-a` and
-friends) into their own real shell setup file. The damage is outside the repo,
-which is why no test failure ever surfaced it.
-
-**Group 3 — vars that redirect a script at the wrong repo.**
-
-```ts
-delete process.env.CLAUDE_PROJECT_DIR;
-delete process.env.STARFACTORY_PROJECT_DIR;
-```
-
-`session-start.py` prefers `CLAUDE_PROJECT_DIR` / `STARFACTORY_PROJECT_DIR` over the JSON payload's `cwd` and
-over `process.cwd()`. Left set, a hook under test reads the **real** repo's
-`.arbor/` instead of the test tmpdir — so the assertions run against the
-maintainer's own tasks.
-
-**When to extend** — any of the three triggers, not just the first:
+**When to extend** the delete list — any of these triggers, not just the first:
 
 1. A production resolver honors it as a user override.
 2. A script under test **writes** to the path it names.
 3. It redirects a script's notion of "which repo am I in".
-
-Do NOT fix any of these in production code by ignoring the env var — for
-groups 1 and 3 the behavior is a real feature for end users.
 
 **When NOT to use**: tests that *intentionally* exercise the env-override path
 should set the env explicitly inside the test (`process.env.X = "..."` in a
@@ -103,15 +76,8 @@ should set the env explicitly inside the test (`process.env.X = "..."` in a
 | Change Type | Reason |
 |-------------|--------|
 | Template text / doc content changes | No logic change |
-| New migration manifest JSON | `registry-invariants.test.ts` auto-validates format |
+| New migration manifest JSON | `test/migrations/index.test.ts` checks every manifest's entries (`type` / `from`, `to` on renames) |
 | CLI flag description text | Display-only |
-
-### Must update existing tests
-
-| Change Type | What to Update |
-|-------------|----------------|
-| New command/skill added to a platform | Add to `EXPECTED_COMMAND_NAMES` / `EXPECTED_SKILL_NAMES` in that platform's test file |
-| New command added to ANY platform | Add to every affected file under `test/templates/` — see platform-integration spec for the required command list |
 
 ### Decision flow
 
@@ -222,7 +188,12 @@ expect(removed).toEqual([]);
 
 ## ESLint Compatibility
 
-Tests must pass the same ESLint rules as `src/`. Common workarounds:
+`pnpm lint` runs `eslint src/ test/`. Tests get the shared presets
+(`eslint.configs.recommended`, `tseslint.configs.strict`,
+`tseslint.configs.stylistic`), which include `no-explicit-any`,
+`no-non-null-assertion` and `no-empty-function`; the `src/**/*.ts` override block
+(explicit return types, `prefer-nullish-coalescing`, `prefer-optional-chain`)
+does not apply to `test/`. Common workarounds:
 
 ```typescript
 // Empty function (no-empty-function rule)
@@ -380,26 +351,13 @@ Before writing a test, ask:
 ### Bug-Fix Tests Must Reproduce the Reported Flag Combination
 
 ```typescript
-// Bad: convenience flag bypasses the very guard the bug lives behind
-it("#2b issue #204: empty tasks/ → bootstrap", async () => {
-  await init({ yes: true, user: "alice", force: true });
-  // ↑ `force: true` skips the `if (!options.force) handleReinit(...)` guard
-  //   in init.ts:1081 (handleReinit defined at init.ts:740). Test green even
-  //   though the user's `--yes` alone hits handleReinit and mis-routes to joiner.
-  expect(fs.existsSync(bootstrapPath)).toBe(true);
-});
+// Bad: `force: true` skips the re-init guard in init()
+//   (`if (!isFirstInit && !options.force && !options.skipExisting) handleReinit(...)`),
+//   so a bug inside handleReinit stays live while the test is green.
+await init({ yes: true, user: "alice", force: true });
 
-// Good: args match exactly what the issue reporter typed
-it("#2b issue #204: empty tasks/ + --yes alone → bootstrap", async () => {
-  await init({ yes: true, user: "alice" });  // user's literal command
-  expect(fs.existsSync(bootstrapPath)).toBe(true);
-});
-
-// Optional sibling for the parallel happy path
-it("#2c issue #204: empty tasks/ + --yes --force → bootstrap", async () => {
-  await init({ yes: true, user: "alice", force: true });
-  expect(fs.existsSync(bootstrapPath)).toBe(true);
-});
+// Good: args match exactly what the issue reporter typed (`arbor init -u alice --yes`)
+await init({ yes: true, user: "alice" });
 ```
 
 **Why**: Convenience flags (`force`, `skipExisting`, `--no-confirm`) in CLI tests often exist to skip prompts in test runs — but those same flags also short-circuit reinit / dispatch / interactive guards. A test that adds them to "make the test simpler" can silently route through a different code path than the one the user hit. Test green ≠ bug fixed.
@@ -410,35 +368,17 @@ it("#2c issue #204: empty tasks/ + --yes --force → bootstrap", async () => {
 
 ### Helper Setup Functions Are Load-Bearing — Audit Their Dependents Before Changing
 
-```typescript
-// Original helper — every joiner test relies on tasks/ being empty
-function simulateExistingCheckout() {
-  fs.mkdirSync(path.join(workflow, "tasks"), { recursive: true });
-  fs.mkdirSync(path.join(workflow, "spec"), { recursive: true });
-}
+A helper that produces fixture state (a pre-initialized project, a seeded
+directory tree) silently decides which production branch every caller exercises.
+If production code starts discriminating on a property the helper happens to
+produce (e.g. "directory is empty"), every test that calls the helper flips to
+the other branch. Tests stay green, but they test a different scenario than
+their name claims.
 
-// Updated helper — now also seeds tasks/archive/
-function simulateExistingCheckout() {
-  fs.mkdirSync(path.join(workflow, "tasks", "archive"), { recursive: true });
-  // ...
-}
-```
-
-If production code starts using `tasks/.length === 0` as the discriminator between "real reinit" and "aborted recovery", every test that calls `simulateExistingCheckout()` silently flips to the new branch. Tests still green, but they're testing a different scenario than their name claims.
-
-**Rule**: Before modifying a helper that produces fixture state, `grep` for its callers and trace each one against the new behavior. Document load-bearing invariants in a JSDoc comment so the next maintainer doesn't need to re-derive them:
-
-```typescript
-/**
- * Helper: simulate a fresh clone of an existing Arbor project...
- *
- * NOTE: the seeded `tasks/archive/` is load-bearing for the joiner branch.
- * If you change the `tasksEmpty` predicate in init.ts (currently
- * `!exists || readdirSync().length === 0`), audit this helper — e.g., if
- * archive/ stops counting as "non-empty", every joiner test below regresses
- * into the bootstrap-fallback branch and assertions flip silently.
- */
-```
+**Rule**: Before modifying a helper that produces fixture state, `grep` for its
+callers and trace each one against the new behavior. Document load-bearing
+invariants in a JSDoc comment on the helper so the next maintainer doesn't need
+to re-derive them.
 
 ---
 
@@ -450,7 +390,7 @@ If production code starts using `tasks/.length === 0` as the discriminator betwe
 - Clean up temp directories in `afterEach`
 - Restore all mocks in `afterEach` with `vi.restoreAllMocks()`
 - Use `vi.mocked()` for type-safe mock access
-- Number test scenarios (`#1`, `#2`, ...) for traceability to PRD
+- Number test scenarios (`#1`, `#2`, ...) for traceability to the scenario matrix
 - Use dynamic counts derived from the source of truth (filesystem, registry)
 - Test meaningful behavior, not implementation details
 

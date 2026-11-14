@@ -1,6 +1,10 @@
 ---
-sources: []
-last_verified: 2026-04-27
+sources:
+  - packages/cli/test/commands/update.integration.test.ts
+  - packages/cli/test/commands/init.integration.test.ts
+  - packages/cli/src/utils/file-writer.ts
+  - packages/cli/src/configurators/index.ts
+last_verified: 2026-11-13
 ---
 # Mock Strategies
 
@@ -28,7 +32,6 @@ For command-level integration tests, this is the minimal set:
 | `figlet` | ASCII banner, not testable output | `vi.mock("figlet")` | init, update |
 | `inquirer` | Interactive prompts, no TTY in CI | `vi.mock("inquirer")` | init, update |
 | `node:child_process` | Git config, Python script calls | `vi.mock("node:child_process")` | init, update |
-| `fetch` (global) | npm registry network call | `vi.stubGlobal("fetch")` | update only |
 | `process.cwd()` | Redirect to temp directory | `vi.spyOn(process, "cwd")` | init, update |
 | `console.log/error` | Silence output | `vi.spyOn(console, "log")` | init, update |
 
@@ -51,19 +54,6 @@ vi.mock("inquirer", () => ({
 vi.mock("node:child_process", () => ({
   execSync: vi.fn().mockReturnValue(""),
 }));
-```
-
-### Global Stub
-
-```typescript
-// In beforeEach — not hoisted, must be in setup
-vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
-  ok: true,
-  json: () => Promise.resolve({ version: VERSION }),
-}));
-
-// In afterEach — MUST restore
-vi.unstubAllGlobals();
 ```
 
 ### Spy (partial mock)
@@ -132,7 +122,7 @@ expect(inquirer.prompt).not.toHaveBeenCalled();
 
 ### Template Placeholder Resolution
 
-`collectPlatformTemplates()` must return templates with `{{PYTHON_CMD}}` **already resolved** (matching what `configurePlatform()` writes to disk). The `resolvePlaceholders()` function in `configurators/shared.ts` handles this. If a new placeholder is added to templates, it must be resolved in both `configure()` and `collectTemplates()`.
+`collectPlatformTemplates()` must return templates with `{{PYTHON_CMD}}` **already resolved** (matching what `configurePlatform()` writes to disk). The `resolvePlaceholders()` function in `configurators/shared.ts` handles this. Codex's `configure` is derived from its `collectTemplates` (`fromTemplates` in `configurators/index.ts`), so the two cannot disagree; Claude Code spells out both (`configureClaude` / `collectClaudeTemplates`), so a new placeholder must be resolved in both. `test/configurators/platforms.test.ts` ("configurePlatform writes collected templates byte-for-byte for every platform") catches a mismatch.
 
 ---
 
@@ -140,7 +130,7 @@ expect(inquirer.prompt).not.toHaveBeenCalled();
 
 ### DO
 
-- Keep mock count minimal (currently 4 external dependencies)
+- Keep mock count minimal (currently 3 module mocks: `figlet`, `inquirer`, `node:child_process`)
 - Use `vi.mocked(fn).mockClear()` between tests if asserting call counts
 - Match mock return values to real API shapes
 

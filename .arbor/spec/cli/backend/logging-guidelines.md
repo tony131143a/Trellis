@@ -3,7 +3,8 @@ sources:
   - packages/cli/src/commands/init.ts
   - packages/cli/src/commands/update.ts
   - packages/cli/src/commands/uninstall.ts
-last_verified: 2026-03-09
+  - packages/cli/src/cli/index.ts
+last_verified: 2026-11-13
 ---
 # Logging Guidelines
 
@@ -21,13 +22,13 @@ This CLI project uses **chalk** for colored console output. Since this is a user
 
 | Color | Chalk Method | Usage | Example |
 |-------|--------------|-------|---------|
-| **Cyan** | `chalk.cyan()` | Headers, banners, section titles | `"Next steps:"` |
-| **Blue** | `chalk.blue()` | Action in progress, step indicators | `"Creating workflow structure..."` |
-| **Green** | `chalk.green()` | Success messages | `"Arbor initialized successfully!"` |
-| **Yellow** | `chalk.yellow()` | Warnings, coming soon, skipped items | `"Coming soon: update command"` |
-| **Red** | `chalk.red()` | Errors | `"Error:"` prefix |
-| **Gray** | `chalk.gray()` | Secondary info, hints, paths | Descriptions, file paths |
-| **White** | `chalk.white()` | Highlighted inline text | Commands to run |
+| **Cyan** | `chalk.cyan()` | Headers, banners, section titles | `"\nArbor Update"`, `"\n--- Summary ---\n"` |
+| **Blue** | `chalk.blue()` | Action in progress, step indicators | `"📁 Creating workflow structure..."` |
+| **Green** | `chalk.green()` | Success messages | `"✓ Already up to date!"` |
+| **Yellow** | `chalk.yellow()` | Warnings, skipped items, retry hints | `"No tools selected. At least one tool is required."` |
+| **Red** | `chalk.red()` | Errors, conflicts, destructive actions | `"Error:"` prefix |
+| **Gray** | `chalk.gray()` | Secondary info, hints, paths | `"Mode: Force overwrite existing files\n"` |
+| **White** | `chalk.white()` | Highlighted inline values | `chalk.white(projectVersion)` |
 
 ---
 
@@ -36,38 +37,43 @@ This CLI project uses **chalk** for colored console output. Since this is a user
 ### Section Headers (Cyan)
 
 ```typescript
-console.log(chalk.cyan("Next steps:"));
-console.log(chalk.cyan("Generated structure files:"));
+// commands/update.ts
+console.log(chalk.cyan("\nArbor Update"));
+console.log(chalk.cyan("Analyzing migrations...\n"));
+console.log(chalk.cyan("\n--- Summary ---\n"));
 ```
 
 ### Progress Steps (Blue with Emoji)
 
 ```typescript
+// commands/init.ts
 console.log(chalk.blue("📁 Creating workflow structure..."));
-console.log(chalk.blue("📝 Configuring StarFactory commands..."));
-console.log(chalk.blue("🤖 Configuring Multi-Agent Pipeline..."));
-console.log(chalk.blue("📄 Created init-agent.md"));
+console.log(chalk.blue(`📝 Configuring ${AI_TOOLS[platformId].name}...`));
+console.log(chalk.blue("📦 Monorepo packages written to config.yaml"));
+console.log(chalk.blue("📄 Created AGENTS.md"));
 ```
 
 ### Sub-steps (Gray with Indentation)
 
 ```typescript
-console.log(chalk.gray("   - Creating agent configurations..."));
-console.log(chalk.gray("   - Creating hook configurations..."));
+console.log(chalk.gray("   ↳ Arbor statusLine installed (--with-statusline)"));
+console.log(chalk.gray(`   - ${pkg.name}`) + chalk.gray(` (${pkg.path})`));
 ```
 
-### Success (Green with Emoji)
+### Success (Green)
 
 ```typescript
-console.log(chalk.green("\n✅ Arbor initialized successfully!\n"));
+console.log(chalk.green(`✓ Developer "${devName}" initialized`));
+console.log(chalk.green("✓ Already up to date!"));
+console.log(chalk.green(`\n✅ ${actionWord} complete! (${projectVersion} → ${cliVersion})`));
 ```
 
-### Warnings (Yellow with Emoji)
+### Warnings (Yellow)
 
 ```typescript
-console.log(chalk.yellow("Coming soon: update command"));
 console.log(chalk.yellow("No tools selected. At least one tool is required."));
-console.log(chalk.yellow(`⚠️  Failed to initialize developer: ${message}`));
+console.log(chalk.yellow("⚠ Could not initialize developer. Run manually:"));
+console.log(chalk.yellow(`  Run: arbor update --migrate`));
 ```
 
 ### Errors (Red)
@@ -84,14 +90,10 @@ console.error(
 ```typescript
 // Key-value pairs
 console.log(chalk.blue("👤 Developer:"), chalk.gray(developerName));
-console.log(chalk.blue("🔍 Project type:"), chalk.gray(projectDescription));
+console.log(`Project version: ${chalk.white(projectVersion)}`);
 
-// Instructions with highlighted commands
-console.log(
-  chalk.gray(`${stepNum}. Use `) +
-  chalk.white("/arbor:start") +
-  chalk.gray(" command in your AI tool to begin a session"),
-);
+// Manual follow-up command after a soft failure
+console.log(chalk.gray(`  ${pythonCmd} .arbor/scripts/init_developer.py ${devName}`));
 ```
 
 ---
@@ -106,7 +108,7 @@ const banner = figlet.textSync("Arbor", { font: "Rebel" });
 console.log(chalk.cyan(`\n${banner.trimEnd()}`));
 
 // Tagline (gray)
-console.log(chalk.gray("\n  AI-assisted development workflow framework\n"));
+console.log(chalk.gray("\n   AI engineering workflows for Claude Code & Codex\n"));
 ```
 
 ### Progress Output
@@ -117,34 +119,24 @@ console.log(chalk.gray("Mode: Force overwrite existing files\n"));
 
 // Detection results
 console.log(chalk.blue("👤 Developer:"), chalk.gray(developerName));
-console.log(chalk.blue("🔍 Project type:"), chalk.gray(description));
-
-// Configuration summary
-console.log(chalk.gray(`\nConfiguring: ${tools.join(", ")}`));
-console.log(chalk.gray(`Project type: ${typeDescription}\n`));
+console.log(chalk.blue("\n🔍 Detected monorepo packages:"));
 
 // Step progress
 console.log(chalk.blue("📁 Creating workflow structure..."));
-console.log(chalk.blue("📝 Configuring StarFactory commands..."));
+console.log(chalk.blue(`📝 Configuring ${AI_TOOLS[platformId].name}...`));
 ```
 
 ### Completion Summary
 
 ```typescript
-// Success message
-console.log(chalk.green("\n✅ Arbor initialized successfully!\n"));
+// init: hash tracking + first-init hint
+console.log(chalk.gray(`📋 Tracking ${hashedCount} template files for updates`));
+console.log(chalk.blue("💡 Next: have your agent fill .arbor/spec/ with this project's conventions using the arbor-spec-bootstrap skill"));
 
-// Next steps
-console.log(chalk.cyan("Next steps:"));
-console.log(
-  chalk.gray(`1. Use `) +
-  chalk.white("/arbor:start") +
-  chalk.gray(" command in your AI tool"),
-);
-
-// Generated files
-console.log(chalk.cyan("Generated structure files:"));
-console.log(chalk.gray(`  ${PATHS.STRUCTURE}/guides/   - Thinking guides`));
+// update: summary block, then success line
+console.log(chalk.cyan("\n--- Summary ---\n"));
+console.log(`  Added: ${added} file(s)`);
+console.log(chalk.green(`\n✅ ${actionWord} complete! (${projectVersion} → ${cliVersion})`));
 ```
 
 ---
@@ -156,9 +148,11 @@ console.log(chalk.gray(`  ${PATHS.STRUCTURE}/guides/   - Thinking guides`));
 | 📁 | Directory/folder operations |
 | 📝 | Configuration/file writing |
 | 📄 | Single file creation |
-| 🤖 | AI/agent related |
+| 📦 | Package / monorepo config |
+| 📋 | Tracking, migration guides |
 | 👤 | User/developer related |
 | 🔍 | Detection/analysis |
+| 💡 | Next-step hint |
 | ✅ | Success completion |
 | ⚠️ | Warnings |
 
@@ -170,15 +164,14 @@ Use indentation to show hierarchy:
 
 ```typescript
 // Top level (no indent)
-console.log(chalk.blue("🤖 Configuring Multi-Agent Pipeline..."));
+console.log(chalk.blue(`📝 Configuring ${AI_TOOLS[platformId].name}...`));
 
-// Sub-level (3 spaces + dash)
-console.log(chalk.gray("   - Creating agent configurations..."));
-console.log(chalk.gray("   - Creating hook configurations..."));
+// Sub-level (3 spaces)
+console.log(chalk.gray("   ↳ Arbor statusLine installed (--with-statusline)"));
 
-// File listings (2 spaces)
-console.log(chalk.gray(`  ${PATHS.STRUCTURE}/guides/   - Thinking guides`));
-console.log(chalk.gray(`  ${PATHS.STRUCTURE}/frontend/ - Frontend guidelines`));
+// File listings (4 spaces under a 2-space heading)
+console.log(chalk.green("  New files (will add):"));
+console.log(chalk.green(`    + ${file.relativePath}`));
 ```
 
 ---
@@ -201,48 +194,11 @@ console.log(chalk.gray(`  ${PATHS.STRUCTURE}/frontend/ - Frontend guidelines`));
 - Don't overuse emojis
 - Don't log sensitive information (paths with usernames excepted for context)
 - Don't use `console.log()` for errors (use `console.error()`)
-- Don't output debug information in production
+- Don't output debug information unless `DEBUG` / `ARBOR_DEBUG` is set
 
 ---
 
 ## Examples
-
-### Complete Init Output Flow
-
-```typescript
-// 1. Banner
-console.log(chalk.cyan(`\n${banner.trimEnd()}`));
-console.log(chalk.gray("\n  AI-assisted development workflow framework\n"));
-
-// 2. Mode (if special mode)
-if (options.force) {
-  console.log(chalk.gray("Mode: Force overwrite existing files\n"));
-}
-
-// 3. Detection results
-console.log(chalk.blue("👤 Developer:"), chalk.gray(developerName));
-console.log(chalk.blue("🔍 Project type:"), chalk.gray(typeDescription));
-
-// 4. Configuration summary
-console.log(chalk.gray(`\nConfiguring: ${tools.join(", ")}\n`));
-
-// 5. Progress steps
-console.log(chalk.blue("📁 Creating workflow structure..."));
-console.log(chalk.blue("📝 Configuring StarFactory commands..."));
-console.log(chalk.blue("🤖 Configuring Multi-Agent Pipeline..."));
-console.log(chalk.gray("   - Creating agent configurations..."));
-
-// 6. Success
-console.log(chalk.green("\n✅ Arbor initialized successfully!\n"));
-
-// 7. Next steps
-console.log(chalk.cyan("Next steps:"));
-console.log(
-  chalk.gray("1. Use ") +
-  chalk.white("/arbor:start") +
-  chalk.gray(" command to begin"),
-);
-```
 
 ### Error Output
 
@@ -254,6 +210,9 @@ try {
     chalk.red("Error:"),
     error instanceof Error ? error.message : error,
   );
+  if (process.env.DEBUG || process.env.ARBOR_DEBUG) {
+    console.error(error instanceof Error ? error.stack : error);
+  }
   process.exit(1);
 }
 ```
@@ -261,13 +220,7 @@ try {
 ### Warning Output
 
 ```typescript
-// Non-critical warning
-console.log(
-  chalk.yellow(
-    `⚠️  Failed to initialize developer: ${message}`,
-  ),
-);
-
-// Coming soon feature
-console.log(chalk.yellow("Coming soon: update command"));
+// Non-critical failure with a manual fallback
+console.log(chalk.yellow("⚠ Could not initialize developer. Run manually:"));
+console.log(chalk.gray(`  ${pythonCmd} .arbor/scripts/init_developer.py ${devName}`));
 ```

@@ -3,7 +3,8 @@ sources:
   - packages/cli/src/cli/index.ts
   - packages/cli/src/commands/init.ts
   - packages/cli/src/commands/update.ts
-last_verified: 2026-03-09
+  - packages/cli/src/utils/project-detector.ts
+last_verified: 2026-11-13
 ---
 # Error Handling
 
@@ -35,6 +36,9 @@ program
         chalk.red("Error:"),
         error instanceof Error ? error.message : error,
       );
+      if (process.env.DEBUG || process.env.ARBOR_DEBUG) {
+        console.error(error instanceof Error ? error.stack : error);
+      }
       process.exit(1);
     }
   });
@@ -45,7 +49,7 @@ program
 1. **Let errors bubble up** - Don't catch errors in utility functions unless you can handle them meaningfully
 2. **Type guard for error messages** - Always use `error instanceof Error ? error.message : error`
 3. **Exit with code 1** - All errors should result in `process.exit(1)` for scripting
-4. **User-friendly messages** - Display only the message, not the full stack trace
+4. **User-friendly messages** - Display only the message; the stack trace is printed only when `DEBUG` or `ARBOR_DEBUG` is set
 
 ---
 
@@ -90,16 +94,14 @@ try {
 When operation fails but we can continue:
 
 ```typescript
+// commands/init.ts (handleReinit)
 try {
-  execSync(`bash "${scriptPath}" "${developerName}"`, { cwd, stdio: "inherit" });
-  developerInitialized = true;
-} catch (error) {
-  console.log(
-    chalk.yellow(
-      `Warning: Failed to initialize developer: ${error instanceof Error ? error.message : error}`,
-    ),
-  );
-  // Continue without developer initialization
+  const scriptPath = path.join(cwd, PATHS.SCRIPTS, "init_developer.py");
+  execSync(`${pythonCmd} "${scriptPath}" "${devName}"`, { cwd, stdio: "pipe" });
+  console.log(chalk.green(`✓ Developer "${devName}" initialized`));
+} catch {
+  console.log(chalk.yellow("⚠ Could not initialize developer. Run manually:"));
+  console.log(chalk.gray(`  ${pythonCmd} .arbor/scripts/init_developer.py ${devName}`));
 }
 ```
 
@@ -176,7 +178,7 @@ process.exit(0);
 
 - Don't catch errors in utility functions unless you can handle them
 - Don't assume `error` is an `Error` type
-- Don't log full stack traces to users (unless in debug mode)
+- Don't log full stack traces to users (unless `DEBUG` / `ARBOR_DEBUG` is set)
 - Don't use exit code 0 for error conditions
 - Don't swallow errors silently without a comment explaining why
 

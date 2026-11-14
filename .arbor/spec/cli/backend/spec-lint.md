@@ -2,14 +2,13 @@
 sources:
   - packages/cli/src/templates/arbor/scripts/spec.py
   - packages/cli/src/templates/arbor/scripts/common/spec_*.py
-last_verified: 2026-10-21
+last_verified: 2026-11-13
 ---
 # `spec.py` — Spec Freshness Lint and Change Traceability (Code Spec)
 
 Executable contracts for `.arbor/scripts/spec.py`, `common/spec_meta.py`,
-`common/spec_lint.py`, `common/spec_trace.py`, and the `spec_changes` fields that
-`task.py archive` writes. Read this before editing any of those files or the
-frontmatter of a spec doc.
+`common/spec_lint.py`, and `common/spec_trace.py` (read by `lint --provenance`).
+Read this before editing any of those files or the frontmatter of a spec doc.
 
 ## 1. Scope / Trigger
 
@@ -17,11 +16,10 @@ frontmatter of a spec doc.
 |---------|---------------------|
 | New script entry point `spec.py` with three subcommands | New CLI surface shipped to every user project |
 | YAML frontmatter on spec docs (`sources`, `last_verified`) | Cross-tool file contract: authors, agents, lint, and `init-meta` all read/write it |
-| Two new optional `task.json` fields written at archive | Persistent schema shared by `task.py`, `spec.py lint --provenance`, and future readers |
 | Line-level rewrites of user-owned docs (`verify`, `init-meta`) | Filesystem safety: must never re-serialize or change line endings |
 
-The lint is **advisory by design**. Nothing in Arbor gates archive, commit, or
-`finish-work` on its result. Do not add such a gate without a product decision.
+The lint is **advisory by design**. Nothing in Arbor gates a commit or a task
+finish on its result. Do not add such a gate without a product decision.
 
 ## 2. Signatures
 
@@ -29,7 +27,6 @@ The lint is **advisory by design**. Nothing in Arbor gates archive, commit, or
 spec.py lint      [PATH...] [--package NAME] [--json] [--strict] [--provenance]
 spec.py verify    PATH...   [--date YYYY-MM-DD]
 spec.py init-meta [PATH...] [--dry-run]
-task.py add-spec-change <task-dir> <spec-path>
 ```
 
 ```python
@@ -40,7 +37,6 @@ build_block(sources: list[str], last_verified: str | None, eol: str = "\n") -> s
 extract_markdown_sources(text: str) -> list[str]     # `Sources:` bullets in first 30 lines
 
 # common/spec_trace.py
-derive_spec_changes(data: dict, repo_root: Path) -> tuple[list[str], str, str | None]
 collect_provenance(repo_root: Path) -> dict[str, list[dict]]
 manual_spec_changes(data: dict) -> list[str]
 
@@ -97,27 +93,17 @@ Findings carry `path:line`; line `0` means the whole file.
   "summary": {errors, warnings, info}}`, plus `"provenance": {path: [{task,
   completedAt, source}]}` with `--provenance`.
 
-### task.json fields
+### Provenance (`lint --provenance`)
 
-| Field | Type | Written by |
-|-------|------|-----------|
-| `spec_changes` | `list[str]`, repo-relative POSIX under `.arbor/spec/`, sorted, deduped, deleted paths kept | `task.py archive`, `task.py add-spec-change` |
-| `spec_changes_source` | `"none" \| "manual" \| "branch-diff" \| "since-created" \| "mixed"` | same |
-
-- `task.py create` does **not** write either field. Readers use `.get()` and treat
-  absence as `[]` / `"none"`.
-- `branch-diff`: task `branch` differs from `base_branch`. Tip is `branch` when the
-  ref still exists locally, else `HEAD`; `git diff --name-only $(merge-base base tip) tip`.
-  When base already contains the tip (branch merged before archive), `merge-base` is
-  the tip itself, so the fork point is taken from the oldest merge commit on base whose
-  second parent contains the tip: `merge-base <merge>^1 tip`. A fast-forward merge has
-  no such commit and still yields `[]`; deleting the branch ref before archive loses the
-  tip entirely. Archive before deleting the branch.
-- `since-created`: otherwise; `git log --since=<createdAt>` over `.arbor/spec`.
-  Approximate on shared branches, which is why the label is stored.
-- A derivation that succeeds with no hits still stores its method and `[]`.
-  `none` means git could not answer and nothing was added manually.
-- `add-spec-change` moves `none → manual` and `branch-diff / since-created → mixed`.
+- `collect_provenance` reads every `task.json` under `.arbor/tasks/archive/*/*/`
+  and `.arbor/tasks/*/` and, when it carries them, the optional fields
+  `spec_changes` (list of repo-relative paths, normalized to the `.arbor/spec/...`
+  suffix; non-spec entries dropped) and `spec_changes_source` (absent -> `"none"`).
+- Each spec path maps to `[{task, completedAt, source}]`, newest `completedAt`
+  first, entries without `completedAt` last. `cmd_lint` keeps only paths in the
+  lint scope; text output prints the newest entry per doc.
+- No shipped script writes these fields; the `task.json` that `arbor.py` and the
+  driver write has neither, so on such a tree the map is empty.
 
 ## 4. Validation & Error Matrix
 
@@ -130,9 +116,7 @@ Findings carry `path:line`; line `0` means the whole file.
 | `verify --date 2026-13-40` | exit 2, `--date is not a real date` |
 | `verify` on a doc without a block | prepends `sources: []` + `last_verified` |
 | `init-meta` on a directory | seeds only required leaf docs that lack a block |
-| `archive` with git missing or `merge-base` failing | archive exits 0, yellow warning, `spec_changes_source` = `manual` or `none` |
-| `archive` with any exception in derivation | same as above; derivation can never change archive's exit code |
-| `add-spec-change` path outside `.arbor/spec/` or missing | exit 1, task.json unchanged |
+| `verify` on a doc whose block has a syntax error | skipped with `skip <path>:<line>: ...` on stderr, exit 2 |
 
 ## 5. Good / Base / Bad Cases
 
@@ -150,8 +134,8 @@ Findings carry `path:line`; line `0` means the whole file.
 | Test file | Assertion points |
 |-----------|------------------|
 | `test/scripts/spec-lint.integration.test.ts` | each rule fires exactly once on its fixture with `path:line`; clean tree prints one summary line; `--json` shape; `--strict` exit 1; exit 2 cases; `verify` changes only the date bytes; `init-meta` seeds from a `Sources:` list; CRLF docs survive lint, `verify`, `init-meta` with zero bare `\n` |
-| `test/scripts/task-archive-spec-changes.integration.test.ts` | `branch-diff` on a feature branch, after HEAD returns to base, and after the branch was merged into base (base-only spec edits excluded); `since-created` on a shared branch; git removed from PATH → exit 0 + warning + `none`; `manual`; `mixed`; `create` writes neither field |
-| `test/regression.test.ts` (existing) | both script trees byte-identical, including the four new files |
+| `test/scripts/spec-lint.integration.test.ts` (`--provenance`) | archived `task.json` with `spec_changes` maps each doc to its tasks, newest first; paths outside the lint scope are dropped |
+| `test/regression.test.ts` | `.arbor/scripts/` and `templates/arbor/scripts/` hold the same `.py` files, byte-identical |
 | dogfood | `python3 .arbor/scripts/spec.py lint --strict` exits 0 on this repo |
 
 ## 7. Wrong vs Correct

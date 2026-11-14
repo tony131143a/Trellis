@@ -4,8 +4,10 @@ sources:
   - packages/cli/src/configurators/workflow.ts
   - packages/cli/src/templates/extract.ts
   - packages/cli/src/utils/project-detector.ts
+  - packages/cli/src/commands/init.ts
+  - packages/cli/src/constants/paths.ts
   - packages/cli/scripts/copy-templates.js
-last_verified: 2026-08-06
+last_verified: 2026-11-13
 ---
 # Directory Structure
 
@@ -15,7 +17,7 @@ last_verified: 2026-08-06
 
 ## Overview
 
-This project is a **TypeScript monorepo** using ES modules. It publishes one package, the CLI (`@tony131143a/arbor`, under `packages/cli/`). Shipped assets are **generic templates** under `packages/cli/src/templates/`; the repository also installs Arbor on itself, so its own `.arbor/`, `.claude/` and root `CLAUDE.md` / `AGENTS.md` are installed copies, not the source of what ships.
+This project is a **TypeScript monorepo** using ES modules. It publishes one package, the CLI (`@tony131143a/arbor`, under `packages/cli/`). Shipped assets are **generic templates** under `packages/cli/src/templates/`; the repository also installs Arbor on itself, so its own `.arbor/scripts/`, `.claude/` and root `CLAUDE.md` / `AGENTS.md` are installed copies, not the source of what ships.
 
 ---
 
@@ -31,11 +33,11 @@ packages/
     │   │   ├── init.ts
     │   │   ├── update.ts
     │   │   └── uninstall.ts
-    │   ├── configurators/   # claude.ts, star.ts, shared.ts, workflow.ts, index.ts
-    │   ├── constants/
-    │   ├── migrations/  # index.ts + manifests/ (0.1.0.json)
-    │   ├── templates/
-    │   ├── types/
+    │   ├── configurators/   # claude.ts, codex.ts, shared.ts, workflow.ts, index.ts
+    │   ├── constants/       # paths.ts (DIR_NAMES, FILE_NAMES, PATHS), version.ts
+    │   ├── migrations/      # index.ts + manifests/ (0.1.0.json … 1.0.0.json)
+    │   ├── templates/       # arbor/, claude/, common/, markdown/, extract.ts, template-utils.ts
+    │   ├── types/           # ai-tools.ts (platform registry), migration.ts
     │   ├── utils/
     │   └── index.ts     # CLI package public API
     ├── scripts/         # copy-templates.js (build-time template copy)
@@ -48,37 +50,31 @@ This repository runs Arbor on itself:
 
 ```
 .claude/                 # Claude Code configuration (installed copy)
-├── commands/            # Slash commands
-├── hooks/               # Context injection hooks
-├── skills/
-└── settings.json        # Hook configuration
+├── skills/              # arbor/, arbor-update-spec/, arbor-spec-bootstrap/
+└── settings.json
 
 .arbor/                  # Arbor workflow (installed copy + this repo's own specs)
-├── agents/              # Instruction sources for the Orca workers
 ├── scripts/             # Python scripts (copy of templates/arbor/scripts)
-│   ├── common/          # Shared utilities (paths.py, developer.py, dispatch_context.py, etc.)
-│   ├── hooks/           # Lifecycle hook scripts (project-specific)
-│   └── *.py             # Main scripts (task.py, get_context.py, spec.py, etc.)
-├── workspace/           # Developer progress tracking
+│   ├── common/          # Shared modules (paths.py, config.py, contract.py, worktree.py, etc.)
+│   │   └── driver/      # Driver internals, see driver.md
+│   └── *.py             # Entry scripts (arbor.py, spec.py, add_session.py, get_developer.py, init_developer.py)
+├── workspace/           # Developer journals
 ├── spec/                # This repo's own guidelines (cli/, guides/, tech/)
 ├── tasks/
-├── config.yaml
-└── workflow.md          # Workflow documentation
+└── config.yaml
 ```
 
 ### What ships
 
-`pnpm build` runs `tsc` and then `scripts/copy-templates.js`, which copies only `src/templates/` (minus `.ts`, `__pycache__`, `.DS_Store`) to `dist/templates/` and `src/migrations/manifests/` to `dist/migrations/manifests/`. It deliberately does **not** copy the repo-root `.arbor/` or `.claude/`, because those carry this project's own customizations.
+`pnpm build` runs `tsc` and then `scripts/copy-templates.js`, which copies only `src/templates/` (minus `.ts`, `.pyc`, `.pyo`, `__pycache__`, `.DS_Store`) to `dist/templates/` and `src/migrations/manifests/` to `dist/migrations/manifests/`. It deliberately does **not** copy the repo-root `.arbor/` or `.claude/`, because those carry this project's own customizations.
 
 ```
 dist/
 ├── templates/
-│   ├── arbor/         # .arbor/ scaffolding: scripts/, agents/, workflow.md, config.yaml, gitignore.txt
-│   ├── claude/        # Claude Code settings.json and the opt-in statusline hook
-│   ├── star/          # StarFactory settings.json
-│   ├── common/        # Shared command, skill and bundled-skill templates
-│   ├── shared-hooks/  # Platform-independent hook scripts
-│   └── markdown/      # AGENTS.md / CLAUDE.md blocks and generic spec templates (spec/**/*.md.txt)
+│   ├── arbor/         # .arbor/ scaffolding: scripts/, tasks/.gitkeep, config.yaml, gitignore.txt, gitattributes.txt
+│   ├── claude/        # settings.json, skills/arbor.md, the opt-in hooks/statusline.py
+│   ├── common/        # skills/update-spec.md and bundled-skills/arbor-spec-bootstrap/
+│   └── markdown/      # agents.md, claude.md, gitignore.txt, workspace-index.md, worktree.yaml.txt, spec/**/*.md.txt
 └── migrations/manifests/
 ```
 
@@ -107,26 +103,18 @@ returning `Map<relPath, content>` — the single description of what that
 platform installs. `configure` is derived from it in the registry.
 
 ```typescript
-// configurators/star.ts
-export function collectStarTemplates(): Map<string, string> {
-  const ctx = AI_TOOLS.star.templateContext;
-  const files = new Map<string, string>();
-  const settings = getSettingsTemplate();
-  files.set(`.starFactory/${settings.targetPath}`, resolvePlaceholders(settings.content));
-  for (const cmd of resolveCommands(ctx)) {
-    files.set(`.starFactory/commands/arbor/${cmd.name}.md`, cmd.content);
-  }
-  for (const [p, c] of collectSkillTemplates(".starFactory/skills", resolveSkills(ctx), resolveBundledSkills(ctx))) {
-    files.set(p, c);
-  }
-  for (const [k, v] of collectSharedHooks(".starFactory/hooks", "star")) {
-    files.set(k, v);
-  }
-  return files;
+// configurators/codex.ts
+export function collectCodexTemplates(): Map<string, string> {
+  const ctx = AI_TOOLS.codex.templateContext;
+  return collectSkillTemplates(
+    ".agents/skills",
+    resolveSkills(ctx),
+    resolveBundledSkills(ctx),
+  );
 }
 
 // configurators/index.ts
-star: fromTemplates(collectStarTemplates),
+codex: fromTemplates(collectCodexTemplates),
 ```
 
 Full contract — map key/value rules, the one platform (Claude Code) that also needs a
@@ -145,7 +133,7 @@ getArborTemplatePath(): string
 readArborFile(relativePath: string): string
 
 // Copy directory from templates/arbor/ with executable scripts
-copyArborDir(srcRelativePath: string, destPath: string, options?: { executable?: boolean }): void
+copyArborDir(srcRelativePath: string, destPath: string, options?: { executable?: boolean }): Promise<void>
 ```
 
 ---
@@ -157,7 +145,7 @@ copyArborDir(srcRelativePath: string, destPath: string, options?: { executable?:
 | Convention | Example | Usage |
 |------------|---------|-------|
 | `kebab-case` | `file-writer.ts` | All TypeScript files |
-| `kebab-case` | `shared-hooks/` | All directories |
+| `kebab-case` | `bundled-skills/` | All directories |
 | `*.ts` | `init.ts` | TypeScript source files |
 | `*.md.txt` | `index.md.txt` | Template files for markdown |
 
@@ -179,7 +167,7 @@ Templates use `.txt` extension to:
 | `.arbor/spec/<pkg>/<layer>/*.md` | This repo's dogfood spec (Arbor documenting its own code) |
 | `packages/cli/src/templates/markdown/spec/<layer>/*.md.txt` | User-facing placeholder templates (ship to new projects via `arbor init`) |
 
-If you open-and-edit the wrong one, nothing fails at build / test / lint time — `markdown/index.ts` silently ignores your new file because it only reads the `.md.txt` variants. The drift can persist for years (caught in 2026-04 after ~3 months).
+If you open-and-edit the wrong one, nothing fails at build or lint time — `markdown/index.ts` silently ignores your new file because it only reads the `.md.txt` variants; only the regression test below catches a bare `.md`. The drift can persist for years (caught in 2026-04 after ~3 months).
 
 **Prevention checklist** (apply whenever you add or edit a spec-layer file):
 
@@ -194,7 +182,7 @@ find packages/cli/src/templates/markdown/spec -type f -name "*.md" ! -name "*.md
 # (empty output = clean)
 ```
 
-Consider adding this find to a regression test (non-empty output → fail) so the invariant is machine-enforced, not memory-enforced.
+The invariant is machine-enforced by `test/regression.test.ts` "regression: templates/markdown/spec contains only .md.txt files".
 
 ---
 
@@ -289,7 +277,7 @@ Last-resort detector for **polyrepo** layouts (multiple independent git repos in
 
 | Flag | Behavior |
 |------|----------|
-| `--monorepo` | Force monorepo mode. On detector miss, prints a checklist of all 7 markers checked + a manual `config.yaml` example showing both `type: submodule` and `git: true`, then `return`s (not `process.exit(1)`) |
+| `--monorepo` | Force monorepo mode. On detector miss, prints a checklist of all 7 markers checked + a manual `config.yaml` `packages:` example (with `git: true`), then `return`s (not `process.exit(1)`) |
 | `--no-monorepo` | Skip monorepo detection entirely |
 | _(neither)_ | Auto-detect; prompt user to confirm if packages found |
 
@@ -320,30 +308,7 @@ The TS `DetectedPackage` interface and the Python runtime config schema are coup
 | `isSubmodule: true` | `type: submodule` | `get_submodule_packages()` in `.arbor/scripts/common/config.py` |
 | `isGitRepo: true` | `git: true` | `get_git_packages()` in `.arbor/scripts/common/config.py` |
 
-The Python helper `_is_true_config_value()` accepts `true` (case-insensitive string). YAML literals are emitted unquoted by `writeMonorepoConfig`. End-to-end round-trip is covered by `test/commands/init.integration.test.ts` polyrepo case.
-
-### Runtime Session Context Fallback
-
-`common/session_context.py` consumes the `git: true` runtime schema when
-injecting package Git status. The configured package list remains the primary
-source of truth.
-
-For backward compatibility with projects initialized before polyrepo detection
-or hand-created Arbor roots, session context has a bounded fallback: when the
-Arbor root is not a Git worktree and no configured package Git repositories
-are available, it may scan immediate child and grandchild directories for
-independent `.git` entries and inject those repositories' status. This fallback
-must mirror `parsePolyrepo()`:
-
-- maximum depth: two levels
-- skip dot-prefixed and generated/vendor directories
-- accept `.git` as a directory or file
-- stop descending once a child repository is found
-- require at least two discovered repositories before treating the layout as a
-  polyrepo
-
-Do not use the fallback to rewrite `config.yaml`; it is context-only. Users with
-non-standard layouts should still configure `packages:` explicitly.
+The Python helper `_is_true_config_value()` delegates to `coerce_config_bool()`, which accepts the case-insensitive strings in `TRUE_CONFIG_VALUES` (including `true`). YAML literals are emitted unquoted by `writeMonorepoConfig`. End-to-end round-trip is covered by `test/commands/init.integration.test.ts` polyrepo case.
 
 ### Per-Package Spec Directory Creation
 
@@ -363,7 +328,7 @@ For each detected package, `createWorkflowStructure()` creates spec directories 
 - Describe a platform's file set exactly once, in its `collect<Platform>Templates()`
 - Keep generic templates in `src/templates/markdown/`
 - Use `.md.txt` or `.yaml.txt` for template files
-- Mirror template changes into this repo's installed copies (`.claude/`, `.arbor/scripts/`)
+- Mirror template changes into this repo's installed copies (`.claude/`, `.arbor/scripts/`); `arbor update` regenerates them from the templates
 - Always use `python3` explicitly when documenting script invocation (Windows compatibility)
 
 ### DON'T

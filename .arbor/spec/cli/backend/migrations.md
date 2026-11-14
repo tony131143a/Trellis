@@ -1,12 +1,15 @@
 ---
 sources:
   - packages/cli/src/migrations/index.ts
-  - packages/cli/src/migrations/manifests/0.1.0.json
+  - packages/cli/src/migrations/manifests/*.json
   - packages/cli/src/types/migration.ts
   - packages/cli/src/commands/update.ts
   - packages/cli/src/utils/template-hash.ts
   - packages/cli/src/utils/manifest-prune.ts
-last_verified: 2026-07-11
+  - packages/cli/src/utils/retired-platforms.ts
+  - packages/cli/src/utils/file-writer.ts
+  - packages/cli/src/utils/cwd-guard.ts
+last_verified: 2026-11-13
 ---
 # Migration System
 
@@ -50,35 +53,34 @@ src/migrations/
 
 **无需修改任何代码** - 构建时自动复制到 dist。
 
-### Breaking 版本必须提供 `migrationGuide` + `aiInstructions`
+### Breaking 版本必须提供 `migrationGuide`
 
-任何 `breaking: true` + `recommendMigrate: true` 的 manifest 必须额外附带这两个字段：
+任何 `breaking: true` + `recommendMigrate: true` 的 manifest 必须额外附带 `migrationGuide`（`aiInstructions` 可选）：
 
 ```json
 {
-  "version": "0.3.0",
+  "version": "1.0.0",
   "breaking": true,
   "recommendMigrate": true,
-  "migrationGuide": "## 0.2.x → 0.3.x: What This Release Actually Changes\n\n0.3.0 is a breaking release...\n\n### 1. Skills got renamed: ...",
-  "aiInstructions": "When helping a user migrate from 0.2.x to 0.3.x:\n\n1. Check for renamed skills first...\n2. Run arbor update --migrate...",
+  "migrationGuide": "1. Before updating, finish or abandon every started task...\n2. Run `arbor update --migrate`...",
   "migrations": [ /* ... */ ]
 }
 ```
 
-**强制原因**（历史事故驱动）：`update.ts` 生成 migration task 时会枚举 `fromVersion` 到 `toVersion` 之间**所有**带 `migrationGuide` 的 manifest 拼成 task PRD。如果当前 breaking release 漏写 `migrationGuide`：
+**强制原因**：`update.ts` 在升级结束、summary 之后，把 `getMigrationMetadata(fromVersion, toVersion)` 收集到的**所有** `migrationGuide` 逐个打印（只在区间是 `breaking` 时）。这是用户在本次升级里能看到的唯一一份按版本的操作说明。如果当前 breaking release 漏写 `migrationGuide`：
 
-- 场景 A：用户从比 current 早 N 个版本升级 → migration task PRD 里全是 N-1 / N-2 时代的老 guide，**一字不提本次 breaking**
-- 场景 B：中间所有 manifest 都没 `migrationGuide` → task **根本不生成**，用户以为 update 是安全的、实际踩一脸 breaking
+- 场景 A：用户跨多个版本升级 → 只打印更早版本的 guide，**一字不提本次 breaking**
+- 场景 B：区间内所有 manifest 都没 `migrationGuide` → 什么都不打印
 
-历史事故（上游 Trellis）：一个大 breaking 版本的 manifest 漏写 `migrationGuide`，导致跨版本升级的用户一路迁盲，后来在上游的 manifest 生成脚本里加了强制校验。该脚本已随 release scripts 一起移除，所以本仓库里这条检查现在靠人工 review：`breaking && recommendMigrate` 的 manifest 必须带 `migrationGuide`。
+没有任何检查强制这一点，靠人工 review：`breaking && recommendMigrate` 的 manifest 必须带 `migrationGuide`。
 
 **字段语义**：
-- `migrationGuide` —— 面向最终用户的 narrative，被模板化塞进 `.arbor/tasks/MM-DD-migrate-to-<version>/prd.md` 的 PRD section
-- `aiInstructions` —— 面向 AI 的指令：帮用户迁移时 grep 什么、check 什么、常见坑；和 `migrationGuide` 分开避免把 AI 指令和人类说明写在一起
+- `migrationGuide` —— 面向最终用户的 narrative，`arbor update` 结束时以 `📋 v<version> migration guide:` 打印
+- `aiInstructions` —— 面向 AI 的指令；`getMigrationMetadata` 会把它和 guide 一起收集，但目前没有任何代码显示它
 
 **何时 _不_ 需要**：
 - 非 breaking 版本（`breaking: false`）：不需要 `migrationGuide`
-- breaking 但 `recommendMigrate: false`：罕见（"breaking 但不建议 migrate" 基本不存在），真要这样跑，没校验强制。
+- breaking 但 `recommendMigrate: false`：没校验强制（0.11.0 就是这种组合，仍带了 `migrationGuide`）。
 
 ## 迁移类型
 
@@ -105,23 +107,26 @@ src/migrations/
 - 自动批量更新 hash 追踪
 - 移动后自动清理空的源目录
 - 嵌套目录按深度优先处理（避免父目录先移动导致子目录找不到）
-- 目标目录不存在时，是否自动执行取决于归属：只有当 manifest 记录了 `from` 目录下的文件（即这个目录是 arbor 自己建的）才会 `auto`；否则视为可能是用户自建的同名目录（例如真实的 `.windsurf/` 编辑器配置），路由到 `skip`（即使 `--force` 也不执行）。详见下方分类逻辑与 [Filesystem Safety](./filesystem-safety.md)。
+- 目标目录不存在时，是否自动执行取决于归属：只有当 manifest 记录了 `from` 目录下的文件（即这个目录是 arbor 自己建的）才会 `auto`；否则视为可能是用户自建的同名目录（例如用户自己的编辑器配置目录，恰好与某个已退役的 Arbor 平台目录同路径），路由到 `skip`（即使 `--force` 也不执行）。详见下方分类逻辑与 [Filesystem Safety](./filesystem-safety.md)。
 
 ### safe-file-delete 示例
 
 ```json
 {
   "type": "safe-file-delete",
-  "from": ".claude/commands/arbor/before-backend-dev.md",
-  "description": "Replaced by before-dev.md",
-  "allowed_hashes": ["7e35444de2a5779ef39944f17f566ea21d2ed7f4994246f4cfe6ebf9a11dd3e3"]
+  "from": ".arbor/scripts/common/driver/mcp.py",
+  "description": "codeg MCP handoff, replaced by driver/orca.py in 0.10.0",
+  "allowed_hashes": ["16b08a07c955fc71d13a33d4cf59de6969e7234c1352a215223963deb6569519", "..."]
 }
 ```
+
+（取自 `manifests/0.10.0.json`。）
 
 **工作机制**：
 - **无需 `--migrate`** — 在每次 `arbor update` 时自动执行
 - **Hash 校验** — 只有当文件内容的 SHA256 匹配 `allowed_hashes` 中的某个值时才删除
-- **版本无关** — 从所有 manifest 收集 safe-file-delete 条目，不受版本范围限制
+- **版本无关** — 从所有 manifest 收集 safe-file-delete 条目，不受版本范围限制（`.arbor/.version` 缺失时也执行）
+- **当前模板优先** — 路径属于当前模板集时忽略该条目（后来的版本有意恢复了这个路径）
 - 删除后自动清理 hash 记录和空目录
 
 **分类逻辑**：
@@ -132,7 +137,9 @@ src/migrations/
 | `skip-missing` | 文件不存在 | 跳过 |
 | `skip-modified` | 文件存在但 hash 不匹配（用户已修改） | 保留 |
 | `skip-protected` | 路径在 PROTECTED_PATHS 中 | 保留 |
-| `skip-update-skip` | 路径在 config.yaml `update.skip` 中 | 保留 |
+| `skip-update-skip` | 路径在 config.yaml `update.skip` 中（breaking + `--migrate` 时绕过） | 保留 |
+
+`allowed_hashes` 为空或缺失的条目一律归为 `skip-modified`。
 
 ## 分类逻辑
 
@@ -153,8 +160,8 @@ src/migrations/
   "configSectionsAdded": [
     {
       "file": ".arbor/config.yaml",
-      "sentinel": "dispatch:",                              // 用户文件里出现这个 substring（注释或活配）就视为已存在
-      "sectionHeading": "Dispatch (executors)"       // 模板里 #--- 分隔块内 `# <heading>` 行匹配此值
+      "sentinel": "executors:",     // 用户文件里出现这个 substring（注释或活配）就视为已存在
+      "sectionHeading": "Executors" // 模板里 #--- 分隔块内 `# <heading>` 行匹配此值
     }
   ]
 }
@@ -164,9 +171,9 @@ src/migrations/
 
 - `file` —— 目标文件相对仓库根的路径（当前只用过 `.arbor/config.yaml`，机制本身不限定）
 - `sentinel` —— 幂等 gate：用户文件包含此 substring（live 或注释）就跳过。挑稳定的 token，比如新引入的顶层 YAML key
-- `sectionHeading` —— 模板里 `#---` 分隔块内 `# <heading>` 那一行的内容，extractor 从此分隔块开始抽到下一个 `#---` 分隔块（或 EOF）
+- `sectionHeading` —— 模板里 `#---` 分隔块内 `# <heading>` 那一行的内容，extractor 从此分隔块开始抽到下一个 `#---` 分隔块（或 EOF）。模板里找不到这个 heading 时该条目静默跳过
 
-**为什么不直接覆盖 config.yaml**：用户基本都改过 `session_commit_message` / `packages` 等字段，hash 不匹配，常规 file-write 流程会触发 `y/n/d` 询问 —— `y` 丢自定义，`n` 拿不到新 section。`configSectionsAdded` 走 sentinel-gated 追加路径，绕过这个二选一。
+**为什么不直接覆盖 config.yaml**：`.arbor/config.yaml` 存的是项目自己的设置（`packages`、`executors` 等），`collectTemplateFiles` 根本不把它放进模板集，所以 `arbor update` 永远不会重写它，`--force` 也不会（`test/migrations/migration-1.0.0.test.ts > never rewrites .arbor/config.yaml, not even with --migrate --force`）。`configSectionsAdded` 的 sentinel-gated 追加是 update 写这个文件的唯一路径，而且只在真正升级时（`cliVsProject > 0`、版本已知）运行。
 
 **未来加新 section**：在对应版本 manifest 加一条 entry 即可，`update.ts` 不需要改。`packages/cli/src/templates/arbor/config.yaml` 模板里加对应 `#---` 分隔块和 section 内容，`arbor init` 走默认写入路径自然会拿到新 section。
 
@@ -178,9 +185,9 @@ src/migrations/
 - `.arbor/tasks` — 任务追踪
 - `.arbor/spec` — 开发指南（用户自定义）
 - `.arbor/.developer` — 开发者身份
-- `.arbor/.current-task` — 当前任务指针
+- `.arbor/.current-task`
 
-> 注意：`rename`/`rename-dir` 类型允许将文件迁移 **到** 受保护路径（例如把遗留的 `agent-traces` 目录重命名为 `workspace`），但不允许从受保护路径迁移。
+> 注意：`rename`/`rename-dir` 类型允许将文件迁移 **到** 受保护路径，但不允许从受保护路径迁移；`delete` 等其他类型两个方向都不允许。
 
 ## update.skip 配置
 
@@ -189,12 +196,13 @@ src/migrations/
 ```yaml
 update:
   skip:
-    - .claude/commands/arbor/my-custom.md
-    - .starFactory/commands/
+    - .claude/skills/arbor/SKILL.md
+    - .agents/skills/
 ```
 
 - 支持文件路径和目录路径（目录路径以 `/` 结尾，匹配所有子文件）
 - 同时影响模板更新和 safe-file-delete
+- 跨 `breaking` + `recommendMigrate` 的升级加 `--migrate` 时整体绕过（`breakingBypass`，见 `commands-update.md`）
 
 ## 模板哈希追踪
 
@@ -210,9 +218,10 @@ update:
 
 #### Why this matters
 
-`.claude/` and `.starFactory/` contain platform-specific user data:
+`.claude/` and `.codex/` contain platform-specific user data:
 - `.claude/projects/<sanitized-cwd>/*.jsonl` — Claude Code conversation history
-- User-added `.claude/agents/<name>/`, `.starFactory/skills/<name>/`
+- `.codex/sessions/*` — Codex session data
+- User-added `.claude/agents/<name>/`, `.agents/skills/<name>/`
 
 If `initializeHashes` walks these dirs and hashes everything, uninstall faithfully deletes user data. Real incidents reported upstream: a platform's session-history directory wiped (Issue #221), and a pre-existing `AGENTS.md` wiped (PR #271).
 
@@ -231,7 +240,7 @@ And **does NOT record** when:
 - `writeMode` was `skip-existing` and the file existed (skipped)
 - The call was append-mode (`appendFile`)
 
-Every configurator that wants its writes tracked must funnel through `writeFile()` — direct `fs.writeFileSync` bypasses the recorder.
+Every configurator that wants its writes tracked must funnel through `writeFile()` — direct `fs.writeFileSync` bypasses the recorder. The one exception to "record only real writes" is `writeManagedBlockFile()` (used for `CLAUDE.md`): it records the path even when the content is unchanged, because a file carrying the managed block is Arbor-managed either way and uninstall only strips the block.
 
 #### `.arbor/` walk exemption
 
@@ -244,11 +253,12 @@ Existing users may have poisoned manifests from older arbor versions. `pruneOrph
 **Preserve set** (a key is kept iff one of):
 
 1. Starts with `.arbor/` (walk-managed)
-2. Path appears in `PLATFORM_FUNCTIONS[id].collectTemplates()` output for ANY configured platform
+2. Path appears in `collectPlatformTemplates(id)` output for ANY configured platform
 3. Path appears in `from` or `to` of ANY migration manifest entry (across all `migrations/manifests/*.json`, not just pending) — must preserve so rename/delete migration logic still has a hash to compare against
-4. Path is `AGENTS.md` AND the file on disk contains `ARBOR_BLOCK_START` + `ARBOR_BLOCK_END` markers, OR the file is missing. Files lacking markers are treated as user-owned and pruned.
+4. Path is `AGENTS.md` or `CLAUDE.md` AND the file on disk contains `ARBOR_BLOCK_START` + `ARBOR_BLOCK_END` markers, OR the file is missing. Files lacking markers are treated as user-owned and pruned.
+5. Path is in `utils/retired-platforms.ts:RETIRED_PLATFORM_PATHS` (see "Retired platforms" below)
 
-`options.persist: false` for dry-run paths (e.g. `uninstall --dry-run`).
+`options.persist: false` skips the manifest write; `uninstall --dry-run` passes it, `arbor update` does not (it persists the prune on every run, `--dry-run` included).
 
 #### Wrong vs Correct
 
@@ -269,45 +279,37 @@ initializeHashes(cwd, { trackedPaths: written });
 
 #### Homedir guard (R2 — defense in depth)
 
-Even with the manifest contract above, `arbor init` and `arbor uninstall` refuse to run when `process.cwd()` is exactly the user's home directory. Use `isCwdHomedir()` from `utils/cwd-guard.ts` — it compares via `fs.realpathSync.native()` on both sides, Windows-lowercases for case-insensitivity, try/catch defaults permissive on lookup failure. Override via `ARBOR_ALLOW_HOMEDIR=1` only; `--force` does NOT bypass.
+Even with the manifest contract above, `arbor init` and `arbor uninstall` refuse to run when `process.cwd()` is exactly the user's home directory. Use `isCwdHomedir()` from `utils/cwd-guard.ts` — it compares via `fs.realpathSync.native()` on both sides, Windows-lowercases for case-insensitivity, and returns `false` (guard does not trip) when the lookup throws. Override via `ARBOR_ALLOW_HOMEDIR=1` only; `--force` does NOT bypass.
 
 #### Tests required for any change in this area
 
-- Integration: pre-populate user files under `.claude/` and `.starFactory/`, run init+uninstall, assert user data preserved.
+- Integration: pre-populate user files under `.claude/` and `.codex/`, run init+uninstall, assert user data preserved.
 - Integration: pre-existing `AGENTS.md` (skip-existing path), uninstall preserves it.
 - Integration: poisoned manifest (manually injected key) → update OR uninstall prunes it, user file survives.
 - Unit: `recordWrite` instrumentation — new/overwrite recorded, identical/skip/append NOT recorded.
-- Unit: `pruneOrphanManifestKeys` — preserves all four classes above; rewrites manifest only when pruned.length > 0.
+- Unit: `pruneOrphanManifestKeys` — preserves all five classes above; rewrites manifest only when pruned.length > 0.
 - Unit: `isCwdHomedir` — symlinked home matches; subdirectory does NOT match; Windows case-insensitive.
 
-### `workflow.md` whole-file update contract
+## 1.0.0 manifest
 
-`.arbor/workflow.md` is not only documentation. It is runtime input for
-`get_context.py`, `workflow_phase.py`, SessionStart strippers, and per-turn
-workflow-state hooks.
+`manifests/1.0.0.json` 是 `breaking: true` + `recommendMigrate: true` + `migrationGuide`，`configSectionsAdded` 为空，`migrations` 全部是普通 `delete`（99 条，没有 `allowed_hashes`）。因此：
 
-`arbor update` must therefore keep `workflow.md` on the normal whole-file
-template path:
+- 从 0.x 升级而不带 `--migrate`（也不是 `--dry-run`）时 breaking gate 让 `arbor update` 以 exit 1 结束。
+- 带 `--migrate` 时：未修改的文件直接删除（`auto`），用户改过的走 `confirm`（`-f` 删除、`-s` 保留、交互默认 `backup-rename`）；空目录随后被清理。
+- 条目覆盖 0.11 装过而 1.0 不再安装的路径：`.arbor/agents/*.md`、`.arbor/workflow.md`、被删的 `.arbor/scripts/**`、`.claude/hooks/*`（不含 `statusline.py`）、`.claude/commands/**`、`.claude/skills/**` 与 `.agents/skills/**` 下被删的 skill、`.codex/hooks/*` 和 `.codex/hooks.json`。
+- `.claude/settings.json` 不在删除列表里：未修改时由 1.0 模板（无 `hooks`）覆盖；用户改过的 `.claude/settings.json` / `.codex/hooks.json` 被 `update.ts:planHookScrubs` 从模板覆盖和删除列表里拿出来，只去掉指向被删脚本的 hook 条目（见 `commands-update.md` § `--migrate`）。
 
-- If the installed file's current hash matches the tracked hash, update the
-  entire file to the packaged template and refresh the tracked hash.
-- If the installed file was edited by the user, use the standard
-  modified-file decision path (`confirm`, `--force`, or `--skip`).
-- Do not partially merge only `[workflow-state:*]` tag blocks.
+没有生成脚本。删除列表由 `test/migrations/migration-1.0.0.test.ts` 钉住：非脚本部分必须恰好等于 `test/fixtures/install-0.11.0.json`（一次 0.11 claude + codex 安装的 manifest 路径）减去一次 1.0 安装的路径；脚本部分不得含 1.0 仍安装的脚本，也不得漏掉 0.11 有而 1.0 没有的脚本。增删模板后这个测试失败，就改 manifest，不改测试。
 
-Reason: runtime-significant routing markers and phase headings also live
-outside `[workflow-state:*]` blocks. A partial tag-block merge can update hook
-breadcrumbs while leaving stale platform blocks, for example an old
-`[Claude Code]` marker instead of `[Claude Code, StarFactory]`, causing
-`get_context.py --mode phase --platform star` to return empty or wrong step
-detail after upgrade.
+## Retired platforms
 
-Regression coverage for this belongs in versioned update integration tests,
-not only fresh-init template tests: write the older `.arbor/.version`, stage
-older hash-tracked template files, run `arbor update`, then assert the
-installed files reach the current packaged shape and the version stamp advances.
-For runtime templates such as `workflow.md`, the scenario must also assert that
-runtime markers such as the `[Claude Code, StarFactory]` platform blocks are present after update.
+`utils/retired-platforms.ts:RETIRED_PLATFORM_PATHS` 列出已退役平台（StarFactory，`.starFactory/`）曾写过的文件，只用于清理归属，不能再安装：
+
+- `pruneOrphanManifestKeys` 保留这些 manifest 条目（preserve set 第 5 类），所以它们的 hash 在 update 后仍在，`arbor uninstall` 能认领并清理（`.starFactory/settings.json` 走 `scrubHooksJson`，见 `commands-uninstall.md`）。
+- 未修改的文件由 `manifests/0.2.0.json` 里对应的 `safe-file-delete` 条目（hash 校验）删除；改过的保留。
+- `update.ts` 的 `BACKUP_DIRS` 包含这些路径的顶层目录，删除前已进快照。
+
+测试：`test/commands/retired-platform.integration.test.ts`。
 
 ## CLI 使用
 

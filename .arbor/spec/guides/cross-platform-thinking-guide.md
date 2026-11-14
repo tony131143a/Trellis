@@ -1,3 +1,7 @@
+---
+sources: []
+last_verified: 2026-11-13
+---
 # Cross-Platform Thinking Guide
 
 > **Purpose**: Catch platform-specific assumptions before they become bugs.
@@ -38,14 +42,14 @@ print("Run: script.py <args>")
 
 # GOOD - Platform-aware wording
 print("Usage: python on Windows, python3 elsewhere")
-print("Run: {{PYTHON_CMD}} ./.arbor/scripts/task.py <args>")
+print("Run: {{PYTHON_CMD}} ./.arbor/scripts/arbor.py <args>")
 ```
 
 **Rule 2**: When generating config files at init time, use placeholder + platform detection:
 
 ```typescript
-// In template file (settings.json):
-{ "command": "{{PYTHON_CMD}} .claude/hooks/script.py" }
+// In the template (the opt-in statusLine entry configurators/claude.ts adds to settings.json):
+{ "command": "{{PYTHON_CMD}} .claude/hooks/statusline.py" }
 
 // In configurator:
 function getPythonCommand(): string {
@@ -67,25 +71,16 @@ execSync(`${PYTHON_CMD} "${scriptPath}"`, { ... })
 ```
 
 **Rule 4**: If you need to verify Python is actually installed (not just choose
-the command), probe the same platform-selected alias you will later render or
-execute:
+the command), render and execute exactly the command the probe accepted. Arbor's
+helper is `resolveSupportedPython()` in `commands/init.ts`: it honors
+`ARBOR_PYTHON_CMD` (no probe), otherwise tries the platform's
+`PYTHON_CANDIDATES` in order (`python3`, `python`; on Windows `python`,
+`python3`, `py -3`), accepts the first whose `--version` is ≥ 3.9, and caches it
+with `setResolvedPythonCommand` (`configurators/shared.ts`) so every template
+written afterwards (`getPythonCommandForPlatform`, `replacePythonCommandLiterals`)
+uses the probed command. Don't probe one alias and render another.
 
-```typescript
-function getPythonCommand(platform = process.platform): string {
-  return platform === "win32" ? "python" : "python3";
-}
-
-function warnIfPythonTooOld(): void {
-  const cmd = getPythonCommand();
-  try {
-    execSync(`${cmd} --version`, { stdio: "pipe" });
-  } catch {
-    // Missing Python is a separate error path; don't silently swap aliases.
-  }
-}
-```
-
-**Rule 5**: Don't assume the Python version the AI CLI uses matches your shell's `python3`. The user's terminal may resolve `python3` → homebrew 3.11, but AI CLI hosts (including enterprise-forked Claude Code distributions and StarFactory) spawn hook subprocesses with a minimal PATH that resolves `python3` → `/usr/bin/python3` → macOS system 3.9. Distributed templates must either target the lowest plausible version or use `from __future__ import annotations` for PEP 604 syntax. See `cli/backend/script-conventions.md` → **CRITICAL: PEP 604 Annotations Require `from __future__ import annotations`** for the hard rule and audit check.
+**Rule 5**: Don't assume the Python version the AI CLI uses matches your shell's `python3`. The user's terminal may resolve `python3` → homebrew 3.11, but AI CLI hosts (including enterprise-forked Claude Code distributions) spawn subprocesses with a minimal PATH that resolves `python3` → `/usr/bin/python3` → macOS system 3.9. Distributed templates must either target the lowest plausible version or use `from __future__ import annotations` for PEP 604 syntax. See `cli/backend/script-conventions.md` → **CRITICAL: PEP 604 Annotations Require `from __future__ import annotations`** for the hard rule and audit check.
 
 **Rule 6**: When calling Python from Python, use `sys.executable`:
 
@@ -139,7 +134,7 @@ A path string has two distinct roles. **Treat them differently.**
 function collectTemplates(): Map<string, string> {
   const files = new Map<string, string>();
   for (const entry of walk(dir)) {
-    files.set(path.join(".starFactory", entry), readFile(entry));  // \ on Windows
+    files.set(path.join(".claude", entry), readFile(entry));  // \ on Windows
   }
   return files;
 }
@@ -150,7 +145,7 @@ import { toPosix } from "../utils/posix.js";
 function collectTemplates(): Map<string, string> {
   const files = new Map<string, string>();
   for (const entry of walk(dir)) {
-    files.set(toPosix(path.join(".starFactory", entry)), readFile(entry));
+    files.set(toPosix(path.join(".claude", entry)), readFile(entry));
   }
   return files;
 }
@@ -206,7 +201,7 @@ Apply this rule wherever the hash crosses OS boundaries (template hash dictionar
 | `PATH` separator | `:` | `;` |
 | Case sensitivity | ✅ Case-sensitive | ❌ Case-insensitive |
 
-**Rule 1**: Use `pathlib.Path.home()` instead of environment variables.
+**Rule**: Use `pathlib.Path.home()` instead of environment variables.
 
 ```python
 # BAD
@@ -215,32 +210,6 @@ home = os.environ.get("HOME")
 # GOOD
 home = Path.home()
 ```
-
-**Rule 2**: When injecting environment variables into shell commands, generate
-the prefix for the actual shell that will parse the command. Do not choose
-syntax from OS alone. AI tool "Bash" surfaces on Windows may execute through
-PowerShell, Git Bash, MSYS2, or another POSIX-like shell.
-
-```javascript
-// Illustrative: no shipped hook prefixes commands today (Claude Code uses CLAUDE_ENV_FILE).
-// BAD - breaks when the host shell is PowerShell
-command = `export ARBOR_CONTEXT_ID=${shellQuote(contextKey)}; ${command}`;
-
-// GOOD - shell-dialect-aware command prefix
-const prefix = process.platform === "win32" && !isWindowsPosixShell(process.env)
-  ? `$env:ARBOR_CONTEXT_ID = ${powershellQuote(contextKey)}; `
-  : `export ARBOR_CONTEXT_ID=${shellQuote(contextKey)}; `;
-command = `${prefix}${command}`;
-```
-
-On Windows, treat `MSYSTEM`, `MINGW_PREFIX`, `OSTYPE=msys|mingw|cygwin`,
-`SHELL=...bash`, or a platform-specific Git Bash setting as POSIX-shell
-signals. Keep PowerShell as the Windows default when there is no POSIX-shell
-signal.
-
-Also make duplicate-injection detection shell-aware. A guard that only matches
-`export VAR=` will miss PowerShell's `$env:VAR = ...` form and can wrap an
-already-correct command a second time.
 
 ### 5. Command Availability
 
@@ -269,25 +238,6 @@ def tail_follow(file_path: Path) -> None:
             else:
                 time.sleep(0.1)
 ```
-
-### Optional Advisory Checks in Agent Sandboxes
-
-AI CLI subprocesses may run with outbound network disabled even when the user's
-normal terminal has network access. Prefer local CLI probes over optional
-network probes when the local CLI already exposes the needed information.
-
-**Rule 1**: Do not let a failed optional advisory check consume a once-per-session
-marker. Write the marker only after the script resolves a usable value and can
-make the intended decision. Otherwise a transient sandbox/network failure hides
-the hint for the rest of the session.
-
-**Rule 2**: If a local command can provide the needed value, try it with a short
-timeout and captured output. For example, `arbor --version` already runs the
-CLI's version comparison logic and can support an actionable update prompt
-without duplicating npm registry parsing.
-
-**Rule 3**: Keep advisory checks silent on failure. The user-facing context output
-must not fail or become noisy because an advisory check could not complete.
 
 ### 6. File Encoding
 
@@ -342,11 +292,8 @@ result = subprocess.run(
 
 When making platform-related changes, check **all these locations**:
 
-### Commands / Skills Sync
-- [ ] New command/skill added to ALL platforms — the list is `PLATFORM_IDS` in `configurators/index.ts` (currently Claude Code and StarFactory), not a remembered set
-- [ ] Each platform's test file updated with new entry in `EXPECTED_COMMAND_NAMES` / `EXPECTED_SKILL_NAMES`
-- [ ] Platform-integration spec's required command table updated if adding a new required command
-- [ ] Command format matches platform convention (see `platform-integration.md` → Command Format by Platform)
+### Skills Sync
+- [ ] New skill added to ALL platforms — the list is `PLATFORM_IDS` in `configurators/index.ts` (currently Claude Code and Codex), not a remembered set
 
 ### Documentation & Help Text
 - [ ] Docstrings at top of Python files
@@ -381,7 +328,6 @@ Before committing cross-platform code:
 - [ ] Content hashes computed across OSes normalize line endings (`\r\n` → `\n`) before hashing
 - [ ] Cross-OS JSON with potential legacy pollution carries a `__version` sentinel and the loader discards unknown/legacy versions
 - [ ] No platform-specific commands without fallbacks (e.g., `tail -f`)
-- [ ] Optional advisory checks do not burn once-per-session markers on failure
 - [ ] All file I/O specifies `encoding="utf-8"` and `errors="replace"`
 - [ ] All subprocess calls specify `encoding="utf-8"` and `errors="replace"`
 - [ ] Git commands use `-c i18n.logOutputEncoding=UTF-8`
@@ -391,25 +337,9 @@ Before committing cross-platform code:
 
 ### 7. External Tool API Contracts
 
-When integrating with external tools (Claude Code, StarFactory, codeg, etc.), their API contracts are **implicit assumptions**.
+When integrating with external tools (Claude Code, Codex, Orca, etc.), their API contracts are **implicit assumptions**.
 
 **Rule**: Verify API formats from official documentation, don't guess.
-
-```python
-# BAD - Guessed format
-output = {"continue": True, "message": "..."}
-
-# GOOD - Verified format from documentation
-output = {
-    "hookSpecificOutput": {
-        "hookEventName": "SessionStart",
-        "additionalContext": "..."
-    }
-}
-```
-
-> **Warning**: Different hook types may have different output formats.
-> Always check the specific documentation for each hook event.
 
 ---
 
@@ -459,7 +389,7 @@ export function saveHashes(cwd: string, hashes: Record<string, string>): void {
 
 **When NOT to apply** — if losing the data hurts the user (task state, drafts, settings the user typed). Use real migration there. Sentinel + discard is only safe when data is recomputable.
 
-**Reference**: `packages/cli/src/utils/template-hash.ts` v2 envelope.
+**Reference**: `packages/cli/src/utils/template-hash.ts` v2 envelope (`HASHES_SCHEMA_VERSION = 2`).
 
 ---
 
@@ -591,13 +521,14 @@ When releasing a new version, ensure **all versioned files** are created/updated
 **Why this matters**: Missing manifests cause "path undefined" errors when users upgrade from older versions.
 
 ```bash
-# Verify all expected manifests exist
+# Verify all expected manifests exist (from packages/cli)
 ls src/migrations/manifests/
 
-# Test upgrade path
-node -e "
-const { getMigrationsForVersion } = require('./dist/migrations/index.js');
-console.log('From 0.1.0:', getMigrationsForVersion('0.1.0', 'CURRENT').length);
+# Test upgrade path (ESM package: use a dynamic import)
+node --input-type=module -e "
+const { getMigrationsForVersion } = await import('./dist/migrations/index.js');
+const { VERSION } = await import('./dist/constants/version.js');
+console.log('From 0.1.0:', getMigrationsForVersion('0.1.0', VERSION).length);
 "
 ```
 
@@ -631,9 +562,9 @@ printf '{"name":"arbor-smoke","version":"0.0.0"}\n' > "$tmpdir/package.json"
 git -C "$tmpdir" init -q
 (
   cd "$tmpdir"
-  node /path/to/Arbor/packages/cli/bin/arbor.js init -u smoke --yes --claude --star
+  node /path/to/Arbor/packages/cli/bin/arbor.js init -u smoke --yes --claude --codex
   test -f .claude/skills/<skill>/SKILL.md
-  test -f .starFactory/skills/<skill>/SKILL.md
+  test -f .agents/skills/<skill>/SKILL.md
   grep -q '<skill>' .arbor/.template-hashes.json
   node /path/to/Arbor/packages/cli/bin/arbor.js update --dry-run
 )

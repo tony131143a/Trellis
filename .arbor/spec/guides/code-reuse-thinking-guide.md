@@ -1,3 +1,7 @@
+---
+sources: []
+last_verified: 2026-11-13
+---
 # Code Reuse Thinking Guide
 
 > **Purpose**: Stop and think before creating new code - does it already exist?
@@ -150,21 +154,21 @@ of that replay model.
 
 **Symptom**: New platform works partially — some methods return Claude defaults instead of platform-specific values. No error is raised.
 
-**Example** (illustrative; platform ids as in `workflow_phase._PLATFORM_MARKER_LABELS`):
+**Example** (illustrative):
 ```python
-# BAD: "star" falls through to else, returns the Claude default
+# BAD: "codex" falls through to else, returns the Claude default
 def config_dir(platform: str) -> str:
     if platform == "claude":
         return ".claude"
     else:
-        return ".claude"  # star silently gets ".claude"!
+        return ".claude"  # codex silently gets ".claude"!
 
 # GOOD: explicit branch for every platform, unknown ids fail loudly
 def config_dir(platform: str) -> str:
     if platform == "claude":
         return ".claude"
-    elif platform == "star":
-        return ".starFactory"
+    elif platform == "codex":
+        return ".codex"
     raise ValueError(f"unknown platform: {platform}")
 ```
 
@@ -211,10 +215,10 @@ grep -l "newFileName" src/templates/arbor/index.ts  # Should match
 
 ### Template Sync Convention
 
-`.arbor/scripts/` (dogfooded) and `packages/cli/src/templates/arbor/scripts/` (template) must stay identical — build-enforced for every `.py` file, see `cli/backend/script-conventions.md` → "Two script trees, one content". After editing `.arbor/scripts/`, always sync:
+`.arbor/scripts/` (dogfooded) and `packages/cli/src/templates/arbor/scripts/` (template) must stay identical — build-enforced for every `.py` file, see `cli/backend/script-conventions.md` → "Two script trees, one content". The template is the source; after editing it, sync the installed copy:
 
 ```bash
-rsync -av --delete --exclude='__pycache__' .arbor/scripts/ packages/cli/src/templates/arbor/scripts/
+rsync -av --delete --exclude='__pycache__' packages/cli/src/templates/arbor/scripts/ .arbor/scripts/
 ```
 
 **Gotcha**: Running rsync with wrong source/destination paths can create nested garbage directories (e.g., `.arbor/scripts/packages/cli/...`). Always double-check paths before running.

@@ -1,3 +1,7 @@
+---
+sources: []
+last_verified: 2026-11-13
+---
 # Thinking Guides
 
 > **Purpose**: Expand your thinking to catch things you might not have considered.
@@ -23,7 +27,7 @@ These guides help you **ask the right questions before coding**.
 |-------|---------|-------------|
 | [Code Reuse Thinking Guide](./code-reuse-thinking-guide.md) | Identify patterns and reduce duplication | When you notice repeated patterns |
 | [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md) | Think through data flow across layers | Features spanning multiple layers |
-| [Cross-Platform Thinking Guide](./cross-platform-thinking-guide.md) | Catch OS, shell, Python, path, and persistence assumptions | When commands, hooks, templates, scripts, or persisted JSON must work across platforms |
+| [Cross-Platform Thinking Guide](./cross-platform-thinking-guide.md) | Catch OS, shell, Python, path, and persistence assumptions | When commands, templates, scripts, or persisted JSON must work across platforms |
 
 ---
 
@@ -35,7 +39,7 @@ These guides help you **ask the right questions before coding**.
 - [ ] Data format changes between layers
 - [ ] Multiple consumers need the same data
 - [ ] You're not sure where to put some logic
-- [ ] You are adding a JSONL record, hook payload, or config field
+- [ ] You are adding a persisted JSON field or config field
 - [ ] UI / command code starts casting raw payload fields directly
 
 → Read [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md)
@@ -54,7 +58,7 @@ These guides help you **ask the right questions before coding**.
 
 ### When to Think About Cross-Platform Issues
 
-- [ ] You are editing Python scripts, shell commands, hooks, or generated config
+- [ ] You are editing Python scripts, shell commands, or generated config
 - [ ] You are adding or documenting a command users copy into terminals
 - [ ] Code or docs assume `python3`, shebang execution, `/` path separators, or
       POSIX-only shell behavior

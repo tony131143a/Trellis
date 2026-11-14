@@ -1,10 +1,13 @@
 ---
 sources:
+  - packages/cli/tsconfig.json
+  - packages/cli/eslint.config.js
+  - packages/cli/package.json
   - packages/cli/src/commands/init.ts
+  - packages/cli/src/commands/update.ts
+  - packages/cli/src/configurators/index.ts
   - packages/cli/src/types/ai-tools.ts
-  - .arbor/scripts/common/task_store.py
-  - .arbor/scripts/common/workflow_phase.py
-last_verified: 2026-08-06
+last_verified: 2026-11-13
 ---
 # Quality Guidelines
 
@@ -183,10 +186,11 @@ Define interfaces for structured data:
 // Good: Interface for options
 interface InitOptions {
   claude?: boolean;
-  star?: boolean;
+  codex?: boolean;
   yes?: boolean;
   user?: string;
   force?: boolean;
+  skipExisting?: boolean;
 }
 
 // Good: Interface for return types
@@ -201,14 +205,14 @@ Use type aliases for unions and computed types:
 
 ```typescript
 // Good: Type alias for union
-export type AITool = "claude-code" | "star";
+export type AITool = "claude-code" | "codex";
 export type WriteMode = "ask" | "force" | "skip" | "append";
 export type ProjectType = "frontend" | "backend" | "fullstack" | "unknown";
 
 // Good: Type alias with const assertion
 export const DIR_NAMES = {
   WORKFLOW: ".arbor",
-  PROGRESS: "agent-traces",
+  WORKSPACE: "workspace",
 } as const;
 ```
 
@@ -223,7 +227,7 @@ export { writeFile, ensureDir };
 
 // Good: Combined export
 export type WriteMode = "ask" | "force" | "skip" | "append";
-export function writeFile(path: string, content: string): Promise<boolean> {
+export function setWriteMode(mode: WriteMode): void {
   // ...
 }
 ```
@@ -269,109 +273,6 @@ let mutableCount = 0;
 
 ---
 
-## Schema Deprecation: Audit ALL Writers, Not Just the Creator
-
-**Trigger**: Removing a field from a persisted schema (e.g. `task.json`, migration manifests, config files).
-
-**Common mistake**: Remove the field from the creator (`cmd_create` / init) and the reader (normalize / load), but forget that **other writers** (hooks, triggers, sub-processes) still re-populate the field on every event. Net effect: field "deprecated" in docs, but still appears in newly-written files — you've declared a cleanup but haven't executed it.
-
-### Scope / Trigger
-- Any commit that removes a field from a schema struct or JSON output.
-- Trigger is independent of whether the reader still tolerates the field.
-
-### Audit Contract
-Before landing the removal, produce a writer inventory:
-
-```bash
-# Find every place that writes the field (not just the schema definition)
-grep -rn "<field_name>" --include="*.py" --include="*.ts" --include="*.js" .
-```
-
-Classify each hit:
-
-| Kind | Example | Action |
-|------|---------|--------|
-| **Schema / creator** | `task_store.cmd_create`, `utils/task-json.ts:emptyTaskRecord` (TypeScript factory used by `init.ts` and `update.ts`) | Drop field from output |
-| **Writer / updater** | any `task_store.py` command that rewrites `task.json` (`cmd_set_branch`, `cmd_set_meta`, subtask commands, `cmd_archive`) and any hook that rewrites it | **Drop the write call OR delete the function entirely** |
-| **Reader / getter** | `tasks.py:load_task` (defaults via `data.get("field", default)` on `TaskInfo`) | Keep with tolerance default (`data.get("field", null)`) — handles legacy files |
-| **Docs / comments** | spec, README, PRDs | Update references |
-| **Tests** | Assertions on field presence | Flip to "must NOT contain field" |
-
-### Validation & Error Matrix
-| Condition | Expected behaviour |
-|-----------|-------------------|
-| Fresh task: field present in `task.json` | ❌ regression — writer missed |
-| Old task still has field | ✅ tolerated (reader defaults) |
-| Two runs of the same lifecycle op | ✅ field never re-appears |
-
-### Tests Required
-- **Writer regression**: call creator → assert field NOT in output. Example: `test task.py create does NOT write legacy current_phase / next_action`.
-- **Writer-after-event regression**: simulate the downstream event that historically re-wrote the field (e.g. start an Orca worker → hook fires) → re-read file → assert field still absent.
-- **Reader compatibility**: mock a legacy file containing the field → assert reader does not raise.
-
-### Wrong vs Correct
-#### Wrong — cleanup only touches the creator
-```python
-# task_store.cmd_create — dropped current_phase
-task_data = {"status": "planning", ...}  # current_phase removed
-```
-```python
-# a hook (hypothetical here) — still writes it on every dispatch
-def update_current_phase(task_dir, subagent_type):
-    task = read_json(task_dir / "task.json")
-    task["current_phase"] = next_phase(...)  # ← re-populates deprecated field
-    write_json(task_dir / "task.json", task)
-```
-Net: after the first `implement` dispatch, `task.json` contains `current_phase` again. Deprecation undone silently.
-
-#### Correct — delete every writer, or route through a single entry point
-Option A: delete the writer function.
-```python
-# the hook
-# (update_current_phase + its call removed; the hook no longer writes phase)
-```
-Option B: keep the writer but have it stop emitting the field.
-```python
-def update_task_state(task_dir, subagent_type):
-    task = read_json(task_dir / "task.json")
-    task["last_subagent"] = subagent_type  # new field
-    # current_phase not written
-    write_json(task_dir / "task.json", task)
-```
-
-### Current state
-
-No script or hook writes `current_phase` or `next_action` today. `task_store.cmd_create` does not emit them, and the shared hooks only read `task.json`. Phase information is never stored on the task: `.arbor/scripts/common/workflow_phase.py` only extracts the Phase Index and individual `#### X.X` step sections from `.arbor/workflow.md` on demand (`get_phase_index`, `get_step`, `filter_platform`), and `get_context.py --mode phase` prints them. That module is read-only with respect to `task.json`. If a phase pointer is ever needed again, keep it out of `task.json` or route it through one `task_store.py` entry point.
-
-### Why
-A field is "gone" only after every code path that could produce it is removed. Silently leaving ghost writers makes the deprecation non-executable and forces future readers to keep supporting the field forever.
-
-### Case Study (2026-04-22): `current_phase` / `next_action` drift across 4 writers + type declaration
-
-The task `04-21-task-schema-unify` ran a retroactive audit on the 0.5.0-beta.0 deprecation of `current_phase` / `next_action` and found **four** drift modes that the original cleanup missed, across **both TypeScript and Python**:
-
-| # | Location | Drift mode | Why the first audit missed it |
-|---|----------|------------|-------------------------------|
-| 1 | `packages/cli/src/commands/init.ts` (`interface TaskJson` + `getBootstrapTaskJson`) | Divergent 17-field TS interface + inline object literal | Audit grepped for field names, but this writer omitted them rather than writing them — it silently diverged in shape, not content |
-| 2 | `packages/cli/src/commands/update.ts` (migration-task inline literal) | Inline TS object still wrote `current_phase: 0` + `next_action: [...]` | Writer lives in a language the original Python-focused audit skipped |
-| 3 | Historical `create_bootstrap.py` script (removed in 0.5.0-beta.9) | Orphan Python CLI — its own 13-field shape incl. structured subtasks | Was not invoked by any command and was shipped as a dead template. It is now removed by hash-verified migration, but remains part of the case study because it explains why shipped-but-unused files count during schema audits |
-| 4 | `.arbor/scripts/common/types.py` — `TaskData` TypedDict declared `current_phase: int` + `next_action: list[dict]` | **Type-declaration writer**: no runtime code produces the field, but readers that annotate `TaskData` get IDE autocomplete for ghost fields, and code reviewers see "valid field" | A TypedDict is technically a declaration, not a writer — but to the reader-side contract, it IS a writer of expectations |
-
-**Three lessons added to the audit discipline**:
-
-1. **Cross-language grep**: when a field is removed, grep must span `.py`, `.ts`, `.js`, AND `.json` (migration manifest changelogs can leak field names that get copy-pasted). Restrict by `--include="*.py" --include="*.ts"` plus checking manifest `.json` files.
-2. **Shipped-but-unused code counts**: any file enumerated in a template registry (`packages/cli/src/templates/arbor/index.ts`, `templates/markdown/index.ts`) is a writer of user expectations even if no command invokes it. Orphan = still writes.
-3. **Type declarations count as writers of the reader-side contract**: a TypedDict / TS interface that still declares the deprecated field misleads consumers the same way a runtime writer does. Prune declarations in the same PR as runtime writers.
-
-**Consolidation outcome**: the canonical TypeScript task shape lives in
-`packages/cli/src/utils/task-json.ts` as `ArborTaskRecord` +
-`emptyTaskRecord(overrides)`. Both `init.ts` and `update.ts` route through that
-factory. The audit set for future schema changes is: canonical Python
-`cmd_create` (runtime) + `utils/task-json.ts` (TS schema + factory) + its users
-(bootstrap + migration) + the `TaskData` TypedDict (Python declaration).
-
----
-
 ## Quality Checklist
 
 Before committing, ensure:
@@ -412,19 +313,21 @@ When a CLI has both explicit flags (`--tool`) and convenience flags (`-y`), expl
 ```typescript
 // Bad: -y overrides explicit flags
 if (options.yes) {
-  tools = ["claude", "star"]; // Ignores --claude, --star!
-} else if (options.claude || options.star) {
+  tools = ["claude", "codex"]; // Ignores --claude, --codex!
+} else if (options.claude || options.codex) {
   // Build from flags...
 }
 
 // Good: Check explicit flags first
-const hasExplicitTools = options.claude || options.star;
-if (hasExplicitTools) {
+const explicitTools = TOOLS.filter((t) => options[t.key as keyof InitOptions]);
+if (explicitTools.length > 0) {
   // Build from explicit flags (works with or without -y)
 } else if (options.yes) {
   // Default only when no explicit flags
 }
 ```
+
+`init()` and `handleReinit()` in `commands/init.ts` both follow this order.
 
 **Why**: Users specify explicit flags intentionally. The `-y` flag means "skip interactive prompts", not "ignore my other flags".
 
@@ -510,14 +413,15 @@ When handling multiple similar options, use arrays with metadata instead of repe
 ```typescript
 // Bad: Repetitive if-else
 if (options.claude) tools.push("claude");
-if (options.star) tools.push("star");
+if (options.codex) tools.push("codex");
 // ... repeated logic, easy to miss one
 
-// Good: Data-driven approach
+// Good: Data-driven approach — one list derived from the AI_TOOLS registry
+// (configurators/index.ts getInitToolChoices())
 const TOOLS = [
   { key: "claude", name: "Claude Code", defaultChecked: true },
-  { key: "star", name: "StarFactory", defaultChecked: false },
-] as const;
+  { key: "codex", name: "Codex", defaultChecked: false },
+];
 
 // Single source of truth for:
 // - Building from flags: TOOLS.filter(t => options[t.key])
@@ -526,7 +430,7 @@ const TOOLS = [
 ```
 
 **Benefits**:
-- Adding a new tool = adding one line to TOOLS array
+- Adding a new tool = adding one `AI_TOOLS` entry in `types/ai-tools.ts`
 - Display name, flag key, and default are co-located
 - Less code duplication, fewer bugs
 
@@ -571,52 +475,14 @@ const value = match[1].trim().replace(/^['"]|['"]$/g, "");
 
 ---
 
-## User Input Parsing: Exhaustive Format Enumeration
-
-When writing functions that parse user-provided URLs, paths, or identifiers with multiple valid formats, **enumerate all input forms BEFORE writing code**.
-
-### The Pattern
-
-Create a format table covering every combination of:
-- Protocol variants (HTTPS, SSH `git@`, `ssh://`)
-- Known vs unknown domains
-- Optional suffixes (`.git`, trailing `/`)
-- Optional components (port, subdir, ref/branch, subgroup)
-
-```markdown
-| # | Format | Example | Expected Behavior |
-|---|--------|---------|-------------------|
-| 1 | giget prefix | `gh:org/repo` | Native provider |
-| 2 | Public HTTPS | `https://github.com/org/repo` | Auto-convert to gh: |
-| 3 | Public SSH | `git@github.com:org/repo` | Auto-convert to gh: |
-| 4 | Self-hosted HTTPS | `https://git.corp.com/org/repo` | Detect host, map to gitlab: |
-| 5 | Self-hosted SSH | `git@git.corp.com:org/repo` | Detect host, map to gitlab: |
-| 6 | ssh:// protocol | `ssh://git@host:port/org/repo` | Extract host (strip port) |
-| 7 | HTTPS with port | `https://host:8443/org/repo` | Include port in host |
-| ... | ... | ... | ... |
-```
-
-### Why This Matters
-
-**Lesson from Issue #87 → self-hosted GitLab fix**: The initial fix for HTTPS URLs assumed "only 3 public domains exist". The self-hosted fix then assumed "all SSH URLs are self-hosted" — breaking `git@github.com:org/repo`. Each fix was correct for its target scenario but introduced a new blind spot. Exhaustive enumeration prevents this.
-
-### Rules
-
-1. **List ALL valid input forms** before implementing — not just the ones reported in the issue
-2. **Test each form explicitly** — don't assume "if HTTPS works, SSH works too"
-3. **Public vs self-hosted must be an explicit branch** — never assume one category covers all inputs
-4. **Write the format table in a code comment** at the top of the parsing function
-
----
-
 ## Routing Fixes: Audit ALL Entry Paths Before Claiming a Fix Is Complete
 
-**Trigger**: Modifying any decision/dispatch logic in a command that has multiple entry paths into the same downstream behavior — `arbor init` (handleReinit fast-path + main dispatch), `arbor update` (force vs interactive), or any function with early-return guards above the change point.
+**Trigger**: Modifying any decision logic in a command that has multiple entry paths into the same downstream behavior — `arbor init` (handleReinit fast-path + main flow), `arbor update` (force vs interactive), or any function with early-return guards above the change point.
 
 **Common mistake**: Patch the dispatch you grepped for, manually verify on one fixture, ship. The other entry path stays broken because (a) it short-circuits before reaching your fix, (b) the manual fixture happened to use a flag combination that bypassed the unfixed path, and (c) the test you wrote also used that convenient bypass flag.
 
 ### Scope / Trigger
-- Any change inside a function that contains an early-return guard like `if (!isFirstInit && !options.force && !options.skipExisting) { ...; return; }` followed by additional dispatch logic later.
+- Any change inside a function that contains an early-return guard like `if (!isFirstInit && !options.force && !options.skipExisting) { ...; return; }` (the re-init fast path in `init()`) followed by additional logic later.
 - Any change to a "create X if conditions hold" branch where another sibling function makes the same kind of decision.
 - Bug-fix work where the user reported one specific flag combination — assume there are other combinations that hit the same defect via a different path.
 
@@ -625,16 +491,15 @@ Create a format table covering every combination of:
 Before landing the fix, produce an entry-path inventory:
 
 ```bash
-# Find every call site / branch that can produce the buggy outcome
-rg -n "createBootstrapTask|createJoinerOnboardingTask" packages/cli/src/commands/init.ts
-rg -n "if \(!options\.force.*return|reinitDone|return true.*//.*handled" packages/cli/src/commands/init.ts
+# Find every early-return guard / fast path in front of the code you changed
+rg -n "handleReinit|reinitDone|return true" packages/cli/src/commands/init.ts
 ```
 
 For each entry path, record:
 
 | Entry path | Reaches your fix? | Flag combination required to enter it | Flag combination that *bypasses* it |
 |------------|-------------------|---------------------------------------|-------------------------------------|
-| Path A: `init()` main dispatch | yes (your fix is here) | `--force` or `--skip-existing` (skips reinit) | (always reachable when entered) |
+| Path A: `init()` main flow | yes (your fix is here) | `--force` or `--skip-existing` (skips reinit) | (always reachable when entered) |
 | Path B: `handleReinit` early return | **no** | none of force / skipExisting / first-init | `--force` or `--skip-existing` |
 
 If any entry path doesn't reach the fix, you have two options:
@@ -646,79 +511,12 @@ Funneling is preferred: it eliminates the class of bug, not just the instance.
 
 ### Tests Required
 - **One test per entry path**, asserting the fix's effect using the exact flag combination that selects that path.
-- A test that uses a "convenience" flag (`force: true`) to bypass an entry-path guard does NOT cover that entry path — it covers the bypass route. See `cli/unit-test/conventions.md` → "Bug-Fix Tests Must Reproduce Reported Flag Combination".
+- A test that uses a "convenience" flag (`force: true`) to bypass an entry-path guard does NOT cover that entry path — it covers the bypass route. See `cli/unit-test/conventions.md` → "Bug-Fix Tests Must Reproduce the Reported Flag Combination".
 - After landing, re-build the CLI and run the user's exact reported command on a fixture. If you can't reproduce the bug pre-fix on that fixture, your repro is wrong, not the fix.
-
-### Wrong vs Correct
-
-#### Wrong — patch only the dispatch you noticed, test with a flag combination that bypasses the unpatched path
-
-```typescript
-// init.ts — main dispatch only
-if (isFirstInit || tasksEmpty) {
-  createBootstrapTask(...);
-} else if (!hadDeveloperFileAtStart) {
-  createJoinerOnboardingTask(...);
-}
-
-// handleReinit — UNCHANGED, still mis-routes empty-tasks recovery to joiner
-async function handleReinit(...) {
-  // ... no tasksEmpty check ...
-  if (!hadDeveloperFileBefore) createJoinerOnboardingTask(...);
-}
-
-// Guard at the top of init() — UNCHANGED
-if (!isFirstInit && !options.force && !options.skipExisting) {
-  await handleReinit(...);  // ← user's `--yes` alone enters here, never reaches the fix
-}
-```
-
-```typescript
-// Test that "passes" while bug is still live
-it("empty tasks/ → bootstrap", async () => {
-  await init({ yes: true, user: "alice", force: true });  // ← force bypasses handleReinit
-  expect(...).toBe(true);  // green, but only because force routed around the bug
-});
-```
-
-Net: ship lands with the user's exact command (`arbor init -u alice --star --yes`) still broken.
-
-#### Correct — make all entry paths converge, test each path
-
-```typescript
-// init.ts — relax the guard so empty-tasks recovery never enters reinit
-const tasksEmptyEarly =
-  !fs.existsSync(tasksDirEarly) || fs.readdirSync(tasksDirEarly).length === 0;
-if (
-  !isFirstInit &&
-  !options.force &&
-  !options.skipExisting &&
-  !tasksEmptyEarly
-) {
-  await handleReinit(...);
-}
-// Main dispatch handles all empty-tasks cases uniformly
-```
-
-```typescript
-// Two tests: one per entry path, neither uses the bypass flag to dodge work
-it("#2b empty tasks/ + --yes alone → bootstrap (reported case)", async () => {
-  await init({ yes: true, user: "alice" });  // exactly the user's command
-  ...
-});
-it("#2c empty tasks/ + --yes --force → bootstrap (force path)", async () => {
-  await init({ yes: true, user: "alice", force: true });
-  ...
-});
-```
 
 ### Why
 
 Multi-entry dispatch is a structural force-multiplier for bugs: every entry path is a separate opportunity for the original defect to manifest, and the cost of missing one is "the user re-files the same issue with slightly different flags." Auditing each entry path takes 5 minutes; missing one costs a release cycle.
-
-### Case Study (2026-04-30): issue #204 `--yes` + bootstrap recovery
-
-The first commit (`346003d`) added a `tasksEmpty` fallback only in `init()`'s main dispatch. It made the `--yes` log line correct, made `--force --yes` recover bootstrap, and added a passing test (`#2b` with `force: true`). It did NOT fix the user's literal reported command — `arbor init -u <name> --claude --yes` — because that command goes through `handleReinit` (defined at `init.ts:740`, called at `init.ts:1081`), which short-circuits before reaching the patched dispatch. Caught by `arbor-check` sub-agent doing a live CLI repro on the dist build. Fixed in `589f753` by adding `!tasksEmptyEarly` to the reinit guard, plus splitting the test into `#2b` (no force, reported case) and `#2c` (with force, parity check).
 
 ---
 
@@ -726,7 +524,7 @@ The first commit (`346003d`) added a `tasksEmpty` fallback only in `init()`'s ma
 
 ### Cautionary tale — 0.6.0-beta.3 → 0.6.0-beta.4 emergency revert
 
-An upstream Trellis 0.6.0-beta.3 added `better-sqlite3` (a native C++ binding) to read an AI tool's session storage, which had switched from JSONL to SQLite. On Windows + China network, the failure cascade was:
+An upstream Trellis 0.6.0-beta.3 added `better-sqlite3` (a native C++ binding) to read an AI tool's session storage, which had switched to SQLite. On Windows + China network, the failure cascade was:
 
 1. `prebuild-install` tries to download a prebuilt binary from the GitHub releases CDN.
 2. CDN times out (China network reliability for `github.com/.../releases/download/...` is poor).
@@ -734,7 +532,7 @@ An upstream Trellis 0.6.0-beta.3 added `better-sqlite3` (a native C++ binding) t
 4. Source build needs Visual Studio 2017+ Build Tools, which most Windows users don't have installed.
 5. Install fails — **`arbor` itself can no longer be installed at all**.
 
-Time to detect: ~4 hours after publish. Fix: emergency revert in 0.6.0-beta.4 (removed `better-sqlite3` and degraded the SQLite reader to a soft fallback). Arbor has no session-storage reader; the policy below is what keeps it that way.
+Time to detect: ~4 hours after publish. Fix: emergency revert in 0.6.0-beta.4 (removed `better-sqlite3` and degraded the SQLite reader to a soft fallback). Arbor has no session-storage reader, and `packages/cli/package.json` has no native dependency: the runtime `dependencies` (`chalk`, `commander`, `figlet`, `inquirer`, `zod`) are pure JS and there is no `optionalDependencies` block. The policy below is what keeps it that way.
 
 The lesson: **a native dep that fails to install fails the entire CLI**, not just one feature. For a productivity tool, that tradeoff is unacceptable unless the perf benefit is dramatic and unreplaceable.
 
@@ -755,8 +553,8 @@ try {
   nativeReader = (await import("better-sqlite3")).default as NativeReader;
 } catch {
   process.stderr.write(
-    "[arbor] SQLite session reader unavailable " +
-    "(better-sqlite3 not installed). Falling back to JSONL-only mode.\n"
+    "[arbor] native reader unavailable " +
+    "(better-sqlite3 not installed). Falling back to the pure-JS path.\n"
   );
 }
 

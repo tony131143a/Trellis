@@ -1,6 +1,11 @@
 ---
-sources: []
-last_verified: 2026-03-09
+sources:
+  - packages/cli/test/commands/update.integration.test.ts
+  - packages/cli/test/commands/init.integration.test.ts
+  - packages/cli/test/configurators/platforms.test.ts
+  - packages/cli/test/scripts/spec-lint.integration.test.ts
+  - packages/cli/test/scripts/driver-helpers.ts
+last_verified: 2026-11-13
 ---
 # Integration Test Patterns
 
@@ -116,15 +121,36 @@ expect(fs.readFileSync(versionPath, "utf-8")).toBe("99.99.99");
 
 ---
 
+## Python Script Tests (`test/scripts/`)
+
+The shipped Python scripts are tested by spawning them, not by importing:
+
+- Each suite is wrapped in `describe.skipIf(!hasPython())(...)`; `hasPython()`
+  runs `python3 --version` and the suite is skipped when it fails.
+- The test builds a temp git repository, copies or writes the scripts and
+  `.arbor/` fixtures into it, and runs the script with `spawnSync` /
+  `execFileSync`, asserting on exit status, stdout/stderr and the files left
+  behind (`spec-lint.integration.test.ts`: `runSpec(tmp, "lint", "--json")`).
+- Driver tests (`arbor1-*.integration.test.ts`) share `driver-helpers.ts`
+  (`symlinked-workflow-dir` uses only its `hasPython` / `TEMPLATE_SCRIPTS`):
+  `setupProject()` copies
+  `src/templates/arbor/scripts` into a control repository, and `fakeOrca()`
+  writes a fake Orca CLI (`fake_orca.py`) plus the `executors:` config that
+  points at it. The fake answers with recorded Orca shapes, keeps worker state
+  under `<tmp>/orca/`, and never runs an agent; helpers play the workers. The
+  real Orca CLI must never be called from tests.
+
+---
+
 ## Test Matrix Design
 
-Integration test scenarios should be organized as a numbered matrix in the PRD:
+Integration test scenarios should be organized as a numbered matrix (as in `test/commands/update.integration.test.ts`):
 
 | # | Scenario | Options | Verification |
 |---|----------|---------|--------------|
 | 1 | No-op (same version) | `{}` | Zero file changes, no backup |
 | 2 | Dry run | `{ dryRun: true }` | No file modifications |
-| 3 | Deleted file recreation | `{ force: true }` | File restored |
+| 3 | User-deleted file (with stored hash) | `{ force: true }` | File is not re-added |
 | ... | | | |
 
 Each test is numbered (`#1`, `#2`, ...) matching the matrix for traceability.
@@ -139,9 +165,7 @@ Integration tests are effective at finding **cross-module inconsistencies**:
 
 2. **Template list mismatch**: `update` listed files not created by `init`, causing phantom "new file" detections on same-version update.
 
-3. **Project-type-conditional templates ignored**: `createSpecTemplates()` accepted `projectType` but ignored it (`_projectType`), always creating both backend + frontend specs. `collectTemplateFiles()` unconditionally included all spec files regardless of which dirs existed. Pure backend projects got empty frontend spec dirs on init, and update always tracked frontend files even when the dir was removed.
-
-All three bugs were invisible to unit tests (which test modules in isolation) but immediately surfaced when testing the full init→update flow.
+Both bugs were invisible to unit tests (which test modules in isolation) but immediately surfaced when testing the full init→update flow. `test/configurators/platforms.test.ts` now pins the first class directly ("configurePlatform writes collected templates byte-for-byte for every platform"), and update scenario `#1` (same-version no-op) pins the second.
 
 ---
 

@@ -1,7 +1,9 @@
 ---
 sources:
   - packages/cli/src/commands/uninstall.ts
-last_verified: 2026-08-27
+  - packages/cli/src/utils/managed-removal.ts
+  - packages/cli/src/utils/managed-paths.ts
+last_verified: 2026-11-13
 ---
 # `arbor uninstall` Command
 
@@ -15,14 +17,14 @@ How the uninstall command removes every Arbor-written file from a project, scrub
 
 `arbor uninstall` is the inverse of `arbor init` / `arbor update`: it removes everything Arbor wrote and leaves everything Arbor did not.
 
-- **Manifest is authoritative.** The single source of truth for "what arbor wrote" is `.arbor/.template-hashes.json`. Files outside that manifest are never touched, regardless of where they live (e.g. user-added scripts under `.claude/hooks/`, custom commands under `.starFactory/commands/`).
+- **Manifest is authoritative.** The single source of truth for "what arbor wrote" is `.arbor/.template-hashes.json`. Files outside that manifest are never touched, regardless of where they live (e.g. user-added scripts under `.claude/hooks/`, custom skills under `.agents/skills/`).
 - **No user-modification gate.** Whether the user has edited a manifest-listed file or not, it is removed. `update` semantics (warn / preserve modified files) do not apply here — the user's intent is to remove Arbor entirely.
 - **Two file classes.** Manifest entries fall into:
   1. *Opaque content files* (most `.py` and `.md` files) — unlinked outright.
-  2. *Structured config files* (`.claude/settings.json`, `.starFactory/settings.json`, and mixed-ownership markdown like `AGENTS.md`) — passed through a scrubber that removes only the arbor-owned fields/block and writes the trimmed result back. If nothing meaningful remains, the scrubber returns `fullyEmpty: true` and the file is deleted instead of rewritten.
+  2. *Structured config files* (`.claude/settings.json`, the pre-1.0 `.codex/hooks.json`, the retired `.starFactory/settings.json`, and mixed-ownership markdown `AGENTS.md` / `CLAUDE.md`) — passed through a scrubber that removes only the arbor-owned fields/block and writes the trimmed result back. If nothing meaningful remains, the scrubber returns `fullyEmpty: true` and the file is deleted instead of rewritten.
 - **`.arbor/` is removed unconditionally once execution proceeds.** Tasks, runtime state, workspace journal, config — all of it; there is no `--keep-tasks` flag. A pre-execution guard warns about (and, for scripted `--yes` runs, can fail closed on) uncommitted specs/tasks/workspace files before that deletion happens — see *Dirty-Data Guard* under *`.arbor/` Handling* below, and [Filesystem Safety § Destructive-op ownership / backup gate](./filesystem-safety.md).
 - **Idempotent.** Re-running on a project that has no `.arbor/` is a friendly no-op. Re-running after a partial failure picks up whatever is still on disk and converges.
-- **Best-effort cleanup.** Permission errors on individual `unlink`/`rmdir` calls are swallowed; the command never aborts halfway. The summary at the end reports counts but does not enumerate per-file failures.
+- **Best-effort cleanup.** Permission errors on individual `unlink`/`rmdir` calls are swallowed; the command does not abort halfway over one of them (the Phase 1 write-backs are not wrapped, see *Best-effort cleanup*). The summary at the end reports counts but does not enumerate per-file failures.
 
 The scrubbers (`scrubHooksJson`, `scrubManagedMarkdownBlock`) are defined in `utils/managed-removal.ts`; read their doc comments for the per-file rules.
 
@@ -41,7 +43,7 @@ arbor uninstall [-y|--yes] [--dry-run]
 | `-y, --yes` | boolean | Skip the `Continue?` confirmation prompt. |
 | `--dry-run` | boolean | Print the plan and exit without modifying anything. |
 
-There are no `--platform <name>` or `--keep-config` flags. The design is intentionally all-or-nothing: partial uninstall (e.g. "remove Arbor from StarFactory only, leave Claude Code") is **out of scope** because the manifest does not partition by platform — see *Common Pitfalls* below.
+There are no `--platform <name>` or `--keep-config` flags. The design is intentionally all-or-nothing: partial uninstall (e.g. "remove Arbor from Codex only, leave Claude Code") is **out of scope** because the manifest does not partition by platform — see *Common Pitfalls* below.
 
 The command surface lives in `commands/uninstall.ts:uninstall` and is the only export consumed by `cli/index.ts`. The `UninstallOptions` interface in the same file mirrors the two CLI flags 1:1.
 
@@ -53,10 +55,13 @@ The command builds a plan first, prints it, optionally prompts, then executes. P
 
 ### Pre-checks (before any planning)
 
-`commands/uninstall.ts:uninstall` performs two pre-checks at the top:
+`commands/uninstall.ts:uninstall` performs three pre-checks at the top:
 
+0. **Not in `$HOME`.** `utils/cwd-guard.ts:isCwdHomedir()` trips the same homedir guard as `init` (`process.exit(1)`), unless `ARBOR_ALLOW_HOMEDIR=1`.
 1. **`.arbor/` must exist.** If missing, print a gray "not installed" message and return cleanly (exit 0). This is the idempotent re-run path.
 2. **Manifest must exist and be non-empty.** `loadHashes(cwd)` returns `{}` when `.arbor/.template-hashes.json` is missing or unreadable. Without the manifest there is no way to distinguish arbor-owned platform files from user-owned ones, so the command refuses to proceed and exits with a red error message + `process.exit(1)`. Users in this state are told they may delete `.arbor/` manually.
+
+Then `utils/manifest-prune.ts:pruneOrphanManifestKeys` drops manifest keys no current configurator (or migration entry, or retired platform) owns, with `persist: !options.dryRun`, and the plan is built from the pruned hashes. See `migrations.md` § Self-heal contract.
 
 ### Planner — `utils/managed-removal.ts:buildManagedRemovalPlan`
 
@@ -87,11 +92,14 @@ A `Map<posixPath, StructuredFileSpec>` built once per command invocation. Each e
 | Manifest path | Scrubber |
 |---|---|
 | `.claude/settings.json` | `scrubHooksJson` |
-| `.starFactory/settings.json` | `scrubHooksJson` |
+| `.codex/hooks.json` | `scrubHooksJson` (pre-1.0 installs; 1.0 no longer writes it) |
+| `.starFactory/settings.json` | `scrubHooksJson` (retired platform, kept in the manifest by `RETIRED_PLATFORM_PATHS`; `test/commands/retired-platform.integration.test.ts`) |
 | `AGENTS.md` | `scrubManagedMarkdownBlock` |
 | `CLAUDE.md` | `scrubManagedMarkdownBlock` |
 
-`AGENTS.md` and `CLAUDE.md` are not hooks-JSON files — they are mixed-ownership markdown files (`CLAUDE.md` is written only when the Claude Code platform is configured). Arbor owns only the `<!-- ARBOR:START/END -->` block (markers exported from `update.ts`); the user owns everything outside it. `scrubManagedMarkdownBlock` strips the block, keeps the rest, and only falls through to deletion (`fullyEmpty`) when nothing user-authored remains. Without a dispatch-table row, `AGENTS.md` / `CLAUDE.md` would be unlinked whole by the plain-deletion path, destroying any pre-existing user content outside the block.
+`scrubHooksJson` also removes the `statusLine` key when it is the opt-in Arbor statusline command and `.claude/hooks/statusline.py` is in the manifest.
+
+`AGENTS.md` and `CLAUDE.md` are not hooks-JSON files — they are mixed-ownership markdown files (`CLAUDE.md` is written only when the Claude Code platform is configured). Arbor owns only the `<!-- ARBOR:START/END -->` block (markers defined in `utils/managed-paths.ts`); the user owns everything outside it. `scrubManagedMarkdownBlock` strips the block, keeps the rest, and only falls through to deletion (`fullyEmpty`) when nothing user-authored remains. Without a dispatch-table row, `AGENTS.md` / `CLAUDE.md` would be unlinked whole by the plain-deletion path, destroying any pre-existing user content outside the block.
 
 Adding a new platform that ships a structured config file means adding one row to this table — the planner picks it up automatically.
 
@@ -101,7 +109,7 @@ The `StructuredFileSpec.scrub` callback receives `(content, deletedPaths)`. `del
 
 Two-column output:
 
-- **Will be deleted (N entries)** — the un-missing deletions plus a synthetic `WORKFLOW/` line representing the `.arbor/` directory itself (only printed if the directory still exists, which it always should after the pre-check).
+- **Will be deleted (N entries)** — the un-missing deletions plus a synthetic `.arbor/` line representing the directory itself (only printed if the directory still exists, which it always should after the pre-check).
 - **Will be modified (N files)** — the structured-file modifications, each annotated with the `reason` from its dispatch entry.
 - **Skipped** — a gray footer counting manifest entries already missing from disk (still recorded in the plan but not actionable).
 
@@ -119,7 +127,7 @@ After printing the plan:
 
 ### Non-TTY guard
 
-If `process.stdin.isTTY` is false **and** neither `--yes` nor `--dry-run` is set, the command refuses to prompt and exits non-zero with a red message instructing the user to pass `--yes` or `--dry-run`. This is a deliberate fail-closed UX choice that mirrors `arbor update` in scripted environments. The brief `readline.createInterface(...).close()` call before exit is a defensive ref-release in case anything else opened stdin (mostly defensive — the process is about to exit anyway).
+If `process.stdin.isTTY` is false **and** neither `--yes` nor `--dry-run` is set, the command refuses to prompt and exits non-zero with a red message instructing the user to pass `--yes` or `--dry-run`. This is a deliberate fail-closed UX choice for scripted environments. The brief `readline.createInterface(...).close()` call before exit is a defensive ref-release in case anything else opened stdin (mostly defensive — the process is about to exit anyway).
 
 If the user answers "no" at the prompt, print a yellow "Uninstall cancelled. No files modified." and return. **No partial execution; no rollback needed.**
 
@@ -131,7 +139,7 @@ Five ordered phases. The order matters for partial-failure recovery (an interrup
 
 ### Phase 1 — Modifications first
 
-Write each `PlannedModification.result.content` to its `absPath` via `fs.writeFileSync`. Doing this **before** deletions means that if a later step crashes, structured config files have at least had their arbor fragments stripped. User data inside those files (other deps in `package.json`, other hooks in `settings.json`, custom keys) is preserved.
+Write each `PlannedModification.result.content` to its `absPath` via `fs.writeFileSync`. Doing this **before** deletions means that if a later step crashes, structured config files have at least had their arbor fragments stripped. User data inside those files (other hooks in `settings.json`, custom keys, user text outside the `AGENTS.md` / `CLAUDE.md` block) is preserved.
 
 ### Phase 2 — File deletions
 
@@ -145,13 +153,13 @@ While deleting, the parent directory of each deleted file is added to a `Set<str
 
 ### Phase 4 — Prune empty managed sub-directories
 
-For every dir in `deletedDirCandidates`, call `cleanupEmptyDirs(cwd, dirPosix)` (from `utils/managed-paths.ts`). This walks the directory bottom-up and removes any sub-directory that became empty after Phase 2 — but it explicitly **refuses to remove managed root dirs** (`.claude`, `.starFactory`) because the normal `update` flow needs them to persist.
+For every dir in `deletedDirCandidates`, call `cleanupEmptyDirs(cwd, dirPosix)` (from `utils/managed-paths.ts`). This walks the directory bottom-up and removes any sub-directory that became empty after Phase 2 — but it explicitly **refuses to remove managed root dirs** (`ALL_MANAGED_DIRS`: `.arbor`, `.claude`, `.codex`, `.agents/skills`) and anything outside them, because the normal `update` flow needs them to persist.
 
 ### Phase 5 — Prune empty managed root directories
 
 This is the uninstall-only fixup that `cleanupEmptyDirs` deliberately won't do. After Phase 4, a platform root like `.claude` may be sitting empty (every nested file removed, every nested empty subdir already pruned). During uninstall there is no reason to keep it, so we walk `ALL_MANAGED_DIRS` (excluding `DIR_NAMES.WORKFLOW` because Phase 3 already handled it), sorted **deepest-first** by slash count, and `rmdirSync` each one that is empty.
 
-After removing a deepest dir, the loop walks **upward** until it hits a non-empty parent or runs out of POSIX path. This matters for any nested managed path (a platform's `extraManagedPaths` entry or the shared agent-skills layer): remove the nested dir first, then its parent if that is now empty. No registered platform declares a nested managed path today, but the sort stays so one can be added safely.
+After removing a deepest dir, the loop walks **upward** until it hits a non-empty parent or runs out of POSIX path. This matters for nested managed paths: Codex's `.agents/skills` (from `supportsAgentSkills`) is removed first, then `.agents` if that is now empty.
 
 The deepest-first sort matters: if we walked `ALL_MANAGED_DIRS` in registry order and tried to remove a parent before its nested child, the rmdir would fail because the dir was non-empty.
 
@@ -169,19 +177,17 @@ Returns `{ deletedFiles, modifiedFiles, deletedDirs }` for the green summary lin
 | `.arbor/spec/` | Removed (managed via `update.skip` semantics during `update`, but uninstall removes everything). |
 | `.arbor/tasks/` | Removed (user data). |
 | `.arbor/workspace/` | Removed (user journal). |
-| `.arbor/.runtime/` | Removed (session state). |
 | `.arbor/config.yaml` | Removed (user config). |
 | `.arbor/.developer` | Removed. |
-| `.arbor/.current-task` | Removed. |
 | `.arbor/.template-hashes.json` | Removed. |
 
-This is **deliberately destructive** for user data inside `.arbor/`. Users are responsible for backing up `spec/`, `tasks/`, or `workspace/` before running `uninstall` if they want history preserved — the command does not create a backup itself. The plan output prints `WORKFLOW/  (entire directory — including your specs, task PRDs, journals, and memory)` so this is visible before the confirmation prompt.
+This is **deliberately destructive** for user data inside `.arbor/`. Users are responsible for backing up `spec/`, `tasks/`, or `workspace/` before running `uninstall` if they want history preserved — the command does not create a backup itself. The plan output prints `.arbor/  (entire directory — including your specs, task PRDs, journals, and memory)` so this is visible before the confirmation prompt.
 
-> Rationale: a "soft uninstall" that leaves orphan `.arbor/` content behind is a worse state than either fully-installed or fully-uninstalled — the leftover files reference removed scripts (`.arbor/scripts/`) and broken sub-agent configs (`.arbor/tasks/<id>/implement.jsonl` pointing at deleted spec files). Either keep Arbor or remove it cleanly. There is no half-Arbor mode.
+> Rationale: a "soft uninstall" that leaves orphan `.arbor/` content behind is a worse state than either fully-installed or fully-uninstalled — the leftover files reference removed scripts (`.arbor/scripts/`). Either keep Arbor or remove it cleanly. There is no half-Arbor mode.
 
 ### Dirty-Data Guard — `collectUncommittedArborData`
 
-`.arbor/spec/`, `.arbor/tasks/`, and `.arbor/workspace/` are the same subdirectories `update.ts` marks PROTECTED (user-authored specs, task PRDs, journals). Because Phase 3 deletes them with no backup, `uninstall()` calls `collectUncommittedArborData(cwd)` right after `renderPlan` (before the dry-run exit and before the confirmation prompt). It shells out to `git status --porcelain -- .arbor/spec .arbor/tasks .arbor/workspace` and returns the list of modified/staged/untracked paths under those three dirs. A non-git repo, or `git` being unavailable, makes it return `[]` — the guard is a no-op in that case, and uninstall proceeds exactly as it did before this fix.
+`.arbor/spec/`, `.arbor/tasks/`, and `.arbor/workspace/` are subdirectories `update.ts` marks PROTECTED (user-authored specs, task PRDs, journals). Because Phase 3 deletes them with no backup, `uninstall()` calls `collectUncommittedArborData(cwd)` right after `renderPlan` (before the dry-run exit and before the confirmation prompt). It shells out to `git status --porcelain -- .arbor/spec .arbor/tasks .arbor/workspace` and returns the list of modified/staged/untracked paths under those three dirs. A non-git repo, or `git` being unavailable, makes it return `[]` — the guard is a no-op in that case, and uninstall proceeds exactly as it did before this fix.
 
 - **Any hits** print a red warning (up to 20 paths, then a "`… and N more`" tail) before the prompt/dry-run message.
 - **Interactive runs** (no `--yes`) only see the warning; the existing `Continue? [Y/n]` prompt is the abort point.
@@ -196,15 +202,15 @@ See [Filesystem Safety § Destructive-op ownership / backup gate](./filesystem-s
 
 ### What `uninstall` will NOT do
 
-- **Touch any file outside `.template-hashes.json`.** User-added scripts inside `.claude/hooks/`, custom commands inside `.starFactory/commands/`, project-local files the user added themselves — all preserved. Test `#7` in `test/commands/uninstall.integration.test.ts` covers this.
+- **Touch any file outside `.template-hashes.json`.** User-added scripts inside `.claude/hooks/`, custom skills inside `.agents/skills/`, project-local files the user added themselves — all preserved. Test `#7` in `test/commands/uninstall.integration.test.ts` covers this.
 - **Mutate user-authored sections of structured config.** Scrubbers strip *only* arbor-emitted entries. Other event hooks and top-level keys in `settings.json` — all preserved. Test `#8` covers this for `.claude/settings.json`.
 - **Touch git history.** No `git add`, no `git commit`, no `git rm`. The user is expected to commit the post-uninstall state themselves. (Same convention as `update`.)
-- **Touch user-level config.** Anything under the user's home directory (for example `~/.claude/` or `~/.starFactory/`) is never read or edited.
+- **Touch user-level config.** Anything under the user's home directory (for example `~/.claude/` or `~/.codex/`) is never read or edited.
 - **Reverse migrations.** If a user originally installed v0.4 and migrated to v0.5, `uninstall` removes the v0.5-shape files (whatever the current manifest contains). It does not reconstruct any v0.4 files.
 
 ### Best-effort cleanup
 
-Phases 2, 4, 5 all use try/catch with empty handlers. Permission errors on individual files or directories are swallowed. The summary's "deleted N files" count will under-report if any of these errors fire. We accept this trade-off: aborting halfway through uninstall would leave the user in a worse state than completing best-effort.
+Phases 2, 4, 5 all use try/catch with empty handlers (Phase 4 inside `cleanupEmptyDirs`). Permission errors on individual files or directories are swallowed. Phase 1 (`writeFileSync` of scrubbed files) and Phase 3 (`rmSync` of `.arbor/`) are not wrapped: an error there propagates and the CLI exits 1. The summary's "deleted N files" count will under-report if any of these errors fire. We accept this trade-off: aborting halfway through uninstall would leave the user in a worse state than completing best-effort.
 
 If a user reports "uninstall didn't remove file X", the diagnosis path is:
 
@@ -231,7 +237,7 @@ The corollary: when adding a new platform/template that emits a structured confi
 
 There is no `--platform claude-code` flag. Reason: the manifest does not partition by platform — it is a flat `Record<posixPath, sha256>`. Inferring "this entry belongs to Claude Code" would mean prefix-matching `.claude/`, which is fragile (a nested or shared path would not match a simple prefix rule).
 
-If a user wants to remove just one platform's files, the path is `arbor update` after editing `config.yaml`'s platform list — that flow knows how to deconfigure platforms cleanly. `uninstall` is a single-shot full removal.
+`uninstall` is a single-shot full removal.
 
 ### 2. Adding a new structured config file without a scrubber
 
@@ -243,11 +249,11 @@ If a user wants to remove just one platform's files, the path is `arbor update` 
 
 ### 3. Forgetting that `cleanupEmptyDirs` won't touch root dirs
 
-**Symptom**: After uninstall, `.starFactory/` is empty but still present.
+**Symptom**: After uninstall, `.claude/` is empty but still present.
 
 **Cause**: `cleanupEmptyDirs` (shared with `update.ts`) refuses to remove anything in `ALL_MANAGED_DIRS` because during `update` those dirs must persist. Phase 5 of `executeManagedRemovalPlan` is the uninstall-specific fixup that goes back and prunes them.
 
-**Fix**: This is already handled correctly. If you ever modify Phase 5 (e.g. to add an exception), make sure the deepest-first sort is preserved — otherwise nested managed dirs (`.agents/skills`) will leak.
+**Fix**: This is already handled correctly. If you ever modify Phase 5 (e.g. to add an exception), make sure the deepest-first sort is preserved — otherwise the nested managed dir `.agents/skills` will leak.
 
 ### 4. Manifest drift after manual edits
 
@@ -269,7 +275,7 @@ If you ever need to extend the scrubber to match different command shapes (e.g. 
 
 Tests live in `packages/cli/test/commands/uninstall.integration.test.ts`. The file pattern: each test runs `init({ ..., force: true })` in a fresh tmpdir to set up a real Arbor install, then exercises one path through `uninstall()`.
 
-Two behaviors documented above have their own dedicated integration test files rather than living in the main table below: the `AGENTS.md` block-scrub fix is covered by `test/commands/init-uninstall-overdelete.integration.test.ts`, and the *Dirty-Data Guard* is covered by `test/commands/uninstall-dirty-guard.integration.test.ts` (skipped when `git`/`python3` are unavailable, since it shells out to real `git status`).
+Two behaviors documented above have their own dedicated integration test files rather than living in the main table below: the `AGENTS.md` block scrub, manifest self-heal and homedir guard are covered by `test/commands/init-uninstall-overdelete.integration.test.ts`, and the *Dirty-Data Guard* is covered by `test/commands/uninstall-dirty-guard.integration.test.ts` (skipped when `git`/`python3` are unavailable, since it shells out to real `git status`).
 
 Reference cases (number = test ID in the file):
 
@@ -282,9 +288,11 @@ Reference cases (number = test ID in the file):
 | 5 | Prompt `n` | Aborts with no mutation. |
 | 6 | User-modified manifest file is still removed | Manifest membership trumps modification state. |
 | 7 | User-added file in managed dir survives | Manifest is the scope boundary. |
-| 8 | `.claude/settings.json` with extra user fields | Scrubber preserves user fields, strips arbor hooks. |
 | 8b | Platform root survives when scrubbing leaves residual content | Phase 5 only prunes empty roots. |
-| 9 | `.starFactory/settings.json` with extra user fields | Scrubber preserves user fields and the root dir survives. |
+| 8 | `.claude/settings.json` with extra user fields | Scrubber preserves user fields, strips arbor hooks. |
+| 9 | A pre-1.0 `.codex/hooks.json` with user fields | Scrubber preserves user fields and the file survives. |
+| 10 | `CLAUDE.md` with user text | Only the Arbor block is stripped. |
+| 10a | `CLAUDE.md` that only held the Arbor block | File is removed. |
 
 When adding a new structured-config platform:
 
@@ -292,7 +300,7 @@ When adding a new structured-config platform:
 2. Write a unit test in `test/utils/managed-removal.test.ts` for the scrubber itself.
 3. Add an integration test in this file mirroring `#8` — init that platform, write some user-owned fields into the structured config, uninstall, assert the user fields survive and the arbor fields are gone.
 
-Do **not** mock `fs` for these tests; they all use real tmpdirs. The pattern is: `beforeEach` makes a tmpdir and `chdir`'s into it, `afterEach` restores `cwd` and `rmSync` the tmpdir. This catches Windows path bugs, permission issues, and unintended side effects that a mocked fs would hide.
+Do **not** mock `fs` for these tests; they all use real tmpdirs. The pattern is: `beforeEach` makes a tmpdir and points `process.cwd()` at it with `vi.spyOn(process, "cwd")`, `afterEach` restores the mocks and `rmSync`s the tmpdir. This catches Windows path bugs, permission issues, and unintended side effects that a mocked fs would hide.
 
 ---
 

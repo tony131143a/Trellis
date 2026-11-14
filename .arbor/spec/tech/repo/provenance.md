@@ -1,3 +1,11 @@
+---
+sources:
+  - NOTICE
+  - COPYRIGHT
+  - packages/cli/package.json
+  - packages/cli/src/types/ai-tools.ts
+last_verified: 2026-11-13
+---
 # Provenance: Arbor is a derivative of Trellis
 
 Arbor forked [mindfold-ai/Trellis](https://github.com/mindfold-ai/Trellis) at
@@ -17,7 +25,7 @@ Applied in this order to every tracked text file (excluding `LICENSE`,
 | # | Upstream (Trellis) | Arbor | Notes |
 | --- | --- | --- | --- |
 | 1 | `@mindfoldhq/trellis-core` | *(removed)* | Asserted absent from code files; `packages/core` was deleted before the rename |
-| 2 | `@mindfoldhq/trellis` | `@tony131143a/arbor` | npm name; not published, install via `pnpm build && npm link` |
+| 2 | `@mindfoldhq/trellis` | `@tony131143a/arbor` | npm name (`packages/cli/package.json`) |
 | 3 | `<!-- TRELLIS:START -->` / `<!-- TRELLIS:END -->` | `<!-- ARBOR:START -->` / `<!-- ARBOR:END -->` | Managed-block markers in AGENTS.md / CLAUDE.md |
 | 4 | `TRELLIS_<NAME>` | `ARBOR_<NAME>` | All environment variables (`ARBOR_CONTEXT_ID`, `ARBOR_HOOKS`, `ARBOR_DISABLE_HOOKS`, ...) |
 | 5 | `.trellis` | `.arbor` | Project directory; `PATHS.WORKFLOW` and `paths.DIR_WORKFLOW` |
@@ -39,13 +47,19 @@ e.g. `packages/cli/src/templates/trellis/` → `templates/arbor/`,
 - CLI commands `channel`, `mem`, `ablate`/`restore`, `upgrade`, `workflow`;
   remote spec-template registry (`giget`), release/publish scripts, migration
   manifests older than `0.1.0`.
-- 21 main-agent platforms; only `claude-code` and `star` remain.
+- 21 main-agent platforms. The supported set today is `claude-code` and
+  `codex` (`AI_TOOLS` in `packages/cli/src/types/ai-tools.ts`).
 - Platform-native sub-agent definitions (`.claude/agents/*.md`,
-  `.starFactory/agents/*.md`); replaced by roles the driver dispatches as Orca workers.
+  `.starFactory/agents/*.md`); the driver runs work as Orca workers instead.
 
 ## What still says "Trellis"
 
-- `LICENSE`, `COPYRIGHT`, `NOTICE`, the README provenance section and this file.
+- `COPYRIGHT`, `NOTICE`, the README license section, this file and
+  [index.md](./index.md).
+- `packages/cli/package.json` `repository.url` (the fork's GitHub repository
+  keeps the name `Trellis`).
+- Spec docs that cite upstream history (`cli/backend/quality-guidelines.md`,
+  `cli/backend/configurator-shared.md`) and the regression test below.
 - Upstream history under `.arbor/tasks/` and `.arbor/workspace/` (content left
   as written; only paths were moved).
 

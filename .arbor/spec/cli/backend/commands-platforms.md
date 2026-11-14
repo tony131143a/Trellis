@@ -1,7 +1,9 @@
 ---
 sources:
   - packages/cli/src/cli/index.ts
-last_verified: 2026-07-30
+  - packages/cli/src/configurators/index.ts
+  - packages/cli/src/types/ai-tools.ts
+last_verified: 2026-11-13
 ---
 # `arbor platforms` Command
 
@@ -21,8 +23,10 @@ arbor platforms [--json]
 Behavior:
 
 - Reads `getConfiguredPlatforms(cwd)` (`configurators/index.ts`) to find every
-  platform with at least one Arbor-owned template recorded under its private
-  `configDir`. Native platform directories alone do not count. Template
+  platform with at least one Arbor-owned template recorded under one of its
+  managed paths (`getManagedPaths`: `configDir`, plus `.agents/skills` for
+  Codex, which installs nothing under `.codex/`). Native platform directories
+  alone do not count. Template
   ownership comes from `.arbor/.template-hashes.json`, while each platform's
   distinct file layout comes from its `collectTemplates()` registry entry.
   The command then looks up `displayName` (`AI_TOOLS[id].name`) and `configDir`
@@ -41,7 +45,7 @@ Behavior:
 - When `DEBUG` or `ARBOR_DEBUG` is set, also print the error stack.
 - No special-casing per platform: this command is a thin read over the same
   registry data `init`/`update` already use, so a new platform only needs its
-  Step 1 registry entry (see
+  `AI_TOOLS` registry entry (see
   [platform-integration.md](./platform-integration.md)) to show up here.
 
 ## Test requirements

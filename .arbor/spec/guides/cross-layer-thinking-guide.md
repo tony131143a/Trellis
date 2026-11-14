@@ -1,3 +1,7 @@
+---
+sources: []
+last_verified: 2026-11-13
+---
 # Cross-Layer Thinking Guide
 
 > **Purpose**: Think through data flow across layers before implementing.
@@ -73,27 +77,12 @@ For each boundary:
 
 ### Mistake 4: Every Consumer Parses The Same Payload
 
-**Bad**: A command reads `task.json` and casts fields inline:
-
-```typescript
-const branch = (data as { branch?: string }).branch;
-const children = (data as { children?: string[] }).children;
-```
-
+**Bad**: Several commands read the same JSON file and cast fields inline.
 This looks local, but it means every consumer owns a private version of the
-`task.json` contract. The next field change will update one command and miss
+file's contract. The next field change will update one command and miss
 another.
 
-**Good**: Decode once at the data boundary, then export typed projections. On
-the Python side that owner is `tasks.py:load_task`, which returns a typed
-`TaskInfo`; on the TypeScript side it is `utils/task-json.ts`:
-
-```python
-task = load_task(task_dir)
-if task is None:
-    return False
-return task.branch == wanted_branch
-```
+**Good**: Decode once at the data boundary, then export typed projections.
 
 **Rule**: For append-only logs, JSON streams, RPC payloads, or config files,
 create one owner for:
@@ -128,27 +117,12 @@ After implementation:
 
 ---
 
-## Cross-Platform Template Consistency
-
-Arbor installs for two main-agent platforms, Claude Code (`.claude/`) and StarFactory (`.starFactory/`). Command and skill bodies live once under `packages/cli/src/templates/common/` and are rendered per platform by `resolveCommands` / `resolveSkills`. Only the platform's `settings.json` (`templates/claude/`, `templates/star/`) and the hook list in `templates/shared-hooks/index.ts` are written separately. That pair is the cross-layer boundary.
-
-### Checklist: After Modifying A Hook Or Settings Template
-
-- [ ] Edit the shared source (`common/` or `shared-hooks/`) once, not a rendered copy
-- [ ] Compare `templates/claude/settings.json` and `templates/star/settings.json`; a difference must be intentional (StarFactory registers `inject-shell-session-context.py`, Claude Code does not)
-- [ ] Check `SHARED_HOOKS_BY_PLATFORM` agrees with what each settings file invokes
-- [ ] Mirror the change into this repo's installed `.claude/` copy
-
-**Real-world example**: StarFactory needs the shell-ticket hook because it exports no session id into shell children, while Claude Code resolves identity through `CLAUDE_ENV_FILE`. Copying Claude's hook list verbatim into the StarFactory settings would have left `task.py start` without a session.
-
----
-
 ## Generated Runtime Template Upgrade Consistency
 
 Some generated files are both documentation and runtime input. In Arbor,
-`.arbor/workflow.md` is parsed by `get_context.py`, `workflow_phase.py`,
-SessionStart filters, and per-turn hooks. Template changes must be validated
-against both fresh init and upgrade paths.
+`.arbor/config.yaml` is installed from `templates/arbor/config.yaml` and parsed
+at runtime by `common/config.py` / `common/arbor_config.py`. Template changes
+must be validated against both fresh init and upgrade paths.
 
 ### Checklist: After Modifying A Runtime-Parsed Template
 
@@ -161,21 +135,6 @@ against both fresh init and upgrade paths.
 - [ ] Add an upgrade regression using an older pristine template fixture, then
       assert the installed file reaches the current packaged shape
 - [ ] Update the backend spec that owns the runtime contract
-
-**Real-world example**: Workflow platform markers (`[Claude Code, StarFactory]` blocks) changed in a template. Fresh init was correct, but an `arbor update` that only merged `[workflow-state:*]` blocks preserved stale markers outside those blocks. Result: upgraded projects got new hook scripts but old workflow routing, so `get_context.py --mode phase --platform star` could return empty step detail. The fix was whole-file `workflow.md` updates; see `cli/backend/migrations.md`.
-
----
-
-## Remote Probe Checklist
-
-When a script probes a remote resource to make a decision (for example the update-hint check in session scripts):
-
-- [ ] 404 vs transient error are distinguished — don't treat both as "not found"
-- [ ] Transient errors **abort or retry**, never silently switch behavior
-- [ ] Optional probes stay silent on failure and never consume once-per-session markers
-- [ ] Metadata reads consume a complete response or use a streaming parser — never parse a fixed-size prefix as full JSON
-
-**Real-world example**: Agent-session update hints fetched npm `latest` metadata with `response.read(4096)` and then parsed it as complete JSON. The `@tony131143a/arbor` package metadata exceeded 4 KB, so the JSON was truncated, parse failed silently, and the first session injection showed no update hint. Fix: read the complete response before parsing, and add a regression where `version` is followed by an 8 KB metadata tail.
 
 ---
 
