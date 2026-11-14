@@ -132,7 +132,7 @@ In Arbor, command templates (e.g., `record-session.md`) exist in **multiple plat
 - [ ] Find all platforms with the same command: `find src/templates/*/commands/arbor/ -name "<command>.*"`
 - [ ] Update all platform copies (Markdown `.md` and TOML `.toml`)
 - [ ] For Gemini TOML: adapt line continuations (`\\` vs `\`) and triple-quoted strings
-- [ ] Run `/arbor:check-cross-layer` to verify nothing was missed
+- [ ] Grep the old wording across every copy to verify nothing was missed
 
 **Real-world example**: Updated `record-session.md` in Claude to use `--mode record`, but forgot iFlow, Kilo, OpenCode, and Gemini — caught by cross-layer check.
 
@@ -141,9 +141,9 @@ In Arbor, command templates (e.g., `record-session.md`) exist in **multiple plat
 ## Generated Runtime Template Upgrade Consistency
 
 Some generated files are both documentation and runtime input. In Arbor,
-`.arbor/workflow.md` is parsed by `get_context.py`, `workflow_phase.py`,
-SessionStart filters, and per-turn hooks. Template changes must be validated
-against both fresh init and upgrade paths.
+`.arbor/config.yaml` is read by the driver scripts, and `arbor update` appends
+new sections to an existing copy. Template changes must be validated against
+both fresh init and upgrade paths.
 
 ### Checklist: After Modifying A Runtime-Parsed Template
 
@@ -184,13 +184,12 @@ served 0.6 beta behavior under the Release selector. The fix was to restore root
 release docs, move the 0.6 content to `beta/` and `zh/beta/`, and add a grep
 audit for beta markers against the root release tree.
 
-**Real-world example**: Codex inline mode changed workflow platform markers from
-`[Codex]` / `[Kilo, Antigravity, Windsurf]` to `[codex-sub-agent]` /
-`[codex-inline, Kilo, Antigravity, Windsurf]`. Fresh init was correct, but
-`arbor update` only merged `[workflow-state:*]` blocks and preserved stale
-markers outside those blocks. Result: upgraded projects got new hook scripts
-but old workflow routing, so `get_context.py --mode phase --platform codex`
-could return empty Phase 2.1 detail.
+**Real-world example**: `arbor update` appends a missing config.yaml section
+only when the user's file lacks the section's key (a plain substring check for
+e.g. `worktree:`). A comment in another section that mentioned that key with a
+colon made every upgraded project look as if it already had the section, so it
+was never appended. Fresh init was correct; only an upgrade regression caught
+it.
 
 ---
 
@@ -229,7 +228,7 @@ In Arbor, command templates (e.g., `record-session.md`) exist in **multiple plat
 - [ ] Find all platforms with the same command: `find src/templates/*/commands/arbor/ -name "<command>.*"`
 - [ ] Update all platform copies (Markdown `.md` and TOML `.toml`)
 - [ ] For Gemini TOML: adapt line continuations (`\\` vs `\`) and triple-quoted strings
-- [ ] Run `/arbor:check-cross-layer` to verify nothing was missed
+- [ ] Grep the old wording across every copy to verify nothing was missed
 
 **Real-world example**: Updated `record-session.md` in Claude to use `--mode record`, but forgot iFlow, Kilo, OpenCode, and Gemini — caught by cross-layer check.
 
@@ -238,9 +237,9 @@ In Arbor, command templates (e.g., `record-session.md`) exist in **multiple plat
 ## Generated Runtime Template Upgrade Consistency
 
 Some generated files are both documentation and runtime input. In Arbor,
-`.arbor/workflow.md` is parsed by `get_context.py`, `workflow_phase.py`,
-SessionStart filters, and per-turn hooks. Template changes must be validated
-against both fresh init and upgrade paths.
+`.arbor/config.yaml` is read by the driver scripts, and `arbor update` appends
+new sections to an existing copy. Template changes must be validated against
+both fresh init and upgrade paths.
 
 ### Checklist: After Modifying A Runtime-Parsed Template
 
@@ -254,13 +253,12 @@ against both fresh init and upgrade paths.
   assert the installed file reaches the current packaged shape
 - [ ] Update the backend spec that owns the runtime contract
 
-**Real-world example**: Codex inline mode changed workflow platform markers from
-`[Codex]` / `[Kilo, Antigravity, Windsurf]` to `[codex-sub-agent]` /
-`[codex-inline, Kilo, Antigravity, Windsurf]`. Fresh init was correct, but
-`arbor update` only merged `[workflow-state:*]` blocks and preserved stale
-markers outside those blocks. Result: upgraded projects got new hook scripts
-but old workflow routing, so `get_context.py --mode phase --platform codex`
-could return empty Phase 2.1 detail.
+**Real-world example**: `arbor update` appends a missing config.yaml section
+only when the user's file lacks the section's key (a plain substring check for
+e.g. `worktree:`). A comment in another section that mentioned that key with a
+colon made every upgraded project look as if it already had the section, so it
+was never appended. Fresh init was correct; only an upgrade regression caught
+it.
 
 ---
 

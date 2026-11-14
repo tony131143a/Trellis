@@ -6,7 +6,6 @@
  *
  * Directory structure:
  *   common/
- *   ├── commands/        # Templates that stay as slash commands
  *   ├── skills/          # Single-file templates that become auto-triggered skills
  *   └── bundled-skills/  # Multi-file built-in skills with references/assets
  */
@@ -33,7 +32,7 @@ function listMarkdownFiles(dir: string): string[] {
 }
 
 export interface CommonTemplate {
-  /** Template name without extension (e.g., "start", "before-dev") */
+  /** Template name without extension (e.g., "update-spec") */
   name: string;
   /** Raw content with {{placeholders}} — must be resolved before writing */
   content: string;
@@ -47,28 +46,15 @@ export interface CommonBundledSkillFile {
 }
 
 export interface CommonBundledSkill {
-  /** Skill directory name, e.g. "arbor-meta" */
+  /** Skill directory name, e.g. "arbor-spec-bootstrap" */
   name: string;
   /** Files that must be written under the skill directory */
   files: CommonBundledSkillFile[];
 }
 
 // Cached results — files don't change during a CLI run
-let cachedCommands: CommonTemplate[] | undefined;
 let cachedSkills: CommonTemplate[] | undefined;
 let cachedBundledSkills: CommonBundledSkill[] | undefined;
-
-/**
- * Get all command templates (stay as slash commands on all platforms).
- * Results are cached after first call.
- */
-export function getCommandTemplates(): CommonTemplate[] {
-  cachedCommands ??= listMarkdownFiles("commands").map((file) => ({
-    name: file.replace(/\.md$/, ""),
-    content: readTemplate(`commands/${file}`),
-  }));
-  return cachedCommands;
-}
 
 /**
  * Get all skill templates (become auto-triggered skills on supporting platforms).

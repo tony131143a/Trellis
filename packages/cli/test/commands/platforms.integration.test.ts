@@ -52,10 +52,10 @@ describe("arbor platforms (#396)", () => {
 
   it("--json reports configured platforms with id, displayName, configDir", () => {
     fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
-    fs.mkdirSync(path.join(tmpDir, ".codex"), { recursive: true });
+    // Codex is detected by its tracked skills; Arbor writes nothing under .codex/.
     writeTrackedPlatforms(tmpDir, [
-      ".claude/commands/arbor/continue.md",
-      ".codex/hooks.json",
+      ".claude/skills/arbor/SKILL.md",
+      ".agents/skills/arbor-update-spec/SKILL.md",
     ]);
 
     const result = runCli(tmpDir, ["platforms", "--json"]);
@@ -85,7 +85,7 @@ describe("arbor platforms (#396)", () => {
 
   it("human output lists configured platforms without --json", () => {
     fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
-    writeTrackedPlatforms(tmpDir, [".claude/commands/arbor/continue.md"]);
+    writeTrackedPlatforms(tmpDir, [".claude/skills/arbor/SKILL.md"]);
 
     const result = runCli(tmpDir, ["platforms"]);
 

@@ -35,12 +35,10 @@ import { update } from "../../src/commands/update.js";
 import { VERSION } from "../../src/constants/version.js";
 import { DIR_NAMES, FILE_NAMES, PATHS } from "../../src/constants/paths.js";
 import { computeHash } from "../../src/utils/template-hash.js";
-import { workflowMdTemplate } from "../../src/templates/arbor/index.js";
 import { claudeMdContent } from "../../src/templates/markdown/index.js";
-import { replacePythonCommandLiterals } from "../../src/configurators/shared.js";
 
-// A managed template file that update always handles (Python script)
-const MANAGED_FILE = `${PATHS.SCRIPTS}/get_context.py`;
+// A managed template file that update always handles (the skill `arbor`)
+const MANAGED_FILE = ".claude/skills/arbor/SKILL.md";
 
 /** Remove a key from a hash object (avoids eslint no-dynamic-delete) */
 function removeHashEntry(
@@ -365,8 +363,8 @@ describe("update() integration", () => {
 
     const targetFull = projectFile(FILE_NAMES.CLAUDE);
     const staleBlock = claudeMdContent.replace(
-      "# Arbor Instructions (main agent)",
-      "# Old Arbor Instructions",
+      "load the skill `arbor`",
+      "load the old skill",
     );
     expect(staleBlock).not.toBe(claudeMdContent);
     fs.writeFileSync(
@@ -473,7 +471,7 @@ describe("update() integration", () => {
     const versionPath = path.join(tmpDir, DIR_NAMES.WORKFLOW, ".version");
     fs.writeFileSync(versionPath, "0.0.1");
 
-    await update({ force: true });
+    await update({ force: true, migrate: true });
 
     // Version is updated even when no file changes are needed
     expect(fs.readFileSync(versionPath, "utf-8")).toBe(VERSION);
@@ -551,7 +549,7 @@ describe("update() integration", () => {
     const versionPath = versionFilePath();
     fs.writeFileSync(versionPath, "0.1.0-rc.6");
 
-    await update({});
+    await update({ migrate: true });
 
     // .version must be updated to the current CLI version
     expect(fs.readFileSync(versionPath, "utf-8")).toBe(VERSION);
@@ -709,6 +707,7 @@ describe("update() integration", () => {
     ) as Record<string, unknown>;
     settings.statusLine = statusLineConfig;
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+    fs.mkdirSync(path.dirname(statusLinePath), { recursive: true });
     fs.writeFileSync(statusLinePath, "# existing local statusline\n");
 
     await update({ force: true });
@@ -718,7 +717,7 @@ describe("update() integration", () => {
       fs.readFileSync(settingsPath, "utf-8"),
     ) as Record<string, unknown>;
     expect(updatedSettings.statusLine).toEqual(statusLineConfig);
-    expect(updatedSettings.hooks).toBeDefined();
+    expect(updatedSettings.hooks).toBeUndefined();
   });
 
   it("#22a does not install statusline on update for opted-out projects", async () => {
@@ -823,7 +822,7 @@ describe("update() integration", () => {
     expect(cut).toBeGreaterThan(0);
     writeProjectFile(configPath, config.slice(0, cut));
 
-    await update({});
+    await update({ migrate: true });
 
     expect(fs.existsSync(projectFile(".arbor/.runtime/dispatch-target"))).toBe(
       false,
@@ -842,47 +841,6 @@ describe("update() integration", () => {
     expect(fs.readFileSync(versionFilePath(), "utf-8")).toBe(VERSION);
   });
 
-  it("#workflow-md-r4 updates workflow.md as one runtime template when hash-tracked", async () => {
-    await setupProject();
-
-    const workflowPath = path.join(tmpDir, PATHS.WORKFLOW_GUIDE_FILE);
-    const staleWorkflow =
-      "# Workflow\n\n" +
-      "## Phase Index\n\n" +
-      "[workflow-state:in_progress]\nlegacy body\n[/workflow-state:in_progress]\n\n" +
-      "#### 2.1 Implement `[required · repeatable]`\n\n" +
-      "[Codex]\nSpawn the implement sub-agent:\n[/Codex]\n\n" +
-      "[Kilo, Antigravity, Windsurf]\n" +
-      "1. Load the `arbor-before-dev` skill to read project guidelines\n" +
-      "[/Kilo, Antigravity, Windsurf]\n";
-
-    fs.writeFileSync(workflowPath, staleWorkflow, "utf-8");
-
-    // Simulate an older installed workflow.md that is still pristine relative
-    // to the version that installed it. Update must replace the whole file:
-    // platform markers outside [workflow-state:*] blocks are runtime-parsed too.
-    const hashFile = path.join(
-      tmpDir,
-      DIR_NAMES.WORKFLOW,
-      ".template-hashes.json",
-    );
-    const hashes = readHashesV2(hashFile);
-    hashes[PATHS.WORKFLOW_GUIDE_FILE] = computeHash(staleWorkflow);
-    writeHashesV2(hashFile, hashes);
-
-    await update({ force: true });
-
-    const updated = fs.readFileSync(workflowPath, "utf-8");
-    expect(updated).toBe(replacePythonCommandLiterals(workflowMdTemplate));
-    expect(updated).not.toContain("[Codex]");
-    expect(updated).not.toContain("[Kilo, Antigravity, Windsurf]");
-    expect(updated).not.toContain("legacy body");
-
-    expect(readHashesV2(hashFile)[PATHS.WORKFLOW_GUIDE_FILE]).toBe(
-      computeHash(updated),
-    );
-  });
-
   describe("receipt repair for files already identical to their template", () => {
     /**
      * Paths whose recorded hash is *expected* to drift: the repository appends
@@ -890,10 +848,7 @@ describe("update() integration", () => {
      * template's hash while the file on disk is longer. A fix that makes these
      * "match" has broken them.
      */
-    const MIXED_OWNERSHIP = [
-      FILE_NAMES.AGENTS,
-      `${DIR_NAMES.WORKFLOW}/config.yaml`,
-    ];
+    const MIXED_OWNERSHIP = [`${DIR_NAMES.WORKFLOW}/config.yaml`];
 
     /**
      * Every receipt entry whose recorded hash disagrees with the file at that
@@ -985,6 +940,8 @@ describe("update() integration", () => {
       const before = readHashesV2(hashFilePath());
 
       // Append repo-owned content, exactly as those files acquire it.
+      const agentsMd = `${readProjectFile(FILE_NAMES.AGENTS)}\n# repo-owned addition\n`;
+      writeProjectFile(FILE_NAMES.AGENTS, agentsMd);
       for (const relativePath of MIXED_OWNERSHIP) {
         if (!fs.existsSync(projectFile(relativePath))) continue;
         writeProjectFile(
@@ -1003,6 +960,8 @@ describe("update() integration", () => {
           computeHash(readProjectFile(relativePath)),
         );
       }
+      // Text outside the AGENTS.md managed block survives.
+      expect(readProjectFile(FILE_NAMES.AGENTS)).toBe(agentsMd);
     });
   });
 });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  arborSkillTemplate,
   settingsTemplate,
   getSettingsTemplate,
 } from "../../src/templates/claude/index.js";
@@ -34,77 +35,37 @@ describe("settingsTemplate", () => {
 });
 
 // =============================================================================
-// settingsTemplate — SessionStart hook matchers
+// settingsTemplate — no hooks (arbor 1.0)
 // =============================================================================
 
-describe("settingsTemplate SessionStart matchers", () => {
-  const settings = JSON.parse(settingsTemplate);
-  const sessionStartEntries = settings.hooks.SessionStart as {
-    matcher: string;
-    hooks: { type: string; command: string; timeout: number }[];
-  }[];
-
-  it("includes startup, clear, and compact matchers", () => {
-    const matchers = sessionStartEntries.map((e) => e.matcher);
-    expect(matchers).toContain("startup");
-    expect(matchers).toContain("clear");
-    expect(matchers).toContain("compact");
-  });
-
-  it("all SessionStart entries invoke the same session-start.py hook", () => {
-    for (const entry of sessionStartEntries) {
-      expect(entry.hooks).toHaveLength(1);
-      expect(entry.hooks[0].command).toContain("session-start.py");
-    }
-  });
-
-  it("all SessionStart entries use {{PYTHON_CMD}} placeholder", () => {
-    for (const entry of sessionStartEntries) {
-      expect(entry.hooks[0].command).toContain("{{PYTHON_CMD}}");
-    }
+describe("settingsTemplate hooks", () => {
+  it("registers no hooks and no statusLine", () => {
+    const settings = JSON.parse(settingsTemplate) as Record<string, unknown>;
+    expect(settings.hooks).toBeUndefined();
+    expect(settings.statusLine).toBeUndefined();
+    expect(settingsTemplate).not.toContain(".claude/hooks/");
   });
 });
 
 // =============================================================================
-// settingsTemplate — PreToolUse hooks
+// arborSkillTemplate — body of the main-agent skill `arbor`
 // =============================================================================
 
-describe("settingsTemplate PreToolUse hooks", () => {
-  const settings = JSON.parse(settingsTemplate);
-  const preToolUse = settings.hooks.PreToolUse as {
-    matcher: string;
-    hooks: { type: string; command: string; timeout: number }[];
-  }[];
-
-  it("registers no delegation-context hook (roles run only through the driver)", () => {
-    expect(settingsTemplate).not.toContain("inject-delegation-context");
-    const preToolUseNames = preToolUse.map((e) => e.matcher).join(" ");
-    expect(preToolUseNames).not.toContain("delegate_to_agent");
-  });
-
-  it("registers no PostToolUse hook (the driver starts and syncs Orca workers itself)", () => {
-    expect(settings.hooks.PostToolUse).toBeUndefined();
-    expect(settingsTemplate).not.toContain("sync-delegation");
-  });
-
-  it("guards the built-in Agent|Task tool and drops the bare Task / Agent matchers", () => {
-    const entry = preToolUse.find((e) => e.matcher === "^(Agent|Task)$");
-    expect(entry).toBeDefined();
-    expect(entry?.hooks[0].command).toBe(
-      "{{PYTHON_CMD}} .claude/hooks/guard-builtin-agent.py",
+describe("arborSkillTemplate", () => {
+  it("is the skill body: no frontmatter, driver via {{PYTHON_CMD}}", () => {
+    expect(arborSkillTemplate.startsWith("# Arbor\n")).toBe(true);
+    expect(arborSkillTemplate).toContain(
+      "{{PYTHON_CMD}} ./.arbor/scripts/arbor.py",
     );
-    expect(entry?.hooks[0].timeout).toBe(10);
-    const matchers = preToolUse.map((e) => e.matcher);
-    expect(matchers).not.toContain("Task");
-    expect(matchers).not.toContain("Agent");
+    for (const marker of [
+      "arbor sync --wait",
+      "nodes/<id>.md",
+      "arbor review --pass",
+    ]) {
+      expect(arborSkillTemplate).toContain(marker);
+    }
   });
 });
-
-// Commands are now sourced from common/ templates and tested in platforms.test.ts
-
-// =============================================================================
-// getAllAgents — reads agent templates
-// =============================================================================
 
 // =============================================================================
 // getSettingsTemplate — returns settings as SettingsTemplate

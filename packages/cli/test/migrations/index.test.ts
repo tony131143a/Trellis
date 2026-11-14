@@ -328,9 +328,8 @@ describe("0.5.0 manifest", () => {
         sectionHeading: "Mandate",
       },
     ]);
-    const section = extractConfigSection(configYamlTemplate, "Mandate");
-    expect(section).toContain("mandate:");
-    expect(section).toContain("auto_merge_max_lines: 200");
+    // 1.0 dropped the mandate; the section is no longer shipped.
+    expect(extractConfigSection(configYamlTemplate, "Mandate")).toBeNull();
   });
 });
 
@@ -352,19 +351,11 @@ describe("0.6.0 manifest", () => {
 // =============================================================================
 
 describe("0.7.0 manifest", () => {
-  it("is reached from 0.6.0 without migrations, and the light mandate asks before merging", () => {
+  it("is reached from 0.6.0 without migrations", () => {
     expect(getAllMigrationVersions()).toContain("0.7.0");
     expect(getMigrationsForVersion("0.6.0", "0.7.0")).toEqual([]);
     expect(getMigrationMetadata("0.6.0", "0.7.0").breaking).toBe(false);
     expect(getConfigSectionsAddedBetween("0.6.0", "0.7.0")).toEqual([]);
-    const section = extractConfigSection(configYamlTemplate, "Mandate");
-    expect(section).toMatch(/light:\n(?: {4}\w+: \w+\n)*? {4}merge: ask\n/);
-    expect(
-      section
-        .split("\n")
-        .filter((l) => !l.startsWith("#"))
-        .join("\n"),
-    ).not.toContain("merge: auto");
   });
 });
 
@@ -382,8 +373,6 @@ describe("0.8.0 manifest", () => {
     expect(getConfigSectionsAddedBetween("0.7.0", "0.8.0")).toEqual([]);
     expect(configYamlTemplate).not.toMatch(/^test_paths:/m);
     expect(configYamlTemplate).not.toContain("codeg-cli");
-    const mandate = extractConfigSection(configYamlTemplate, "Mandate");
-    expect(mandate).not.toMatch(/^ {4}stop:/m);
   });
 });
 
@@ -464,8 +453,7 @@ describe("0.10.0 manifest", () => {
 // =============================================================================
 
 describe("0.11.0 manifest", () => {
-  it("is the package version, reached from 0.10.0 without migrations, breaking, and drops worktree.root", () => {
-    expect(VERSION).toBe("0.11.0");
+  it("is reached from 0.10.0 without migrations, breaking, and drops worktree.root", () => {
     expect(getAllMigrationVersions()).toContain("0.11.0");
     expect(getMigrationsForVersion("0.10.0", "0.11.0")).toEqual([]);
     const metadata = getMigrationMetadata("0.10.0", "0.11.0");
@@ -485,5 +473,31 @@ describe("0.11.0 manifest", () => {
     );
     expect(worktree).toMatch(/^worktree:\n {2}setup: /);
     expect(worktree.split(/\n(?=\S)/)[0]).not.toMatch(/^\s+root:/m);
+  });
+});
+
+// =============================================================================
+// 1.0.0 — one skill, nodes, no hooks / roles / workflow.md (deletes: migration-1.0.0.test.ts)
+// =============================================================================
+
+describe("1.0.0 manifest", () => {
+  it("is the package version, reached from 0.11.0, breaking, migrate recommended, deletes only", () => {
+    expect(VERSION).toBe("1.0.0");
+    expect(getAllMigrationVersions()).toContain("1.0.0");
+    const migrations = getMigrationsForVersion("0.11.0", "1.0.0");
+    expect(migrations.length).toBeGreaterThan(0);
+    expect(new Set(migrations.map((m) => m.type))).toEqual(new Set(["delete"]));
+    const metadata = getMigrationMetadata("0.11.0", "1.0.0");
+    expect(metadata.breaking).toBe(true);
+    expect(metadata.recommendMigrate).toBe(true);
+    const guide = metadata.migrationGuides.map((g) => g.guide).join("\n");
+    for (const term of [
+      "task.json",
+      "update --migrate",
+      "Hooks need review",
+      "orca repo add",
+    ])
+      expect(guide).toContain(term);
+    expect(getConfigSectionsAddedBetween("0.11.0", "1.0.0")).toEqual([]);
   });
 });

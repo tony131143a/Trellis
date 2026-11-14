@@ -1,15 +1,15 @@
 import { AI_TOOLS } from "../types/ai-tools.js";
 import {
+  arborSkillTemplate,
   getSettingsTemplate,
   getStatuslineHook,
 } from "../templates/claude/index.js";
 import {
   resolvePlaceholders,
-  resolveCommands,
   resolveSkills,
   resolveBundledSkills,
   collectSkillTemplates,
-  collectSharedHooks,
+  wrapWithSkillFrontmatter,
   writeTemplateMap,
   type PlatformConfigureOptions,
 } from "./shared.js";
@@ -38,10 +38,11 @@ function injectStatusLine(content: string): string {
 
 /**
  * The Claude Code file set — written at init and diffed by `arbor update`.
- * - settings.json from the platform template directory
- * - hooks/ from shared-hooks/ (unified with other platforms)
- * - commands/arbor/ — continue + finish-work as slash commands
+ * - settings.json from the platform template directory (no hooks)
+ * - skills/arbor/SKILL.md — the main-agent skill the CLAUDE.md block loads by
+ *   that exact name; Claude Code only
  * - skills/arbor-{name}/SKILL.md — auto-triggered skills from `common/skills/`
+ *   plus the bundled skills
  *
  * The opt-in statusline is deliberately absent — see `configureClaude`.
  */
@@ -57,18 +58,19 @@ export function collectClaudeTemplates(): Map<string, string> {
     resolvePlaceholders(settings.content),
   );
 
-  for (const cmd of resolveCommands(ctx)) {
-    files.set(`.claude/commands/arbor/${cmd.name}.md`, cmd.content);
-  }
+  const arborSkill = {
+    name: "arbor",
+    content: wrapWithSkillFrontmatter(
+      "arbor",
+      resolvePlaceholders(arborSkillTemplate, ctx),
+    ),
+  };
   for (const [filePath, content] of collectSkillTemplates(
     ".claude/skills",
-    resolveSkills(ctx),
+    [arborSkill, ...resolveSkills(ctx)],
     resolveBundledSkills(ctx),
   )) {
     files.set(filePath, content);
-  }
-  for (const [k, v] of collectSharedHooks(".claude/hooks", "claude")) {
-    files.set(k, v);
   }
 
   return files;

@@ -32,16 +32,13 @@ import {
 } from "../utils/template-hash.js";
 import { compareVersions } from "../utils/compare-versions.js";
 import { toPosix } from "../utils/posix.js";
-import { emptyTaskJson } from "../utils/task-json.js";
 
 // Import templates for comparison
 import {
   getAllScripts,
-  getAllAgents,
   // Configuration
   configYamlTemplate,
   gitignoreTemplate,
-  workflowMdTemplate,
 } from "../templates/arbor/index.js";
 import {
   agentsMdContent,
@@ -56,6 +53,7 @@ import {
 import { replacePythonCommandLiterals } from "../configurators/shared.js";
 import { ensureGitattributes } from "../configurators/workflow.js";
 import { pruneOrphanManifestKeys } from "../utils/manifest-prune.js";
+import { scrubHooksJson, type ScrubResult } from "../utils/managed-removal.js";
 import {
   cleanupEmptyDirs,
   mergeManagedBlockContent,
@@ -97,6 +95,10 @@ interface ChangeAnalysis {
 type ConflictAction = "overwrite" | "skip" | "create-new";
 
 const CLAUDE_SETTINGS_PATH = ".claude/settings.json";
+const CONFIG_YAML_PATH = `${DIR_NAMES.WORKFLOW}/config.yaml`;
+
+/** Hook config files whose entries may point at scripts a migration deletes. */
+const HOOK_CONFIG_PATHS = [CLAUDE_SETTINGS_PATH, ".codex/hooks.json"] as const;
 
 // Paths that should never be touched (true user data)
 // spec/ is user-customized content created during init; update should never modify it
@@ -538,6 +540,63 @@ function preserveExistingClaudeStatusLine(
 }
 
 /**
+ * Plan the scrub of user-modified hook configs (`.claude/settings.json`,
+ * `.codex/hooks.json`): entries whose command runs a file the pending
+ * migrations delete are removed, every other entry and key is kept.
+ *
+ * Only files the user modified are planned; an unmodified one is replaced by
+ * its template or deleted by its own migration. A planned file is taken out
+ * of the template overwrite and the migration delete, so neither `--force`
+ * nor a confirm-delete can throw the user's own hooks away.
+ */
+function planHookScrubs(
+  cwd: string,
+  hashes: TemplateHashes,
+  deletedPaths: readonly string[],
+): Map<string, ScrubResult> {
+  const plans = new Map<string, ScrubResult>();
+  if (deletedPaths.length === 0) return plans;
+
+  for (const relativePath of HOOK_CONFIG_PATHS) {
+    const fullPath = path.join(cwd, relativePath);
+    if (!fs.existsSync(fullPath)) continue;
+    if (!isTemplateModified(cwd, relativePath, hashes)) continue;
+
+    const content = fs.readFileSync(fullPath, "utf-8");
+    let normalized: string;
+    try {
+      normalized = `${JSON.stringify(JSON.parse(content), null, 2)}\n`;
+    } catch {
+      continue; // Malformed JSON: leave it to the normal conflict path.
+    }
+    const result = scrubHooksJson(content, deletedPaths);
+    if (result.content !== normalized || result.fullyEmpty) {
+      plans.set(relativePath, result);
+    }
+  }
+
+  return plans;
+}
+
+/** Write (or delete, when nothing is left) the planned hook-config scrubs. */
+function executeHookScrubs(cwd: string, plans: Map<string, ScrubResult>): void {
+  for (const [relativePath, result] of plans) {
+    const fullPath = path.join(cwd, relativePath);
+    if (result.fullyEmpty) {
+      fs.unlinkSync(fullPath);
+      removeHash(cwd, relativePath);
+      cleanupEmptyDirs(cwd, path.dirname(relativePath));
+      console.log(chalk.yellow(`  ✕ ${relativePath} (only Arbor hooks left)`));
+    } else {
+      // The recorded hash stays the template's, so the file keeps counting
+      // as modified by the user.
+      fs.writeFileSync(fullPath, result.content);
+      console.log(chalk.yellow(`  ✓ Removed Arbor hooks from ${relativePath}`));
+    }
+  }
+}
+
+/**
  * Collect all template files that should be managed by update
  * Only collects templates for platforms that are already configured (have directories)
  */
@@ -561,25 +620,11 @@ async function collectTemplateFiles(
     files.set(`${PATHS.SCRIPTS}/${scriptPath}`, content);
   }
 
-  // Channel runtime agent definitions (single source of truth: getAllAgents()).
-  // Backfilled by `arbor update` if missing so users who installed before the
-  // bundled agents existed pick them up. Edited files take the standard
-  // modified-file prompt path.
-  for (const [agentFile, content] of getAllAgents()) {
-    files.set(`${PATHS.AGENTS}/${agentFile}`, content);
-  }
-
-  // Configuration
-  files.set(`${DIR_NAMES.WORKFLOW}/config.yaml`, configYamlTemplate);
+  // Configuration. `.arbor/config.yaml` is deliberately absent: it holds the
+  // project's own settings (packages, executors), so update never rewrites
+  // it, not even under --force. New sections reach it only through the
+  // manifests' `configSectionsAdded` (see applyConfigSectionsAdded).
   files.set(`${DIR_NAMES.WORKFLOW}/.gitignore`, gitignoreTemplate);
-  // workflow.md is included here because it is runtime-parsed by
-  // get_context.py and shared hooks. Keep it on the normal template update
-  // path: if the installed file still matches the tracked hash, update the
-  // whole file. If the user edited it, the standard modified-file prompt /
-  // --force behavior applies. Partial tag-block merging is unsafe because
-  // platform routing markers outside [workflow-state:*] blocks are also
-  // script-consumed.
-  files.set(`${DIR_NAMES.WORKFLOW}/workflow.md`, workflowMdTemplate);
   // workspace/index.md stays excluded — it's runtime-appended by add_session.py
   // (journal index) and has no script-parsed structure.
   files.set(FILE_NAMES.AGENTS, buildAgentsMdTemplate(cwd));
@@ -1861,6 +1906,24 @@ export async function update(options: UpdateOptions): Promise<void> {
     pendingMigrations = [...pendingMigrations, ...orphanedMigrations];
   }
 
+  // Hook configs the user modified keep their own entries; only the entries
+  // that run a file this update deletes go (with --migrate, like the deletes).
+  const hookScrubs = options.migrate
+    ? planHookScrubs(
+        cwd,
+        hashes,
+        pendingMigrations
+          .filter((item) => item.type === "delete")
+          .map((item) => item.from),
+      )
+    : new Map<string, ScrubResult>();
+  for (const relativePath of hookScrubs.keys()) {
+    templates.delete(relativePath);
+  }
+  pendingMigrations = pendingMigrations.filter(
+    (item) => !hookScrubs.has(item.from),
+  );
+
   const hasMigrations = pendingMigrations.length > 0;
 
   // Classify migrations (stored for later backup creation)
@@ -1955,6 +2018,16 @@ export async function update(options: UpdateOptions): Promise<void> {
   // Print summary
   printChangeSummary(changes);
 
+  if (hookScrubs.size > 0) {
+    console.log(
+      chalk.yellow("  Modified by you, Arbor hooks will be removed from:"),
+    );
+    for (const relativePath of hookScrubs.keys()) {
+      console.log(chalk.yellow(`    ~ ${relativePath}`));
+    }
+    console.log("");
+  }
+
   // First-time hash tracking hint
   if (isFirstHashTracking && changes.changedFiles.length > 0) {
     console.log(chalk.cyan("ℹ️  First update with hash tracking enabled."));
@@ -1995,7 +2068,8 @@ export async function update(options: UpdateOptions): Promise<void> {
     changes.autoUpdateFiles.length === 0 &&
     changes.changedFiles.length === 0 &&
     !hasPendingMigrations &&
-    !hasSafeDeletes
+    !hasSafeDeletes &&
+    hookScrubs.size === 0
   ) {
     // The "already up to date" exit still has to repair the receipt: this is
     // exactly the clean tree where every file is `unchanged`, so it is the run
@@ -2135,6 +2209,19 @@ export async function update(options: UpdateOptions): Promise<void> {
     );
     printMigrationResult(migrationResult);
   }
+  executeHookScrubs(cwd, hookScrubs);
+  // Arbor writes nothing under `.codex/` any more; once the migration removed
+  // its hooks, drop the directory if nothing of the user's is left in it.
+  // (cleanupEmptyDirs stops below managed roots such as `.codex`.)
+  const codexDir = path.join(cwd, ".codex");
+  if (
+    options.migrate &&
+    fs.existsSync(codexDir) &&
+    fs.lstatSync(codexDir).isDirectory() &&
+    fs.readdirSync(codexDir).length === 0
+  ) {
+    fs.rmdirSync(codexDir);
+  }
 
   // Execute safe-file-delete (after backup, before template writes)
   let safeDeleted = 0;
@@ -2238,7 +2325,9 @@ export async function update(options: UpdateOptions): Promise<void> {
       const { appended } = applyConfigSectionsAdded(
         sectionEntries,
         cwd,
-        templates,
+        new Map([
+          [CONFIG_YAML_PATH, replacePythonCommandLiterals(configYamlTemplate)],
+        ]),
       );
       configSectionsAppended = appended;
     }
@@ -2312,109 +2401,16 @@ export async function update(options: UpdateOptions): Promise<void> {
     );
   }
 
-  // Create migration task if there are breaking changes with migration guides
+  // Print the migration guides of breaking releases (after the summary, so
+  // they stay on screen).
   if (cliVsProject > 0 && projectVersion !== "unknown") {
     const metadata = getMigrationMetadata(projectVersion, cliVersion);
 
     if (metadata.breaking && metadata.migrationGuides.length > 0) {
-      // Create task directory
-      const today = new Date();
-      const monthDay = `${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-      const taskSlug = `migrate-to-${cliVersion}`;
-      const taskDirName = `${monthDay}-${taskSlug}`;
-      const tasksDir = path.join(cwd, DIR_NAMES.WORKFLOW, DIR_NAMES.TASKS);
-      const taskDir = path.join(tasksDir, taskDirName);
-
-      // Check if task already exists
-      if (!fs.existsSync(taskDir)) {
-        fs.mkdirSync(taskDir, { recursive: true });
-
-        // Get current developer for assignee.
-        // `.developer` is a key=value file (written by init_developer.py):
-        //   name=<developer-name>
-        //   initialized_at=<iso8601>
-        // Reading it raw and .trim()-ing embeds the entire file contents
-        // (including the `name=` prefix and the `initialized_at` line) into
-        // the assignee field, producing bogus assignees like
-        // "name=suyuan\ninitialized_at=2026-04-07T23:41:21.978312" that
-        // later break session-start task rendering.
-        const developerFile = path.join(cwd, DIR_NAMES.WORKFLOW, ".developer");
-        let currentDeveloper = "unknown";
-        if (fs.existsSync(developerFile)) {
-          const raw = fs.readFileSync(developerFile, "utf-8");
-          const nameMatch = raw.match(/^\s*name\s*=\s*(.+?)\s*$/m);
-          if (nameMatch) {
-            currentDeveloper = nameMatch[1];
-          }
-        }
-
-        // Build task.json — canonical 24-field shape via shared factory.
-        const taskTitle = `Migrate to v${cliVersion}`;
-        const todayStr = today.toISOString().split("T")[0];
-        const taskJson = emptyTaskJson({
-          id: taskSlug,
-          name: taskSlug,
-          title: taskTitle,
-          description: `Breaking change migration from v${projectVersion} to v${cliVersion}`,
-          status: "planning",
-          scope: "migration",
-          priority: "P1",
-          creator: "arbor-update",
-          assignee: currentDeveloper,
-          createdAt: todayStr,
-        });
-
-        // Write task.json
-        const taskJsonPath = path.join(taskDir, "task.json");
-        fs.writeFileSync(taskJsonPath, JSON.stringify(taskJson, null, 2));
-
-        // Build PRD content
-        let prdContent = `# Migration Task: Upgrade to v${cliVersion}\n\n`;
-        prdContent += `**Created**: ${todayStr}\n`;
-        prdContent += `**From Version**: ${projectVersion}\n`;
-        prdContent += `**To Version**: ${cliVersion}\n`;
-        prdContent += `**Assignee**: ${currentDeveloper}\n\n`;
-        prdContent += `## Status\n\n- [ ] Review migration guide\n- [ ] Update custom files\n- [ ] Run \`arbor update --migrate\`\n- [ ] Test workflows\n\n`;
-
-        for (const {
-          version,
-          guide,
-          aiInstructions,
-        } of metadata.migrationGuides) {
-          prdContent += `---\n\n## v${version} Migration Guide\n\n`;
-          prdContent += guide;
-          prdContent += "\n\n";
-
-          if (aiInstructions) {
-            prdContent += `### AI Assistant Instructions\n\n`;
-            prdContent += `When helping with this migration:\n\n`;
-            prdContent += aiInstructions;
-            prdContent += "\n\n";
-          }
-        }
-
-        // Write PRD
-        const prdPath = path.join(taskDir, "prd.md");
-        fs.writeFileSync(prdPath, prdContent);
-
+      for (const { version, guide } of metadata.migrationGuides) {
         console.log("");
-        console.log(chalk.bgCyan.black.bold(" 📋 MIGRATION TASK CREATED "));
-        console.log(
-          chalk.cyan(
-            `A task has been created to help you complete the migration:`,
-          ),
-        );
-        console.log(
-          chalk.white(
-            `   ${DIR_NAMES.WORKFLOW}/${DIR_NAMES.TASKS}/${taskDirName}/`,
-          ),
-        );
-        console.log("");
-        console.log(
-          chalk.gray(
-            "Use AI to help: Ask Claude/Cursor to read the task and fix your custom files.",
-          ),
-        );
+        console.log(chalk.cyan.bold(`📋 v${version} migration guide:`));
+        console.log(chalk.white(guide));
       }
     }
   }
