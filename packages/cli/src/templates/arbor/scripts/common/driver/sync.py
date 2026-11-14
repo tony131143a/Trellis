@@ -126,7 +126,8 @@ def judge(task: Task, contract: Contract, rec: dict, detail: str | None) -> str 
         if not report_path(task, rec["id"], rec).read_text(encoding="utf-8", errors="replace").strip():
             return f"no report{why}"
         repo = task.data["repos"].get(rec["repo"])
-        if repo and Path(repo["worktree"]) == wt and (not snapshot_refs(wt).clean or head(wt) != repo["head"]):
+        if repo and Path(repo["worktree"]) == wt and (
+                git(wt, "status", "--porcelain") != rec.get("tree", "") or head(wt) != repo["head"]):
             return f"left changes in {wt}"
         return None
     if git(wt, "rev-list", "--count", f"{rec['base']}..HEAD") == "0":
@@ -237,7 +238,7 @@ def start_one(task: Task, contract: Contract, nid: str, rec: dict, repo: dict | 
         changes.update(worktree=str(path), branch=branch, base=base)
     elif not plan.is_writer(rec):
         workdir = Path(repo["worktree"]) if repo else settings(task.main, task.config, rec["repo"]).root
-        changes.update(worktree=str(workdir), base=head(workdir))
+        changes.update(worktree=str(workdir), base=head(workdir), tree=git(workdir, "status", "--porcelain"))
     workdir = Path(changes.get("worktree") or rec["worktree"])
     name = f"{nid}{suffix(rec)}"
     report = report_path(task, nid, rec)

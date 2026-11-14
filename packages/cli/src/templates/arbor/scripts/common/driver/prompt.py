@@ -41,8 +41,7 @@ def worker_spec(task: str, node: str, contract: Path, paths: list[str], checks: 
     else:
         scope = (f"You work read-only in {workdir}: you may run commands (tests, builds, scripts), but leave the "
                  "tree as you found it: no edits to tracked files, no commits, no stash, no checkout; delete every "
-                 "scratch file you create. Your result is the report. Files ignored by git (build output, caches) "
-                 "do not count as changes: the driver's leftover check uses `git status --porcelain`.")
+                 "scratch file you create (build output and caches that git ignores may stay). Your result is the report.")
     lines = [
         f"Arbor node: {task}/{node}",
         "",

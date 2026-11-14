@@ -88,8 +88,10 @@ def cmd_new(args: argparse.Namespace) -> int:
     slug = args.slug or re.sub(r"[^a-z0-9]+", "-", args.title.lower()).strip("-")[:40].strip("-")
     if not SLUG_RE.fullmatch(slug):
         return refuse(f"cannot make a slug of {args.title!r}: pass --slug <a-z0-9->")
-    if args.repo not in repo_keys(config):
-        return refuse(f"unknown repo {args.repo!r} (known: {', '.join(repo_keys(config))})")
+    keys = repo_keys(config)
+    repo = args.repo or (config.get("default_package") if config.get("default_package") in keys else ".")
+    if repo not in keys:
+        return refuse(f"unknown repo {repo!r} (known: {', '.join(keys)})")
     task_dir = tasks_dir(main) / f"{datetime.now().strftime('%m-%d')}-{slug}"
     if task_dir.exists():
         return refuse(f"{task_dir} exists")
@@ -98,10 +100,11 @@ def cmd_new(args: argparse.Namespace) -> int:
     (task_dir / "contract.md").write_text(default_contract_content(args.title), encoding="utf-8")
     write_json(task_dir / FILE_TASK_JSON, {
         "schema": SCHEMA, "name": task_dir.name, "title": args.title, "created": utc_now(), "status": "planning",
-        "default_repo": args.repo, "contract_hash": None, "orca_run": None, "repos": {}, "nodes": {},
+        "default_repo": repo, "contract_hash": None, "orca_run": None, "repos": {}, "nodes": {},
         "review": None, "reviewers": {}, "rounds": 0, "allowance": {"rounds": 0, "nodes": 0}, "stopped": None,
         "cleanup": {"done": []}})
     print(f"created {task_dir}")
+    print(f"default repo: {repo}")
     print(f"next: fill {task_dir / 'contract.md'} with the user (read-only nodes can explore meanwhile: "
           "write them under nodes/, then arbor.py sync); after approval, arbor.py start")
     return 0
@@ -279,7 +282,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("new")
     p.add_argument("title")
     p.add_argument("--slug")
-    p.add_argument("--repo", default=".")
+    p.add_argument("--repo", help="where checks and nodes go by default (default: default_package, else .)")
     p.set_defaults(func=cmd_new)
     p = sub.add_parser("start")
     p.add_argument("--reapprove", action="store_true")

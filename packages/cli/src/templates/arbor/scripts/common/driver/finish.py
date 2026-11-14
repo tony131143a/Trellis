@@ -42,7 +42,8 @@ def gate_problems(task: Task) -> list[str]:
     for key in sorted({(e.repo or task.data["default_repo"]) for e in contract.auto_checks()} - set(heads)):
         if task.data["repos"]:
             ids = ", ".join(e.id for e in map_rows(task, contract, key) if e.kind == "auto")
-            problems.append(f"{ids} run in repo {key}, where no writer node ran: they were never checked")
+            problems.append(f"{ids} run in repo {key}, where no writer node ran: they were never checked "
+                            "(give those rows of the Verification map a `repo` column, then arbor.py start --reapprove)")
     return problems
 
 
