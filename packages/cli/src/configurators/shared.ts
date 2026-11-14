@@ -174,22 +174,8 @@ export function resolvePlaceholders(
 
 /** Skill description registry — maps template name to auto-trigger description. */
 const SKILL_DESCRIPTIONS: Record<string, string> = {
-  workflow:
-    "Start an Arbor task or continue work through the Arbor driver. Use when explicitly invoking the Arbor workflow.",
-  start:
-    "Initializes an AI development session by reading workflow guides, developer identity, git status, active tasks, and project guidelines from .arbor/. Classifies incoming tasks and routes to brainstorm, direct edit, or task workflow. Use when beginning a new coding session, resuming work, starting a new task, or re-establishing project context.",
-  continue:
-    "Resume work on the current task. Asks the driver (`arbor.py next`) for the single next step and acts on it: write a brief, decide a red gate, or wait for the human. Use when coming back to an in-progress task and you need to know what to do next.",
-  "finish-work":
-    "Wrap up the current session: check the task state with the driver, make sure the work is committed on the task branch, archive merged tasks, and record session progress to the developer journal. Use when done coding and ready to end the session.",
-  "before-dev":
-    "Discovers and injects project-specific coding guidelines from .arbor/spec/ before implementation begins. Reads spec indexes, pre-development checklists, and shared thinking guides for the target package. Use when starting a new coding task, before writing any code, switching to a different package, or needing to refresh project conventions and standards.",
-  brainstorm:
-    "Guides collaborative requirements discovery before implementation. Creates task directory, drafts the contract, asks open questions as one batched numbered list, researches technical choices, and converges on MVP scope. Use when requirements are unclear, there are multiple valid approaches, or the user describes a new feature or larger task.",
-  check:
-    "Comprehensive quality verification: spec compliance, lint, type-check, tests, cross-layer data flow, code reuse, and consistency checks. Use when code is written and needs quality verification, before committing changes, or to catch context drift during long sessions.",
-  "break-loop":
-    "Deep bug analysis to break the fix-forget-repeat cycle. Analyzes root cause category, why fixes failed, prevention mechanisms, and captures knowledge into specs. Use after fixing a bug to prevent the same class of bugs.",
+  arbor:
+    "Drive a task that is too large for one context or splits into parallel parts: freeze a contract with the user, split the work into nodes that Orca workers implement in their own worktrees, react to results, review, finish. Use for multi-file features, refactors and cross-repository work; not for a change you can make and verify yourself.",
   "update-spec":
     "Captures executable contracts and coding conventions into .arbor/spec/ documents. Use when learning something valuable from debugging, implementing, or discussion that should be preserved for future sessions.",
 };
@@ -213,40 +199,6 @@ export function wrapWithSkillFrontmatter(
   return `---\nname: ${name}\ndescription: "${description}"\n---\n\n${content}`;
 }
 
-/**
- * One-line blurbs shown in a `/` command palette — kept separate from
- * SKILL_DESCRIPTIONS, which is long prose aimed at the skill matcher.
- */
-const COMMAND_DESCRIPTIONS: Record<string, string> = {
-  start: "Initialize an Arbor development session.",
-  continue: "Resume work on the current task at the correct phase.",
-  "finish-work":
-    "Wrap up the current session: task state, commits, archive, journal.",
-  workflow:
-    "Start an Arbor task from a request (propose a tier, write the contract) or continue the current one with `arbor.py next`.",
-};
-
-/** Wrap resolved command content with YAML frontmatter (name + description). */
-export function wrapWithCommandFrontmatter(
-  name: string,
-  content: string,
-): string {
-  const baseName = name.replace(/^arbor-/, "");
-  const description = COMMAND_DESCRIPTIONS[baseName];
-  if (!description) {
-    throw new Error(
-      `Missing command description for "${baseName}". Add it to COMMAND_DESCRIPTIONS in shared.ts.`,
-    );
-  }
-  // JSON.stringify produces a double-quoted YAML scalar, which is safe even
-  // when the description contains a colon (an unquoted plain scalar cannot
-  // contain ": " — some parsers reject it outright, e.g. Trae CLI's SlashCommand
-  // schema; others silently truncate at the second colon).
-  return `---\nname: ${name}\ndescription: ${JSON.stringify(
-    description,
-  )}\n---\n\n${content}`;
-}
-
 // ---------------------------------------------------------------------------
 // Shared configurator helpers
 // ---------------------------------------------------------------------------
@@ -254,15 +206,9 @@ export function wrapWithCommandFrontmatter(
 import path from "node:path";
 import { ensureDir, writeFile } from "../utils/file-writer.js";
 import {
-  type CommonTemplate,
   getBundledSkillTemplates,
-  getCommandTemplates,
   getSkillTemplates,
 } from "../templates/common/index.js";
-import {
-  getSharedHookScriptsForPlatform,
-  type SharedHookPlatform,
-} from "../templates/shared-hooks/index.js";
 
 /** A resolved template ready to be written to disk. */
 export interface ResolvedTemplate {
@@ -275,45 +221,6 @@ export interface ResolvedSkillFile {
   /** POSIX path relative to the skills root, e.g. "arbor-meta/SKILL.md" */
   relativePath: string;
   content: string;
-}
-
-/**
- * Filter command templates based on platform capabilities.
- *
- * `start.md` is stripped only on platforms that are BOTH `agentCapable` AND
- * `hasHooks` — those platforms (Claude Code, Cursor, Kiro, Gemini, Qoder,
- * CodeBuddy, Copilot, Droid, Pi) have a SessionStart-style hook that
- * auto-injects the workflow overview, so a user-facing `start` would be
- * redundant.
- *
- * `agentCapable && !hasHooks` platforms (Codex, ZCode, OpenCode, Reasonix, Grok)
- * have no such hook (or use an out-of-band plugin), so they need the
- * user-invocable `arbor-start` skill / `start.md` command as fallback.
- * Snow is class-1 (`hasHooks: true`) with auto inject + project agents.
- * Agent-less platforms (Kilo, Antigravity, Devin) also keep `start` since
- * they rely entirely on user-triggered workflows.
- */
-function filterCommands(
-  templates: CommonTemplate[],
-  ctx: TemplateContext,
-): CommonTemplate[] {
-  if (ctx.agentCapable && ctx.hasHooks && ctx.cliFlag !== "codex") {
-    return templates.filter((t) => t.name !== "start");
-  }
-  return templates;
-}
-
-/**
- * Resolve command templates as plain commands (no wrapping).
- * Used by "both" platforms for the user-ritual commands.
- *
- * `start` is filtered out on agent-capable platforms.
- */
-export function resolveCommands(ctx: TemplateContext): ResolvedTemplate[] {
-  return filterCommands(getCommandTemplates(), ctx).map((tmpl) => ({
-    name: tmpl.name,
-    content: resolvePlaceholders(tmpl.content, ctx),
-  }));
 }
 
 /**
@@ -405,20 +312,4 @@ export async function writeTemplateMap(
     ensureDir(path.dirname(absPath));
     await writeFile(absPath, content);
   }
-}
-
-/**
- * Collect the shared hook scripts that `platform` actually registers, keyed
- * under `hooksPath`. Driven by SHARED_HOOKS_BY_PLATFORM so a platform's hook
- * set is never restated per configurator.
- */
-export function collectSharedHooks(
-  hooksPath: string,
-  platform: SharedHookPlatform,
-): Map<string, string> {
-  const files = new Map<string, string>();
-  for (const hook of getSharedHookScriptsForPlatform(platform)) {
-    files.set(`${hooksPath}/${hook.name}`, hook.content);
-  }
-  return files;
 }

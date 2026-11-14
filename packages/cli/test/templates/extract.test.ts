@@ -45,15 +45,15 @@ describe("deprecated source path aliases", () => {
 // =============================================================================
 
 describe("readArborFile", () => {
-  it("reads workflow.md from arbor templates", () => {
-    const content = readArborFile("workflow.md");
+  it("reads config.yaml from arbor templates", () => {
+    const content = readArborFile("config.yaml");
     expect(typeof content).toBe("string");
     expect(content.length).toBeGreaterThan(0);
     expect(content).toContain("#");
   });
 
   it("reads a script file", () => {
-    const content = readArborFile("scripts/task.py");
+    const content = readArborFile("scripts/arbor.py");
     expect(typeof content).toBe("string");
     expect(content.length).toBeGreaterThan(0);
   });
@@ -79,15 +79,15 @@ describe("readTemplate", () => {
 
 describe("readScript", () => {
   it("reads a Python script from scripts/", () => {
-    const content = readScript("task.py");
+    const content = readScript("arbor.py");
     expect(typeof content).toBe("string");
     expect(content.length).toBeGreaterThan(0);
   });
 });
 
 describe("readMarkdown", () => {
-  it("reads workflow.md", () => {
-    const content = readMarkdown("workflow.md");
+  it("reads config.yaml", () => {
+    const content = readMarkdown("config.yaml");
     expect(typeof content).toBe("string");
     expect(content).toContain("#");
   });

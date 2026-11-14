@@ -38,7 +38,7 @@ print("Run: script.py <args>")
 
 # GOOD - Platform-aware wording
 print("Usage: python on Windows, python3 elsewhere")
-print("Run: {{PYTHON_CMD}} ./.arbor/scripts/task.py <args>")
+print("Run: {{PYTHON_CMD}} ./.arbor/scripts/arbor.py <args>")
 ```
 
 **Rule 2**: When generating config files at init time, use placeholder + platform detection:

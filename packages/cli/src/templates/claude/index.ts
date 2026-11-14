@@ -4,9 +4,8 @@
  * Directory structure:
  *   claude/
  *   ├── hooks/          # Claude-only opt-in hooks (statusline.py)
+ *   ├── skills/arbor.md # Body of the main-agent skill `arbor` (Claude only)
  *   └── settings.json   # Settings configuration
- *
- * Default hooks come from shared-hooks/ (unified with other platforms).
  */
 
 import { readFileSync } from "node:fs";
@@ -21,6 +20,9 @@ function readTemplate(relativePath: string): string {
 }
 
 export const settingsTemplate = readTemplate("settings.json");
+
+/** Body of the skill `arbor`; the frontmatter comes from SKILL_DESCRIPTIONS. */
+export const arborSkillTemplate = readTemplate("skills/arbor.md");
 
 export interface SettingsTemplate {
   targetPath: string;

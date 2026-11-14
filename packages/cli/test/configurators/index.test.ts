@@ -293,12 +293,7 @@ describe("collectPlatformTemplates", () => {
     for (const [id, skillRoot] of Object.entries(SKILL_ROOTS)) {
       const result = collectPlatformTemplates(id as AITool);
       expect(result, `${id} should have template tracking`).toBeInstanceOf(Map);
-      expect(result?.has(`${skillRoot}/arbor-meta/SKILL.md`)).toBe(true);
-      expect(
-        result?.has(
-          `${skillRoot}/arbor-meta/references/local-architecture/overview.md`,
-        ),
-      ).toBe(true);
+      expect(result?.has(`${skillRoot}/arbor-meta/SKILL.md`)).toBe(false);
       expect(result?.has(`${skillRoot}/arbor-spec-bootstrap/SKILL.md`)).toBe(
         true,
       );

@@ -106,7 +106,7 @@ last_verified: 2026-10-21
 {{PYTHON_CMD}} ./.arbor/scripts/spec.py verify .arbor/spec/<layer>/<doc>.md
 ```
 
-`{{PYTHON_CMD}} ./.arbor/scripts/spec.py lint` (also run in `{{CMD_REF:finish-work}}` Step 1) reports `missing-metadata`, `dead-source`, `broken-link`, `stale`, `placeholder`, `missing-section`, and `unlisted-doc` findings. `spec.py init-meta <doc>` seeds the block on a doc that lacks one. All of it is advisory — fix what the finding names, it never blocks.
+`{{PYTHON_CMD}} ./.arbor/scripts/spec.py lint` reports `missing-metadata`, `dead-source`, `broken-link`, `stale`, `placeholder`, `missing-section`, and `unlisted-doc` findings. `spec.py init-meta <doc>` seeds the block on a doc that lacks one. All of it is advisory — fix what the finding names, it never blocks.
 
 ---
 
@@ -348,19 +348,15 @@ Before finishing your code-spec update:
 
 ---
 
-## Relationship to Other Commands
+## Relationship to Other Skills
 
 ```
 Development Flow:
-  Learn something → {{CMD_REF:update-spec}} → Knowledge captured
-       ↑                                  ↓
-  {{CMD_REF:break-loop}} ←──────────────────── Future sessions benefit
-  (deep bug analysis)
+  Learn something → arbor-update-spec → Knowledge captured → Future sessions benefit
 ```
 
-- `{{CMD_REF:break-loop}}` - Analyzes bugs deeply, often reveals spec updates needed
-- `{{CMD_REF:update-spec}}` - Actually makes the updates
-- `{{CMD_REF:finish-work}}` - Reminds you to check if specs need updates
+- `arbor-spec-bootstrap` - Fills `.arbor/spec/` from the real codebase the first time
+- `arbor-update-spec` (this skill) - Captures one learning at a time as it comes up
 
 ---
 

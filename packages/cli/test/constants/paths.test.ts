@@ -44,7 +44,6 @@ describe("FILE_NAMES", () => {
     expect(FILE_NAMES).toHaveProperty("CURRENT_TASK");
     expect(FILE_NAMES).toHaveProperty("TASK_JSON");
     expect(FILE_NAMES).toHaveProperty("PRD");
-    expect(FILE_NAMES).toHaveProperty("WORKFLOW_GUIDE");
     expect(FILE_NAMES).toHaveProperty("JOURNAL_PREFIX");
   });
 
@@ -96,12 +95,6 @@ describe("PATHS", () => {
   it("CURRENT_TASK_FILE is WORKFLOW/.current-task", () => {
     expect(PATHS.CURRENT_TASK_FILE).toBe(
       `${DIR_NAMES.WORKFLOW}/${FILE_NAMES.CURRENT_TASK}`,
-    );
-  });
-
-  it("WORKFLOW_GUIDE_FILE is WORKFLOW/workflow.md", () => {
-    expect(PATHS.WORKFLOW_GUIDE_FILE).toBe(
-      `${DIR_NAMES.WORKFLOW}/${FILE_NAMES.WORKFLOW_GUIDE}`,
     );
   });
 

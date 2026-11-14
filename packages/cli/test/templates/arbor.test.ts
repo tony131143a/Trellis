@@ -16,14 +16,12 @@ import {
   taskScript,
   getContextScript,
   addSessionScript,
-  workflowMdTemplate,
   gitignoreTemplate,
   getAllScripts,
-  getAllAgents,
-  implementAgentTemplate,
-  AGENT_ROLES,
   configYamlTemplate,
 } from "../../src/templates/arbor/index.js";
+import { extractConfigSection } from "../../src/commands/update.js";
+import { getAllMigrationVersions } from "../../src/migrations/index.js";
 
 // =============================================================================
 // Template Constants — module-level string exports
@@ -44,37 +42,8 @@ describe("arbor template constants", () => {
     taskScript,
     getContextScript,
     addSessionScript,
-    workflowMdTemplate,
     gitignoreTemplate,
   };
-
-  function inProgressBreadcrumb(): string {
-    return workflowStateBreadcrumb("in_progress");
-  }
-
-  // Same shape as the parser in inject-workflow-state.py: the opening tag must
-  // end its line, so the `[workflow-state:X] → ...` lines inside the contract
-  // comment are not mistaken for a block start.
-  function workflowStateBreadcrumb(status: string): string {
-    const match = new RegExp(
-      `\\[workflow-state:${status}\\]\\s*\\n([\\s\\S]*?)\\n\\s*\\[/workflow-state:${status}\\]`,
-    ).exec(workflowMdTemplate);
-    if (!match) {
-      throw new Error(`${status} breadcrumb block must exist in workflow.md`);
-    }
-    return match[1];
-  }
-
-  function stepSection(step: string): string {
-    const pattern = new RegExp(
-      `#### ${step.replace(".", "\\.")}[^\\n]*\\n([\\s\\S]*?)(?=\\n#### |\\n### |$)`,
-    );
-    const match = pattern.exec(workflowMdTemplate);
-    if (!match) {
-      throw new Error(`workflow.md step ${step} must exist`);
-    }
-    return match[1];
-  }
 
   it("all templates are non-empty strings", () => {
     for (const [name, content] of Object.entries(allTemplates)) {
@@ -103,252 +72,6 @@ describe("arbor template constants", () => {
 
   it("scriptsInit is a Python docstring module", () => {
     expect(scriptsInit).toContain('"""');
-  });
-
-  it("workflowMdTemplate is markdown", () => {
-    expect(workflowMdTemplate).toContain("#");
-  });
-
-  it("[workflow-create-description] every task.py create template passes --description", () => {
-    // task.py create exits 1 without a non-empty --description; an agent
-    // copying a [required] step template verbatim must not hit that.
-    const templates =
-      workflowMdTemplate.match(/task\.py create "[^\n`]*/g) ?? [];
-    expect(templates.length).toBeGreaterThanOrEqual(4);
-    for (const line of templates) {
-      expect(line).toContain("--description");
-    }
-  });
-
-  it("workflow.md in_progress fallback self-exempts dispatched sub-agents", () => {
-    const block = inProgressBreadcrumb();
-    expect(block).toContain("Sub-agent self-exemption");
-    expect(block).toContain("Active task:");
-    expect(block).toContain("dispatched sub-agent");
-    expect(block).toContain("main session only");
-    expect(block).toContain("arbor.py next");
-  });
-
-  it("workflow.md has no platform branch blocks or inline breadcrumbs", () => {
-    expect(workflowMdTemplate).not.toMatch(
-      /^\[\/?[A-Za-z][^\]\n]*,[^\]\n]*\]\s*$/m,
-    );
-    expect(workflowMdTemplate).not.toContain("workflow-state:planning-inline");
-    expect(workflowMdTemplate).not.toContain(
-      "workflow-state:in_progress-inline",
-    );
-  });
-
-  it("workflow.md documents the driver, the dispatch header and the roles", () => {
-    expect(workflowMdTemplate).toContain("## Driver");
-    for (const cmd of [
-      "next",
-      "run",
-      "gate",
-      "decide",
-      "finish",
-      "children",
-      "override",
-      "status | resume | abandon",
-    ]) {
-      expect(workflowMdTemplate).toContain(`arbor.py ${cmd}`);
-    }
-    for (const line of [
-      "Active task:",
-      "Role:",
-      "Mode:",
-      "Range:",
-      "Dispatch: d-NNN",
-    ]) {
-      expect(workflowMdTemplate).toContain(line);
-    }
-    expect(workflowMdTemplate).toContain("Arbor-Dispatch: d-NNN");
-    expect(workflowMdTemplate).toContain("<role>(<task-dir-name>): <summary>");
-    for (const role of AGENT_ROLES) {
-      expect(workflowMdTemplate).toContain(`| \`${role}\` |`);
-    }
-  });
-
-  it("workflow.md drops v1 dispatch machinery and describes Orca workers", () => {
-    for (const gone of [
-      "dispatch.py",
-      "Diff:",
-      "Target:",
-      "Workspace:",
-      "prd.md",
-      "implement.md",
-      "meta.execution",
-      "#### 2P.",
-      "#### 2F.",
-    ]) {
-      expect(
-        workflowMdTemplate,
-        `workflow.md must not mention ${gone}`,
-      ).not.toContain(gone);
-    }
-    expect(workflowMdTemplate).toContain("orca orchestration worker-start");
-    expect(workflowMdTemplate).toContain("arbor.py sync");
-    expect(workflowMdTemplate).toContain("worker_done");
-    for (const gone of [
-      "codeg",
-      "delegate_to_agent",
-      "arbor.py collect",
-      "arbor.py bind",
-      "sync-delegation",
-    ]) {
-      expect(workflowMdTemplate).not.toContain(gone);
-    }
-  });
-
-  it("workflow.md ships the reference tables", () => {
-    for (const heading of [
-      "### State Machine",
-      "### Tiers",
-      "### Human Gates",
-      "### Request Triage",
-      "### Task Artifacts",
-      "### Roles",
-    ]) {
-      expect(workflowMdTemplate).toContain(heading);
-    }
-    for (const state of [
-      "INTAKE",
-      "CONTRACT",
-      "BUILD",
-      "GATE",
-      "REVIEW",
-      "FINISH",
-      "STOP",
-    ]) {
-      expect(workflowMdTemplate).toContain(`| ${state} |`);
-    }
-    expect(workflowMdTemplate).not.toContain("| POLISH |");
-    for (const section of [
-      "## Goal",
-      "## Scope",
-      "## Acceptance criteria",
-      "## Verification map",
-      "## Interface pins",
-      "## Partitions",
-      "## Waves",
-    ]) {
-      expect(workflowMdTemplate).toContain(`\`${section}\``);
-    }
-    expect(workflowMdTemplate).not.toMatch(/\|\s*quick\s*\|/);
-  });
-
-  /** `#### X.Y Title \`[required · once(; scope)]\`` step ids. */
-  function requiredOnceSteps(): string[] {
-    const re = /^#### (\S+) [^\n]*`\[required · once(?:; [^\]`]+)?\]`/gm;
-    return [...workflowMdTemplate.matchAll(re)].map((m) => m[1]);
-  }
-
-  it("[required · once] planning steps appear in the planning breadcrumb", () => {
-    const steps = requiredOnceSteps();
-    expect(steps).toEqual([
-      "1.0",
-      "1.2",
-      "1.4",
-      "1.5",
-      "1.6",
-      "1.7",
-      "3.1",
-      "3.3",
-      "3.4",
-    ]);
-    expect(workflowStateBreadcrumb("no_task")).toContain("1.0");
-    for (const step of steps.filter((s) => s.startsWith("1.") && s !== "1.0")) {
-      expect(
-        workflowStateBreadcrumb("planning"),
-        `${step} must be enforced in the planning block`,
-      ).toContain(step);
-    }
-    expect(workflowStateBreadcrumb("planning")).toContain("task.py start");
-  });
-
-  it("workflow.md ships exactly the v2 block set with no nested or dangling tags", () => {
-    // Same regex as inject-workflow-state.py (backreference on STATUS).
-    const re =
-      /\[workflow-state:([A-Za-z0-9_-]+)\]\s*\n([\s\S]*?)\n\s*\[\/workflow-state:\1\]/g;
-    const names: string[] = [];
-    for (const m of workflowMdTemplate.matchAll(re)) {
-      names.push(m[1]);
-      expect(m[2], `${m[1]} must not swallow another block`).not.toContain(
-        "[workflow-state:",
-      );
-    }
-    // `my-status` is the example block inside the Customizing section.
-    expect(names.filter((n) => n !== "my-status")).toEqual([
-      "no_task",
-      "task_error",
-      "planning",
-      "in_progress",
-      "completed",
-    ]);
-    // A prose line that ends in a tag token would open a block for the parser.
-    expect(workflowMdTemplate).not.toMatch(
-      /^[^[\n][^\n]*\[\/?workflow-state:[A-Za-z0-9_-]+\]\s*$/m,
-    );
-  });
-
-  it("workflow.md step bodies carry the v2 mechanics", () => {
-    expect(stepSection("1.0")).toContain("--tier");
-    expect(stepSection("1.1")).toContain("no total quota");
-    expect(stepSection("1.1")).toContain("next --role explore");
-    expect(stepSection("1.4")).toContain("no fixed count");
-    expect(stepSection("1.2")).toContain("one numbered list");
-    expect(stepSection("1.3")).toContain("Verification map");
-    expect(stepSection("1.4")).toContain("waves.md");
-    expect(stepSection("1.5")).toContain("task.py seed-context");
-    expect(stepSection("1.6")).toContain("Mode: plan");
-    expect(stepSection("1.7")).toContain("task.py start");
-    expect(stepSection("2.1")).toContain("arbor.py next");
-    expect(stepSection("2.2")).toContain("brief_path");
-    expect(stepSection("2.2")).toContain("`Angles:`");
-    expect(stepSection("2.2")).toContain("`A, D, Acceptance`");
-    expect(stepSection("2.3")).toContain("code that satisfies the criteria");
-    expect(stepSection("2.4")).toContain("decide impl|contract");
-    expect(stepSection("2.5")).toContain("PLAUSIBLE");
-    expect(stepSection("2.5")).toContain("Mode: sweep");
-    expect(stepSection("2.6")).toContain("arbor.py resume");
-    expect(stepSection("3.3")).toContain("--no-ff");
-    expect(workflowStateBreadcrumb("no_task")).toContain("Simple");
-    expect(workflowStateBreadcrumb("planning")).toContain(
-      "set-meta <task> tier",
-    );
-  });
-
-  it("workflow.md documents parent child task tree responsibilities", () => {
-    expect(workflowMdTemplate).toContain("### Parent / Child Task Trees");
-    expect(workflowMdTemplate).toContain(
-      "several independently verifiable deliverables",
-    );
-    expect(workflowMdTemplate).toContain(
-      "Parent/child structure is not a dependency system",
-    );
-    expect(workflowMdTemplate).toContain("--parent <parent-dir>");
-    expect(workflowMdTemplate).toContain(
-      "task.py add-subtask <parent> <child>",
-    );
-    expect(workflowMdTemplate).toContain(
-      "start the child that owns the next independently verifiable deliverable",
-    );
-  });
-
-  it("workflow.md planning breadcrumbs mention parent child split guidance", () => {
-    const planning = workflowStateBreadcrumb("planning");
-    expect(planning).toContain("Multi-deliverable scope");
-    expect(planning).toContain(
-      "parent task plus independently verifiable child tasks",
-    );
-    expect(planning).toContain("not implied by tree position");
-  });
-
-  it("workflow.md ships a task_error breadcrumb that repairs the existing task", () => {
-    const taskError = workflowStateBreadcrumb("task_error");
-    expect(taskError).toContain("Do not create or activate another task");
-    expect(taskError).toContain("repair its task.json");
-    expect(taskError).toContain("valid JSON object with a non-empty status");
   });
 
   it("gitignoreTemplate contains ignore patterns", () => {
@@ -423,67 +146,62 @@ describe("getAllScripts", () => {
 });
 
 // =============================================================================
-// getAllAgents — channel runtime agent definitions dispatched at init/update.
-// agent-loader.ts loads `.arbor/agents/<name>.md` and requires `---` YAML
-// frontmatter at the top with a flat `name: <name>` field. These tests pin the
-// contract so a future template edit can't silently break channel spawn.
+// config.yaml — 1.0 shape
 // =============================================================================
 
-describe("getAllAgents", () => {
-  it("ships exactly the six role agents", () => {
-    expect([...getAllAgents().keys()].sort()).toEqual(
-      AGENT_ROLES.map((role) => `${role}.md`).sort(),
+describe("configYamlTemplate: 1.0 sections", () => {
+  it("drops the sections of removed concepts", () => {
+    for (const removed of [
+      "mandate:",
+      "context_injection:",
+      "prompt_injection:",
+      "after_create:",
+      "roles:",
+      "task.py",
+      "partition",
+    ]) {
+      expect(configYamlTemplate, removed).not.toContain(removed);
+    }
+  });
+
+  it("shows the optional tiers and max_nodes keys, commented out", () => {
+    for (const line of [
+      "    # max_nodes: 30",
+      "    # tiers:",
+      "    #   light:",
+      "    #   review:",
+    ]) {
+      expect(configYamlTemplate).toContain(`\n${line}`);
+    }
+  });
+
+  // `arbor update` treats a section as present when the user's file contains
+  // its sentinel anywhere, comments included. A sentinel quoted inside
+  // another section would block the append on every upgraded project.
+  it("mentions every configSectionsAdded sentinel only inside its own section", () => {
+    const manifestsDir = path.resolve(
+      __dirname,
+      "../../src/migrations/manifests",
     );
-    expect(AGENT_ROLES).toEqual([
-      "explore",
-      "architect",
-      "implement",
-      "review",
-      "fix",
-      "simplify",
-    ]);
-  });
-
-  it("values match exported constants", () => {
-    expect(getAllAgents().get("implement.md")).toBe(implementAgentTemplate);
-  });
-
-  it("no retired role agents", () => {
-    for (const retired of ["check.md", "research.md"]) {
-      expect(getAllAgents().has(retired)).toBe(false);
-    }
-  });
-
-  it("assistant instructions have no frontmatter or provider/model fields", () => {
-    for (const [file, content] of getAllAgents()) {
-      expect(
-        content.startsWith("---"),
-        `${file} must not start with frontmatter`,
-      ).toBe(false);
-      expect(content, file).not.toContain("provider:");
-      expect(content, file).toContain("Active task:");
-      expect(content, file).toContain("arbor-hook-injected");
-    }
-  });
-});
-
-// =============================================================================
-// config.yaml — context_injection section (issue #441)
-// =============================================================================
-
-describe("configYamlTemplate: context_injection section", () => {
-  it("documents the context_injection block, fully commented out", () => {
-    expect(configYamlTemplate).toContain("context_injection:");
-    expect(configYamlTemplate).toContain("#   max_file_bytes: 32768");
-    expect(configYamlTemplate).toContain("#   max_artifact_bytes: 65536");
-    expect(configYamlTemplate).toContain("#   max_total_bytes: 131072");
-    // Every context_injection line must be commented — the section ships
-    // inert by default (matches the codex.dispatch_mode precedent).
-    const lines = configYamlTemplate.split("\n");
-    const start = lines.findIndex((l) => l.includes("context_injection:"));
-    expect(start).toBeGreaterThan(-1);
-    for (const line of lines.slice(start, start + 4)) {
-      expect(line.trimStart().startsWith("#")).toBe(true);
+    for (const version of getAllMigrationVersions()) {
+      const manifest = JSON.parse(
+        fs.readFileSync(path.join(manifestsDir, `${version}.json`), "utf-8"),
+      ) as {
+        configSectionsAdded?: { sentinel: string; sectionHeading: string }[];
+      };
+      for (const entry of manifest.configSectionsAdded ?? []) {
+        const section = extractConfigSection(
+          configYamlTemplate,
+          entry.sectionHeading,
+        );
+        const outside =
+          section === null
+            ? configYamlTemplate
+            : configYamlTemplate.replace(section, "");
+        expect(outside, `${version}: ${entry.sentinel}`).not.toContain(
+          entry.sentinel,
+        );
+      }
     }
   });
 });

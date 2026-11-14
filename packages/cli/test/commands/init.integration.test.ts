@@ -36,6 +36,7 @@ import { execSync } from "node:child_process";
 
 // eslint-disable-next-line @typescript-eslint/no-empty-function
 const noop = () => {};
+const ARBOR_SKILL = ".claude/skills/arbor/SKILL.md";
 
 describe("init() integration", () => {
   let tmpDir: string;
@@ -80,36 +81,45 @@ describe("init() integration", () => {
     // Root files
     expect(fs.existsSync(path.join(tmpDir, "AGENTS.md"))).toBe(true);
 
-    // Built-in multi-file skills are installed for default platforms.
+    // The skill `arbor` plus the kept skills; no hooks, commands,
+    // sub-agent definitions, role files or workflow.md.
+    for (const skill of ["arbor", "arbor-spec-bootstrap", "arbor-update-spec"]) {
+      expect(
+        fs.existsSync(path.join(tmpDir, ".claude", "skills", skill, "SKILL.md")),
+        skill,
+      ).toBe(true);
+    }
+    for (const absent of [
+      ".claude/hooks",
+      ".claude/commands",
+      ".claude/agents",
+      ".claude/skills/arbor-meta",
+      ".arbor/agents",
+      ".arbor/workflow.md",
+    ]) {
+      expect(fs.existsSync(path.join(tmpDir, absent)), absent).toBe(false);
+    }
+    const settings = JSON.parse(
+      fs.readFileSync(path.join(tmpDir, ".claude", "settings.json"), "utf-8"),
+    ) as Record<string, unknown>;
+    expect(settings).not.toHaveProperty("hooks");
+  });
+
+  it("#1c creates no task and points to the arbor-spec-bootstrap skill", async () => {
+    await init({ yes: true, user: "dev" });
+
+    expect(fs.readdirSync(path.join(tmpDir, PATHS.TASKS))).toEqual([]);
+    // Developer identity and the journal still work.
     expect(
-      fs.existsSync(
-        path.join(tmpDir, ".claude", "skills", "arbor-meta", "SKILL.md"),
-      ),
-    ).toBe(true);
-    expect(
-      fs.existsSync(
-        path.join(
-          tmpDir,
-          ".claude",
-          "skills",
-          "arbor-spec-bootstrap",
-          "SKILL.md",
+      vi
+        .mocked(execSync)
+        .mock.calls.some(
+          ([cmd]) => typeof cmd === "string" && cmd.includes("init_developer.py"),
         ),
-      ),
     ).toBe(true);
-    expect(
-      fs.existsSync(
-        path.join(
-          tmpDir,
-          ".claude",
-          "skills",
-          "arbor-meta",
-          "references",
-          "local-architecture",
-          "overview.md",
-        ),
-      ),
-    ).toBe(true);
+    expect(console.log).toHaveBeenCalledWith(
+      expect.stringContaining("arbor-spec-bootstrap"),
+    );
   });
 
   it("#1a writes .gitattributes with the journal merge=union rule (#415)", async () => {
@@ -146,9 +156,7 @@ describe("init() integration", () => {
     expect(fs.existsSync(path.join(tmpDir, ".codex"))).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, ".agents", "skills"))).toBe(false);
     expect(
-      fs.existsSync(
-        path.join(tmpDir, ".claude", "skills", "arbor-meta", "SKILL.md"),
-      ),
+      fs.existsSync(path.join(tmpDir, ".claude", "skills", "arbor", "SKILL.md")),
     ).toBe(true);
   });
 
@@ -156,11 +164,12 @@ describe("init() integration", () => {
     await init({ yes: true, claude: true, codex: true });
 
     expect(fs.existsSync(path.join(tmpDir, ".claude"))).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, ".codex"))).toBe(true);
+    // Codex gets skills only; Arbor writes nothing under .codex/.
+    expect(fs.existsSync(path.join(tmpDir, ".codex"))).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, ".agents", "skills"))).toBe(true);
   });
 
-  it("#3n Codex installs skills and hooks without changing user config", async () => {
+  it("#3n Codex installs the kept skills, no hooks, without changing user config", async () => {
     fs.mkdirSync(path.join(tmpDir, ".codex"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".codex/config.toml"),
@@ -168,14 +177,15 @@ describe("init() integration", () => {
     );
     await init({ yes: true, codex: true });
     expect(
-      fs.existsSync(path.join(tmpDir, ".agents/skills/arbor-start/SKILL.md")),
+      fs.existsSync(path.join(tmpDir, ".agents/skills/arbor-update-spec/SKILL.md")),
     ).toBe(true);
     expect(
       fs.existsSync(
-        path.join(tmpDir, ".agents/skills/arbor-continue/SKILL.md"),
+        path.join(tmpDir, ".agents/skills/arbor-spec-bootstrap/SKILL.md"),
       ),
     ).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, ".codex/hooks.json"))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, ".codex/hooks.json"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".codex/hooks"))).toBe(false);
     expect(
       fs.readFileSync(path.join(tmpDir, ".codex/config.toml"), "utf8"),
     ).toBe('model = "user-model"\n');
@@ -194,24 +204,24 @@ describe("init() integration", () => {
   it("#4 force mode overwrites previously modified files", async () => {
     await init({ yes: true, force: true });
 
-    const workflowMd = path.join(tmpDir, PATHS.WORKFLOW_GUIDE_FILE);
-    const original = fs.readFileSync(workflowMd, "utf-8");
-    fs.writeFileSync(workflowMd, "user modified content");
+    const skillMd = path.join(tmpDir, ARBOR_SKILL);
+    const original = fs.readFileSync(skillMd, "utf-8");
+    fs.writeFileSync(skillMd, "user modified content");
 
     await init({ yes: true, force: true });
 
-    expect(fs.readFileSync(workflowMd, "utf-8")).toBe(original);
+    expect(fs.readFileSync(skillMd, "utf-8")).toBe(original);
   });
 
   it("#5 skip mode preserves previously modified files", async () => {
     await init({ yes: true, force: true });
 
-    const workflowMd = path.join(tmpDir, PATHS.WORKFLOW_GUIDE_FILE);
-    fs.writeFileSync(workflowMd, "user modified content");
+    const skillMd = path.join(tmpDir, ARBOR_SKILL);
+    fs.writeFileSync(skillMd, "user modified content");
 
     await init({ yes: true, skipExisting: true });
 
-    expect(fs.readFileSync(workflowMd, "utf-8")).toBe("user modified content");
+    expect(fs.readFileSync(skillMd, "utf-8")).toBe("user modified content");
   });
 
   it("#6 re-init with force produces identical file set", async () => {
@@ -284,16 +294,11 @@ describe("init() integration", () => {
 
     await init({ yes: true, claude: true });
 
-    const settings = fs.readFileSync(
-      path.join(tmpDir, ".claude", "settings.json"),
-      "utf-8",
-    );
-    expect(settings).toContain(
-      `"${expectedPythonCmd} .claude/hooks/session-start.py"`,
-    );
+    const skill = fs.readFileSync(path.join(tmpDir, ARBOR_SKILL), "utf-8");
+    expect(skill).toContain(`${expectedPythonCmd} ./.arbor/scripts/arbor.py`);
     expect(console.log).toHaveBeenCalledWith(
       expect.stringContaining(
-        `Arbor rendered Python commands as "${expectedPythonCmd}" in generated hooks, settings, and help text`,
+        `Arbor rendered Python commands as "${expectedPythonCmd}" in generated skills and help text`,
       ),
     );
   });
@@ -327,42 +332,6 @@ describe("init() integration", () => {
     );
     expect(hashes[FILE_NAMES.AGENTS]).toBe(computeHash(agentsContent));
     expect(Object.keys(hashes).length).toBeGreaterThan(0);
-  });
-
-  it("#9b bootstrap task writes a v2 contract.md, not prd.md", async () => {
-    await init({ yes: true, user: "dev" });
-
-    const taskDir = path.join(tmpDir, PATHS.TASKS, "00-bootstrap-guidelines");
-    expect(fs.existsSync(path.join(taskDir, FILE_NAMES.TASK_JSON))).toBe(true);
-    expect(fs.existsSync(path.join(taskDir, FILE_NAMES.PRD))).toBe(false);
-    const contract = fs.readFileSync(
-      path.join(taskDir, FILE_NAMES.CONTRACT),
-      "utf-8",
-    );
-    // Mirrors CONTRACT_TEMPLATE in common/contract.py.
-    for (const heading of [
-      "## Goal",
-      "## Scope",
-      "## Acceptance criteria",
-      "## Verification map",
-      "## Interface pins",
-    ]) {
-      expect(contract).toContain(`\n${heading}\n`);
-    }
-    expect(contract).toContain("- in: ");
-    expect(contract).toContain("- out: ");
-    expect(contract).toMatch(/^- AC-1: Given .+ When .+ Then .+$/m);
-    expect(contract).toContain("| id | kind | check | file |");
-    expect(contract).toContain("| AC-1 | manual |");
-    expect(contract).toContain("- existing interfaces");
-    // Fullstack default: one criterion per checklist item.
-    expect(contract).toContain("- [ ] Fill backend guidelines");
-    expect(contract).toContain("| AC-3 | manual |");
-    // No v1 runtime wording.
-    expect(contract).not.toMatch(
-      /prd\.md|sub-agent|arbor-implement|arbor-check|platform hook/,
-    );
-    expect(contract).toContain("executors:");
   });
 
   it("#10 creates spec templates for backend, frontend, and guides", async () => {
@@ -494,59 +463,6 @@ describe("init() integration", () => {
     expect(configContent).toContain("default_package:");
   });
 
-  it("#15 monorepo: bootstrap task references per-package spec paths", async () => {
-    setupPnpmWorkspace(tmpDir, [
-      { rel: "packages/core", name: "core" },
-      { rel: "packages/ui", name: "ui" },
-    ]);
-
-    await init({ yes: true, user: "dev" });
-
-    const taskDir = path.join(tmpDir, PATHS.TASKS, "00-bootstrap-guidelines");
-    expect(fs.existsSync(taskDir)).toBe(true);
-
-    const taskJson = JSON.parse(
-      fs.readFileSync(path.join(taskDir, "task.json"), "utf-8"),
-    );
-
-    // task.json.subtasks is canonical string[] (child task dir names);
-    // per-package checklist items now live in contract.md as markdown checkboxes.
-    expect(Array.isArray(taskJson.subtasks)).toBe(true);
-    expect(taskJson.subtasks).toEqual([]);
-
-    // Canonical shape: legacy current_phase / next_action must NOT appear
-    expect(taskJson.current_phase).toBeUndefined();
-    expect(taskJson.next_action).toBeUndefined();
-
-    // relatedFiles point to spec/<name>/
-    expect(taskJson.relatedFiles).toContain(".arbor/spec/core/");
-    expect(taskJson.relatedFiles).toContain(".arbor/spec/ui/");
-
-    // contract.md mentions packages + renders per-package checklist items
-    // and one acceptance criterion per item
-    const prd = fs.readFileSync(
-      path.join(taskDir, FILE_NAMES.CONTRACT),
-      "utf-8",
-    );
-    expect(prd).toMatch(
-      /^- AC-1: Given the existing code When the guidelines for core are written Then /m,
-    );
-    expect(prd).toContain("| AC-3 | manual |");
-    const expectedPythonCmd =
-      process.platform === "win32" ? "python" : "python3";
-    expect(prd).toContain("core");
-    expect(prd).toContain("ui");
-    expect(prd).toContain("spec/");
-    expect(prd).toContain("- [ ] Fill guidelines for core");
-    expect(prd).toContain("- [ ] Fill guidelines for ui");
-    expect(prd).toContain(
-      `${expectedPythonCmd} ./.arbor/scripts/task.py finish`,
-    );
-    expect(prd).toContain(
-      `${expectedPythonCmd} ./.arbor/scripts/task.py archive 00-bootstrap-guidelines`,
-    );
-  });
-
   it("#16 --no-monorepo skips detection even with workspace config", async () => {
     setupPnpmWorkspace(tmpDir, [{ rel: "packages/a", name: "a" }]);
 
@@ -637,34 +553,6 @@ describe("init() integration", () => {
     expect(matches).toHaveLength(1);
   });
 
-  // GitHub issue #267 — Windows users silently lose SessionStart injection
-  // because Python cold start exceeds the historical 10s timeout. Defaults
-  // were bumped to 30s (SessionStart) / 15s (UserPromptSubmit). This guards
-  // against future drift on the most common install path.
-  it("#19 init writes bumped hook timeouts (issue #267)", async () => {
-    await init({ yes: true, claude: true });
-
-    const settings = JSON.parse(
-      fs.readFileSync(path.join(tmpDir, ".claude", "settings.json"), "utf-8"),
-    ) as {
-      hooks: {
-        SessionStart: { hooks: { timeout: number }[] }[];
-        UserPromptSubmit: { hooks: { timeout: number }[] }[];
-      };
-    };
-
-    for (const entry of settings.hooks.SessionStart) {
-      for (const hook of entry.hooks) {
-        expect(hook.timeout).toBeGreaterThanOrEqual(30);
-      }
-    }
-    for (const entry of settings.hooks.UserPromptSubmit) {
-      for (const hook of entry.hooks) {
-        expect(hook.timeout).toBeGreaterThanOrEqual(15);
-      }
-    }
-  });
-
   // ===========================================================================
   // Claude Code statusLine interactive opt-in (--with-statusline)
   // ===========================================================================
@@ -751,8 +639,6 @@ describe("init() integration", () => {
   });
 
   it("#28 reinit add-platform: statusLine confirm fires for newly added claude", async () => {
-    // user is required so the bootstrap task is created — otherwise the second
-    // init routes through the aborted-init recovery instead of handleReinit
     await init({ yes: true, codex: true, user: "alice" });
     expect(fs.existsSync(path.join(tmpDir, ".claude"))).toBe(false);
 
@@ -776,19 +662,11 @@ describe("init() integration", () => {
     fs.writeFileSync(nativeSettingsPath, '{"permissions":{"allow":[]}}\n');
 
     await init({ yes: true, codex: true, user: "alice" });
-    expect(
-      fs.existsSync(
-        path.join(tmpDir, ".claude", "skills", "arbor-meta", "SKILL.md"),
-      ),
-    ).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ARBOR_SKILL))).toBe(false);
 
     await init({ yes: true, claude: true });
 
-    expect(
-      fs.existsSync(
-        path.join(tmpDir, ".claude", "skills", "arbor-meta", "SKILL.md"),
-      ),
-    ).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, ARBOR_SKILL))).toBe(true);
     expect(fs.readFileSync(nativeSettingsPath, "utf-8")).toBe(
       '{"permissions":{"allow":[]}}\n',
     );
@@ -840,7 +718,7 @@ describe("init() integration", () => {
     expect(loadHashes(tmpDir)[FILE_NAMES.CLAUDE]).toBe(computeHash(expected));
 
     // A re-init replaces a stale block in place instead of appending again.
-    fs.writeFileSync(claudeMd, expected.replace("(main agent)", "(stale)"));
+    fs.writeFileSync(claudeMd, expected.replace("load the skill `arbor`", "(stale)"));
     await init({ yes: true, claude: true, force: true });
     expect(fs.readFileSync(claudeMd, "utf-8")).toBe(expected);
   });

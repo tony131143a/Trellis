@@ -81,7 +81,7 @@ describe("uninstall() integration", () => {
     // Sanity: init wrote things.
     expect(fs.existsSync(path.join(tmpDir, ".arbor"))).toBe(true);
     expect(fs.existsSync(path.join(tmpDir, ".claude"))).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, ".codex"))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, ".agents", "skills"))).toBe(true);
 
     const hashesBefore = loadHashes(tmpDir);
     expect(Object.keys(hashesBefore).length).toBeGreaterThan(0);
@@ -166,15 +166,14 @@ describe("uninstall() integration", () => {
   it("#6 user-modified arbor file is still deleted (manifest defines scope)", async () => {
     await init({ yes: true, codex: true, force: true });
 
-    // Pick any manifest-tracked file under .codex/ and overwrite it.
+    // Pick any manifest-tracked Codex skill file and overwrite it.
     const hashesBefore = loadHashes(tmpDir);
-    // Pick an opaque (non-structured) file: settings.json is scrubbed, not deleted.
     const starTrackedPath = Object.keys(hashesBefore).find(
-      (p) => p.startsWith(".codex/") && p.endsWith(".py"),
+      (p) => p.startsWith(".agents/skills/") && p.endsWith(".md"),
     );
     if (!starTrackedPath) {
       throw new Error(
-        "Test fixture: expected at least one .codex/ entry in manifest",
+        "Test fixture: expected at least one .agents/skills/ entry in manifest",
       );
     }
     const abs = path.join(tmpDir, ...starTrackedPath.split("/"));
@@ -357,36 +356,54 @@ describe("uninstall() integration", () => {
     }
   });
 
-  it("#9 .codex/hooks.json keeps user fields and survives uninstall", async () => {
+  it("#9 a pre-1.0 .codex/hooks.json keeps user fields and survives uninstall", async () => {
     await init({ yes: true, codex: true, force: true });
 
-    // Codex is a Claude Code fork, so its settings.json is Claude-shaped
-    // and must be scrubbed rather than deleted — otherwise a user's own model /
-    // permissions / hooks are discarded on uninstall.
+    // 1.0 installs no .codex/hooks.json, but a project installed before 1.0
+    // still tracks one. It must be scrubbed rather than deleted — otherwise a
+    // user's own model / permissions / hooks are discarded on uninstall.
     const settingsPath = path.join(tmpDir, ".codex", "hooks.json");
-    expect(fs.existsSync(settingsPath)).toBe(true);
-
-    const original = JSON.parse(
-      fs.readFileSync(settingsPath, "utf-8"),
-    ) as Record<string, unknown>;
-    const augmented: Record<string, unknown> = {
-      ...original,
+    const arborHook = (name: string) => ({
+      type: "command",
+      command: `python3 -X utf8 "$(git rev-parse --show-toplevel)/.codex/hooks/${name}"`,
+      timeout: 30,
+    });
+    const augmented = {
       model: "star-model",
       permissions: { allow: ["Bash(git:*)"] },
+      hooks: {
+        SessionStart: [
+          {
+            hooks: [
+              arborHook("session-start.py"),
+              {
+                type: "command",
+                command: "python3 .codex/hooks/my-user-hook.py",
+                timeout: 5,
+              },
+            ],
+          },
+        ],
+        UserPromptSubmit: [{ hooks: [arborHook("inject-workflow-state.py")] }],
+      },
     };
-    const hooks = augmented.hooks as Record<string, unknown> | undefined;
-    const sessionStart = hooks?.SessionStart;
-    if (Array.isArray(sessionStart) && sessionStart.length > 0) {
-      const block = sessionStart[0] as Record<string, unknown>;
-      if (Array.isArray(block.hooks)) {
-        (block.hooks as unknown[]).push({
-          type: "command",
-          command: "python3 .codex/hooks/my-user-hook.py",
-          timeout: 5,
-        });
-      }
-    }
+    fs.mkdirSync(path.join(tmpDir, ".codex", "hooks"), { recursive: true });
     fs.writeFileSync(settingsPath, JSON.stringify(augmented, null, 2));
+    const legacyHooks = [
+      ".codex/hooks/session-start.py",
+      ".codex/hooks/inject-workflow-state.py",
+    ];
+    for (const hook of legacyHooks) {
+      fs.writeFileSync(path.join(tmpDir, hook), "# arbor hook\n");
+    }
+    const hashFile = path.join(tmpDir, DIR_NAMES.WORKFLOW, ".template-hashes.json");
+    const manifest = JSON.parse(fs.readFileSync(hashFile, "utf-8")) as {
+      hashes: Record<string, string>;
+    };
+    for (const tracked of [".codex/hooks.json", ...legacyHooks]) {
+      manifest.hashes[tracked] = "0".repeat(64);
+    }
+    fs.writeFileSync(hashFile, JSON.stringify(manifest, null, 2));
 
     await uninstall({ yes: true });
 

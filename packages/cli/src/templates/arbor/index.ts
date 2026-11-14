@@ -10,10 +10,6 @@
  *   │   ├── __init__.py
  *   │   ├── common/           # Shared utilities (Python)
  *   │   └── *.py              # Main scripts (Python)
- *   ├── agents/                # Channel runtime agent definitions
- *   │   └── *.md               # Loaded by `arbor channel spawn --agent <name>`
- *   ├── scripts-shell-archive/ # Archived shell scripts (for reference)
- *   ├── workflow.md           # Workflow guide
  *   ├── config.yaml            # Arbor configuration
  *   ├── gitignore.txt         # .gitignore content
  *   └── gitattributes.txt     # project-root .gitattributes content
@@ -112,24 +108,9 @@ export const specScript = readTemplate("scripts/spec.py");
 export const arborScript = readTemplate("scripts/arbor.py");
 
 // Configuration files
-export const workflowMdTemplate = readTemplate("workflow.md");
 export const configYamlTemplate = readTemplate("config.yaml");
 export const gitignoreTemplate = readTemplate("gitignore.txt");
 export const gitattributesTemplate = readTemplate("gitattributes.txt");
-
-// Channel runtime agent definitions (loaded by
-// `packages/cli/src/commands/channel/agent-loader.ts` from `.arbor/agents/`).
-// These are platform-agnostic Arbor runtime files dispatched at `arbor init`
-// and refreshed by `arbor update`.
-export const AGENT_ROLES = [
-  "explore",
-  "architect",
-  "implement",
-  "review",
-  "fix",
-  "simplify",
-] as const;
-export const implementAgentTemplate = readTemplate("agents/implement.md");
 
 /**
  * Get all script templates as a map of relative path to content
@@ -202,20 +183,4 @@ export function getAllScripts(): Map<string, string> {
   );
 
   return scripts;
-}
-
-/**
- * Get all channel runtime agent definitions as a map of relative path
- * (under `.arbor/agents/`) to content.
- *
- * Consumed by `arbor init` (to dispatch on first install) and by
- * `arbor update` (to backfill missing files and surface conflicts on edited
- * ones via the standard hash machinery).
- */
-export function getAllAgents(): Map<string, string> {
-  const agents = new Map<string, string>();
-  for (const role of AGENT_ROLES) {
-    agents.set(`${role}.md`, readTemplate(`agents/${role}.md`));
-  }
-  return agents;
 }

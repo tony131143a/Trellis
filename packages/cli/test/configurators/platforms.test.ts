@@ -330,7 +330,7 @@ describe("configurePlatform", () => {
     );
   });
 
-  it("configurePlatform('codex') installs tracked shared skills and hooks", async () => {
+  it("configurePlatform('codex') installs the kept skills and nothing under .codex/", async () => {
     await configurePlatform("codex", tmpDir);
     const templates = collectPlatformTemplates("codex");
     expect(templates).toBeDefined();
@@ -338,22 +338,37 @@ describe("configurePlatform", () => {
       expect(readConfiguredFile(tmpDir, relativePath)).toBe(content);
     }
     expect(
-      fs.existsSync(path.join(tmpDir, ".agents/skills/arbor-start/SKILL.md")),
+      fs.existsSync(
+        path.join(tmpDir, ".agents/skills/arbor-update-spec/SKILL.md"),
+      ),
     ).toBe(true);
     expect(
       fs.existsSync(
-        path.join(tmpDir, ".agents/skills/arbor-workflow/SKILL.md"),
+        path.join(tmpDir, ".agents/skills/arbor-spec-bootstrap/SKILL.md"),
       ),
     ).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, ".codex/hooks.json"))).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, ".codex/config.toml"))).toBe(false);
+    // The main-agent skill `arbor` is Claude Code only.
+    expect(fs.existsSync(path.join(tmpDir, ".agents/skills/arbor"))).toBe(
+      false,
+    );
+    expect(fs.existsSync(path.join(tmpDir, ".codex"))).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, ".starFactory"))).toBe(false);
     expect(AI_TOOLS.codex.supportsAgentSkills).toBe(true);
   });
 
-  it("claude-code configuration includes commands directory", async () => {
+  it("claude-code configuration installs the skill `arbor` and no commands, hooks or agents", async () => {
     await configurePlatform("claude-code", tmpDir);
-    expect(fs.existsSync(path.join(tmpDir, ".claude", "commands"))).toBe(true);
+    const skill = fs.readFileSync(
+      path.join(tmpDir, ".claude", "skills", "arbor", "SKILL.md"),
+      "utf-8",
+    );
+    expect(skill).toMatch(/^---\nname: arbor\ndescription: "/);
+    expect(skill).not.toContain("{{PYTHON_CMD}}");
+    for (const absent of ["commands", "hooks", "agents"]) {
+      expect(fs.existsSync(path.join(tmpDir, ".claude", absent)), absent).toBe(
+        false,
+      );
+    }
   });
 
   it("claude-code configuration includes settings.json", async () => {
@@ -405,7 +420,6 @@ describe("configurePlatform", () => {
     // fresh opted-in project shows zero settings.json diff on update
     expect(Object.keys(settings)).toEqual([
       "env",
-      "hooks",
       "enabledPlugins",
       "statusLine",
     ]);
@@ -414,7 +428,6 @@ describe("configurePlatform", () => {
       resolvePlaceholders(claudeSettingsTemplate),
     ) as Record<string, unknown>;
     expect(settings.env).toEqual(expected.env);
-    expect(settings.hooks).toEqual(expected.hooks);
     expect(settings.enabledPlugins).toEqual(expected.enabledPlugins);
   });
 

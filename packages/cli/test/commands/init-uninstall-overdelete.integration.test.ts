@@ -81,11 +81,11 @@ describe("init + uninstall: manifest accuracy + homedir guard", () => {
 
     const hashes = loadHashes(tmpDir);
     expect(hashes).not.toHaveProperty(".codex/sessions/2026/x.jsonl");
-    // Sanity: arbor's own star files ARE tracked.
-    const trackedCodex = Object.keys(hashes).filter((k) =>
-      k.startsWith(".codex/"),
-    );
-    expect(trackedCodex.length).toBeGreaterThan(0);
+    // Sanity: Arbor's own Codex files (skills only) ARE tracked; nothing
+    // under .codex/ is.
+    const keys = Object.keys(hashes);
+    expect(keys.filter((k) => k.startsWith(".agents/skills/")).length).toBeGreaterThan(0);
+    expect(keys.filter((k) => k.startsWith(".codex/"))).toEqual([]);
   });
 
   it("#R1.2 init does not hash pre-existing .claude/projects/ chat history", async () => {

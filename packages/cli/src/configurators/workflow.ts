@@ -6,11 +6,9 @@ import { copyArborDir } from "../templates/extract.js";
 
 // Import arbor templates (generic, not project-specific)
 import {
-  workflowMdTemplate,
   configYamlTemplate,
   gitignoreTemplate,
   gitattributesTemplate,
-  getAllAgents,
 } from "../templates/arbor/index.js";
 
 // Import markdown templates
@@ -102,7 +100,7 @@ export function ensureGitattributes(cwd: string): void {
  *
  * This function creates the .arbor/ directory structure by:
  * 1. Copying scripts/ directory directly (dogfooding)
- * 2. Copying workflow.md and .gitignore (dogfooding)
+ * 2. Copying .gitignore and config.yaml
  * 3. Creating workspace/ with index.md
  * 4. Creating tasks/ directory
  * 5. Creating spec/ with templates (not dogfooded - generic templates)
@@ -125,12 +123,6 @@ export async function createWorkflowStructure(
     executable: true,
   });
 
-  // Copy workflow.md from templates
-  await writeFile(
-    path.join(cwd, PATHS.WORKFLOW_GUIDE_FILE),
-    replacePythonCommandLiterals(workflowMdTemplate),
-  );
-
   // Copy .gitignore from templates
   await writeFile(
     path.join(cwd, DIR_NAMES.WORKFLOW, ".gitignore"),
@@ -146,17 +138,6 @@ export async function createWorkflowStructure(
   // Ensure project-root .gitattributes carries the journal merge=union rule
   // (additive-only — never overwrites a user's existing file wholesale).
   ensureGitattributes(cwd);
-
-  // Dispatch channel runtime agent definitions. These are platform-agnostic
-  // Arbor runtime files consumed by `arbor channel spawn --agent <name>`
-  // through `packages/cli/src/commands/channel/agent-loader.ts`. They are
-  // dispatched on every init regardless of selected workflow because the user
-  // can switch to a channel-driven workflow at any time via `arbor workflow
-  // --template`.
-  ensureDir(path.join(cwd, PATHS.AGENTS));
-  for (const [agentFile, content] of getAllAgents()) {
-    await writeFile(path.join(cwd, PATHS.AGENTS, agentFile), content);
-  }
 
   // Create workspace/ with index.md
   ensureDir(path.join(cwd, PATHS.WORKSPACE));

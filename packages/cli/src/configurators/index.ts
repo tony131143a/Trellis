@@ -98,13 +98,15 @@ export function getConfiguredPlatforms(cwd: string): Set<AITool> {
   const hashes = loadHashes(cwd);
 
   for (const id of PLATFORM_IDS) {
-    const configDir = AI_TOOLS[id].configDir;
+    // Every managed path, not only configDir: Codex installs nothing under
+    // `.codex/` any more, only `.agents/skills/`.
+    const managedPaths = getManagedPaths(id);
     const templates = collectPlatformTemplates(id);
     const hasTrackedTemplate = [...(templates?.keys() ?? [])].some(
       (relativePath) =>
-        (relativePath === configDir ||
-          relativePath.startsWith(`${configDir}/`)) &&
-        hashes[relativePath] !== undefined,
+        managedPaths.some(
+          (dir) => relativePath === dir || relativePath.startsWith(`${dir}/`),
+        ) && hashes[relativePath] !== undefined,
     );
     if (hasTrackedTemplate) {
       platforms.add(id);

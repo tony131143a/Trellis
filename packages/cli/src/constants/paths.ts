@@ -19,8 +19,6 @@ export const DIR_NAMES = {
   SPEC: "spec",
   /** Scripts directory (under .arbor/) */
   SCRIPTS: "scripts",
-  /** Channel runtime agent definitions (under .arbor/) */
-  AGENTS: "agents",
 } as const;
 
 // File names
@@ -39,8 +37,6 @@ export const FILE_NAMES = {
   PRD: "prd.md",
   /** Task acceptance contract */
   CONTRACT: "contract.md",
-  /** Workflow guide */
-  WORKFLOW_GUIDE: "workflow.md",
   /** Journal file prefix */
   JOURNAL_PREFIX: "journal-",
 } as const;
@@ -57,14 +53,10 @@ export const PATHS = {
   SPEC: `${DIR_NAMES.WORKFLOW}/${DIR_NAMES.SPEC}`,
   /** .arbor/scripts/ */
   SCRIPTS: `${DIR_NAMES.WORKFLOW}/${DIR_NAMES.SCRIPTS}`,
-  /** .arbor/agents/ */
-  AGENTS: `${DIR_NAMES.WORKFLOW}/${DIR_NAMES.AGENTS}`,
   /** .arbor/.developer */
   DEVELOPER_FILE: `${DIR_NAMES.WORKFLOW}/${FILE_NAMES.DEVELOPER}`,
   /** .arbor/.current-task */
   CURRENT_TASK_FILE: `${DIR_NAMES.WORKFLOW}/${FILE_NAMES.CURRENT_TASK}`,
-  /** .arbor/workflow.md */
-  WORKFLOW_GUIDE_FILE: `${DIR_NAMES.WORKFLOW}/${FILE_NAMES.WORKFLOW_GUIDE}`,
 } as const;
 
 /**

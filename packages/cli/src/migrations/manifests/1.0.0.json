@@ -1,0 +1,506 @@
+{
+  "version": "1.0.0",
+  "description": "Arbor 1.0: one driver command loop, one skill for the main agent, no hooks, no role files, no workflow.md",
+  "breaking": true,
+  "recommendMigrate": true,
+  "changelog": "Arbor 1.0 replaces the tiered state machine. The main agent writes the contract, splits the work into node files under the task's `nodes/` directory and reacts to `arbor.py sync`; every node is one Orca worker in its own worktree, merged into the task's integration branch when its commits stay inside its paths; the gate on the merged result is the judge. Installed for Claude Code: the `CLAUDE.md` block and the skill `arbor` (loaded on demand) plus the kept skills `arbor-update-spec` and `arbor-spec-bootstrap`; for Codex: the `AGENTS.md` block and the kept skills. Removed: all four hooks (`.claude/hooks/*`, `.codex/hooks/*`, `.codex/hooks.json`, the hook entries of `.claude/settings.json`), the six role files `.arbor/agents/*.md`, `.arbor/workflow.md`, the slash commands and skills `start`, `continue`, `finish-work`, `workflow`, `before-dev`, `check`, `break-loop`, `brainstorm` and `arbor-meta`, and the driver scripts `task.py`, `get_context.py`, `check_report.py` with their modules. `.arbor/config.yaml` is never rewritten by `arbor update` any more; `executors.<default>.agent` stays the `strong` tier, and the optional `executors.<default>.tiers.<name>.agent` and `executors.<default>.max_nodes` keys are new.",
+  "migrations": [
+    {
+      "type": "delete",
+      "from": ".agents/skills/arbor-before-dev/SKILL.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".agents/skills/arbor-brainstorm/SKILL.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".agents/skills/arbor-break-loop/SKILL.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".agents/skills/arbor-check/SKILL.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".agents/skills/arbor-continue/SKILL.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".agents/skills/arbor-finish-work/SKILL.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".agents/skills/arbor-meta/SKILL.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".agents/skills/arbor-meta/references/customize-local/add-project-local-conventions.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".agents/skills/arbor-meta/references/customize-local/change-agents.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".agents/skills/arbor-meta/references/customize-local/change-context-loading.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".agents/skills/arbor-meta/references/customize-local/change-hooks.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".agents/skills/arbor-meta/references/customize-local/change-skills-or-commands.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".agents/skills/arbor-meta/references/customize-local/change-spec-structure.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".agents/skills/arbor-meta/references/customize-local/change-task-lifecycle.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".agents/skills/arbor-meta/references/customize-local/change-workflow.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".agents/skills/arbor-meta/references/customize-local/overview.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".agents/skills/arbor-meta/references/local-architecture/bundled-skills.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".agents/skills/arbor-meta/references/local-architecture/context-injection.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".agents/skills/arbor-meta/references/local-architecture/dispatch.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".agents/skills/arbor-meta/references/local-architecture/generated-files.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".agents/skills/arbor-meta/references/local-architecture/overview.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".agents/skills/arbor-meta/references/local-architecture/spec-system.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".agents/skills/arbor-meta/references/local-architecture/task-system.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".agents/skills/arbor-meta/references/local-architecture/workflow.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".agents/skills/arbor-meta/references/local-architecture/workspace-memory.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".agents/skills/arbor-meta/references/platform-files/agents.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".agents/skills/arbor-meta/references/platform-files/hooks-and-settings.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".agents/skills/arbor-meta/references/platform-files/overview.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".agents/skills/arbor-meta/references/platform-files/skills-and-commands.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".agents/skills/arbor-start/SKILL.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".agents/skills/arbor-workflow/SKILL.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".arbor/agents/architect.md",
+      "description": "Role file removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".arbor/agents/explore.md",
+      "description": "Role file removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".arbor/agents/fix.md",
+      "description": "Role file removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".arbor/agents/implement.md",
+      "description": "Role file removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".arbor/agents/review.md",
+      "description": "Role file removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".arbor/agents/simplify.md",
+      "description": "Role file removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".arbor/scripts/check_report.py",
+      "description": "Driver script removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".arbor/scripts/common/active_task.py",
+      "description": "Driver script removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".arbor/scripts/common/dispatch_context.py",
+      "description": "Driver script removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".arbor/scripts/common/driver/autopilot.py",
+      "description": "Driver script removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".arbor/scripts/common/driver/escalate.py",
+      "description": "Driver script removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".arbor/scripts/common/driver/integration.py",
+      "description": "Driver script removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".arbor/scripts/common/driver/mandate.py",
+      "description": "Driver script removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".arbor/scripts/common/driver/partitions.py",
+      "description": "Driver script removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".arbor/scripts/common/driver/state.py",
+      "description": "Driver script removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".arbor/scripts/common/driver/validate.py",
+      "description": "Driver script removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".arbor/scripts/common/git_context.py",
+      "description": "Driver script removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".arbor/scripts/common/lessons.py",
+      "description": "Driver script removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".arbor/scripts/common/packages_context.py",
+      "description": "Driver script removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".arbor/scripts/common/session_context.py",
+      "description": "Driver script removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".arbor/scripts/common/task_context.py",
+      "description": "Driver script removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".arbor/scripts/common/task_queue.py",
+      "description": "Driver script removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".arbor/scripts/common/task_store.py",
+      "description": "Driver script removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".arbor/scripts/common/task_utils.py",
+      "description": "Driver script removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".arbor/scripts/common/tasks.py",
+      "description": "Driver script removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".arbor/scripts/common/workflow_phase.py",
+      "description": "Driver script removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".arbor/scripts/get_context.py",
+      "description": "Driver script removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".arbor/scripts/hooks/linear_sync.py",
+      "description": "Driver script removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".arbor/scripts/task.py",
+      "description": "Driver script removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".arbor/workflow.md",
+      "description": "workflow.md removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".claude/commands/arbor/continue.md",
+      "description": "Slash command removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".claude/commands/arbor/finish-work.md",
+      "description": "Slash command removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".claude/commands/arbor/workflow.md",
+      "description": "Slash command removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".claude/hooks/guard-builtin-agent.py",
+      "description": "Arbor hooks removed in 1.0 (no hooks at all)"
+    },
+    {
+      "type": "delete",
+      "from": ".claude/hooks/inject-workflow-state.py",
+      "description": "Arbor hooks removed in 1.0 (no hooks at all)"
+    },
+    {
+      "type": "delete",
+      "from": ".claude/hooks/session-start.py",
+      "description": "Arbor hooks removed in 1.0 (no hooks at all)"
+    },
+    {
+      "type": "delete",
+      "from": ".claude/skills/arbor-before-dev/SKILL.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".claude/skills/arbor-brainstorm/SKILL.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".claude/skills/arbor-break-loop/SKILL.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".claude/skills/arbor-check/SKILL.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".claude/skills/arbor-meta/SKILL.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".claude/skills/arbor-meta/references/customize-local/add-project-local-conventions.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".claude/skills/arbor-meta/references/customize-local/change-agents.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".claude/skills/arbor-meta/references/customize-local/change-context-loading.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".claude/skills/arbor-meta/references/customize-local/change-hooks.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".claude/skills/arbor-meta/references/customize-local/change-skills-or-commands.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".claude/skills/arbor-meta/references/customize-local/change-spec-structure.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".claude/skills/arbor-meta/references/customize-local/change-task-lifecycle.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".claude/skills/arbor-meta/references/customize-local/change-workflow.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".claude/skills/arbor-meta/references/customize-local/overview.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".claude/skills/arbor-meta/references/local-architecture/bundled-skills.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".claude/skills/arbor-meta/references/local-architecture/context-injection.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".claude/skills/arbor-meta/references/local-architecture/dispatch.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".claude/skills/arbor-meta/references/local-architecture/generated-files.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".claude/skills/arbor-meta/references/local-architecture/overview.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".claude/skills/arbor-meta/references/local-architecture/spec-system.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".claude/skills/arbor-meta/references/local-architecture/task-system.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".claude/skills/arbor-meta/references/local-architecture/workflow.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".claude/skills/arbor-meta/references/local-architecture/workspace-memory.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".claude/skills/arbor-meta/references/platform-files/agents.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".claude/skills/arbor-meta/references/platform-files/hooks-and-settings.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".claude/skills/arbor-meta/references/platform-files/overview.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".claude/skills/arbor-meta/references/platform-files/skills-and-commands.md",
+      "description": "Skill removed in 1.0"
+    },
+    {
+      "type": "delete",
+      "from": ".codex/hooks.json",
+      "description": "Arbor hooks removed in 1.0 (no hooks at all)"
+    },
+    {
+      "type": "delete",
+      "from": ".codex/hooks/guard-builtin-agent.py",
+      "description": "Arbor hooks removed in 1.0 (no hooks at all)"
+    },
+    {
+      "type": "delete",
+      "from": ".codex/hooks/inject-shell-session-context.py",
+      "description": "Arbor hooks removed in 1.0 (no hooks at all)"
+    },
+    {
+      "type": "delete",
+      "from": ".codex/hooks/inject-workflow-state.py",
+      "description": "Arbor hooks removed in 1.0 (no hooks at all)"
+    },
+    {
+      "type": "delete",
+      "from": ".codex/hooks/session-start.py",
+      "description": "Arbor hooks removed in 1.0 (no hooks at all)"
+    }
+  ],
+  "configSectionsAdded": [],
+  "migrationGuide": "1. Before updating, finish or abandon every started task with the old version (`arbor.py finish` or `arbor.py abandon` of 0.11): 1.0 refuses a task.json written before 1.0 and cannot continue it.\n2. Run `arbor update --migrate`. It deletes the removed hooks, role files, workflow.md, commands, skills and driver scripts; files you never edited go without asking, edited ones are asked about (`--migrate -f` deletes them after a backup, `--migrate -s` keeps them). In a `.claude/settings.json` you edited, only the entries that run a deleted Arbor hook are removed; your own hooks and settings stay. An unedited `.codex/hooks.json` is deleted, an edited one keeps your own entries.\n3. Codex's \"Hooks need review\" prompt no longer applies: Arbor installs no hooks.\n4. Every repository Arbor cuts worktrees from (the control repository and every `git: true` package repository) must be an Orca project: `orca repo add --path <repo>`.\n5. Optional: add cheaper or different agents per tier under `executors.<default>.tiers` in `.arbor/config.yaml` (e.g. `light` for mechanical edits, `review` for reviewer nodes), and `max_nodes` to bound the nodes of one task (default 30). The commented example in a fresh `arbor init` shows the shape."
+}
