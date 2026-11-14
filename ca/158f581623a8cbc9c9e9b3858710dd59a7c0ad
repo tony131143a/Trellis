@@ -1,0 +1,37 @@
+.arbor/.template-hashes.json
+  s_eb0867b80e22e1::t_b13730d7416414 38,46
+.arbor/scripts/common/driver/executor.py
+  s_eb0867b80e22e1::t_91bbfb26cef49b 73,78
+.arbor/scripts/common/driver/plan.py
+  s_eb0867b80e22e1::t_e20a745dfff762 130-134,138,207
+packages/cli/src/templates/arbor/scripts/common/driver/executor.py
+  s_a63d60f1c00f55::t_336c20a038b6e7 73,78
+packages/cli/src/templates/arbor/scripts/common/driver/plan.py
+  s_a63d60f1c00f55::t_0d0007a950bcee 130-134,138,207
+packages/cli/test/scripts/arbor1-sync.integration.test.ts
+  s_a63d60f1c00f55::t_577c4e80f6aeb3 134-140
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "ca158f581623a8cbc9c9e9b3858710dd59a7c0ad",
+  "prompts": {},
+  "sessions": {
+    "s_a63d60f1c00f55": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1d9a2-b247-7432-a778-63d2cfcd831a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_eb0867b80e22e1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1d99e-4424-71b0-8879-569c10df6577",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
