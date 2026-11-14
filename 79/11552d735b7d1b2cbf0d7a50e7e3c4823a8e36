@@ -1,0 +1,127 @@
+packages/cli/src/commands/init.ts
+  s_1877ee8e7140ea::t_796d932c578bc7 250,596,833,835-840
+packages/cli/src/commands/update.ts
+  s_c23a3a24778e40::t_ba800b2930d83b 56,98-101,542-598,623-626,1909-1926,2021-2030,2071-2072,2212,2316-2318,2392-2393,2398,2400-2401
+packages/cli/src/configurators/claude.ts
+  s_58d065a6c0d60f::t_a67156b87d83fd 3,12,41-43,45,61-67,70
+packages/cli/src/configurators/codex.ts
+  s_58d065a6c0d60f::t_cdfeaaba7fb626 11,13
+packages/cli/src/configurators/index.ts
+  s_58d065a6c0d60f::t_47cba836337b79 101-103,107-109
+packages/cli/src/configurators/shared.ts
+  s_c23a3a24778e40::t_6242ad688e6bee 177-178
+packages/cli/src/configurators/workflow.ts
+  s_58d065a6c0d60f::t_aaa04b6e373d6b 103
+packages/cli/src/templates/arbor/config.yaml
+  s_8e8df78a986778::t_2518dd9a309387 21-25,52-53,57-59,64,70-73,76-84,100-102,104-105,110-115,126-131
+packages/cli/src/templates/claude/index.ts
+  s_8e8df78a986778::t_424010aa579e04 7,24-26
+packages/cli/src/templates/claude/skills/arbor.md
+  s_c23a3a24778e40::t_5cac41d44ecbef 1,3,5,7,9-18,20,22,24-49
+packages/cli/src/templates/common/bundled-skills/arbor-spec-bootstrap/SKILL.md
+  s_58d065a6c0d60f::t_adfa6a2c0ab4fc 8,31
+packages/cli/src/templates/common/bundled-skills/arbor-spec-bootstrap/references/mcp-setup.md
+  s_58d065a6c0d60f::t_a95310df5c240f 3
+packages/cli/src/templates/common/bundled-skills/arbor-spec-bootstrap/references/spec-task-planning.md
+  s_58d065a6c0d60f::t_66d01bcc7e4019 53,58
+packages/cli/src/templates/common/index.ts
+  s_8e8df78a986778::t_e56a54f5dc24b4 35,49
+packages/cli/src/templates/common/skills/update-spec.md
+  s_58d065a6c0d60f::t_e9019a88cda406 109,351,355,358-359
+packages/cli/src/templates/markdown/agents.md
+  s_58d065a6c0d60f::t_8cffac80dd0f69 2,4
+packages/cli/src/templates/markdown/claude.md
+  s_58d065a6c0d60f::t_7146f9969a24e9 2,4,6-7
+packages/cli/src/templates/markdown/spec/guides/cross-layer-thinking-guide.md.txt
+  s_58d065a6c0d60f::t_92da74ab522a99 135,144-146,187-192,231,240-242,256-261
+packages/cli/src/templates/markdown/spec/guides/cross-platform-thinking-guide.md.txt
+  s_8e8df78a986778::t_6148445735bc18 41
+packages/cli/test/commands/init.integration.test.ts
+  s_1877ee8e7140ea::t_6378c4f9798301 39,84-112,114-117,120-122,159,167-168,172,180,184,187-188,207-209,213,219-220,224,297-298,301,665,669,721
+packages/cli/test/migrations/index.test.ts
+  s_1877ee8e7140ea::t_de7bab79e50432 331-332,354,456,478-503
+packages/cli/test/regression.test.ts
+  s_58d065a6c0d60f::t_c4601cdbb7709e 31-32,3789-3819,3821,3823-3827,3829-3831,3833-3836,3839,3841,3843-3844,3846,3848-3877,3879-3881,3884-3886,3888-3890,3893-3902,3904,3906-3908,3910-3912,3915-3916,3918-3921,3924,3926-3929,3931-3938,3940-3946,3949,3951-3957,3959-3966,3968-3974,3977-3981,3983-3989,3991-3995,3997-3999,4002,4964-4965
+packages/cli/test/templates/arbor.test.ts
+  s_fa883cdd31d57e::t_d2f4c73f9b9d13 23-24,149,152-163,167-174,178-204
+packages/cli/test/templates/claude.test.ts
+  s_fa883cdd31d57e::t_6f914aa4ce3084 3,38,41-46,51,54-58,60-66
+packages/cli/test/templates/extract.test.ts
+  s_58d065a6c0d60f::t_45b4027d42a986 48-49,56,82,89-90
+packages/cli/package.json
+  s_27819ecfd54c68::t_ead3c8c574f2c5 3
+packages/cli/src/migrations/manifests/1.0.0.json
+  s_27819ecfd54c68::t_d120c8de348f8c 1-506
+packages/cli/test/commands/init-uninstall-overdelete.integration.test.ts
+  s_27819ecfd54c68::t_e2b87048839d7e 84-88
+packages/cli/test/commands/platforms.integration.test.ts
+  s_27819ecfd54c68::t_1f9c2b4c03f248 55,57-58,88
+packages/cli/test/commands/uninstall.integration.test.ts
+  s_27819ecfd54c68::t_6fa9c9b487342c 84,169,172,176,359,362-364,366-371,374-388,390,392-406
+packages/cli/test/commands/update.integration.test.ts
+  s_27819ecfd54c68::t_2c9d1550c0e86b 40-41,366-367,474,552,710,720,825,851,943-944,963-964
+packages/cli/test/configurators/index.test.ts
+  s_27819ecfd54c68::t_5507f462af526a 296
+packages/cli/test/configurators/platforms.test.ts
+  s_27819ecfd54c68::t_cde44a61c01c46 333,341-343,347,350-354,359,361-371
+packages/cli/test/fixtures/install-0.11.0.json
+  s_27819ecfd54c68::t_43d4fbb8b084bc 1-146
+packages/cli/test/migrations/migration-1.0.0.test.ts
+  s_27819ecfd54c68::t_da952c84c942af 2,4-7,14,25-27,31-100,102,104,107-150,152-153,156-165,170,174-178,180-184,187-191,193-194,196-202,205-206,208,210-231,234-258,261-265,267-281,284-287,289-290,292-293,296-318,320-321,323-338
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "7911552d735b7d1b2cbf0d7a50e7e3c4823a8e36",
+  "prompts": {},
+  "sessions": {
+    "s_1877ee8e7140ea": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1d838-6841-7cb3-afb0-56b838e06573",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_27819ecfd54c68": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ae4101f87184ccb5f",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_58d065a6c0d60f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1d81d-a1e5-7270-9464-3215fea43c0e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_8e8df78a986778": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1d824-4e06-7360-a6bb-876037585bba",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_c23a3a24778e40": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1d842-b152-77a0-ba67-04f95c431a61",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_fa883cdd31d57e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1d82d-d428-7533-8534-bb2fc2356d00",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
