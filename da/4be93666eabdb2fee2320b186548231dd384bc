@@ -1,0 +1,130 @@
+packages/cli/test/scripts/arbor1-sync.integration.test.ts
+  s_58d065a6c0d60f::t_e3223b7f095513 2-4,13-19,21-23,25-27,29-33,36-37,39-57,60-92,95-115,117-123,125-155,157-165,167-173,176-183,186-264,267-297,299-301,305-321,324-328,330-336,339-354,357-367,369-370,372-373,375-377
+packages/cli/src/templates/arbor/scripts/common/driver/executor.py
+  s_8e8df78a986778::t_f7e9b36b49e888 3,11,14,16-17,46-48,50-55,96-99,101-106
+packages/cli/src/templates/arbor/scripts/common/driver/plan.py
+  s_58d065a6c0d60f::t_55cf74931d34cb 2-15,20,22-23,25,27-31,34-35,38-49,52-56,59-63,66-68,70-80,82-85,87-96,98-242
+packages/cli/src/templates/arbor/scripts/common/contract.py
+  s_8e8df78a986778::t_3b7728a5ed30dc 4-5,12-14,16-17,54,87,222-223,278,311-321,375,401-402
+packages/cli/src/templates/arbor/scripts/common/execution.py
+  s_8e8df78a986778::t_8ca4e8a1f22c83 1-2,39
+packages/cli/test/scripts/arbor1-finish.integration.test.ts
+  s_9d96d6a4bf4afb::t_da986a7748d147 2-4,13-17,19-36,38-39,41-42,44-49,51-65,67-91,93-123,125-134,136-160,162-189
+packages/cli/test/scripts/arbor1-polyrepo.integration.test.ts
+  s_9d96d6a4bf4afb::t_f7be86de92b3a8 2-5,14-17,19-80,82,85-146
+packages/cli/src/templates/arbor/scripts/common/paths.py
+  s_9d96d6a4bf4afb::t_d2dd1c5341a28e 344
+packages/cli/src/templates/arbor/scripts/common/driver/prompt.py
+  s_9d96d6a4bf4afb::t_f6eda9c94de55e 1,7-19,21-22,24-26,28-29,31-33,36-60,63-66
+packages/cli/test/scripts/arbor1-plan.integration.test.ts
+  s_58d065a6c0d60f::t_ca0da6c9462914 2-4,7,10-39,41-44,46-57,60-96,99-112,114-133
+packages/cli/test/scripts/symlinked-workflow-dir.integration.test.ts
+  s_9d96d6a4bf4afb::t_e15d16d73dfa08 11,15,17,23-24,34,40,53-61,64-65,67-68,70-74
+  s_9d96d6a4bf4afb::t_ecbd7bac399895 5-7
+packages/cli/src/templates/arbor/scripts/common/driver/finish.py
+  s_239ff62966b981::t_124dc018de27ef 171
+  s_58d065a6c0d60f::t_df1f1ab30d751f 2-9,14,21,23-25,27-74,76-97,101-114,118-122,125-166,170,184-190,192-195,197-199,201-224,227-238,240-264
+  s_9d96d6a4bf4afb::t_e99e46279a1aeb 172-183
+packages/cli/src/templates/arbor/scripts/common/driver/sync.py
+  s_9d96d6a4bf4afb::t_e56fb42fbeeee0 2-15,20,22-24,27-35,37-39,42-43,46-47,50-51,54-55,58-60,63-65,68-69,72-78,81-87,90-93,95-309,311-328,330-346,349-350,353-357,359-476,478-483,486-525
+packages/cli/src/templates/arbor/index.ts
+  s_9941d6e3cf8204::t_2a8525b2a42780 119
+  s_a9d4361fb73368::t_9092f2cc4deb6d 114
+  s_29ddf67fa6b5ae::t_ae360498fb7a2f 63-65,127
+  s_9d96d6a4bf4afb::t_38d0f16b30cf91 51,104-110,115-117,120-122,128-130,133-136
+  s_a9d4361fb73368::t_eee11e622d35ea 111-113
+  s_f5a35762a9935e::t_51cd7b5563f38a 69-70,131-132
+  s_8d642f5b9ce846::t_1a3509437c400b 138
+  s_8d642f5b9ce846::t_be27b2df7f4fcb 123-126,137
+  s_9d96d6a4bf4afb::t_a909a798393a23 118
+packages/cli/src/templates/arbor/scripts/add_session.py
+  s_8e8df78a986778::t_65d69a674659a7 41-42,209-210,1030,1032-1036,1067-1071,1469,1471
+packages/cli/src/templates/arbor/scripts/common/driver/orca.py
+  s_58d065a6c0d60f::t_194596df8670ca 1,3,5-6,25,54,111,119,209-211
+packages/cli/src/templates/arbor/scripts/common/driver/repos.py
+  s_58d065a6c0d60f::t_0e190ea77f55e8 2-9,14-16,18,20-23,27-29,31-32,35,39-90,92-158,160,162-170
+packages/cli/src/templates/arbor/scripts/arbor.py
+  s_9d96d6a4bf4afb::t_858ceeb33f4bf4 4-5,7,9-15,17-18,27,30,32-39,41,44,48,52-82,85-107,110-131,133-150,153-154,157-159,162-163,166-170,173-182,184,186-199,203-205,207-218,221-229,231-232,234-243,248-254,259-270,274-277,279-288,291-295,297-305,309-310,312-313,316-317
+packages/cli/test/scripts/driver-helpers.ts
+  s_58d065a6c0d60f::t_94d64db51fe58c 2-4,6-25,77-78,80-81,84,114-115,121,123-124,127,129-130,134,168,171,173-176,188,192-195,198,208-213,216,219-221,223-225,229-257,259,262,272,276-277,279-280,285-287,289,293,297-312,316,319-320,323-330,333-334,345-352,356-357,362,366,372-373,382-391,394-415,419,423-424
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "da4be93666eabdb2fee2320b186548231dd384bc",
+  "prompts": {},
+  "sessions": {
+    "s_239ff62966b981": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18de9-510d-78b1-82fe-896197125c84",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Mr tang <mytortoise18@sina.com~>"
+    },
+    "s_29ddf67fa6b5ae": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-awave3-cleanup-5d1d06a655396494",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_58d065a6c0d60f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1d81d-a1e5-7270-9464-3215fea43c0e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_8d642f5b9ce846": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-awave2-driver-55cc905c63240176",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_8e8df78a986778": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1d824-4e06-7360-a6bb-876037585bba",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_9941d6e3cf8204": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-awave1-contract-258334908e09a08e",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_9d96d6a4bf4afb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ab4d073417958a48f",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_a9d4361fb73368": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a169eb-2ae8-76c1-b50d-877557affe5e",
+        "model": "DeepSeek-V4.1-Flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_f5a35762a9935e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5eec63a6-1b3a-4083-ba18-e451eb5d3978",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
