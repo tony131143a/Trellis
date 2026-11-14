@@ -1,0 +1,49 @@
+packages/cli/src/templates/arbor/scripts/add_session.py
+  s_8e8df78a986778::t_65d69a674659a7 41-42,209-210,1030,1032-1036,1067-1071,1469,1471
+packages/cli/src/templates/arbor/scripts/common/contract.py
+  s_8e8df78a986778::t_3b7728a5ed30dc 4-5,12-14,16-17,54,87,222-223,278,311-321,375,401-402
+packages/cli/src/templates/arbor/scripts/common/driver/executor.py
+  s_8e8df78a986778::t_f7e9b36b49e888 3,11,14,16-17,46-48,50-55,96-99,101-106
+packages/cli/src/templates/arbor/scripts/common/driver/orca.py
+  s_58d065a6c0d60f::t_194596df8670ca 1,3,5-6,25,54,111,119,209-211
+packages/cli/src/templates/arbor/scripts/common/driver/plan.py
+  s_58d065a6c0d60f::t_55cf74931d34cb 2-15,20,22-23,25,27-31,34-35,38-49,52-56,59-63,66-68,70-80,82-85,87-96,98-242
+packages/cli/src/templates/arbor/scripts/common/execution.py
+  s_8e8df78a986778::t_8ca4e8a1f22c83 1-2,39
+packages/cli/src/templates/arbor/scripts/common/driver/prompt.py
+  s_9d96d6a4bf4afb::t_f6eda9c94de55e 1,7-19,21-22,24-26,28-29,31-33,36-60,63-66
+packages/cli/src/templates/arbor/scripts/common/paths.py
+  s_9d96d6a4bf4afb::t_d2dd1c5341a28e 344
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "b479089f308fd8aa504636c7c30a89b1b680801b",
+  "prompts": {},
+  "sessions": {
+    "s_58d065a6c0d60f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1d81d-a1e5-7270-9464-3215fea43c0e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_8e8df78a986778": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1d824-4e06-7360-a6bb-876037585bba",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    },
+    "s_9d96d6a4bf4afb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ab4d073417958a48f",
+        "model": "unknown"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
