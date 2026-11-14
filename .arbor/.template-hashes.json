@@ -35,7 +35,7 @@
     ".arbor/scripts/common/worktree.py": "c34a81c0fa8dee9770e438c55100082cca73002286ccc6381bfffa200597154e",
     ".arbor/scripts/common/invariants.py": "c6adbe19fd4ddc52951c6b2445d031e1c6261ca86d5a411194757e4515b9b63d",
     ".arbor/scripts/common/driver/__init__.py": "b033ee320c132e86c296d3a91abc782a866943de76b40d8cd6ce6079811770d2",
-    ".arbor/scripts/common/driver/executor.py": "943b4c53aa45be5ec7de3a006af81f3175f3eb977cf802cdd456de311ed48925",
+    ".arbor/scripts/common/driver/executor.py": "19f6f8df11e2f3daac0c6bbaf8c6dec6b92e6444b57eafeece60d4e47aad2e58",
     ".arbor/scripts/common/driver/gate.py": "cb0e085aec6f20b9b9584433f25eee4c3d5c8009efc856b5512403bf1e525ca4",
     ".arbor/scripts/common/driver/lock.py": "0c50828492c0b35d27ff35686bfa798385e89af0d611b4132f4ef4b66dd48b44",
     ".arbor/scripts/common/driver/finish.py": "2c917159590354cbf317e5d6c6df51967f1a06e08fb8c017b1c77d1884443021",
@@ -45,7 +45,7 @@
     ".arbor/scripts/common/driver/orca.py": "8d386b866b7e22b7b39ef0d67fb4e187ebd2750337280fe92a4e03bc9428ffa9",
     ".arbor/scripts/common/driver/plan.py": "23b740b7124fd37b5020a860830e06d0529d97a85d30e0aeea212d2516261da3",
     ".arbor/scripts/common/driver/repos.py": "3b7574972e24d804b149f35fced4cabf5cac18f4ac70f07ed7e21a5f32c8bb1e",
-    ".arbor/scripts/common/driver/sync.py": "adc9d1b8a3d00eeb46a5c7ea1997166e5f78590c2812c9fa0efb24b84b2517d4",
+    ".arbor/scripts/common/driver/sync.py": "4f188acea25567e1fb570864f8246f702ed87105759e32a101ce4bc05b78c289",
     ".arbor/scripts/common/driver/prompt.py": "a131a7069c3b3deeb37aec2f473bf2838929957d356f00325a8364210f453e6f",
     ".claude/skills/arbor/SKILL.md": "11f55367f5a0fc8a6b75f3ec5038ecf3eb20db10248cec30a40b16fd15d750f3"
   }

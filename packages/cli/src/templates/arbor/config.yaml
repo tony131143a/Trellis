@@ -77,7 +77,8 @@ max_journal_lines: 2000
 #                 node (codex, claude, omp, ...); model and reasoning effort
 #                 are the agent's own settings in Orca
 #   tiers         more tiers a node can name with `tier: <name>`, each with
-#                 its own agent (example below)
+#                 its own agent (example below); `light` without an entry
+#                 runs on `agent`
 #   timeout       bounds one node; `sync` stops a worker past it
 #   max_parallel  bounds simultaneous workers of one task
 #   max_nodes     bounds the nodes of one task (default 30); `arbor.py resume`

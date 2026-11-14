@@ -60,7 +60,7 @@ nodes: {id: {seq, status: pending | invalid | running | merged | done | failed |
 ```text
 ---
 title: ...          repo: <key>        paths: [glob, ...]   after: [id, ...]
-tier: strong | <executors.<default>.tiers name>             checks: [AC-1]
+tier: strong | light | <executors.<default>.tiers name>     checks: [AC-1]
 ---
 <brief: free text>
 ```
@@ -240,8 +240,9 @@ node are reported as unchecked (when the task has any repo).
   and removes what it just made.
 - **Executor** (`executor.py`): `executors.default` names the entry; it must be `type: orca`
   with `command` and `agent` (the `strong` tier). Optional `timeout`, `max_parallel`,
-  `max_nodes` (default 30), `keep_open`, `tiers.<name>.agent`. `agent_for(tier)` raises
-  `ExecutorError` for an unknown tier.
+  `max_nodes` (default 30), `keep_open`, `tiers.<name>.agent`. `agent_for(tier)` returns
+  `agent` for `strong` and for a `light` that has no entry, and raises `ExecutorError` for
+  any other unknown tier.
 - **Orca calls** (`orca.call` runs `<command> <args> --json`, 60 s unless noted; a missing
   binary is an `ExecutorError`): `repo list` (`start`); `worktree create` and `worktree rm`
   (`worktree.py`, 120 s); `orchestration run-create --objective "arbor <task>"`;

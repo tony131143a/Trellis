@@ -36,6 +36,12 @@ function patchRequest(key: string, patch: (r: Json) => void): void {
 describe.skipIf(!hasPython())("arbor 1.0 sync", { timeout: 180_000 }, () => {
   afterEach(() => p?.cleanup());
 
+  it("runs a light node on the strong agent when the light tier has no agent", () => {
+    p = setupProject();
+    p.node("n1", { paths: "[src/**]", tier: "light" });
+    expect(p.sync().events).toContain("started n1 [light codex]");
+  });
+
   it("names the plan step first and creates the Orca Run once, lazily", () => {
     p = setupProject();
     let out = p.sync();

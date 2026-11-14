@@ -61,7 +61,7 @@ def node_checks(contract: Contract, rec: dict) -> list[tuple[str, str]]:
 
 
 def known(task: Task, contract: Contract) -> plan.Known:
-    return plan.Known(set(repo_keys(task.config)), {"strong", *task.executor.tiers},
+    return plan.Known(set(repo_keys(task.config)), {"strong", "light", *task.executor.tiers},
                       {e.id: (e.kind, e.repo or default_repo(task)) for e in contract.verification_map})
 
 

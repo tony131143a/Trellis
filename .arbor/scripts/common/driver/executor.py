@@ -48,8 +48,8 @@ class Executor:
     max_nodes: int
 
     def agent_for(self, tier: str) -> str:
-        if tier == "strong":
-            return self.agent
+        if tier == "strong" or (tier == "light" and tier not in self.tiers):
+            return self.agent  # `light` without its own agent is the strong one
         if tier not in self.tiers:
             raise ExecutorError(f"unknown tier {tier!r} (strong, or one of executors.{self.name}.tiers)")
         return self.tiers[tier]
