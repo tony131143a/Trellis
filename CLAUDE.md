@@ -65,16 +65,12 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
 
 <!-- ARBOR:START -->
-# Arbor Instructions (main agent)
+# Arbor
 
-This project is managed by Arbor. You are the **main agent**: you talk to the user, propose the tier, write the contract, curate context, start the task and drive its loop yourself; every role runs as an Orca worker the driver starts (you run inside Orca).
+If your prompt contains a line starting with `Arbor node:`, you are a worker of an Arbor task: that prompt is your whole assignment and the rest of this block does not apply.
 
-- Follow `.arbor/workflow.md` (Plan, Drive, Finish); it is the single source for the state machine, tiers, human gates and commands. Specs in `.arbor/spec/`, tasks in `.arbor/tasks/`, journals in `.arbor/workspace/`.
-- Simple changes (at most 2 files, cause known, no design choice) do not use Arbor. Anything larger: `/arbor:workflow <request>` → propose a tier (light / standard / full) → the user agrees → `task.py create --tier <t>`; several independently verifiable deliverables → a parent plus one child task each (`--parent`), each child driven from its own session.
-- Contract first: explore → one question list → `contract.md` (+ `design.md`; full: `waves.md` and a review `Mode: plan`) → `task.py seed-context` → the user approves → `task.py start <task>`. Before start, roles run with `arbor.py run --role explore|architect|review` from the brief at the `brief_path` of `arbor.py next --role <role> --json`; independent angles run concurrently.
-- After start: `python3 ./.arbor/scripts/arbor.py --task <task> next` and do the one thing it names (`brief` → write it at `brief_path`, `arbor.py run`; `worker` → end your turn, Orca wakes you when a worker reports, then `arbor.py sync`; `run` → `arbor.py gate` / `arbor.py run`; `decide` → `arbor.py decide <choice> --reason "…"`; `human` → see the gates), then `next` again. Act on every entry of the ready set `items` / `batch` in one turn, then wait for `running`.
-- The driver owns state, counters, the gate and validation; you own judgment: briefs, red-gate classification (`impl` / `contract`), finding dedup, retries within the contract. Ask the user only at the human gates whose `human.mandate` is `ask` (tier, contract, PLAUSIBLE, merge) and always at STOP, `merge_conflict` and scope changes; the user merges with `--no-ff`, then `/arbor:finish-work`.
-- Never perform a role yourself and never use native Agent/Task/spawn_agent for one. If your prompt carries `Active task:` + `Role:` (after Orca's dispatch preamble), you are a dispatched worker: do that role directly, write the report to the `Report:` file, send `worker_done` and ignore the rules above.
+- Work that is too large for one context or splits into parallel parts: load the skill `arbor` and follow it. A change you can make and verify yourself: just make it.
+- Project conventions live in `.arbor/spec/`; read the files that cover the code you touch. Tasks are under `.arbor/tasks/`, the journal under `.arbor/workspace/`.
 
 Managed by Arbor. Edits outside this block are preserved; edits inside may be overwritten by `arbor update`.
 <!-- ARBOR:END -->

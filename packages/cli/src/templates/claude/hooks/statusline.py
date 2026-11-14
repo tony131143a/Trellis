@@ -5,8 +5,8 @@ Arbor StatusLine — project-level status display for Claude Code.
 
 Reads Claude Code session JSON from stdin + Arbor task data from filesystem.
 Outputs 1-2 lines:
-  With active task:  [P1] Task title (status)  +  info line
-  Without task:      info line only
+  One open task:     [arbor] Task title (status: node counts)  +  info line
+  Otherwise:         info line only
 Info line: model · ctx% · branch · duration · developer · tasks · rate limits
 When COLUMNS (injected by Claude Code v2.1.153+) is too narrow for the info
 line, the rate-limit segments move to their own line via an explicit "\n".
@@ -56,35 +56,6 @@ def _read_json(path: Path) -> dict:
         return {}
 
 
-def _normalize_task_ref(task_ref: str) -> str:
-    normalized = task_ref.strip()
-    if not normalized:
-        return ""
-
-    path_obj = Path(normalized)
-    if path_obj.is_absolute():
-        return str(path_obj)
-
-    normalized = normalized.replace("\\", "/")
-    while normalized.startswith("./"):
-        normalized = normalized[2:]
-
-    if normalized.startswith("tasks/"):
-        return f".arbor/{normalized}"
-
-    return normalized
-
-
-def _resolve_task_dir(arbor_dir: Path, task_ref: str) -> Path:
-    normalized = _normalize_task_ref(task_ref)
-    path_obj = Path(normalized)
-    if path_obj.is_absolute():
-        return path_obj
-    if normalized.startswith(".arbor/"):
-        return arbor_dir.parent / path_obj
-    return arbor_dir / "tasks" / path_obj
-
-
 def _find_arbor_dir() -> Path | None:
     """Walk up from cwd to find .arbor/ directory."""
     current = Path.cwd()
@@ -95,56 +66,27 @@ def _find_arbor_dir() -> Path | None:
     return None
 
 
-def _get_current_task(arbor_dir: Path) -> dict | None:
-    """Load current task info through Arbor' active task resolver."""
-    return _get_current_task_for_input(arbor_dir, {})
-
-
-def _get_current_task_for_input(arbor_dir: Path, cc_data: dict) -> dict | None:
-    """Load current task info for the Claude Code session JSON."""
-    scripts_dir = arbor_dir / "scripts"
-    if str(scripts_dir) not in sys.path:
-        sys.path.insert(0, str(scripts_dir))
-    try:
-        from common.active_task import resolve_active_task  # type: ignore[import-not-found]
-    except Exception:
-        return None
-
-    active = resolve_active_task(arbor_dir.parent, cc_data, platform="claude")
-    if not active.task_path:
-        return None
-
-    task_path = _resolve_task_dir(arbor_dir, active.task_path)
-    if active.stale:
-        return {
-            "title": task_path.name,
-            "status": "stale",
-            "priority": "P?",
-            "source": active.source,
-        }
-
-    task_data = _read_json(task_path / "task.json")
-    if not task_data:
-        return None
-
-    return {
-        "title": task_data.get("title") or task_data.get("name") or "unknown",
-        "status": task_data.get("status", "unknown"),
-        "priority": task_data.get("priority", "P2"),
-        "source": active.source,
-    }
-
-
-def _count_active_tasks(arbor_dir: Path) -> int:
-    """Count non-archived task directories with valid task.json."""
+def _open_tasks(arbor_dir: Path) -> list[dict]:
+    """task.json of every task that is being planned or is running."""
     tasks_dir = arbor_dir / "tasks"
     if not tasks_dir.is_dir():
-        return 0
-    count = 0
-    for d in tasks_dir.iterdir():
-        if d.is_dir() and d.name != "archive" and (d / "task.json").is_file():
-            count += 1
-    return count
+        return []
+    found = []
+    for d in sorted(tasks_dir.iterdir()):
+        data = _read_json(d / "task.json") if d.is_dir() and d.name != "archive" else {}
+        if data.get("schema") == 3 and data.get("status") in ("planning", "active"):
+            found.append(data)
+    return found
+
+
+def _task_line(task: dict) -> str:
+    counts: dict[str, int] = {}
+    for node in (task.get("nodes") or {}).values():
+        status = str(node.get("status"))
+        counts[status] = counts.get(status, 0) + 1
+    detail = ", ".join(f"{n} {s}" for s, n in sorted(counts.items()))
+    title = task.get("title") or task.get("name") or "unknown"
+    return f"\033[36m[arbor]\033[0m {title} \033[33m({task.get('status')}{': ' + detail if detail else ''})\033[0m"
 
 
 def _get_developer(arbor_dir: Path) -> str:
@@ -261,9 +203,9 @@ def main() -> None:
     SEP = " \033[90m·\033[0m "
 
     # --- Arbor data ---
-    task = _get_current_task_for_input(arbor_dir, cc_data) if arbor_dir else None
+    open_tasks = _open_tasks(arbor_dir) if arbor_dir else []
     dev = _get_developer(arbor_dir) if arbor_dir else ""
-    task_count = _count_active_tasks(arbor_dir) if arbor_dir else 0
+    task_count = len(open_tasks)
 
     # --- CC session data ---
     model = cc_data.get("model", {}).get("display_name", "?")
@@ -309,12 +251,9 @@ def main() -> None:
 
     info_line = SEP.join(parts + rate_parts)
 
-    # Output: task line (only if active) + info line
-    if task:
-        source = str(task.get("source") or "")
-        source_tag = "session" if source.startswith("session:") else source
-        source_suffix = f" \033[90m[{source_tag}]\033[0m" if source_tag else ""
-        print(f"\033[36m[{task['priority']}]\033[0m {task['title']} \033[33m({task['status']})\033[0m{source_suffix}")
+    # Output: task line (only when exactly one task is open) + info line
+    if len(open_tasks) == 1:
+        print(_task_line(open_tasks[0]))
 
     # Claude Code's status-bar height counts only "\n" characters, so a
     # visually wrapped long line misaligns rows. When the host provides a

@@ -12,7 +12,7 @@
  * 5. Platform Registry (beta.9, beta.13, beta.16)
  */
 
-import { execSync, spawn, spawnSync } from "node:child_process";
+import { execSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -32,14 +32,11 @@ import { getStatuslineHook } from "../src/templates/claude/index.js";
 import { getSkillTemplates } from "../src/templates/common/index.js";
 import {
   commonInit,
-  taskScript,
+  arborScript,
   addSessionScript,
-  commonTaskUtils,
   commonDeveloper,
   commonConfig,
   commonArborConfig,
-  commonGitContext,
-  commonSessionContext,
   getAllScripts,
 } from "../src/templates/arbor/index.js";
 import {
@@ -105,8 +102,8 @@ describe("regression: Windows encoding (beta.10, beta.11, beta.16)", () => {
     expect(commonInit).toContain("reconfigure");
   });
 
-  it("[beta.10] task.py imports from common (gets encoding fix via __init__.py)", () => {
-    expect(taskScript).toContain("from common");
+  it("[beta.10] arbor.py imports from common (gets encoding fix via __init__.py)", () => {
+    expect(arborScript).toContain("from common");
   });
 
   it("[rc.2] add_session.py table separator detection uses regex (not startswith)", () => {
@@ -127,11 +124,6 @@ describe("regression: branch context in session records (issue-106)", () => {
 
   it("[issue-106] add_session.py auto-detects branch via git branch --show-current", () => {
     expect(addSessionScript).toContain("branch --show-current");
-  });
-
-  it("[issue-106] add_session.py reads branch from task.json when available", () => {
-    expect(addSessionScript).toContain('task_data.raw.get("branch")');
-    expect(addSessionScript).not.toContain('task_data.raw.get("base_branch")');
   });
 
   it("[issue-106] add_session.py session content includes **Branch** field only", () => {
@@ -328,13 +320,6 @@ ${separator}
     });
   }
 
-  function createLocalBranch(branch: string): void {
-    execSync("git config user.email test@example.com", { cwd: tmpDir });
-    execSync("git config user.name Test", { cwd: tmpDir });
-    execSync("git commit --allow-empty -q -m init", { cwd: tmpDir });
-    execSync(`git branch ${JSON.stringify(branch)}`, { cwd: tmpDir });
-  }
-
   it("[issue-106] prefers explicit CLI branch over task.json and git", () => {
     setupSessionRepo({
       gitBranch: "feature/from-git",
@@ -359,32 +344,6 @@ ${separator}
     expect(journal).not.toContain("feature/from-git");
     expect(index).toContain("`cli/from-arg` |");
     expect(index).not.toContain("`task/from-task`");
-    expect(index).not.toContain("`feature/from-git`");
-  });
-
-  it("[issue-106] prefers task.json branch over current git branch and ignores task base_branch", () => {
-    setupSessionRepo({
-      gitBranch: "feature/from-git",
-      taskBranch: "task/from-task",
-      taskBaseBranch: "main",
-    });
-    createLocalBranch("task/from-task");
-
-    runAddSession("Task branch wins");
-
-    const journal = fs.readFileSync(
-      path.join(tmpDir, ".arbor", "workspace", "test-dev", "journal-1.md"),
-      "utf-8",
-    );
-    const index = fs.readFileSync(
-      path.join(tmpDir, ".arbor", "workspace", "test-dev", "index.md"),
-      "utf-8",
-    );
-
-    expect(journal).toContain("**Branch**: `task/from-task`");
-    expect(journal).not.toContain("**Base Branch**:");
-    expect(journal).not.toContain("feature/from-git");
-    expect(index).toContain("`task/from-task` |");
     expect(index).not.toContain("`feature/from-git`");
   });
 
@@ -492,606 +451,22 @@ describe("regression: task directory paths (0.2.14, 0.2.15, beta.13)", () => {
   });
 });
 
-describe("regression: resolve_task_dir path handling", () => {
-  it("[beta.12] resolve_task_dir handles .arbor prefix", () => {
-    // The function should recognize .arbor-prefixed paths as relative paths
-    expect(commonTaskUtils).toContain('.startswith(".arbor")');
-  });
-
-  it("[current-task] resolve_task_dir normalizes backslash separators before path classification", () => {
-    expect(commonTaskUtils).toContain('target_dir.replace("\\\\", "/")');
-  });
-});
-
-describe("regression: resolve_task_dir containment chokepoint", () => {
-  let tmpDir: string;
-  const pythonCmd = process.platform === "win32" ? "python" : "python3";
-
-  function runTask(...args: string[]): {
-    status: number | null;
-    stdout: string;
-    stderr: string;
-  } {
-    const result = spawnSync(
-      pythonCmd,
-      [path.join(".arbor", "scripts", "task.py"), ...args],
-      { cwd: tmpDir, encoding: "utf-8" },
-    );
-    return {
-      status: result.status,
-      stdout: result.stdout,
-      stderr: result.stderr,
-    };
-  }
-
-  function taskDir(...segments: string[]): string {
-    return path.join(tmpDir, ".arbor", "tasks", ...segments);
-  }
-
-  function makeTask(name: string): void {
-    fs.mkdirSync(taskDir(name), { recursive: true });
-    fs.writeFileSync(
-      path.join(taskDir(name), "task.json"),
-      JSON.stringify({ id: name, meta: {}, children: [] }) + "\n",
-    );
-  }
-
-  beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-task-escape-"));
-    const scriptsDir = path.join(tmpDir, ".arbor", "scripts");
-    for (const [relativePath, content] of getAllScripts()) {
-      const absPath = path.join(scriptsDir, relativePath);
-      fs.mkdirSync(path.dirname(absPath), { recursive: true });
-      fs.writeFileSync(absPath, content, "utf-8");
-    }
-    fs.writeFileSync(
-      path.join(tmpDir, ".arbor", ".developer"),
-      "name=tester\n",
-    );
-    fs.mkdirSync(taskDir("archive"), { recursive: true });
-    makeTask("08-09-real");
-  });
-
-  afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  });
-
-  it("[audit] set-meta on a traversal path fails and leaves the outside task.json untouched", () => {
-    const victimDir = path.join(
-      tmpDir,
-      "..",
-      path.basename(tmpDir) + "-victim",
-    );
-    fs.mkdirSync(victimDir, { recursive: true });
-    const victimJson = path.join(victimDir, "task.json");
-    fs.writeFileSync(victimJson, JSON.stringify({ id: "victim", meta: {} }));
-
-    try {
-      const r = runTask(
-        "set-meta",
-        `../${path.basename(victimDir)}`,
-        "pwned",
-        "yes",
-      );
-      expect(r.status).not.toBe(0);
-      expect(r.stderr).toContain("refusing to use");
-      expect(JSON.parse(fs.readFileSync(victimJson, "utf-8")).meta).toEqual({});
-    } finally {
-      fs.rmSync(victimDir, { recursive: true, force: true });
-    }
-  });
-
-  it("[audit] start reports a refused path once, on stderr only", () => {
-    // resolve_task_dir names the exact reason on stderr. cmd_start used to add
-    // a generic "Task not found" on stdout, so one refusal arrived as two
-    // messages split across two streams and the specific one was the easier to
-    // miss.
-    const r = runTask("start", "../escape");
-    expect(r.status).not.toBe(0);
-    expect(r.stderr).toContain("refusing to use");
-    expect(r.stdout).not.toContain("Task not found");
-  });
-
-  it("[audit] set-meta through a symlinked task dir fails and leaves the link target untouched", () => {
-    const outsideDir = path.join(tmpDir, "outside-target");
-    fs.mkdirSync(outsideDir, { recursive: true });
-    const outsideJson = path.join(outsideDir, "task.json");
-    fs.writeFileSync(outsideJson, JSON.stringify({ id: "outside", meta: {} }));
-    fs.symlinkSync(
-      outsideDir,
-      taskDir("08-09-symlinked"),
-      process.platform === "win32" ? "junction" : "dir",
-    );
-
-    const r = runTask("set-meta", "08-09-symlinked", "pwned", "yes");
-    expect(r.status).not.toBe(0);
-    expect(r.stderr).toContain("refusing to use");
-    expect(JSON.parse(fs.readFileSync(outsideJson, "utf-8")).meta).toEqual({});
-  });
-
-  it("[audit] create --slug with traversal fails and writes nothing outside the tasks dir", () => {
-    const r = runTask(
-      "create",
-      "Evil",
-      "--description",
-      "regression fixture",
-      "--slug",
-      "../../../escaped",
-    );
-    expect(r.status).not.toBe(0);
-    expect(r.stderr).toContain("--slug must be a plain name");
-    expect(fs.existsSync(path.join(tmpDir, ".arbor", "escaped"))).toBe(false);
-    expect(fs.readdirSync(path.join(tmpDir, ".arbor", "tasks")).sort()).toEqual(
-      ["08-09-real", "archive"],
-    );
-  });
-
-  it("[audit] add-context rejects a traversal JSONL filename", () => {
-    const r = runTask(
-      "add-context",
-      "08-09-real",
-      "../../../evil-ctx",
-      ".arbor/tasks/08-09-real/task.json",
-    );
-    expect(r.status).not.toBe(0);
-    expect(r.stdout + r.stderr).toContain("must be a plain name");
-    expect(fs.existsSync(path.join(tmpDir, "..", "evil-ctx.jsonl"))).toBe(
-      false,
-    );
-    expect(fs.existsSync(path.join(tmpDir, "evil-ctx.jsonl"))).toBe(false);
-  });
-
-  it("[audit] add-context on '..' fails instead of writing into .arbor/", () => {
-    const r = runTask(
-      "add-context",
-      "..",
-      "implement",
-      ".arbor/tasks/08-09-real/task.json",
-    );
-    expect(r.status).not.toBe(0);
-    expect(r.stderr).toContain("invalid task name");
-    expect(fs.existsSync(path.join(tmpDir, ".arbor", "implement.jsonl"))).toBe(
-      false,
-    );
-  });
-
-  it("[audit] an ambiguous suffix name fails and lists every match", () => {
-    makeTask("01-01-dupe");
-    makeTask("12-31-dupe");
-
-    const r = runTask("set-meta", "dupe", "k", "v");
-    expect(r.status).not.toBe(0);
-    expect(r.stderr).toContain("ambiguous task name");
-    expect(r.stderr).toContain("01-01-dupe");
-    expect(r.stderr).toContain("12-31-dupe");
-    for (const name of ["01-01-dupe", "12-31-dupe"]) {
-      expect(
-        JSON.parse(
-          fs.readFileSync(path.join(taskDir(name), "task.json"), "utf-8"),
-        ).meta,
-      ).toEqual({});
-    }
-  });
-
-  it("[audit] legitimate task paths still resolve: name, repo-relative path, and archived task", () => {
-    fs.mkdirSync(taskDir("archive", "2026-07", "08-09-old"), {
-      recursive: true,
-    });
-    fs.writeFileSync(
-      path.join(taskDir("archive", "2026-07", "08-09-old"), "task.json"),
-      JSON.stringify({ id: "old", meta: {} }) + "\n",
-    );
-
-    expect(runTask("set-meta", "08-09-real", "by-name", "1").status).toBe(0);
-    expect(
-      runTask("set-meta", ".arbor/tasks/08-09-real", "by-path", "2").status,
-    ).toBe(0);
-    expect(
-      runTask(
-        "set-meta",
-        ".arbor/tasks/archive/2026-07/08-09-old",
-        "archived",
-        "3",
-      ).status,
-    ).toBe(0);
-
-    expect(
-      JSON.parse(
-        fs.readFileSync(path.join(taskDir("08-09-real"), "task.json"), "utf-8"),
-      ).meta,
-    ).toEqual({ "by-name": "1", "by-path": "2" });
-    expect(
-      JSON.parse(
-        fs.readFileSync(
-          path.join(taskDir("archive", "2026-07", "08-09-old"), "task.json"),
-          "utf-8",
-        ),
-      ).meta,
-    ).toEqual({ archived: "3" });
-  });
-});
-
-describe("regression: task lifecycle overwrite and collision safety", () => {
-  let tmpDir: string;
-  const pythonCmd = process.platform === "win32" ? "python" : "python3";
-  const pad = (n: number): string => String(n).padStart(2, "0");
-  const now = new Date();
-  const datePrefix = `${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-  const yearMonth = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
-
-  function runTask(...args: string[]): {
-    status: number | null;
-    stdout: string;
-    stderr: string;
-  } {
-    const result = spawnSync(
-      pythonCmd,
-      [path.join(".arbor", "scripts", "task.py"), ...args],
-      { cwd: tmpDir, encoding: "utf-8" },
-    );
-    return {
-      status: result.status,
-      stdout: result.stdout,
-      stderr: result.stderr,
-    };
-  }
-
-  function taskDir(...segments: string[]): string {
-    return path.join(tmpDir, ".arbor", "tasks", ...segments);
-  }
-
-  function readTaskJson(...segments: string[]): Record<string, unknown> {
-    return JSON.parse(
-      fs.readFileSync(path.join(taskDir(...segments), "task.json"), "utf-8"),
-    ) as Record<string, unknown>;
-  }
-
-  function writeTaskJson(name: string, data: Record<string, unknown>): void {
-    fs.writeFileSync(
-      path.join(taskDir(name), "task.json"),
-      JSON.stringify(data, null, 2) + "\n",
-    );
-  }
-
-  beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-task-collision-"));
-    const scriptsDir = path.join(tmpDir, ".arbor", "scripts");
-    for (const [relativePath, content] of getAllScripts()) {
-      const absPath = path.join(scriptsDir, relativePath);
-      fs.mkdirSync(path.dirname(absPath), { recursive: true });
-      fs.writeFileSync(absPath, content, "utf-8");
-    }
-    fs.writeFileSync(
-      path.join(tmpDir, ".arbor", ".developer"),
-      "name=tester\n",
-    );
-    fs.mkdirSync(taskDir("archive"), { recursive: true });
-  });
-
-  afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  });
-
-  it("[audit] same-day slug reuse fails and preserves the existing task.json", () => {
-    expect(
-      runTask(
-        "create",
-        "First",
-        "--description",
-        "regression fixture",
-        "--slug",
-        "reuse",
-        "--no-start",
-      ).status,
-    ).toBe(0);
-
-    const dirName = `${datePrefix}-reuse`;
-    const live = {
-      ...readTaskJson(dirName),
-      status: "in_progress",
-      branch: "feat/live",
-      parent: "some-parent",
-      children: ["some-child"],
-      meta: { linear: "TRE-1" },
-    };
-    writeTaskJson(dirName, live);
-
-    const r = runTask(
-      "create",
-      "Second",
-      "--description",
-      "regression fixture",
-      "--slug",
-      "reuse",
-      "--no-start",
-    );
-    expect(r.status).not.toBe(0);
-    expect(r.stderr).toContain("Task already exists");
-    expect(r.stderr).toContain("--force");
-    expect(readTaskJson(dirName)).toEqual(live);
-  });
-
-  it("[audit] create --force overwrites an existing task.json", () => {
-    expect(
-      runTask(
-        "create",
-        "First",
-        "--description",
-        "regression fixture",
-        "--slug",
-        "reuse",
-        "--no-start",
-      ).status,
-    ).toBe(0);
-    const dirName = `${datePrefix}-reuse`;
-    writeTaskJson(dirName, { ...readTaskJson(dirName), status: "in_progress" });
-
-    const r = runTask(
-      "create",
-      "Second",
-      "--description",
-      "regression fixture",
-      "--slug",
-      "reuse",
-      "--no-start",
-      "--force",
-    );
-    expect(r.status, r.stderr).toBe(0);
-    expect(r.stderr).toContain("--force");
-
-    const after = readTaskJson(dirName);
-    expect(after.title).toBe("Second");
-    expect(after.status).toBe("planning");
-  });
-
-  it("[audit] archive into an existing destination fails, leaving both directories intact", () => {
-    expect(
-      runTask(
-        "create",
-        "Kid",
-        "--description",
-        "regression fixture",
-        "--slug",
-        "kid",
-        "--no-start",
-      ).status,
-    ).toBe(0);
-    const dirName = `${datePrefix}-kid`;
-
-    const destDir = taskDir("archive", yearMonth, dirName);
-    fs.mkdirSync(destDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(destDir, "task.json"),
-      JSON.stringify({ id: "previously-archived" }),
-    );
-
-    const r = runTask("archive", dirName, "--no-commit");
-    expect(r.status).not.toBe(0);
-    expect(r.stderr).toContain("archive destination already exists");
-    // Both sides of the collision must be named, or the user cannot tell
-    // which archived task to move out of the way.
-    expect(r.stderr).toContain(`archive/${yearMonth}/${dirName}`);
-    expect(r.stderr).toContain(`Task remains at: .arbor/tasks/${dirName}`);
-
-    // No nesting, no partial state: the live task is untouched (not even
-    // flipped to completed) and the archived copy still holds its own file.
-    expect(fs.existsSync(path.join(destDir, dirName))).toBe(false);
-    expect(readTaskJson(dirName).status).toBe("planning");
-    expect(readTaskJson(dirName).completedAt).toBeNull();
-    expect(
-      JSON.parse(fs.readFileSync(path.join(destDir, "task.json"), "utf-8")).id,
-    ).toBe("previously-archived");
-  });
-
-  it("[audit] archive still succeeds when the destination is free", () => {
-    expect(
-      runTask(
-        "create",
-        "Kid",
-        "--description",
-        "regression fixture",
-        "--slug",
-        "kid",
-        "--no-start",
-      ).status,
-    ).toBe(0);
-    const dirName = `${datePrefix}-kid`;
-
-    const r = runTask("archive", dirName, "--no-commit");
-    expect(r.status, r.stderr).toBe(0);
-    expect(fs.existsSync(taskDir(dirName))).toBe(false);
-    expect(
-      fs.existsSync(
-        path.join(taskDir("archive", yearMonth, dirName), "task.json"),
-      ),
-    ).toBe(true);
-  });
-
-  it("[audit] create --parent on a missing task fails and creates nothing", () => {
-    const r = runTask(
-      "create",
-      "Orphan",
-      "--description",
-      "regression fixture",
-      "--slug",
-      "orphan",
-      "--no-start",
-      "--parent",
-      "no-such-task",
-    );
-    expect(r.status).not.toBe(0);
-    expect(r.stderr).toContain("Parent task not resolved");
-    expect(r.stderr).toContain("No task was created");
-    expect(fs.readdirSync(path.join(tmpDir, ".arbor", "tasks"))).toEqual([
-      "archive",
-    ]);
-  });
-
-  it("[audit] create --parent pointing at a dir without task.json fails and creates nothing", () => {
-    fs.mkdirSync(taskDir(`${datePrefix}-bare`), { recursive: true });
-
-    const r = runTask(
-      "create",
-      "Orphan",
-      "--description",
-      "regression fixture",
-      "--slug",
-      "orphan",
-      "--no-start",
-      "--parent",
-      `${datePrefix}-bare`,
-    );
-    expect(r.status).not.toBe(0);
-    expect(r.stderr).toContain("Parent task.json not found");
-    expect(fs.existsSync(taskDir(`${datePrefix}-orphan`))).toBe(false);
-  });
-
-  it("[audit] create --parent still links a valid parent on both sides", () => {
-    expect(
-      runTask(
-        "create",
-        "Mum",
-        "--description",
-        "regression fixture",
-        "--slug",
-        "mum",
-        "--no-start",
-      ).status,
-    ).toBe(0);
-    const parentName = `${datePrefix}-mum`;
-    const childName = `${datePrefix}-kid`;
-
-    const r = runTask(
-      "create",
-      "Kid",
-      "--description",
-      "regression fixture",
-      "--slug",
-      "kid",
-      "--no-start",
-      "--parent",
-      parentName,
-    );
-    expect(r.status, r.stderr).toBe(0);
-    expect(readTaskJson(childName).parent).toBe(parentName);
-    expect(readTaskJson(parentName).children).toEqual([childName]);
-  });
-
-  // A read-only child directory makes write_json's mkstemp fail. root ignores
-  // the mode bits, so the failure can only be provoked as a normal user.
-  const canProvokeWriteFailure =
-    process.platform !== "win32" && process.getuid?.() !== 0;
-
-  it.skipIf(!canProvokeWriteFailure)(
-    "[audit] add-subtask reports which side was written when the second write fails",
-    () => {
-      expect(
-        runTask(
-          "create",
-          "Mum",
-          "--description",
-          "regression fixture",
-          "--slug",
-          "mum",
-          "--no-start",
-        ).status,
-      ).toBe(0);
-      expect(
-        runTask(
-          "create",
-          "Kid",
-          "--description",
-          "regression fixture",
-          "--slug",
-          "kid",
-          "--no-start",
-        ).status,
-      ).toBe(0);
-      const parentName = `${datePrefix}-mum`;
-      const childName = `${datePrefix}-kid`;
-
-      fs.chmodSync(taskDir(childName), 0o555);
-      try {
-        const r = runTask("add-subtask", parentName, childName);
-        expect(r.status).not.toBe(0);
-        expect(r.stderr).toContain("Failed to write child task.json");
-        expect(r.stderr).toContain("half-written");
-        // The message must match reality: the parent side did land.
-        expect(readTaskJson(parentName).children).toEqual([childName]);
-      } finally {
-        fs.chmodSync(taskDir(childName), 0o755);
-      }
-    },
-  );
-
-  it.skipIf(!canProvokeWriteFailure)(
-    "[audit] remove-subtask reports which side was written when the second write fails",
-    () => {
-      expect(
-        runTask(
-          "create",
-          "Mum",
-          "--description",
-          "regression fixture",
-          "--slug",
-          "mum",
-          "--no-start",
-        ).status,
-      ).toBe(0);
-      const parentName = `${datePrefix}-mum`;
-      const childName = `${datePrefix}-kid`;
-      expect(
-        runTask(
-          "create",
-          "Kid",
-          "--description",
-          "regression fixture",
-          "--slug",
-          "kid",
-          "--no-start",
-          "--parent",
-          parentName,
-        ).status,
-      ).toBe(0);
-
-      fs.chmodSync(taskDir(childName), 0o555);
-      try {
-        const r = runTask("remove-subtask", parentName, childName);
-        expect(r.status).not.toBe(0);
-        expect(r.stderr).toContain("Failed to write child task.json");
-        expect(r.stderr).toContain("half-written");
-        // The message must match reality: the parent side did land, so the
-        // child is the one still holding a stale parent reference.
-        expect(readTaskJson(parentName).children).toEqual([]);
-        expect(readTaskJson(childName).parent).toBe(parentName);
-      } finally {
-        fs.chmodSync(taskDir(childName), 0o755);
-      }
-    },
-  );
-});
-
 describe("regression: JSON read/write failure reporting", () => {
   let tmpDir: string;
   const pythonCmd = process.platform === "win32" ? "python" : "python3";
-  const pad = (n: number): string => String(n).padStart(2, "0");
-  const now = new Date();
-  const datePrefix = `${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 
   // chmod is the only way to provoke a read/write failure, and root ignores
   // the mode bits — skip rather than assert something that cannot happen.
   const canProvokePermissionFailure =
     process.platform !== "win32" && process.getuid?.() !== 0;
 
-  function runTask(
+  function runPython(
     args: string[],
-    env: Record<string, string> = {},
   ): { status: number | null; stdout: string; stderr: string } {
-    const result = spawnSync(
-      pythonCmd,
-      [path.join(".arbor", "scripts", "task.py"), ...args],
-      { cwd: tmpDir, encoding: "utf-8", env: { ...process.env, ...env } },
-    );
+    const result = spawnSync(pythonCmd, args, {
+      cwd: tmpDir,
+      encoding: "utf-8",
+    });
     return {
       status: result.status,
       stdout: result.stdout,
@@ -1099,19 +474,13 @@ describe("regression: JSON read/write failure reporting", () => {
     };
   }
 
-  function taskDir(...segments: string[]): string {
-    return path.join(tmpDir, ".arbor", "tasks", ...segments);
-  }
-
   function taskJsonPath(name: string): string {
-    return path.join(taskDir(name), "task.json");
+    return path.join(tmpDir, ".arbor", "tasks", name, "task.json");
   }
 
-  function readTaskJson(name: string): Record<string, unknown> {
-    return JSON.parse(fs.readFileSync(taskJsonPath(name), "utf-8")) as Record<
-      string,
-      unknown
-    >;
+  function writeTaskJson(name: string, content: string | Buffer): void {
+    fs.mkdirSync(path.dirname(taskJsonPath(name)), { recursive: true });
+    fs.writeFileSync(taskJsonPath(name), content);
   }
 
   beforeEach(() => {
@@ -1122,613 +491,115 @@ describe("regression: JSON read/write failure reporting", () => {
       fs.mkdirSync(path.dirname(absPath), { recursive: true });
       fs.writeFileSync(absPath, content, "utf-8");
     }
-    fs.writeFileSync(
-      path.join(tmpDir, ".arbor", ".developer"),
-      "name=tester\n",
-    );
-    fs.mkdirSync(taskDir("archive"), { recursive: true });
   });
 
   afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("[audit] set-meta on a corrupt task.json names the file and the failure class", () => {
-    expect(
-      runTask([
-        "create",
-        "Broken",
-        "--description",
-        "regression fixture",
-        "--slug",
-        "broken",
-        "--no-start",
-      ]).status,
-    ).toBe(0);
-    const name = `${datePrefix}-broken`;
-    fs.writeFileSync(taskJsonPath(name), "{ not json");
+  it("[audit] read_json_checked names each failure class instead of raising", () => {
+    // UnicodeDecodeError is not an OSError, so a non-UTF-8 file used to escape
+    // the handlers and surface as a traceback.
+    const dir = path.join(tmpDir, "probe");
+    fs.mkdirSync(dir);
+    fs.writeFileSync(path.join(dir, "corrupt.json"), "{ not json");
+    fs.writeFileSync(
+      path.join(dir, "latin.json"),
+      Buffer.from([0x7b, 0x22, 0xff, 0x22, 0x7d]),
+    );
+    fs.writeFileSync(path.join(dir, "list.json"), "[]");
+    fs.writeFileSync(path.join(dir, "empty.json"), "{}");
+    fs.writeFileSync(path.join(dir, "ok.json"), '{"a": 1}');
 
-    const r = runTask(["set-meta", name, "k", "v"]);
-    expect(r.status).not.toBe(0);
-    // Previously: exit 1 with completely empty stdout AND stderr.
-    expect(r.stderr).toContain("task.json");
-    expect(r.stderr).toContain("not valid JSON");
-    expect(r.stderr).toContain("json.tool");
-    expect(fs.readFileSync(taskJsonPath(name), "utf-8")).toBe("{ not json");
+    const probe = [
+      "import json, sys",
+      "from pathlib import Path",
+      "sys.path.insert(0, str(Path.cwd() / '.arbor' / 'scripts'))",
+      "from common.io import read_json_checked",
+      "d = Path.cwd() / 'probe'",
+      "out = {}",
+      "for name in ['missing', 'corrupt', 'latin', 'list', 'empty', 'ok']:",
+      "    data, reason = read_json_checked(d / f'{name}.json')",
+      "    out[name] = [data, reason]",
+      "print(json.dumps(out))",
+    ].join("\n");
+    const r = runPython(["-c", probe]);
+    expect(r.status, r.stderr).toBe(0);
+    expect(JSON.parse(r.stdout)).toEqual({
+      missing: [null, "missing"],
+      corrupt: [null, "invalid"],
+      latin: [null, "undecodable"],
+      list: [null, "not-object"],
+      empty: [null, "empty"],
+      ok: [{ a: 1 }, null],
+    });
   });
 
-  it("[audit] set-meta on a non-UTF-8 task.json names the encoding, not a parse error", () => {
-    // read_json_checked caught FileNotFoundError and OSError. UnicodeDecodeError
-    // is neither, so a task.json that is not UTF-8 escaped both handlers and
-    // surfaced as a traceback.
-    expect(
-      runTask([
-        "create",
-        "Latin",
-        "--description",
-        "regression fixture",
-        "--slug",
-        "latin",
-        "--no-start",
-      ]).status,
-    ).toBe(0);
-    const name = `${datePrefix}-latin`;
-    fs.writeFileSync(
-      taskJsonPath(name),
+  it.skipIf(!canProvokePermissionFailure)(
+    "[audit] read_json_checked reports an unreadable file as unreadable, not a parse error",
+    () => {
+      writeTaskJson("ro", '{"a": 1}');
+      fs.chmodSync(taskJsonPath("ro"), 0o000);
+      try {
+        const probe = [
+          "import json, sys",
+          "from pathlib import Path",
+          "sys.path.insert(0, str(Path.cwd() / '.arbor' / 'scripts'))",
+          "from common.io import read_json_checked",
+          "print(json.dumps(read_json_checked(Path(sys.argv[1]))))",
+        ].join("\n");
+        const r = runPython(["-c", probe, taskJsonPath("ro")]);
+        expect(r.status, r.stderr).toBe(0);
+        expect(JSON.parse(r.stdout)).toEqual([null, "unreadable"]);
+      } finally {
+        fs.chmodSync(taskJsonPath("ro"), 0o644);
+      }
+    },
+  );
+
+  it("[audit] arbor.py on a corrupt or non-UTF-8 task.json names the file and the failure, without a traceback", () => {
+    writeTaskJson("08-09-broken", "{ not json");
+    writeTaskJson(
+      "08-09-latin",
       Buffer.from([0x7b, 0x22, 0xff, 0x22, 0x7d]),
     );
 
-    const r = runTask(["set-meta", name, "k", "v"]);
-    expect(r.status).not.toBe(0);
-    expect(r.stderr).not.toContain("Traceback");
-    expect(r.stderr).toContain("not valid UTF-8 text");
-  });
-
-  it("[audit] validate reports a non-string `file` instead of crashing on it", () => {
-    // A truthy non-string (e.g. {"file": 1}) reached path joining and raised
-    // TypeError, so validation crashed on the very row it exists to report.
-    expect(
-      runTask([
-        "create",
-        "Typed",
-        "--description",
-        "regression fixture",
-        "--slug",
-        "typed",
-        "--no-start",
-      ]).status,
-    ).toBe(0);
-    const name = `${datePrefix}-typed`;
-    fs.writeFileSync(
-      path.join(path.dirname(taskJsonPath(name)), "implement.jsonl"),
-      `${JSON.stringify({ file: 1, reason: "numeric path" })}\n`,
-      "utf-8",
-    );
-
-    const r = runTask(["validate", name]);
-    expect(r.status).not.toBe(0);
-    expect(r.stderr).not.toContain("Traceback");
-    expect(r.stdout).toContain("`file` must be a string path");
-  });
-
-  it.skipIf(!canProvokePermissionFailure)(
-    "[audit] set-meta on an unreadable task.json reports permissions, not a parse error",
-    () => {
-      expect(
-        runTask([
-          "create",
-          "Locked",
-          "--description",
-          "regression fixture",
-          "--slug",
-          "locked",
-          "--no-start",
-        ]).status,
-      ).toBe(0);
-      const name = `${datePrefix}-locked`;
-      fs.chmodSync(taskJsonPath(name), 0o000);
-
-      try {
-        const r = runTask(["set-meta", name, "k", "v"]);
-        expect(r.status).not.toBe(0);
-        expect(r.stderr).toContain("could not be read");
-        expect(r.stderr).toContain("permission");
-        // The whole point of the split: this must NOT read as a parse error.
-        expect(r.stderr).not.toContain("not valid JSON");
-      } finally {
-        fs.chmodSync(taskJsonPath(name), 0o644);
-      }
-    },
-  );
-
-  it("[audit] set-scope on a task dir without task.json reports the missing file", () => {
-    fs.mkdirSync(taskDir(`${datePrefix}-bare`), { recursive: true });
-    const r = runTask(["set-scope", `${datePrefix}-bare`, "cli"]);
-    expect(r.status).not.toBe(0);
-    expect(r.stdout + r.stderr).toContain("task.json not found");
-  });
-
-  it.skipIf(!canProvokePermissionFailure)(
-    "[audit] set-branch reports a failed write instead of printing success",
-    () => {
-      expect(
-        runTask([
-          "create",
-          "Ro",
-          "--description",
-          "regression fixture",
-          "--slug",
-          "ro",
-          "--no-start",
-        ]).status,
-      ).toBe(0);
-      const name = `${datePrefix}-ro`;
-      // Read-only task dir: write_json's mkstemp fails, the original survives.
-      fs.chmodSync(taskDir(name), 0o555);
-
-      try {
-        const r = runTask(["set-branch", name, "feat/x"]);
-        expect(r.status).not.toBe(0);
-        expect(r.stdout).not.toContain("Branch set to");
-        expect(r.stderr).toContain("Failed to write");
-        expect(r.stderr).toContain("unchanged");
-      } finally {
-        fs.chmodSync(taskDir(name), 0o755);
-      }
-      expect(readTaskJson(name).branch).toBeNull();
-    },
-  );
-
-  it.skipIf(!canProvokePermissionFailure)(
-    "[audit] create reports a failed task.json write instead of 'Created task'",
-    () => {
-      expect(
-        runTask([
-          "create",
-          "First",
-          "--description",
-          "regression fixture",
-          "--slug",
-          "dup",
-          "--no-start",
-        ]).status,
-      ).toBe(0);
-      const name = `${datePrefix}-dup`;
-      fs.chmodSync(taskDir(name), 0o555);
-
-      try {
-        const r = runTask([
-          "create",
-          "Second",
-          "--description",
-          "regression fixture",
-          "--slug",
-          "dup",
-          "--no-start",
-          "--force",
-        ]);
-        expect(r.status).not.toBe(0);
-        expect(r.stderr).toContain("Failed to write");
-        expect(r.stderr).toContain("No task was created");
-        expect(r.stderr).not.toContain("Created task");
-        // Nothing on stdout means nothing for a script to chain onto.
-        expect(r.stdout.trim()).toBe("");
-      } finally {
-        fs.chmodSync(taskDir(name), 0o755);
-      }
-      expect(readTaskJson(name).title).toBe("First");
-    },
-  );
-
-  it.skipIf(!canProvokePermissionFailure)(
-    "[audit] archive stops before moving when a child cannot be unlinked",
-    () => {
-      expect(
-        runTask([
-          "create",
-          "Mum",
-          "--description",
-          "regression fixture",
-          "--slug",
-          "mum",
-          "--no-start",
-        ]).status,
-      ).toBe(0);
-      const parentName = `${datePrefix}-mum`;
-      const childName = `${datePrefix}-kid`;
-      expect(
-        runTask([
-          "create",
-          "Kid",
-          "--description",
-          "regression fixture",
-          "--slug",
-          "kid",
-          "--no-start",
-          "--parent",
-          parentName,
-        ]).status,
-      ).toBe(0);
-
-      fs.chmodSync(taskDir(childName), 0o555);
-      try {
-        const r = runTask(["archive", parentName, "--no-commit"]);
-        expect(r.status).not.toBe(0);
-        expect(r.stderr).toContain("Failed to write");
-        expect(r.stderr).toContain(childName);
-        expect(r.stderr).toContain("Not archived");
-      } finally {
-        fs.chmodSync(taskDir(childName), 0o755);
-      }
-      // The task must still be where the user left it, not half-moved.
-      expect(fs.existsSync(taskJsonPath(parentName))).toBe(true);
-      expect(readTaskJson(childName).parent).toBe(parentName);
-    },
-  );
-
-  it.skipIf(!canProvokePermissionFailure)(
-    "[audit] archive restores the children it already unlinked when a later one fails",
-    () => {
-      const createTask = (
-        title: string,
-        slug: string,
-        parent?: string,
-      ): void => {
-        const args = [
-          "create",
-          title,
-          "--description",
-          "regression fixture",
-          "--slug",
-          slug,
-          "--no-start",
-        ];
-        if (parent) args.push("--parent", parent);
-        expect(runTask(args).status).toBe(0);
-      };
-
-      createTask("Mum", "mum2");
-      const parentName = `${datePrefix}-mum2`;
-      createTask("Kid A", "kid-a", parentName);
-      createTask("Kid B", "kid-b", parentName);
-      const firstChild = `${datePrefix}-kid-a`;
-      const failingChild = `${datePrefix}-kid-b`;
-
-      // Archive walks `children` in order, so pin the order: the failing
-      // child has to come second, after `kid-a` has already lost its link.
-      const parentJson = readTaskJson(parentName);
-      parentJson.children = [firstChild, failingChild];
-      fs.writeFileSync(
-        taskJsonPath(parentName),
-        `${JSON.stringify(parentJson, null, 2)}\n`,
-        "utf-8",
-      );
-
-      // Provoke the write failure through both mechanisms the atomic
-      // writer can hit: a read-only directory fails `mkstemp`, and a
-      // read-only target fails the final replace. Which one a platform
-      // enforces is not the point of this test.
-      fs.chmodSync(taskDir(failingChild), 0o555);
-      fs.chmodSync(taskJsonPath(failingChild), 0o444);
-      try {
-        const r = runTask(["archive", parentName, "--no-commit"]);
-        expect(r.status).not.toBe(0);
-        expect(r.stderr).toContain("Failed to write");
-        expect(r.stderr).toContain(failingChild);
-        expect(r.stderr).toContain("Not archived");
-      } finally {
-        fs.chmodSync(taskJsonPath(failingChild), 0o644);
-        fs.chmodSync(taskDir(failingChild), 0o755);
-      }
-
-      // Stopping before the move is not enough on its own: `kid-a` was
-      // unlinked before the failure, and with its parent still in the
-      // active tree that link is lost for good. It has to come back.
-      expect(fs.existsSync(taskJsonPath(parentName))).toBe(true);
-      expect(readTaskJson(firstChild).parent).toBe(parentName);
-      expect(readTaskJson(failingChild).parent).toBe(parentName);
-    },
-  );
-
-  it.skipIf(!canProvokePermissionFailure)(
-    "[audit] archive restore survives a duplicated child entry",
-    () => {
-      const create = (title: string, slug: string, parent?: string): string => {
-        const args = [
-          "create",
-          title,
-          "--description",
-          "regression fixture",
-          "--slug",
-          slug,
-          "--no-start",
-        ];
-        if (parent) args.push("--parent", parent);
-        expect(runTask(args).status).toBe(0);
-        return `${datePrefix}-${slug}`;
-      };
-
-      const parentName = create("Mum", "mum-dup");
-      const firstChild = create("Kid A", "kid-a-dup", parentName);
-      const failingChild = create("Kid B", "kid-b-dup", parentName);
-
-      // A duplicated entry makes the unlink loop visit `kid-a-dup` twice.
-      // The second visit must not snapshot the already-cleared `null`, or the
-      // restore writes that back over the real link and detaches the child
-      // while its parent is still in the active tree.
-      const parentJson = readTaskJson(parentName);
-      parentJson.children = [firstChild, firstChild, failingChild];
-      fs.writeFileSync(
-        taskJsonPath(parentName),
-        `${JSON.stringify(parentJson, null, 2)}\n`,
-        "utf-8",
-      );
-
-      fs.chmodSync(taskDir(failingChild), 0o555);
-      fs.chmodSync(taskJsonPath(failingChild), 0o444);
-      try {
-        expect(runTask(["archive", parentName, "--no-commit"]).status).not.toBe(
-          0,
-        );
-      } finally {
-        fs.chmodSync(taskJsonPath(failingChild), 0o644);
-        fs.chmodSync(taskDir(failingChild), 0o755);
-      }
-
-      expect(readTaskJson(firstChild).parent).toBe(parentName);
-      expect(readTaskJson(failingChild).parent).toBe(parentName);
-    },
-  );
-
-  it("[audit] list warns about a skipped task instead of silently dropping it", () => {
-    expect(
-      runTask([
-        "create",
-        "Good",
-        "--description",
-        "regression fixture",
-        "--slug",
-        "good",
-        "--no-start",
-      ]).status,
-    ).toBe(0);
-    expect(
-      runTask([
-        "create",
-        "Bad",
-        "--description",
-        "regression fixture",
-        "--slug",
-        "bad",
-        "--no-start",
-      ]).status,
-    ).toBe(0);
-    fs.writeFileSync(taskJsonPath(`${datePrefix}-bad`), "{ not json");
-
-    const r = runTask(["list"]);
-    expect(r.status).toBe(0);
-    // Tolerant: the healthy task still lists.
-    expect(r.stdout).toContain(`${datePrefix}-good`);
-    // Observable: the vanished one is named, with the reason.
-    expect(r.stderr).toContain(`${datePrefix}-bad`);
-    expect(r.stderr).toContain("Skipping task");
-    expect(r.stderr).toContain("not valid JSON");
-  });
-
-  it("[audit] start still activates a task with a corrupt task.json but says why status and branch stayed", () => {
-    const env = { ARBOR_CONTEXT_ID: "json-io-start" };
-    expect(
-      runTask(
-        [
-          "create",
-          "Rot",
-          "--description",
-          "regression fixture",
-          "--slug",
-          "rot",
-          "--no-start",
-        ],
-        env,
-      ).status,
-    ).toBe(0);
-    const name = `${datePrefix}-rot`;
-    fs.writeFileSync(taskJsonPath(name), "{ not json");
-
-    const r = runTask(
-      ["start", name, "--no-worktree", "--allow-empty-context"],
-      env,
-    );
-    // Tolerant: the session pointer is the point of the command.
-    expect(r.status).toBe(0);
-    expect(r.stdout).toContain("Current task set to");
-    // Observable: without this the absent status line reads as "not in planning".
-    expect(r.stderr).toContain("not valid JSON");
-    expect(r.stderr).toContain("task.json not updated");
-  });
-
-  it("[audit] current --json carries a read-failure signal and stays silent when healthy", () => {
-    const env = { ARBOR_CONTEXT_ID: "json-io-test" };
-    expect(
-      runTask(
-        [
-          "create",
-          "Live",
-          "--description",
-          "regression fixture",
-          "--slug",
-          "live",
-          "--no-start",
-        ],
-        env,
-      ).status,
-    ).toBe(0);
-    const name = `${datePrefix}-live`;
-    expect(
-      runTask(["start", name, "--no-worktree", "--allow-empty-context"], env)
-        .status,
-    ).toBe(0);
-
-    const healthy = runTask(["current", "--json"], env);
-    expect(healthy.status).toBe(0);
-    const healthyPayload = JSON.parse(healthy.stdout) as Record<
-      string,
-      unknown
-    >;
-    expect(Object.keys(healthyPayload).sort()).toEqual([
-      "current_task",
-      "source",
-      "stale",
-    ]);
-
-    fs.writeFileSync(taskJsonPath(name), "{ not json");
-    const broken = runTask(["current", "--json"], env);
-    const brokenPayload = JSON.parse(broken.stdout) as {
-      current_task: Record<string, unknown> | null;
-      error?: { file: string; reason: string; message: string };
-    };
-    // All-null fields are still emitted, but no longer indistinguishable
-    // from a task whose fields really are null.
-    expect(brokenPayload.current_task?.status).toBeNull();
-    expect(brokenPayload.error?.reason).toBe("invalid");
-    expect(brokenPayload.error?.file).toContain("task.json");
-    expect(brokenPayload.error?.message).toContain("not valid JSON");
-  });
-
-  it.skipIf(!canProvokePermissionFailure)(
-    "[audit] a session pointer that cannot be written atomically is left intact",
-    () => {
-      const env = { ARBOR_CONTEXT_ID: "json-io-session" };
-      expect(
-        runTask(
-          [
-            "create",
-            "One",
-            "--description",
-            "regression fixture",
-            "--slug",
-            "one",
-            "--no-start",
-          ],
-          env,
-        ).status,
-      ).toBe(0);
-      expect(
-        runTask(
-          [
-            "create",
-            "Two",
-            "--description",
-            "regression fixture",
-            "--slug",
-            "two",
-            "--no-start",
-          ],
-          env,
-        ).status,
-      ).toBe(0);
-      expect(
-        runTask(
-          [
-            "start",
-            `${datePrefix}-one`,
-            "--no-worktree",
-            "--allow-empty-context",
-          ],
-          env,
-        ).status,
-      ).toBe(0);
-
-      const sessionsDir = path.join(tmpDir, ".arbor", ".runtime", "sessions");
-      const sessionFile = path.join(sessionsDir, "json-io-session.json");
-      expect(fs.existsSync(sessionFile)).toBe(true);
-
-      // A read-only sessions dir blocks the temp-file write. The old plain
-      // write_text would have opened the existing file for writing (which
-      // needs no directory permission) and truncated it before writing.
-      fs.chmodSync(sessionsDir, 0o555);
-      try {
-        const r = runTask(
-          [
-            "start",
-            `${datePrefix}-two`,
-            "--no-worktree",
-            "--allow-empty-context",
-          ],
-          env,
-        );
-        expect(r.status).not.toBe(0);
-        expect(r.stdout + r.stderr).toContain("Failed to set current task");
-      } finally {
-        fs.chmodSync(sessionsDir, 0o755);
-      }
-
-      const session = JSON.parse(fs.readFileSync(sessionFile, "utf-8")) as {
-        current_task: string;
-      };
-      expect(session.current_task).toBe(`.arbor/tasks/${datePrefix}-one`);
-    },
-  );
-});
-
-describe("regression: is_within_tasks_dir archive boundary (issue #428)", () => {
-  let tmpDir: string;
-  const pythonCmd = process.platform === "win32" ? "python" : "python3";
-
-  beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-within-tasks-dir-"));
-    const scriptsDir = path.join(tmpDir, ".arbor", "scripts");
-    for (const [relativePath, content] of getAllScripts()) {
-      const absPath = path.join(scriptsDir, relativePath);
-      fs.mkdirSync(path.dirname(absPath), { recursive: true });
-      fs.writeFileSync(absPath, content, "utf-8");
+    for (const [name, reason] of [
+      ["08-09-broken", "not valid JSON"],
+      ["08-09-latin", "not valid UTF-8"],
+    ] as const) {
+      const r = runPython([
+        path.join(".arbor", "scripts", "arbor.py"),
+        "--task",
+        name,
+        "status",
+      ]);
+      expect(r.status, r.stderr).toBe(1);
+      expect(r.stderr).not.toContain("Traceback");
+      expect(r.stderr).toContain(path.join(name, "task.json"));
+      expect(r.stderr).toContain(reason);
     }
-    fs.mkdirSync(path.join(tmpDir, ".arbor", "tasks", "archive"), {
-      recursive: true,
-    });
-    fs.mkdirSync(
-      path.join(tmpDir, ".arbor", "tasks", "archive", "2026-07", "old-task"),
-      { recursive: true },
+    // The failed read did not rewrite the file.
+    expect(fs.readFileSync(taskJsonPath("08-09-broken"), "utf-8")).toBe(
+      "{ not json",
     );
-    fs.mkdirSync(path.join(tmpDir, ".arbor", "tasks", "live-task"), {
-      recursive: true,
-    });
-    fs.mkdirSync(path.join(tmpDir, "src"), { recursive: true });
   });
 
-  afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  });
-
-  it("[issue-428] rejects the archive root, an archived child, the tasks root, and an external path; accepts a direct child", () => {
-    const probe = `
-import json
-import sys
-from pathlib import Path
-
-root = Path.cwd()
-sys.path.insert(0, str(root / ".arbor" / "scripts"))
-from common.task_utils import is_within_tasks_dir
-
-print(json.dumps({
-    "archive_root": is_within_tasks_dir(root / ".arbor" / "tasks" / "archive", root),
-    "archived_child": is_within_tasks_dir(root / ".arbor" / "tasks" / "archive" / "2026-07" / "old-task", root),
-    "tasks_root": is_within_tasks_dir(root / ".arbor" / "tasks", root),
-    "external_path": is_within_tasks_dir(root / "src", root),
-    "direct_child": is_within_tasks_dir(root / ".arbor" / "tasks" / "live-task", root),
-}))
-`;
-    const result = spawnSync(pythonCmd, ["-c", probe], {
-      cwd: tmpDir,
-      encoding: "utf-8",
-    });
-    expect(result.status, result.stderr).toBe(0);
-    expect(JSON.parse(result.stdout)).toEqual({
-      archive_root: false,
-      archived_child: false,
-      tasks_root: false,
-      external_path: false,
-      direct_child: true,
-    });
+  it("[audit] arbor.py new reports a failed task.json write instead of 'created'", () => {
+    // write_json returns False on failure (see the #429 tests); a caller that
+    // ignores it prints success over a task that has no task.json.
+    fs.mkdirSync(path.join(tmpDir, ".arbor", "tasks"), { recursive: true });
+    const probe = [
+      "import sys",
+      "from pathlib import Path",
+      "sys.path.insert(0, str(Path.cwd() / '.arbor' / 'scripts'))",
+      "import arbor",
+      "arbor.write_json = lambda path, data: False",
+      "sys.exit(arbor.main(['new', 'Write fails', '--slug', 'write-fails']))",
+    ].join("\n");
+    const r = runPython(["-c", probe]);
+    expect(r.status, r.stdout + r.stderr).not.toBe(0);
+    expect(r.stdout).not.toContain("created");
   });
 });
 
@@ -1867,128 +738,6 @@ print(json.dumps({
       content: { a: 1, b: "text" },
       leftover_tmp: [],
     });
-  });
-});
-
-describe("regression: task auto-activation failure diagnostics (issue #430)", () => {
-  let tmpDir: string;
-  const pythonCmd = process.platform === "win32" ? "python" : "python3";
-
-  beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-task-activate-"));
-    const scriptsDir = path.join(tmpDir, ".arbor", "scripts");
-    for (const [relativePath, content] of getAllScripts()) {
-      const absPath = path.join(scriptsDir, relativePath);
-      fs.mkdirSync(path.dirname(absPath), { recursive: true });
-      fs.writeFileSync(absPath, content, "utf-8");
-    }
-    fs.mkdirSync(path.join(tmpDir, ".arbor", "spec", "guides"), {
-      recursive: true,
-    });
-    fs.writeFileSync(
-      path.join(tmpDir, ".arbor", "spec", "guides", "index.md"),
-      "# Guides\n",
-    );
-    fs.writeFileSync(
-      path.join(tmpDir, ".arbor", "workflow.md"),
-      "# Workflow\n",
-    );
-    fs.mkdirSync(path.join(tmpDir, ".arbor", "tasks"), { recursive: true });
-    fs.mkdirSync(path.join(tmpDir, ".arbor", "workspace", "test-dev"), {
-      recursive: true,
-    });
-    fs.writeFileSync(
-      path.join(tmpDir, ".arbor", ".developer"),
-      "name=test-dev\n",
-      "utf-8",
-    );
-  });
-
-  afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  });
-
-  // Ambient session env vars from the real host session (e.g. this test
-  // running inside Claude Code itself) must not leak into the "no session"
-  // scenario — scrub every platform session/transcript key before overlay.
-  const AMBIENT_SESSION_ENV_KEYS = [
-    "ARBOR_CONTEXT_ID",
-    "CLAUDE_SESSION_ID",
-    "CLAUDE_CODE_SESSION_ID",
-    "CODEX_SESSION_ID",
-    "CODEX_THREAD_ID",
-    "CURSOR_SESSION_ID",
-    "CURSOR_CONVERSATION_ID",
-    "CURSOR_CONVERSATIONID",
-    "OPENCODE_SESSION_ID",
-    "OPENCODE_SESSIONID",
-    "OPENCODE_RUN_ID",
-    "GEMINI_SESSION_ID",
-    "FACTORY_SESSION_ID",
-    "DROID_SESSION_ID",
-    "QODER_SESSION_ID",
-    "CODEBUDDY_SESSION_ID",
-    "KIRO_SESSION_ID",
-    "COPILOT_SESSION_ID",
-    "COPILOT_SESSIONID",
-    "PI_SESSION_ID",
-  ] as const;
-
-  function runCreate(env: NodeJS.ProcessEnv) {
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    const blocked = new Set<string>(AMBIENT_SESSION_ENV_KEYS);
-    const scrubbed: NodeJS.ProcessEnv = {};
-    for (const [key, value] of Object.entries(process.env)) {
-      if (!blocked.has(key)) scrubbed[key] = value;
-    }
-    return spawnSync(
-      pythonCmd,
-      [
-        taskScriptPath,
-        "create",
-        "issue-430 probe",
-        "--description",
-        "regression fixture",
-        "--slug",
-        "issue-430-probe",
-      ],
-      { cwd: tmpDir, encoding: "utf-8", env: { ...scrubbed, ...env } },
-    );
-  }
-
-  it("[issue-430] no session identity stays silent (normal degraded mode, not a failure)", () => {
-    const result = runCreate({});
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.stderr).not.toContain("Warning: session activation");
-    expect(result.stderr).not.toContain("Activated task for this session");
-  });
-
-  it("[issue-430] a real session identity activates normally with no warning", () => {
-    const result = runCreate({ ARBOR_CONTEXT_ID: "probe-session" });
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.stderr).toContain("Activated task for this session");
-    expect(result.stderr).not.toContain("Warning: session activation");
-  });
-
-  it("[issue-430] a pointer-persistence failure is now diagnosable instead of silently swallowed", () => {
-    // Pre-create the session-pointer directory's own path as a *file* so
-    // `_write_json`'s `path.parent.mkdir(parents=True, exist_ok=True)` raises
-    // FileExistsError — a real, portable failure mode (no chmod needed).
-    const sessionsPathAsFile = path.join(
-      tmpDir,
-      ".arbor",
-      ".runtime",
-      "sessions",
-    );
-    fs.mkdirSync(path.dirname(sessionsPathAsFile), { recursive: true });
-    fs.writeFileSync(sessionsPathAsFile, "not a directory");
-
-    const result = runCreate({ ARBOR_CONTEXT_ID: "probe-session" });
-
-    // Task creation itself must still succeed — activation is best-effort.
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.stderr).toContain("Warning: session activation failed");
-    expect(result.stderr).not.toContain("Activated task for this session");
   });
 });
 
@@ -2202,170 +951,7 @@ describe("regression: shell to Python migration (beta.0)", () => {
   });
 });
 
-describe("regression: agent-session Arbor update hint", () => {
-  let tmpDir: string;
-  const pythonCmd = process.platform === "win32" ? "python" : "python3";
-
-  beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-update-hint-"));
-    const scriptsDir = path.join(tmpDir, ".arbor", "scripts");
-    for (const [relativePath, content] of getAllScripts()) {
-      const absPath = path.join(scriptsDir, relativePath);
-      fs.mkdirSync(path.dirname(absPath), { recursive: true });
-      fs.writeFileSync(absPath, content, "utf-8");
-    }
-    fs.mkdirSync(path.join(tmpDir, ".arbor", "tasks"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".arbor", ".developer"),
-      "name=test-dev\ninitialized_at=2026-05-09T00:00:00Z\n",
-      "utf-8",
-    );
-  });
-
-  afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  });
-
-  function runContextWithArborOutput(
-    currentVersion: string,
-    arborVersionOutput: string | null,
-  ): string {
-    fs.writeFileSync(
-      path.join(tmpDir, ".arbor", ".version"),
-      `${currentVersion}\n`,
-      "utf-8",
-    );
-    const runnerPath = path.join(tmpDir, "run-context.py");
-    fs.writeFileSync(
-      runnerPath,
-      [
-        "import os",
-        "import sys",
-        "from pathlib import Path",
-        "sys.path.insert(0, str(Path.cwd() / '.arbor' / 'scripts'))",
-        "from common import session_context",
-        "output = os.environ.get('ARBOR_VERSION_OUTPUT')",
-        "session_context._fetch_arbor_version_output = lambda: None if output == '__NONE__' else output",
-        "session_context.output_text(Path.cwd())",
-        "",
-      ].join("\n"),
-      "utf-8",
-    );
-    return execSync(`${pythonCmd} ${JSON.stringify(runnerPath)}`, {
-      cwd: tmpDir,
-      encoding: "utf-8",
-      env: {
-        ...process.env,
-        ARBOR_VERSION_OUTPUT: arborVersionOutput ?? "__NONE__",
-        ARBOR_CONTEXT_ID: "test-update-session",
-      },
-    });
-  }
-
-  function pythonFunctionBody(source: string, name: string): string {
-    const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const match = source.match(
-      new RegExp(`def ${escapedName}\\([\\s\\S]*?\\n(?=def |# =|$)`),
-    );
-    return match?.[0] ?? "";
-  }
-
-  it("shows a concise update hint when arbor --version reports a newer version", () => {
-    const output = runContextWithArborOutput(
-      "0.5.0",
-      "Arbor update available: 0.5.0 → 0.5.9\nRun: arbor update\n0.5.9",
-    );
-
-    expect(output).toContain("Arbor update available: 0.5.0 -> 0.5.9");
-    expect(output).toContain("run arbor update");
-    expect(output).not.toContain("run arbor upgrade");
-    expect(output).toContain("SESSION CONTEXT");
-  });
-
-  it("does not show a hint when installed version is equal or newer", () => {
-    expect(runContextWithArborOutput("0.5.9", "0.5.9")).not.toContain(
-      "Arbor update available",
-    );
-    fs.rmSync(path.join(tmpDir, ".arbor", ".runtime"), {
-      recursive: true,
-      force: true,
-    });
-    expect(runContextWithArborOutput("0.6.0", "0.5.9")).not.toContain(
-      "Arbor update available",
-    );
-  });
-
-  it("silently skips the hint when arbor --version fails or version parsing fails", () => {
-    expect(runContextWithArborOutput("0.5.0", null)).not.toContain(
-      "Arbor update available",
-    );
-    fs.rmSync(path.join(tmpDir, ".arbor", ".runtime"), {
-      recursive: true,
-      force: true,
-    });
-    expect(runContextWithArborOutput("not-a-version", "0.5.9")).not.toContain(
-      "Arbor update available",
-    );
-  });
-
-  it("does not burn the once-per-session marker when version lookup fails", () => {
-    expect(runContextWithArborOutput("0.5.0", null)).not.toContain(
-      "Arbor update available",
-    );
-
-    const output = runContextWithArborOutput("0.5.0", "0.5.9");
-
-    expect(output).toContain("Arbor update available: 0.5.0 -> 0.5.9");
-  });
-
-  it("uses the final arbor --version token when no update line is present", () => {
-    const output = runContextWithArborOutput("0.5.0", "0.5.9");
-
-    expect(output).toContain("Arbor update available: 0.5.0 -> 0.5.9");
-  });
-
-  it("only attempts the default text update hint once per session", () => {
-    const first = runContextWithArborOutput("0.5.0", "0.5.9");
-    const second = runContextWithArborOutput("0.5.0", "0.5.9");
-
-    expect(first).toContain("Arbor update available: 0.5.0 -> 0.5.9");
-    expect(second).not.toContain("Arbor update available");
-    expect(
-      fs.existsSync(
-        path.join(
-          tmpDir,
-          ".arbor",
-          ".runtime",
-          "update-check-test-update-session.marker",
-        ),
-      ),
-    ).toBe(true);
-  });
-
-  it("keeps the update hint out of JSON, record, packages, and phase paths", () => {
-    expect(pythonFunctionBody(commonSessionContext, "output_text")).toContain(
-      "get_update_hint",
-    );
-    for (const functionName of [
-      "get_context_json",
-      "output_json",
-      "get_context_record_json",
-      "get_context_text_record",
-    ]) {
-      expect(
-        pythonFunctionBody(commonSessionContext, functionName),
-        `${functionName} should not check Arbor updates`,
-      ).not.toContain("get_update_hint");
-    }
-    expect(commonGitContext).toContain('if args.mode == "record":');
-    expect(commonGitContext).toContain('elif args.mode == "packages":');
-    expect(commonGitContext).toContain('elif args.mode == "phase":');
-    expect(commonGitContext).toContain("else:");
-    expect(commonGitContext).toContain("output_text()");
-  });
-});
-
-describe("regression: issue #252 polyrepo Git context", () => {
+describe("regression: issue #252 shared Git runner timeout", () => {
   let tmpDir: string;
   const pythonCmd = process.platform === "win32" ? "python" : "python3";
 
@@ -2377,157 +963,10 @@ describe("regression: issue #252 polyrepo Git context", () => {
       fs.mkdirSync(path.dirname(absPath), { recursive: true });
       fs.writeFileSync(absPath, content, "utf-8");
     }
-    fs.mkdirSync(path.join(tmpDir, ".arbor", "tasks"), { recursive: true });
-    fs.mkdirSync(path.join(tmpDir, ".arbor", "workspace", "test-dev"), {
-      recursive: true,
-    });
-    fs.writeFileSync(
-      path.join(tmpDir, ".arbor", ".developer"),
-      "name=test-dev\n",
-      "utf-8",
-    );
   });
 
   afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
-  });
-
-  function writeConfigYaml(content: string): void {
-    fs.writeFileSync(
-      path.join(tmpDir, ".arbor", "config.yaml"),
-      content,
-      "utf-8",
-    );
-  }
-
-  function initChildRepo(relativePath: string, commitMessage: string): void {
-    const repoPath = path.join(tmpDir, relativePath);
-    fs.mkdirSync(repoPath, { recursive: true });
-    execSync("git init -q", { cwd: repoPath });
-    execSync("git config user.email test@example.com", { cwd: repoPath });
-    execSync("git config user.name Test", { cwd: repoPath });
-    fs.writeFileSync(path.join(repoPath, "README.md"), `${commitMessage}\n`);
-    execSync("git add README.md", { cwd: repoPath });
-    execSync(`git commit -q -m ${JSON.stringify(commitMessage)}`, {
-      cwd: repoPath,
-    });
-  }
-
-  function runSessionContext(kind: "text" | "record" | "json"): string {
-    const runnerPath = path.join(tmpDir, "run-context.py");
-    let expression = "print(session_context.get_context_text(Path.cwd()))";
-    if (kind === "record") {
-      expression = "print(session_context.get_context_text_record(Path.cwd()))";
-    } else if (kind === "json") {
-      expression =
-        "print(json.dumps(session_context.get_context_json(Path.cwd())))";
-    }
-    fs.writeFileSync(
-      runnerPath,
-      [
-        "import json",
-        "import sys",
-        "from pathlib import Path",
-        "sys.path.insert(0, str(Path.cwd() / '.arbor' / 'scripts'))",
-        "from common import session_context",
-        expression,
-        "",
-      ].join("\n"),
-      "utf-8",
-    );
-    return execSync(`${pythonCmd} ${JSON.stringify(runnerPath)}`, {
-      cwd: tmpDir,
-      encoding: "utf-8",
-    });
-  }
-
-  it("does not render root as unknown/clean when configured package repos exist", () => {
-    writeConfigYaml(
-      [
-        "packages:",
-        "  module_a:",
-        "    path: module-a",
-        "    git: true",
-        "",
-      ].join("\n"),
-    );
-    initChildRepo("module-a", "init module a");
-
-    const output = runSessionContext("text");
-    const rootBlock = output.slice(
-      output.indexOf("## GIT STATUS"),
-      output.indexOf("## GIT STATUS (module_a: module-a)"),
-    );
-
-    expect(rootBlock).toContain("Root is not a Git repository.");
-    expect(rootBlock).toContain(
-      "Run Git commands from the package repository paths listed below.",
-    );
-    expect(rootBlock).not.toContain("Branch: unknown");
-    expect(rootBlock).not.toContain("Working directory: Clean");
-    expect(output).toContain("## GIT STATUS (module_a: module-a)");
-    expect(output).toContain("init module a");
-  });
-
-  it("uses the same non-Git root rendering in record mode", () => {
-    writeConfigYaml(
-      [
-        "packages:",
-        "  module_a:",
-        "    path: module-a",
-        "    git: true",
-        "",
-      ].join("\n"),
-    );
-    initChildRepo("module-a", "init module a");
-
-    const output = runSessionContext("record");
-    const rootBlock = output.slice(
-      output.indexOf("## GIT STATUS"),
-      output.indexOf("## GIT STATUS (module_a: module-a)"),
-    );
-
-    expect(rootBlock).toContain("Root is not a Git repository.");
-    expect(rootBlock).not.toContain("Branch: unknown");
-    expect(rootBlock).not.toContain("Working directory: Clean");
-  });
-
-  it("discovers unconfigured child Git repos when root is not a Git repo", () => {
-    writeConfigYaml("# no packages configured\n");
-    initChildRepo("module-a", "init module a");
-    initChildRepo(path.join("services", "module-b"), "init module b");
-
-    const output = runSessionContext("text");
-
-    expect(output).toContain("Root is not a Git repository.");
-    expect(output).toContain("## GIT STATUS (module-a: module-a)");
-    expect(output).toContain(
-      "## GIT STATUS (services_module-b: services/module-b)",
-    );
-    expect(output).toContain("init module a");
-    expect(output).toContain("init module b");
-  });
-
-  it("skips automatic Git status when too many child repos are discovered", () => {
-    writeConfigYaml("# no packages configured\n");
-    for (let i = 0; i < 9; i++) {
-      fs.mkdirSync(path.join(tmpDir, `repo-${i}`, ".git"), {
-        recursive: true,
-      });
-    }
-
-    const output = runSessionContext("text");
-    const rerun = spawnSync(pythonCmd, [path.join(tmpDir, "run-context.py")], {
-      cwd: tmpDir,
-      encoding: "utf-8",
-    });
-
-    expect(output).not.toContain("## GIT STATUS (repo-");
-    expect(rerun.status).toBe(0);
-    expect(rerun.stderr).toContain("found more than 8 child Git repositories");
-    expect(rerun.stderr).toContain(
-      "Configure explicit packages entries with path and git: true",
-    );
   });
 
   it("passes probe timeouts through the shared Git runner", () => {
@@ -2547,16 +986,7 @@ describe("regression: issue #252 polyrepo Git context", () => {
         "    raise subprocess.TimeoutExpired(args[0], kwargs.get('timeout'))",
         "subprocess.run = fake_run",
         "rc, out, err = run_git(['status'], timeout=0.25)",
-        "from common import session_context",
-        "root_calls = []",
-        "def fake_git(args, cwd=None, timeout=None):",
-        "    root_calls.append({'args': args, 'timeout': timeout})",
-        "    if args == ['status', '--porcelain']:",
-        "        return (1, '', 'timed out')",
-        "    return (0, 'true\\n' if args[0] == 'rev-parse' else '', '')",
-        "session_context.run_git = fake_git",
-        "root_info = session_context._collect_root_git_info(Path.cwd())",
-        "print(json.dumps({'rc': rc, 'out': out, 'err': err, 'rootCalls': root_calls, 'rootInfo': root_info, **captured}))",
+        "print(json.dumps({'rc': rc, 'out': out, 'err': err, **captured}))",
         "",
       ].join("\n"),
       "utf-8",
@@ -2572,8 +1002,6 @@ describe("regression: issue #252 polyrepo Git context", () => {
       out: string;
       err: string;
       timeout: number;
-      rootCalls: { args: string[]; timeout: number }[];
-      rootInfo: { isClean: boolean };
     };
 
     expect(result).toEqual(
@@ -2584,67 +1012,20 @@ describe("regression: issue #252 polyrepo Git context", () => {
       }),
     );
     expect(result.err).toContain("timed out");
-    expect(result.rootCalls.map((call) => call.args[0])).toEqual([
-      "rev-parse",
-      "branch",
-      "status",
-      "status",
-      "log",
-    ]);
-    expect(result.rootCalls.every((call) => call.timeout === 2)).toBe(true);
-    expect(result.rootInfo.isClean).toBe(false);
-  });
-
-  it("marks JSON root Git state as non-repo instead of clean", () => {
-    writeConfigYaml(
-      [
-        "packages:",
-        "  module_a:",
-        "    path: module-a",
-        "    git: true",
-        "",
-      ].join("\n"),
-    );
-    initChildRepo("module-a", "init module a");
-
-    const context = JSON.parse(runSessionContext("json")) as {
-      git: { isRepo: boolean; branch: string; isClean: boolean };
-      packageGit: { name: string; path: string }[];
-    };
-
-    expect(context.git).toEqual(
-      expect.objectContaining({
-        isRepo: false,
-        branch: "",
-        isClean: false,
-      }),
-    );
-    expect(context.packageGit).toEqual([
-      expect.objectContaining({ name: "module_a", path: "module-a" }),
-    ]);
   });
 });
 
-describe("regression: current-task path normalization", () => {
+describe("regression: Claude statusline (opt-in)", () => {
   let tmpDir: string;
   const pythonCmd = process.platform === "win32" ? "python" : "python3";
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-current-task-"));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-statusline-"));
   });
 
   afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
-
-  function writeArborScripts(): void {
-    const scriptsDir = path.join(tmpDir, ".arbor", "scripts");
-    for (const [relativePath, content] of getAllScripts()) {
-      const absPath = path.join(scriptsDir, relativePath);
-      fs.mkdirSync(path.dirname(absPath), { recursive: true });
-      fs.writeFileSync(absPath, content, "utf-8");
-    }
-  }
 
   function writeProjectFile(relativePath: string, content: string): void {
     const absPath = path.join(tmpDir, relativePath);
@@ -2652,96 +1033,10 @@ describe("regression: current-task path normalization", () => {
     fs.writeFileSync(absPath, content, "utf-8");
   }
 
-  function writeLegacyCurrentTask(taskRef: string): void {
-    writeProjectFile(path.join(".arbor", ".current-task"), `${taskRef}\n`);
-  }
-
-  function writeSessionContext(contextKey: string, taskRef: string): void {
-    writeProjectFile(
-      path.join(".arbor", ".runtime", "sessions", `${contextKey}.json`),
-      JSON.stringify(
-        {
-          current_task: taskRef,
-          platform: "test",
-        },
-        null,
-        2,
-      ),
-    );
-  }
-
-  const SESSION_ENV_KEYS = [
-    "ARBOR_CONTEXT_ID",
-    "CLAUDE_SESSION_ID",
-    "CLAUDE_CODE_SESSION_ID",
-    "CODEX_SESSION_ID",
-    "CODEX_THREAD_ID",
-    "CURSOR_SESSION_ID",
-    "CURSOR_CONVERSATION_ID",
-    "CURSOR_CONVERSATIONID",
-    "OPENCODE_SESSION_ID",
-    "OPENCODE_SESSIONID",
-    "OPENCODE_RUN_ID",
-    "GEMINI_SESSION_ID",
-    "FACTORY_SESSION_ID",
-    "DROID_SESSION_ID",
-    "QODER_SESSION_ID",
-    "CODEBUDDY_SESSION_ID",
-    "KIRO_SESSION_ID",
-    "COPILOT_SESSION_ID",
-    "COPILOT_SESSIONID",
-    "PI_SESSION_ID",
-    "CLAUDE_TRANSCRIPT_PATH",
-    "CODEX_TRANSCRIPT_PATH",
-    "CURSOR_TRANSCRIPT_PATH",
-    "GEMINI_TRANSCRIPT_PATH",
-    "FACTORY_TRANSCRIPT_PATH",
-    "DROID_TRANSCRIPT_PATH",
-    "QODER_TRANSCRIPT_PATH",
-    "CODEBUDDY_TRANSCRIPT_PATH",
-  ] as const;
-
-  function sessionEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
-    const blocked = new Set<string>(SESSION_ENV_KEYS);
-    const env: NodeJS.ProcessEnv = {};
-    for (const [key, value] of Object.entries(process.env)) {
-      if (!blocked.has(key)) {
-        env[key] = value;
-      }
-    }
-    return { ...env, ...overrides };
-  }
-
-  function setupTaskRepo(): void {
-    writeArborScripts();
+  function setupRepo(): void {
     writeProjectFile(
       path.join(".arbor", ".developer"),
       "name=test-dev\ninitialized_at=2026-03-27T00:00:00\n",
-    );
-    writeProjectFile(path.join(".arbor", "workflow.md"), "# Workflow\n");
-    writeProjectFile(
-      path.join(".arbor", "spec", "guides", "index.md"),
-      "# Guides\n",
-    );
-    writeProjectFile(
-      path.join(".arbor", "tasks", "issue-106", "task.json"),
-      JSON.stringify(
-        {
-          title: "Issue 106 task",
-          status: "in_progress",
-          package: null,
-        },
-        null,
-        2,
-      ),
-    );
-    writeProjectFile(
-      path.join(".arbor", "tasks", "issue-106", "prd.md"),
-      "# PRD\n",
-    );
-    writeProjectFile(
-      path.join(".arbor", "tasks", "issue-106", "implement.jsonl"),
-      '{"file":"src/example.ts","reason":"runtime regression"}\n',
     );
   }
 
@@ -2755,7 +1050,7 @@ describe("regression: current-task path normalization", () => {
       cwd: tmpDir,
       input,
       encoding: "utf-8",
-      env: sessionEnv(envOverrides),
+      env: { ...process.env, ...envOverrides },
     });
   }
 
@@ -2775,7 +1070,7 @@ describe("regression: current-task path normalization", () => {
         cwd: tmpDir,
         input,
         encoding: "utf-8",
-        env: sessionEnv({ PYTHONIOENCODING: "gbk" }),
+        env: { ...process.env, PYTHONIOENCODING: "gbk" },
       },
     );
     if (result.status !== 0) {
@@ -2784,855 +1079,8 @@ describe("regression: current-task path normalization", () => {
     return result.stdout;
   }
 
-  it("[session-current-task] task.py start without context key enters degraded mode (returns 0, no pointer)", () => {
-    // 0.5.3 hotfix: task.py start no longer hard-fails when no session identity
-    // is available (Windows + Claude Code, --continue resume, etc.). Instead it
-    // prints a degraded-mode warning and returns 0 so the AI workflow can
-    // proceed.
-    setupTaskRepo();
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-
-    const output = execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} start ${JSON.stringify(".arbor\\\\tasks\\\\issue-106")} --no-worktree`,
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env: sessionEnv(),
-      },
-    );
-
-    expect(output).toContain("Session identity not available");
-    expect(output).toContain("degraded");
-    expect(output).toContain("conversation context");
-    expect(output).toContain("ARBOR_CONTEXT_ID");
-
-    // No active-task pointer written
-    expect(fs.existsSync(path.join(tmpDir, ".arbor", ".current-task"))).toBe(
-      false,
-    );
-    expect(fs.existsSync(path.join(tmpDir, ".arbor", ".runtime"))).toBe(false);
-
-    // task.json.status remains in_progress (was already in_progress; degraded
-    // mode preserves the existing status when not planning)
-    const taskJsonPath = path.join(
-      tmpDir,
-      ".arbor",
-      "tasks",
-      "issue-106",
-      "task.json",
-    );
-    const taskJson = JSON.parse(fs.readFileSync(taskJsonPath, "utf-8"));
-    expect(taskJson.status).toBe("in_progress");
-  });
-
-  it("[session-current-task] task.py start in degraded mode flips planning → in_progress", () => {
-    // Verify the status flip path of degraded mode by setting up a task with
-    // status=planning explicitly, then asserting the flip happened without a
-    // session identity being available.
-    setupTaskRepo();
-    const taskJsonPath = path.join(
-      tmpDir,
-      ".arbor",
-      "tasks",
-      "issue-106",
-      "task.json",
-    );
-    const taskJson = JSON.parse(fs.readFileSync(taskJsonPath, "utf-8"));
-    taskJson.status = "planning";
-    fs.writeFileSync(taskJsonPath, JSON.stringify(taskJson, null, 2), "utf-8");
-
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    const output = execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} start ${JSON.stringify(".arbor\\\\tasks\\\\issue-106")} --no-worktree`,
-      { cwd: tmpDir, encoding: "utf-8", env: sessionEnv() },
-    );
-
-    expect(output).toContain("planning → in_progress");
-    const after = JSON.parse(fs.readFileSync(taskJsonPath, "utf-8"));
-    expect(after.status).toBe("in_progress");
-  });
-
-  it("[session-current-task] task.py start writes session runtime state when ARBOR_CONTEXT_ID is set", () => {
-    setupTaskRepo();
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-
-    const output = execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} start ${JSON.stringify(".arbor\\\\tasks\\\\issue-106")} --no-worktree`,
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env: sessionEnv({ ARBOR_CONTEXT_ID: "session-a" }),
-      },
-    );
-
-    expect(output).toContain("Source: session:session-a");
-    expect(output).not.toContain("Fallback:");
-    const contextPath = path.join(
-      tmpDir,
-      ".arbor",
-      ".runtime",
-      "sessions",
-      "session-a.json",
-    );
-    const context = JSON.parse(fs.readFileSync(contextPath, "utf-8")) as {
-      current_task: string;
-    };
-    expect(context.current_task).toBe(".arbor/tasks/issue-106");
-    expect(fs.existsSync(path.join(tmpDir, ".arbor", ".current-task"))).toBe(
-      false,
-    );
-  });
-
-  it("[session-current-task] task.py finish deletes the session runtime context", () => {
-    setupTaskRepo();
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    const contextPath = path.join(
-      tmpDir,
-      ".arbor",
-      ".runtime",
-      "sessions",
-      "session-finish.json",
-    );
-
-    execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} start ${JSON.stringify(".arbor/tasks/issue-106")} --no-worktree`,
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env: sessionEnv({ ARBOR_CONTEXT_ID: "session-finish" }),
-      },
-    );
-    expect(fs.existsSync(contextPath)).toBe(true);
-
-    const output = execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} finish`,
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env: sessionEnv({ ARBOR_CONTEXT_ID: "session-finish" }),
-      },
-    );
-
-    expect(output).toContain("Cleared current task");
-    expect(output).toContain("Source: session:session-finish");
-    expect(fs.existsSync(contextPath)).toBe(false);
-  });
-
-  it("[issue-397] task.py create stores the trimmed description and reports session activation", () => {
-    writeArborScripts();
-    writeProjectFile(
-      path.join(".arbor", ".developer"),
-      "name=test-dev\ninitialized_at=2026-03-27T00:00:00\n",
-    );
-    writeProjectFile(path.join(".arbor", "workflow.md"), "# Workflow\n");
-
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    const result = spawnSync(
-      pythonCmd,
-      [
-        taskScriptPath,
-        "create",
-        "described task",
-        "--description",
-        "  padded description  ",
-        "--slug",
-        "described",
-        "--assignee",
-        "test-dev",
-      ],
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env: sessionEnv({ ARBOR_CONTEXT_ID: "issue-397-session" }),
-      },
-    );
-
-    expect(result.status).toBe(0);
-    expect(result.stderr).toContain("Activated task for this session");
-    expect(result.stderr).toContain("Source: session:issue-397-session");
-
-    const taskDir = fs
-      .readdirSync(path.join(tmpDir, ".arbor", "tasks"))
-      .find((d) => d.includes("described"));
-    expect(taskDir).toBeDefined();
-    const taskJson = JSON.parse(
-      fs.readFileSync(
-        path.join(tmpDir, ".arbor", "tasks", taskDir as string, "task.json"),
-        "utf-8",
-      ),
-    ) as { description: string };
-    expect(taskJson.description).toBe("padded description");
-  });
-
-  it("[issue-397] task.py create --no-start does not move the session pointer", () => {
-    writeArborScripts();
-    writeProjectFile(
-      path.join(".arbor", ".developer"),
-      "name=test-dev\ninitialized_at=2026-03-27T00:00:00\n",
-    );
-    writeProjectFile(path.join(".arbor", "workflow.md"), "# Workflow\n");
-    writeSessionContext("batch-session", ".arbor/tasks/existing-task");
-
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    const result = spawnSync(
-      pythonCmd,
-      [
-        taskScriptPath,
-        "create",
-        "batch backlog task",
-        "--slug",
-        "batch-backlog",
-        "--assignee",
-        "test-dev",
-        "--description",
-        "regression fixture",
-        "--no-start",
-      ],
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env: sessionEnv({ ARBOR_CONTEXT_ID: "batch-session" }),
-      },
-    );
-
-    expect(result.status).toBe(0);
-    expect(result.stderr).toContain("Skipped session activation (--no-start)");
-    const context = JSON.parse(
-      fs.readFileSync(
-        path.join(
-          tmpDir,
-          ".arbor",
-          ".runtime",
-          "sessions",
-          "batch-session.json",
-        ),
-        "utf-8",
-      ),
-    ) as { current_task: string };
-    expect(context.current_task).toBe(".arbor/tasks/existing-task");
-
-    const taskDir = fs
-      .readdirSync(path.join(tmpDir, ".arbor", "tasks"))
-      .find((d) => d.includes("batch-backlog"));
-    expect(taskDir).toBeDefined();
-    const taskJson = JSON.parse(
-      fs.readFileSync(
-        path.join(tmpDir, ".arbor", "tasks", taskDir as string, "task.json"),
-        "utf-8",
-      ),
-    ) as { description: string };
-    expect(taskJson.description).toBe("regression fixture");
-  });
-
-  it("[workflow-state-r7] task.py create degrades silently without session identity (no .runtime side effect)", () => {
-    // R7 contract: best-effort activation. No context key (CLI shell with no
-    // session env) → task is still created, but no .runtime/sessions/ file is
-    // written. Pre-R7 behavior parity for headless CLI usage.
-    writeArborScripts();
-    writeProjectFile(
-      path.join(".arbor", ".developer"),
-      "name=test-dev\ninitialized_at=2026-03-27T00:00:00\n",
-    );
-    writeProjectFile(path.join(".arbor", "workflow.md"), "# Workflow\n");
-
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    // sessionEnv() with no overrides drops every session-identity env var.
-    execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} create "r7-cli-only" --description "regression fixture" --slug r7-cli --assignee test-dev`,
-      { cwd: tmpDir, encoding: "utf-8", env: sessionEnv() },
-    );
-
-    const taskDir = fs
-      .readdirSync(path.join(tmpDir, ".arbor", "tasks"))
-      .find((d) => d.includes("r7-cli"));
-    expect(taskDir).toBeDefined();
-
-    const sessionsDir = path.join(tmpDir, ".arbor", ".runtime", "sessions");
-    if (fs.existsSync(sessionsDir)) {
-      const files = fs.readdirSync(sessionsDir);
-      expect(files).toEqual([]);
-    }
-  });
-
-  it("[workflow-state-r7] task.py create then task.py start is idempotent (pointer + status flip)", () => {
-    // Finding 6: R7 made cmd_create auto-call set_active_task. cmd_start also
-    // calls set_active_task. The second call must not error, and status must
-    // still flip planning → in_progress correctly.
-    writeArborScripts();
-    writeProjectFile(
-      path.join(".arbor", ".developer"),
-      "name=test-dev\ninitialized_at=2026-03-27T00:00:00\n",
-    );
-    writeProjectFile(path.join(".arbor", "workflow.md"), "# Workflow\n");
-
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} create "r7-idem" --description "regression fixture" --slug r7-idem --assignee test-dev`,
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env: sessionEnv({ ARBOR_CONTEXT_ID: "r7-idem-session" }),
-      },
-    );
-
-    const taskDir = fs
-      .readdirSync(path.join(tmpDir, ".arbor", "tasks"))
-      .find((d) => d.includes("r7-idem"));
-    expect(taskDir).toBeDefined();
-    const relTaskDir = path.posix.join(".arbor", "tasks", taskDir as string);
-
-    // Status should be planning after create.
-    const taskJsonPath = path.join(
-      tmpDir,
-      ".arbor",
-      "tasks",
-      taskDir as string,
-      "task.json",
-    );
-    const beforeStart = JSON.parse(fs.readFileSync(taskJsonPath, "utf-8")) as {
-      status: string;
-    };
-    expect(beforeStart.status).toBe("planning");
-
-    // Now run start with the same session — must not error.
-    let startStatus = 0;
-    let startOutput = "";
-    try {
-      startOutput = execSync(
-        `${pythonCmd} ${JSON.stringify(taskScriptPath)} start ${JSON.stringify(relTaskDir)} --no-worktree --allow-empty-context`,
-        {
-          cwd: tmpDir,
-          encoding: "utf-8",
-          env: sessionEnv({ ARBOR_CONTEXT_ID: "r7-idem-session" }),
-        },
-      );
-    } catch (err) {
-      const e = err as { status?: number; stderr?: string; stdout?: string };
-      startStatus = e.status ?? 1;
-      startOutput = (e.stdout ?? "") + (e.stderr ?? "");
-    }
-    expect(startStatus).toBe(0);
-    expect(startOutput).toContain("planning → in_progress");
-
-    // Status flipped to in_progress.
-    const afterStart = JSON.parse(fs.readFileSync(taskJsonPath, "utf-8")) as {
-      status: string;
-    };
-    expect(afterStart.status).toBe("in_progress");
-
-    // Pointer still points at the same task.
-    const contextPath = path.join(
-      tmpDir,
-      ".arbor",
-      ".runtime",
-      "sessions",
-      "r7-idem-session.json",
-    );
-    expect(fs.existsSync(contextPath)).toBe(true);
-    const context = JSON.parse(fs.readFileSync(contextPath, "utf-8")) as {
-      current_task: string;
-    };
-    expect(context.current_task).toBe(relTaskDir);
-  });
-
-  it("[session-current-task] task.py archive deletes runtime sessions pointing at the archived task", () => {
-    setupTaskRepo();
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    const contextA = path.join(
-      tmpDir,
-      ".arbor",
-      ".runtime",
-      "sessions",
-      "session-a.json",
-    );
-    const contextB = path.join(
-      tmpDir,
-      ".arbor",
-      ".runtime",
-      "sessions",
-      "session-b.json",
-    );
-    const contextOther = path.join(
-      tmpDir,
-      ".arbor",
-      ".runtime",
-      "sessions",
-      "session-other.json",
-    );
-    writeProjectFile(
-      path.join(".arbor", ".runtime", "sessions", "session-a.json"),
-      JSON.stringify({ current_task: ".arbor/tasks/issue-106" }, null, 2),
-    );
-    writeProjectFile(
-      path.join(".arbor", ".runtime", "sessions", "session-b.json"),
-      JSON.stringify({ current_task: "issue-106" }, null, 2),
-    );
-    writeProjectFile(
-      path.join(".arbor", ".runtime", "sessions", "session-other.json"),
-      JSON.stringify({ current_task: ".arbor/tasks/other-task" }, null, 2),
-    );
-
-    execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} archive issue-106 --no-commit`,
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env: sessionEnv(),
-      },
-    );
-
-    expect(fs.existsSync(contextA)).toBe(false);
-    expect(fs.existsSync(contextB)).toBe(false);
-    expect(fs.existsSync(contextOther)).toBe(true);
-  });
-
-  it("[task-lifecycle] task.py create refuses an archived task dir-name collision", () => {
-    writeArborScripts();
-    writeProjectFile(
-      path.join(".arbor", ".developer"),
-      "name=test-dev\ninitialized_at=2026-03-27T00:00:00\n",
-    );
-    writeProjectFile(path.join(".arbor", "workflow.md"), "# Workflow\n");
-    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
-
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    const createArgs = [
-      taskScriptPath,
-      "create",
-      "web auth retry",
-      "--description",
-      "regression fixture",
-      "--slug",
-      "web-auth-retry",
-      "--assignee",
-      "test-dev",
-    ];
-    const env = sessionEnv({ ARBOR_CONTEXT_ID: "archive-collision" });
-
-    execSync(
-      `${pythonCmd} ${createArgs.map((arg) => JSON.stringify(arg)).join(" ")}`,
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env,
-      },
-    );
-
-    const tasksDir = path.join(tmpDir, ".arbor", "tasks");
-    const taskDirName = fs
-      .readdirSync(tasksDir)
-      .find((entry) => entry.endsWith("-web-auth-retry"));
-    expect(taskDirName).toBeDefined();
-    const activeTaskDir = path.join(tasksDir, taskDirName as string);
-    fs.writeFileSync(path.join(activeTaskDir, "prd.md"), "# PRD\n", "utf-8");
-
-    execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} archive ${JSON.stringify(taskDirName)} --no-commit`,
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env,
-      },
-    );
-
-    const archiveRoot = path.join(tasksDir, "archive");
-    let archivedTaskDir: string | undefined;
-    for (const monthDir of fs.readdirSync(archiveRoot)) {
-      const candidate = path.join(archiveRoot, monthDir, taskDirName as string);
-      if (fs.existsSync(candidate)) {
-        archivedTaskDir = candidate;
-      }
-    }
-    expect(archivedTaskDir).toBeDefined();
-    const archivedTaskJsonPath = path.join(
-      archivedTaskDir as string,
-      "task.json",
-    );
-    const archivedPrdPath = path.join(archivedTaskDir as string, "prd.md");
-    const archivedTaskJsonBefore = fs.readFileSync(
-      archivedTaskJsonPath,
-      "utf-8",
-    );
-    const archivedPrdBefore = fs.readFileSync(archivedPrdPath, "utf-8");
-    const archivedTaskJson = JSON.parse(archivedTaskJsonBefore) as {
-      status: string;
-      completedAt: string | null;
-    };
-    expect(archivedTaskJson.status).toBe("completed");
-    expect(archivedTaskJson.completedAt).not.toBeNull();
-
-    const contextPath = path.join(
-      tmpDir,
-      ".arbor",
-      ".runtime",
-      "sessions",
-      "archive-collision.json",
-    );
-    expect(fs.existsSync(contextPath)).toBe(false);
-
-    const result = spawnSync(pythonCmd, createArgs, {
-      cwd: tmpDir,
-      encoding: "utf-8",
-      env,
-    });
-
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain("Task already archived");
-    expect(result.stderr).toContain(taskDirName as string);
-    expect(result.stderr).toContain(".arbor/tasks/archive/");
-    expect(fs.existsSync(path.join(tasksDir, taskDirName as string))).toBe(
-      false,
-    );
-    expect(fs.readFileSync(archivedTaskJsonPath, "utf-8")).toBe(
-      archivedTaskJsonBefore,
-    );
-    expect(fs.readFileSync(archivedPrdPath, "utf-8")).toBe(archivedPrdBefore);
-    expect(fs.existsSync(contextPath)).toBe(false);
-  });
-
-  it("[issue-377] task.py create normalizes a --slug carrying today's date prefix", () => {
-    writeArborScripts();
-    writeProjectFile(
-      path.join(".arbor", ".developer"),
-      "name=test-dev\ninitialized_at=2026-03-27T00:00:00\n",
-    );
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    const now = new Date();
-    const todayPrefix = `${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-
-    const result = spawnSync(
-      pythonCmd,
-      [
-        taskScriptPath,
-        "create",
-        "Example Task",
-        "--description",
-        "regression fixture",
-        "--slug",
-        `${todayPrefix}-example-task`,
-        "--assignee",
-        "test-dev",
-      ],
-      { cwd: tmpDir, encoding: "utf-8", env: sessionEnv() },
-    );
-
-    expect(result.status).toBe(0);
-    expect(result.stderr).toContain("normalized to");
-    const tasksDir = path.join(tmpDir, ".arbor", "tasks");
-    expect(
-      fs.existsSync(path.join(tasksDir, `${todayPrefix}-example-task`)),
-    ).toBe(true);
-    expect(
-      fs.existsSync(
-        path.join(tasksDir, `${todayPrefix}-${todayPrefix}-example-task`),
-      ),
-    ).toBe(false);
-  });
-
-  it("[issue-377] task.py create rejects a --slug carrying a different date prefix", () => {
-    writeArborScripts();
-    writeProjectFile(
-      path.join(".arbor", ".developer"),
-      "name=test-dev\ninitialized_at=2026-03-27T00:00:00\n",
-    );
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    const now = new Date();
-    // Pick a valid date prefix that is guaranteed not to be today.
-    const otherPrefix =
-      now.getMonth() + 1 === 1 && now.getDate() === 1 ? "02-02" : "01-01";
-
-    const result = spawnSync(
-      pythonCmd,
-      [
-        taskScriptPath,
-        "create",
-        "Example Task",
-        "--description",
-        "regression fixture",
-        "--slug",
-        `${otherPrefix}-example-task`,
-        "--assignee",
-        "test-dev",
-      ],
-      { cwd: tmpDir, encoding: "utf-8", env: sessionEnv() },
-    );
-
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain("date prefix");
-    expect(result.stderr).toContain("--slug example-task");
-    const tasksDir = path.join(tmpDir, ".arbor", "tasks");
-    const created = fs.existsSync(tasksDir) ? fs.readdirSync(tasksDir) : [];
-    expect(created.filter((d) => d.endsWith("example-task"))).toEqual([]);
-  });
-
-  it("[issue-377] task.py create leaves non-date numeric slug prefixes untouched", () => {
-    writeArborScripts();
-    writeProjectFile(
-      path.join(".arbor", ".developer"),
-      "name=test-dev\ninitialized_at=2026-03-27T00:00:00\n",
-    );
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    const now = new Date();
-    const todayPrefix = `${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-
-    // 13-45 is not a valid MM-DD date, so it is part of the slug body.
-    const result = spawnSync(
-      pythonCmd,
-      [
-        taskScriptPath,
-        "create",
-        "Example Task",
-        "--description",
-        "regression fixture",
-        "--slug",
-        "13-45-example-task",
-        "--assignee",
-        "test-dev",
-      ],
-      { cwd: tmpDir, encoding: "utf-8", env: sessionEnv() },
-    );
-
-    expect(result.status).toBe(0);
-    expect(result.stderr).not.toContain("normalized to");
-    expect(
-      fs.existsSync(
-        path.join(
-          tmpDir,
-          ".arbor",
-          "tasks",
-          `${todayPrefix}-13-45-example-task`,
-        ),
-      ),
-    ).toBe(true);
-  });
-
-  it("[task-input-contract] task.py archive accepts task name, relative path, and absolute path", () => {
-    setupTaskRepo();
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-
-    // Create three additional task directories for the three input forms.
-    const taskNames = ["issue-201", "issue-202", "issue-203"];
-    for (const name of taskNames) {
-      writeProjectFile(
-        path.join(".arbor", "tasks", name, "task.json"),
-        JSON.stringify(
-          {
-            title: `Task ${name}`,
-            status: "in_progress",
-            package: null,
-          },
-          null,
-          2,
-        ),
-      );
-    }
-
-    // Form 1: bare slug
-    execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} archive ${taskNames[0]} --no-commit`,
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env: sessionEnv(),
-      },
-    );
-
-    // Form 2: relative path
-    execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} archive ${JSON.stringify(`.arbor/tasks/${taskNames[1]}`)} --no-commit`,
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env: sessionEnv(),
-      },
-    );
-
-    // Form 3: absolute path
-    const absPath = path.join(tmpDir, ".arbor", "tasks", taskNames[2]);
-    execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} archive ${JSON.stringify(absPath)} --no-commit`,
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env: sessionEnv(),
-      },
-    );
-
-    // All three task dirs should be removed from active tasks/.
-    for (const name of taskNames) {
-      expect(
-        fs.existsSync(path.join(tmpDir, ".arbor", "tasks", name)),
-        `task ${name} should no longer exist in active tasks/`,
-      ).toBe(false);
-    }
-
-    // All three should appear under archive/<YYYY-MM>/.
-    const archiveRoot = path.join(tmpDir, ".arbor", "tasks", "archive");
-    expect(fs.existsSync(archiveRoot)).toBe(true);
-    const archivedNames = new Set<string>();
-    for (const monthDir of fs.readdirSync(archiveRoot)) {
-      const monthPath = path.join(archiveRoot, monthDir);
-      if (fs.statSync(monthPath).isDirectory()) {
-        for (const taskDir of fs.readdirSync(monthPath)) {
-          archivedNames.add(taskDir);
-        }
-      }
-    }
-    for (const name of taskNames) {
-      expect(archivedNames.has(name), `task ${name} should be archived`).toBe(
-        true,
-      );
-    }
-  });
-
-  it("[session-current-task] task.py start also uses platform-native session env when available", () => {
-    // Was written against CODEX_SESSION_ID, which the 2026-08-05 env-name audit
-    // proved never existed on any Codex build. Repointed to a name that is
-    // empirically real (CLAUDE_CODE_SESSION_ID, verified in a live Claude Code
-    // bash child) so the test still covers what it was for — the env table
-    // resolving end-to-end through `task.py start` — instead of covering a
-    // fiction. Codex's surviving real name has its own test below.
-    setupTaskRepo();
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-
-    const output = execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} start ${JSON.stringify(".arbor/tasks/issue-106")} --no-worktree`,
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env: sessionEnv({ CLAUDE_CODE_SESSION_ID: "native-a" }),
-      },
-    );
-
-    expect(output).toContain("Source: session:claude_native-a");
-    const contextPath = path.join(
-      tmpDir,
-      ".arbor",
-      ".runtime",
-      "sessions",
-      "claude_native-a.json",
-    );
-    const context = JSON.parse(fs.readFileSync(contextPath, "utf-8")) as {
-      current_task: string;
-    };
-    expect(context.current_task).toBe(".arbor/tasks/issue-106");
-  });
-
-  // ==========================================================================
-  // [env-name-purge] active_task.py's env tables may only name real variables
-  // ==========================================================================
-  // A 2026-08-05 audit checked all 21 platforms against vendor docs, shipped
-  // binaries and live shells (see .arbor/tasks/08-05-session-identity-
-  // propagation/research/platform-session-identity.md). 12 of the 21 declared
-  // session env var names had never existed on any platform — they were
-  // pattern-guessed from a `<PLATFORM>_SESSION_ID` shape no vendor agreed to,
-  // and three of them entered in a single bulk commit with no per-platform
-  // evidence. The tests below exist so that re-adding one by pattern-matching
-  // its neighbours fails loudly instead of shipping as a silent no-op.
-
-  it("[session-current-task] task.py finish ignores legacy .current-task when no session task is set", () => {
-    setupTaskRepo();
-    writeLegacyCurrentTask(".arbor/tasks/issue-106");
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-
-    const output = execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} finish`,
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env: sessionEnv({ ARBOR_CONTEXT_ID: "session-fallback" }),
-      },
-    );
-
-    expect(output).toContain("No current task set");
-    expect(fs.existsSync(path.join(tmpDir, ".arbor", ".current-task"))).toBe(
-      true,
-    );
-  });
-
-  it("[session-current-task] task.py current ignores legacy .current-task without context key", () => {
-    setupTaskRepo();
-    writeLegacyCurrentTask(".arbor/tasks/issue-106");
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-
-    let output = "";
-    let status = 0;
-    try {
-      execSync(
-        `${pythonCmd} ${JSON.stringify(taskScriptPath)} current --source`,
-        {
-          cwd: tmpDir,
-          encoding: "utf-8",
-          env: sessionEnv(),
-        },
-      );
-    } catch (error) {
-      status =
-        typeof (error as { status?: unknown }).status === "number"
-          ? (error as { status: number }).status
-          : 1;
-      output = String((error as { stdout?: unknown }).stdout ?? "");
-    }
-
-    expect(status).toBe(1);
-    expect(output).toContain("Current task: (none)");
-    expect(output).toContain("Source: none");
-  });
-
-  it("[session-current-task] stale session task does not fall back to legacy .current-task", () => {
-    setupTaskRepo();
-    writeLegacyCurrentTask(".arbor/tasks/issue-106");
-    writeProjectFile(
-      path.join(".arbor", ".runtime", "sessions", "session-b.json"),
-      JSON.stringify(
-        { current_task: ".arbor/tasks/missing-task", platform: "test" },
-        null,
-        2,
-      ),
-    );
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-
-    const output = execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} current --source`,
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env: sessionEnv({ ARBOR_CONTEXT_ID: "session-b" }),
-      },
-    );
-
-    expect(output).toContain("Current task: .arbor/tasks/missing-task");
-    expect(output).toContain("Source: session:session-b");
-    expect(output).toContain("State: stale");
-    expect(output).not.toContain("issue-106");
-  });
-
-  it("[session-current-task] Claude statusline uses session-scoped task when session_id is present", () => {
-    setupTaskRepo();
-    writeLegacyCurrentTask(".arbor/tasks/issue-106");
-    writeProjectFile(
-      path.join(".arbor", "tasks", "session-task", "task.json"),
-      JSON.stringify(
-        {
-          title: "Session scoped task",
-          status: "in_progress",
-          priority: "P1",
-        },
-        null,
-        2,
-      ),
-    );
-    writeProjectFile(
-      path.join(".arbor", ".runtime", "sessions", "claude_status-a.json"),
-      JSON.stringify(
-        {
-          current_task: ".arbor/tasks/session-task",
-          platform: "claude",
-        },
-        null,
-        2,
-      ),
-    );
+  it("[statusline-opt-in] Claude statusline reads UTF-8 stdin under a legacy (GBK) locale", () => {
+    setupRepo();
     writeProjectFile(
       path.join(".claude", "hooks", "statusline.py"),
       getStatuslineHook(),
@@ -3659,10 +1107,7 @@ describe("regression: current-task path normalization", () => {
       }),
     );
 
-    expect(output).toContain("Session scoped task");
     expect(output).toContain("中文模型");
-    expect(output).toContain("[session]");
-    expect(output).not.toContain("Issue 106 task");
     // Rate-limit display with reset countdown (opt-in statusline enhancement)
     expect(output).toContain("5h 17%");
     expect(output).toMatch(/\(reset 4h3[12]m\)/);
@@ -3670,29 +1115,8 @@ describe("regression: current-task path normalization", () => {
     expect(output).toContain("(reset 2d11h)");
   });
 
-  it("[session-current-task] Claude statusline ignores legacy .current-task without session context", () => {
-    setupTaskRepo();
-    writeLegacyCurrentTask(".arbor/tasks/issue-106");
-    writeProjectFile(
-      path.join(".claude", "hooks", "statusline.py"),
-      getStatuslineHook(),
-    );
-
-    const output = runPython(
-      path.join(".claude", "hooks", "statusline.py"),
-      JSON.stringify({
-        model: { display_name: "Test" },
-        context_window: { used_percentage: 1, context_window_size: 1000 },
-        cost: { total_duration_ms: 0 },
-      }),
-    );
-
-    expect(output).not.toContain("Issue 106 task");
-    expect(output).not.toContain("[global]");
-  });
-
   it("[statusline-opt-in] Claude statusline tolerates ISO-8601 resets_at and missing seven_day (no crash)", () => {
-    setupTaskRepo();
+    setupRepo();
     writeProjectFile(
       path.join(".claude", "hooks", "statusline.py"),
       getStatuslineHook(),
@@ -3742,7 +1166,7 @@ describe("regression: current-task path normalization", () => {
   }
 
   it("[statusline-opt-in] Claude statusline moves rate limits to their own line when COLUMNS is narrow", () => {
-    setupTaskRepo();
+    setupRepo();
     writeProjectFile(
       path.join(".claude", "hooks", "statusline.py"),
       getStatuslineHook(),
@@ -3767,7 +1191,7 @@ describe("regression: current-task path normalization", () => {
   });
 
   it("[statusline-opt-in] Claude statusline stays single-line when COLUMNS is wide or unset", () => {
-    setupTaskRepo();
+    setupRepo();
     writeProjectFile(
       path.join(".claude", "hooks", "statusline.py"),
       getStatuslineHook(),
@@ -3784,1179 +1208,6 @@ describe("regression: current-task path normalization", () => {
       expect(lines[0]).toContain("5h 17%");
       expect(lines[0]).toContain("7d 19%");
     }
-  });
-
-  // ------------------------------------------------------------
-  // Single-session fallback (issue #225 — class-2 sub-agents)
-  // ------------------------------------------------------------
-
-  function runTaskCurrent(envOverrides: NodeJS.ProcessEnv = {}): {
-    output: string;
-    status: number;
-  } {
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    let output = "";
-    let status = 0;
-    try {
-      output = execSync(
-        `${pythonCmd} ${JSON.stringify(taskScriptPath)} current --source`,
-        {
-          cwd: tmpDir,
-          encoding: "utf-8",
-          env: sessionEnv(envOverrides),
-        },
-      );
-    } catch (error) {
-      status =
-        typeof (error as { status?: unknown }).status === "number"
-          ? (error as { status: number }).status
-          : 1;
-      output = String((error as { stdout?: unknown }).stdout ?? "");
-    }
-    return { output, status };
-  }
-
-  it("[session-fallback] main CLI does not borrow a sole unrelated session", () => {
-    setupTaskRepo();
-    writeSessionContext("codex_session_parent", ".arbor/tasks/issue-106");
-
-    const { output, status } = runTaskCurrent();
-    expect(status).toBe(1);
-    expect(output).toContain("Current task: (none)");
-    expect(output).toContain("Source: none");
-  });
-
-  it("[session-fallback] zero session files — no fallback, returns none", () => {
-    setupTaskRepo();
-    // No session files written
-
-    const { output, status } = runTaskCurrent();
-    expect(status).toBe(1);
-    expect(output).toContain("Current task: (none)");
-    expect(output).toContain("Source: none");
-  });
-
-  it("[session-fallback] multiple session files — refuses to guess, returns none", () => {
-    setupTaskRepo();
-    writeSessionContext("codex_session_a", ".arbor/tasks/issue-106");
-    writeProjectFile(
-      path.join(".arbor", "tasks", "other-task", "task.json"),
-      JSON.stringify({ title: "other", status: "in_progress" }, null, 2),
-    );
-    writeSessionContext("codex_session_b", ".arbor/tasks/other-task");
-
-    const { output, status } = runTaskCurrent();
-    expect(status).toBe(1);
-    expect(output).toContain("Current task: (none)");
-    expect(output).toContain("Source: none");
-  });
-
-  it("[session-fallback] explicit context-key match takes precedence over fallback", () => {
-    setupTaskRepo();
-    writeSessionContext("codex_session_explicit", ".arbor/tasks/issue-106");
-
-    const { output, status } = runTaskCurrent({
-      ARBOR_CONTEXT_ID: "codex_session_explicit",
-    });
-    expect(status).toBe(0);
-    expect(output).toContain("Current task: .arbor/tasks/issue-106");
-    // Source should be "session:" (precise match), not "session-fallback:"
-    expect(output).toContain("Source: session:codex_session_explicit");
-    expect(output).not.toContain("session-fallback");
-  });
-
-  it("[issue #469] finish removes only the exact matched session file", () => {
-    setupTaskRepo();
-    writeSessionContext("claude_exact", ".arbor/tasks/issue-106");
-    writeSessionContext("codex_thread_sibling", ".arbor/tasks/issue-106");
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    const sessionsDir = path.join(tmpDir, ".arbor", ".runtime", "sessions");
-
-    const output = execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} finish`,
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env: sessionEnv({ CLAUDE_CODE_SESSION_ID: "exact" }),
-      },
-    );
-
-    expect(output).toContain("Source: session:claude_exact");
-    expect(fs.existsSync(path.join(sessionsDir, "claude_exact.json"))).toBe(
-      false,
-    );
-    expect(
-      fs.existsSync(path.join(sessionsDir, "codex_thread_sibling.json")),
-    ).toBe(true);
-  });
-
-  it("[issue #469] finish preserves a sole unmatched session file", () => {
-    setupTaskRepo();
-    writeSessionContext("codex_previous-thread", ".arbor/tasks/issue-106");
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    const fallbackPath = path.join(
-      tmpDir,
-      ".arbor",
-      ".runtime",
-      "sessions",
-      "codex_previous-thread.json",
-    );
-    const previousBytes = fs.readFileSync(fallbackPath);
-
-    const output = execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} finish`,
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env: sessionEnv({ CODEX_THREAD_ID: "current-thread" }),
-      },
-    );
-
-    expect(output).toContain("No current task set");
-    expect(fs.readFileSync(fallbackPath)).toEqual(previousBytes);
-
-    const current = runTaskCurrent({ CODEX_THREAD_ID: "current-thread" });
-    expect(current.status).toBe(1);
-    expect(current.output).toContain("Current task: (none)");
-    expect(current.output).toContain("Source: none");
-  });
-
-  it("[issue #469] finish deletes nothing when fallback resolution is ambiguous", () => {
-    setupTaskRepo();
-    writeSessionContext("codex_thread_a", ".arbor/tasks/issue-106");
-    writeSessionContext("codex_thread_b", ".arbor/tasks/issue-106");
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    const sessionsDir = path.join(tmpDir, ".arbor", ".runtime", "sessions");
-
-    const output = execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} finish`,
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env: sessionEnv({ CODEX_THREAD_ID: "current-thread" }),
-      },
-    );
-
-    expect(output).toContain("No current task set");
-    expect(fs.existsSync(path.join(sessionsDir, "codex_thread_a.json"))).toBe(
-      true,
-    );
-    expect(fs.existsSync(path.join(sessionsDir, "codex_thread_b.json"))).toBe(
-      true,
-    );
-  });
-
-  it("[issue #469] finish preserves a malformed exact session when another session exists", () => {
-    setupTaskRepo();
-    writeProjectFile(
-      path.join(".arbor", ".runtime", "sessions", "codex_malformed.json"),
-      "{",
-    );
-    writeSessionContext("codex_other", ".arbor/tasks/issue-106");
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    const sessionsDir = path.join(tmpDir, ".arbor", ".runtime", "sessions");
-
-    const output = execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} finish`,
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env: sessionEnv({ CODEX_THREAD_ID: "malformed" }),
-      },
-    );
-
-    expect(output).toContain("No current task set");
-    expect(fs.existsSync(path.join(sessionsDir, "codex_malformed.json"))).toBe(
-      true,
-    );
-    expect(fs.existsSync(path.join(sessionsDir, "codex_other.json"))).toBe(
-      true,
-    );
-  });
-
-  it("[audit] a non-UTF-8 session file degrades to no active task", () => {
-    // The tolerant `read_json` caught FileNotFoundError / JSONDecodeError /
-    // OSError. UnicodeDecodeError is none of those, so a session file that is
-    // not UTF-8 raised straight out of a read whose whole contract is to
-    // return None, and the hook path failed instead of degrading.
-    setupTaskRepo();
-    const sessionsDir = path.join(tmpDir, ".arbor", ".runtime", "sessions");
-    fs.mkdirSync(sessionsDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(sessionsDir, "codex_binary.json"),
-      Buffer.from([0x7b, 0x22, 0xff, 0x22, 0x7d]),
-    );
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-
-    const proc = spawnSync(pythonCmd, [taskScriptPath, "finish"], {
-      cwd: tmpDir,
-      encoding: "utf-8",
-      env: sessionEnv({ CODEX_THREAD_ID: "binary" }),
-    });
-
-    expect(proc.stderr ?? "").not.toContain("UnicodeDecodeError");
-    expect(proc.status).toBe(0);
-    expect(proc.stdout).toContain("No current task set");
-  });
-
-  it("[workflow-v2] task.py create does NOT write legacy current_phase / next_action fields", () => {
-    setupTaskRepo();
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} create "dummy task" --description "regression fixture" --slug dummy-task --assignee test-dev`,
-      { cwd: tmpDir, encoding: "utf-8" },
-    );
-    // Locate the newly created task dir
-    const tasksDir = path.join(tmpDir, ".arbor", "tasks");
-    const newDirs = fs
-      .readdirSync(tasksDir)
-      .filter((d) => d.includes("dummy-task"));
-    expect(newDirs.length).toBeGreaterThan(0);
-    const newTaskJsonPath = path.join(tasksDir, newDirs[0], "task.json");
-    const data = JSON.parse(fs.readFileSync(newTaskJsonPath, "utf-8")) as {
-      current_phase?: unknown;
-      next_action?: unknown;
-    };
-    expect(data.current_phase).toBeUndefined();
-    expect(data.next_action).toBeUndefined();
-  });
-
-  // ------------------------------------------------------------
-  // v0.5.0-beta.12: init-context removal + jsonl seeding on task create
-  // ------------------------------------------------------------
-
-  it("[init-context-removal] task.py create seeds jsonl even when no platform dir exists", () => {
-    setupTaskRepo();
-    // setupTaskRepo does not create any .{platform}/ dir. Dispatch through
-    // codeg reads implement.jsonl / check.jsonl on every project, so the
-    // manifests are seeded unconditionally.
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} create "plain task" --description "regression fixture" --slug plain-task --assignee test-dev`,
-      { cwd: tmpDir, encoding: "utf-8" },
-    );
-    const tasksDir = path.join(tmpDir, ".arbor", "tasks");
-    const newDirs = fs
-      .readdirSync(tasksDir)
-      .filter((d) => d.includes("plain-task"));
-    expect(newDirs.length).toBeGreaterThan(0);
-    const taskDir = path.join(tasksDir, newDirs[0]);
-    expect(
-      fs.readFileSync(path.join(taskDir, "implement.jsonl"), "utf-8"),
-    ).toBe("");
-    expect(fs.readFileSync(path.join(taskDir, "check.jsonl"), "utf-8")).toBe(
-      "",
-    );
-  });
-
-  it("[validation-preflight] task.py create writes EMPTY jsonl when a sub-agent platform dir exists", () => {
-    setupTaskRepo();
-    // Simulate a Claude Code install
-    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    const output = execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} create "seeded task" --description "regression fixture" --slug seeded-task --assignee test-dev`,
-      { cwd: tmpDir, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
-    );
-    expect(output).toBeDefined();
-    const tasksDir = path.join(tmpDir, ".arbor", "tasks");
-    const newDirs = fs
-      .readdirSync(tasksDir)
-      .filter((d) => d.includes("seeded-task"));
-    expect(newDirs.length).toBeGreaterThan(0);
-    const taskDir = path.join(tasksDir, newDirs[0]);
-
-    for (const jsonlName of ["implement.jsonl", "check.jsonl"]) {
-      const jsonlPath = path.join(taskDir, jsonlName);
-      expect(fs.existsSync(jsonlPath), `${jsonlName} should exist`).toBe(true);
-      // Empty on create — a placeholder row would pass validate locally and
-      // then fail PR preflight as unresolved scaffolding.
-      expect(fs.readFileSync(jsonlPath, "utf-8"), jsonlName).toBe("");
-    }
-  });
-
-  it("[validation-preflight] task.py create prints jsonl curation instructions instead of writing them into the files", () => {
-    setupTaskRepo();
-    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    const result = spawnSync(
-      pythonCmd,
-      [
-        taskScriptPath,
-        "create",
-        "curation hint task",
-        "--description",
-        "regression fixture",
-        "--slug",
-        "curation-hint-task",
-        "--assignee",
-        "test-dev",
-      ],
-      { cwd: tmpDir, encoding: "utf-8", env: sessionEnv() },
-    );
-    expect(result.status).toBe(0);
-    expect(result.stderr).toContain("Curate implement.jsonl / check.jsonl");
-    expect(result.stderr).toContain('{"file": "<path>", "reason": "<why>"}');
-    expect(result.stderr).toContain("get_context.py --mode packages");
-  });
-
-  it("[init-context-removal] task.py init-context is deprecated with clear pointer to planning artifacts", () => {
-    setupTaskRepo();
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    let threw = false;
-    let stderr = "";
-    try {
-      execSync(
-        `${pythonCmd} ${JSON.stringify(taskScriptPath)} init-context .arbor/tasks/issue-106 fullstack`,
-        { cwd: tmpDir, encoding: "utf-8" },
-      );
-    } catch (err) {
-      threw = true;
-      const e = err as { stderr?: string; status?: number };
-      stderr = e.stderr ?? "";
-      expect(e.status).toBe(2);
-    }
-    expect(threw).toBe(true);
-    expect(stderr).toContain("v0.5.0-beta.12");
-    expect(stderr).toContain("planning artifact guidance");
-    expect(stderr).toContain("add-context");
-  });
-
-  it("[init-context-removal] dispatch_context.py skips seed rows (no `file` field)", () => {
-    // read_jsonl_entries should return empty list when jsonl contains only a
-    // seed row — not crash, not treat `_example` as a path.
-    writeArborScripts();
-    const scriptsDir = path.join(tmpDir, ".arbor", "scripts");
-
-    // Minimal fake jsonl with only seed
-    const jsonlDir = path.join(tmpDir, "repo");
-    fs.mkdirSync(jsonlDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(jsonlDir, "seed.jsonl"),
-      JSON.stringify({ _example: "seed row" }) + "\n",
-      "utf-8",
-    );
-
-    // Run a tiny Python snippet that imports the hook module and calls
-    // read_jsonl_entries. Capturing the stderr warning proves the code path.
-    const probeScript = `
-import sys
-sys.path.insert(0, ${JSON.stringify(scriptsDir)})
-from common import dispatch_context as mod
-entries = mod.read_jsonl_entries(${JSON.stringify(jsonlDir)}, "seed.jsonl")
-print(len(entries))
-`;
-    const probePath = path.join(tmpDir, "probe.py");
-    fs.writeFileSync(probePath, probeScript, "utf-8");
-    const result = execSync(`${pythonCmd} ${JSON.stringify(probePath)}`, {
-      cwd: tmpDir,
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    expect(result.trim()).toBe("0");
-  });
-
-  it("[#573] task.py validate fails for a freshly created task until manifests are curated", () => {
-    setupTaskRepo();
-    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} create "seed-only" --description "regression fixture" --slug seed-only-task --assignee test-dev`,
-      { cwd: tmpDir, encoding: "utf-8" },
-    );
-    const taskDir = fs
-      .readdirSync(path.join(tmpDir, ".arbor", "tasks"))
-      .find((d) => d.includes("seed-only-task"));
-    expect(taskDir).toBeDefined();
-    const relTaskDir = path.posix.join(".arbor", "tasks", taskDir as string);
-
-    const result = spawnSync(
-      pythonCmd,
-      [taskScriptPath, "validate", relTaskDir],
-      { cwd: tmpDir, encoding: "utf-8" },
-    );
-    // Seed-only manifests used to pass with a green "✓ (0 entries)", so
-    // sub-agents silently ran with zero spec context (#573).
-    expect(result.status).toBe(1);
-    expect(result.stdout).toContain("0 curated entries");
-    expect(result.stdout).toContain("add-context");
-    expect(result.stdout).toContain("--allow-empty-context");
-  });
-
-  describe("[validation-preflight] task.py validate vs PR preflight contract", () => {
-    // Each case writes the manifests directly, then runs the real validator.
-    // Create → validate must never produce a task that validates locally and
-    // then trips PR preflight's `_example` scaffolding rule.
-    const placeholderRow =
-      '{"_example": "Fill with {\\"file\\": \\"<path>\\", \\"reason\\": \\"<why>\\"}."}\n';
-    // Curated row for the manifest not under test: an empty manifest is
-    // itself an error since #573, which would obscure the count under test.
-    const curatedRow =
-      '{"file":".arbor/spec/guides/index.md","reason":"guideline"}\n';
-
-    function validateWith(
-      implementContent: string,
-      checkContent: string,
-    ): ReturnType<typeof spawnSync> {
-      setupTaskRepo();
-      const taskDir = path.join(tmpDir, ".arbor", "tasks", "issue-106");
-      fs.writeFileSync(
-        path.join(taskDir, "implement.jsonl"),
-        implementContent,
-        "utf-8",
-      );
-      fs.writeFileSync(
-        path.join(taskDir, "check.jsonl"),
-        checkContent,
-        "utf-8",
-      );
-      const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-      return spawnSync(
-        pythonCmd,
-        [taskScriptPath, "validate", ".arbor/tasks/issue-106"],
-        { cwd: tmpDir, encoding: "utf-8", env: sessionEnv() },
-      );
-    }
-
-    it("rejects a placeholder-only implement.jsonl with file, line, and remediation", () => {
-      const result = validateWith(placeholderRow, curatedRow);
-      expect(result.status).toBe(1);
-      expect(result.stdout).toContain(
-        "implement.jsonl:1: Placeholder `_example` row",
-      );
-      expect(result.stdout).toContain('{"file": "<path>", "reason": "<why>"}');
-      expect(result.stdout).toContain("Validation failed (1 errors)");
-    });
-
-    it("rejects a placeholder row in check.jsonl too", () => {
-      const result = validateWith(curatedRow, placeholderRow);
-      expect(result.status).toBe(1);
-      expect(result.stdout).toContain(
-        "check.jsonl:1: Placeholder `_example` row",
-      );
-    });
-
-    it("rejects a placeholder row that sits alongside curated entries", () => {
-      const result = validateWith(`${placeholderRow}${curatedRow}`, curatedRow);
-      expect(result.status).toBe(1);
-      expect(result.stdout).toContain(
-        "implement.jsonl:1: Placeholder `_example` row",
-      );
-      expect(result.stdout).toContain("Validation failed (1 errors)");
-    });
-
-    it("[#573] fails for empty manifests instead of passing them silently", () => {
-      const result = validateWith("", "");
-      expect(result.status).toBe(1);
-      expect(result.stdout).toContain(
-        "implement.jsonl: ✗ (0 curated entries — sub-agents would get zero spec context)",
-      );
-      expect(result.stdout).toContain(
-        "check.jsonl: ✗ (0 curated entries — sub-agents would get zero spec context)",
-      );
-      expect(result.stdout).toContain("add-context <task> implement");
-      expect(result.stdout).toContain("--allow-empty-context");
-    });
-
-    it("passes for curated entries pointing at real files", () => {
-      setupTaskRepo();
-      const taskDir = path.join(tmpDir, ".arbor", "tasks", "issue-106");
-      const curated =
-        '{"file":".arbor/spec/guides/index.md","reason":"guideline"}\n';
-      fs.writeFileSync(path.join(taskDir, "implement.jsonl"), curated, "utf-8");
-      fs.writeFileSync(path.join(taskDir, "check.jsonl"), curated, "utf-8");
-      const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-      const result = spawnSync(
-        pythonCmd,
-        [taskScriptPath, "validate", ".arbor/tasks/issue-106"],
-        { cwd: tmpDir, encoding: "utf-8", env: sessionEnv() },
-      );
-      expect(result.status).toBe(0);
-      expect(result.stdout).toContain("All validations passed");
-    });
-
-    it("still rejects malformed JSON lines", () => {
-      const result = validateWith("{not json\n", curatedRow);
-      expect(result.status).toBe(1);
-      expect(result.stdout).toContain("implement.jsonl:1: Invalid JSON");
-    });
-
-    it("reports a non-object row instead of crashing on it", () => {
-      // Valid JSON, wrong shape — the row must be an error with a line
-      // number, not an AttributeError traceback out of `data.get`.
-      const result = validateWith(
-        '"just a string"\n[1, 2]\nnull\n',
-        curatedRow,
-      );
-      expect(result.status).toBe(1);
-      expect(result.stderr).not.toContain("Traceback");
-      for (const line of [1, 2, 3]) {
-        expect(result.stdout).toContain(
-          `implement.jsonl:${line}: Expected a JSON object`,
-        );
-      }
-      expect(result.stdout).toContain("Validation failed (3 errors)");
-    });
-
-    it("list-context skips non-object rows instead of crashing on them", () => {
-      // Same wrong-shape rows as the validate case above — list-context is a
-      // read-only listing, so it skips them and still lists curated entries.
-      setupTaskRepo();
-      const taskDir = path.join(tmpDir, ".arbor", "tasks", "issue-106");
-      fs.writeFileSync(
-        path.join(taskDir, "implement.jsonl"),
-        '"just a string"\n[1, 2]\nnull\n{"file":".arbor/spec/guides/index.md","reason":"guideline"}\n',
-        "utf-8",
-      );
-      fs.writeFileSync(path.join(taskDir, "check.jsonl"), "", "utf-8");
-      const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-      const result = spawnSync(
-        pythonCmd,
-        [taskScriptPath, "list-context", ".arbor/tasks/issue-106"],
-        { cwd: tmpDir, encoding: "utf-8", env: sessionEnv() },
-      );
-      expect(result.status).toBe(0);
-      expect(result.stderr).not.toContain("Traceback");
-      expect(result.stdout).toContain(".arbor/spec/guides/index.md");
-    });
-
-    it("rejects a placeholder row inside an archived task", () => {
-      setupTaskRepo();
-      const archivedDir = path.join(
-        tmpDir,
-        ".arbor",
-        "tasks",
-        "archive",
-        "2026-07",
-        "07-01-archived-task",
-      );
-      fs.mkdirSync(archivedDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(archivedDir, "task.json"),
-        JSON.stringify({ title: "Archived", status: "completed" }, null, 2),
-      );
-      fs.writeFileSync(
-        path.join(archivedDir, "implement.jsonl"),
-        placeholderRow,
-        "utf-8",
-      );
-      fs.writeFileSync(path.join(archivedDir, "check.jsonl"), "", "utf-8");
-      const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-      const result = spawnSync(
-        pythonCmd,
-        [
-          taskScriptPath,
-          "validate",
-          ".arbor/tasks/archive/2026-07/07-01-archived-task",
-        ],
-        { cwd: tmpDir, encoding: "utf-8", env: sessionEnv() },
-      );
-      expect(result.status).toBe(1);
-      expect(result.stdout).toContain(
-        "implement.jsonl:1: Placeholder `_example` row",
-      );
-    });
-  });
-
-  describe("[#573] task.py start seed-only context gate", () => {
-    const curatedRow =
-      '{"file":".arbor/spec/guides/index.md","reason":"guideline"}\n';
-
-    function writeManifests(
-      implement: string | null,
-      check: string | null,
-    ): void {
-      const taskDir = path.join(tmpDir, ".arbor", "tasks", "issue-106");
-      if (implement !== null) {
-        fs.writeFileSync(
-          path.join(taskDir, "implement.jsonl"),
-          implement,
-          "utf-8",
-        );
-      }
-      if (check !== null) {
-        fs.writeFileSync(path.join(taskDir, "check.jsonl"), check, "utf-8");
-      }
-    }
-
-    function runStart(...extra: string[]): ReturnType<typeof spawnSync> {
-      const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-      return spawnSync(
-        pythonCmd,
-        [
-          taskScriptPath,
-          "start",
-          ".arbor/tasks/issue-106",
-          "--no-worktree",
-          ...extra,
-        ],
-        {
-          cwd: tmpDir,
-          encoding: "utf-8",
-          // Session identity so a successful start prints "Current task set
-          // to" instead of the degraded-mode notice.
-          env: sessionEnv({ ARBOR_CONTEXT_ID: "test-ctx-573" }),
-        },
-      );
-    }
-
-    it("blocks start when seeded manifests have zero curated entries", () => {
-      setupTaskRepo();
-      writeManifests("", "");
-      const r = runStart();
-      expect(r.status).toBe(1);
-      expect(r.stdout).toContain("no curated entries");
-      expect(r.stdout).toContain("add-context");
-      expect(r.stdout).toContain("--allow-empty-context");
-      expect(r.stdout).not.toContain("Current task set to");
-    });
-
-    it("names only the manifest that is actually empty", () => {
-      setupTaskRepo();
-      writeManifests(curatedRow, "");
-      const r = runStart();
-      expect(r.status).toBe(1);
-      expect(r.stdout).toContain("check.jsonl has no curated entries");
-      expect(r.stdout).not.toContain("implement.jsonl and check.jsonl");
-    });
-
-    it("--allow-empty-context bypasses the gate", () => {
-      setupTaskRepo();
-      writeManifests("", "");
-      const r = runStart("--allow-empty-context");
-      expect(r.status).toBe(0);
-      expect(r.stdout).toContain("Current task set to");
-    });
-
-    it("does not gate when manifests are absent (agent-less platform)", () => {
-      // `create` seeds the manifests only on sub-agent-capable platforms;
-      // absence means no sub-agent will ever read them.
-      setupTaskRepo();
-      const r = runStart();
-      expect(r.status).toBe(0);
-      expect(r.stdout).toContain("Current task set to");
-    });
-
-    it("starts normally once both manifests are curated", () => {
-      setupTaskRepo();
-      writeManifests(curatedRow, curatedRow);
-      const r = runStart();
-      expect(r.status).toBe(0);
-      expect(r.stdout).toContain("Current task set to");
-    });
-  });
-
-  it("[init-context-removal] task.py list-context prints 'no curated entries yet' for uncurated jsonl", () => {
-    setupTaskRepo();
-    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} create "seed-list" --description "regression fixture" --slug seed-list-task --assignee test-dev`,
-      { cwd: tmpDir, encoding: "utf-8" },
-    );
-    const taskDir = fs
-      .readdirSync(path.join(tmpDir, ".arbor", "tasks"))
-      .find((d) => d.includes("seed-list-task"));
-    expect(taskDir).toBeDefined();
-    const relTaskDir = path.posix.join(".arbor", "tasks", taskDir as string);
-
-    const result = execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} list-context ${relTaskDir}`,
-      { cwd: tmpDir, encoding: "utf-8" },
-    );
-    // Sentinel message proves the seed-detection branch ran.
-    expect(result).toContain("no curated entries yet");
-  });
-
-  it("[issue-395] task.py list --json emits a stable machine-readable schema", () => {
-    setupTaskRepo();
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-
-    const output = execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} list --json`,
-      { cwd: tmpDir, encoding: "utf-8", env: sessionEnv() },
-    );
-
-    const parsed = JSON.parse(output) as {
-      tasks: {
-        dir: string;
-        title: string;
-        status: string;
-        priority: string;
-        assignee: string | null;
-        parent: string | null;
-        children: string[];
-      }[];
-    };
-    expect(parsed.tasks).toHaveLength(1);
-    expect(parsed.tasks[0]).toMatchObject({
-      dir: ".arbor/tasks/issue-106",
-      title: "Issue 106 task",
-      status: "in_progress",
-      parent: null,
-      children: [],
-    });
-  });
-
-  it("[issue-395] task.py current --json reports null when no task is active", () => {
-    setupTaskRepo();
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-
-    const result = spawnSync(pythonCmd, [taskScriptPath, "current", "--json"], {
-      cwd: tmpDir,
-      encoding: "utf-8",
-      env: sessionEnv(),
-    });
-
-    expect(result.status).toBe(1);
-    const parsed = JSON.parse(result.stdout) as { current_task: unknown };
-    expect(parsed.current_task).toBeNull();
-  });
-
-  it("[issue-395] task.py current --json reports the active task object", () => {
-    setupTaskRepo();
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-
-    execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} start ${JSON.stringify(".arbor/tasks/issue-106")} --no-worktree`,
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env: sessionEnv({ ARBOR_CONTEXT_ID: "json-current-session" }),
-      },
-    );
-
-    const output = execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} current --json`,
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env: sessionEnv({ ARBOR_CONTEXT_ID: "json-current-session" }),
-      },
-    );
-
-    const parsed = JSON.parse(output) as {
-      current_task: { dir: string; title: string; status: string } | null;
-    };
-    expect(parsed.current_task).toMatchObject({
-      dir: ".arbor/tasks/issue-106",
-      title: "Issue 106 task",
-      status: "in_progress",
-    });
-  });
-
-  it("[issue-399.1] task.py create stamps base_branch from origin/HEAD, not the checked-out branch", () => {
-    setupTaskRepo();
-    execSync("git init -q -b feature/some-work", { cwd: tmpDir });
-    execSync("git config user.email test@example.com", { cwd: tmpDir });
-    execSync("git config user.name Test", { cwd: tmpDir });
-    execSync("git add -A", { cwd: tmpDir });
-    execSync("git commit -q -m init", { cwd: tmpDir });
-
-    // Simulate a bare "origin" remote whose default branch is main, while
-    // the local checkout stays on a feature branch (#399 item 1 repro).
-    const remotePath = path.join(tmpDir, "..", "origin-bare.git");
-    execSync(`git init -q --bare ${JSON.stringify(remotePath)}`, {
-      cwd: tmpDir,
-    });
-    execSync("git branch -m feature/some-work main", { cwd: tmpDir });
-    execSync(`git remote add origin ${JSON.stringify(remotePath)}`, {
-      cwd: tmpDir,
-    });
-    execSync("git push -q origin main", { cwd: tmpDir });
-    execSync(
-      `git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main`,
-      { cwd: tmpDir },
-    );
-    execSync("git checkout -q -b feature/some-work", { cwd: tmpDir });
-
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    execSync(
-      `${pythonCmd} ${JSON.stringify(taskScriptPath)} create "base branch test" --description "regression fixture" --slug base-branch-test --assignee test-dev --no-start`,
-      { cwd: tmpDir, encoding: "utf-8", env: sessionEnv() },
-    );
-
-    const taskDir = fs
-      .readdirSync(path.join(tmpDir, ".arbor", "tasks"))
-      .find((d) => d.includes("base-branch-test"));
-    expect(taskDir).toBeDefined();
-    const taskJson = JSON.parse(
-      fs.readFileSync(
-        path.join(tmpDir, ".arbor", "tasks", taskDir as string, "task.json"),
-        "utf-8",
-      ),
-    ) as { base_branch: string };
-    expect(taskJson.base_branch).toBe("main");
-
-    fs.rmSync(remotePath, { recursive: true, force: true });
-  });
-
-  it("[issue-399.1] task.py create falls back to the checked-out branch when no default branch resolves", () => {
-    setupTaskRepo();
-    execSync("git init -q -b solo-branch", { cwd: tmpDir });
-    execSync("git config user.email test@example.com", { cwd: tmpDir });
-    execSync("git config user.name Test", { cwd: tmpDir });
-    execSync("git add -A", { cwd: tmpDir });
-    execSync("git commit -q -m init", { cwd: tmpDir });
-    // No origin remote configured at all.
-
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    const result = spawnSync(
-      pythonCmd,
-      [
-        taskScriptPath,
-        "create",
-        "no remote test",
-        "--description",
-        "regression fixture",
-        "--slug",
-        "no-remote-test",
-        "--assignee",
-        "test-dev",
-        "--no-start",
-      ],
-      { cwd: tmpDir, encoding: "utf-8", env: sessionEnv() },
-    );
-
-    // #399 follow-up: silently falling back must now warn on stderr, naming
-    // the branch that got stamped.
-    expect(result.stderr).toContain(
-      "warning: could not resolve the repository's default branch",
-    );
-    expect(result.stderr).toContain("solo-branch");
-
-    const taskDir = fs
-      .readdirSync(path.join(tmpDir, ".arbor", "tasks"))
-      .find((d) => d.includes("no-remote-test"));
-    const taskJson = JSON.parse(
-      fs.readFileSync(
-        path.join(tmpDir, ".arbor", "tasks", taskDir as string, "task.json"),
-        "utf-8",
-      ),
-    ) as { base_branch: string };
-    expect(taskJson.base_branch).toBe("solo-branch");
-  });
-
-  it("[issue-399.1] task.py create --base-branch overrides both origin/HEAD detection and the fallback", () => {
-    setupTaskRepo();
-    execSync("git init -q -b solo-branch", { cwd: tmpDir });
-    execSync("git config user.email test@example.com", { cwd: tmpDir });
-    execSync("git config user.name Test", { cwd: tmpDir });
-    execSync("git add -A", { cwd: tmpDir });
-    execSync("git commit -q -m init", { cwd: tmpDir });
-    // No origin remote configured at all — would otherwise fall back with a warning.
-
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    const result = spawnSync(
-      pythonCmd,
-      [
-        taskScriptPath,
-        "create",
-        "explicit base branch test",
-        "--description",
-        "regression fixture",
-        "--slug",
-        "explicit-base-branch-test",
-        "--assignee",
-        "test-dev",
-        "--base-branch",
-        "release/1.0",
-        "--no-start",
-      ],
-      { cwd: tmpDir, encoding: "utf-8", env: sessionEnv() },
-    );
-
-    expect(result.stderr).not.toContain(
-      "warning: could not resolve the repository's default branch",
-    );
-
-    const taskDir = fs
-      .readdirSync(path.join(tmpDir, ".arbor", "tasks"))
-      .find((d) => d.includes("explicit-base-branch-test"));
-    expect(taskDir).toBeDefined();
-    const taskJson = JSON.parse(
-      fs.readFileSync(
-        path.join(tmpDir, ".arbor", "tasks", taskDir as string, "task.json"),
-        "utf-8",
-      ),
-    ) as { base_branch: string };
-    expect(taskJson.base_branch).toBe("release/1.0");
-  });
-
-  it("[issue-399.2] task.py validate warns when the recorded branch no longer exists locally", () => {
-    setupTaskRepo();
-    execSync("git init -q -b main", { cwd: tmpDir });
-    execSync("git config user.email test@example.com", { cwd: tmpDir });
-    execSync("git config user.name Test", { cwd: tmpDir });
-    execSync("git add -A", { cwd: tmpDir });
-    execSync("git commit -q -m init", { cwd: tmpDir });
-
-    const taskJsonPath = path.join(
-      tmpDir,
-      ".arbor",
-      "tasks",
-      "issue-106",
-      "task.json",
-    );
-    const data = JSON.parse(fs.readFileSync(taskJsonPath, "utf-8"));
-    data.branch = "task/deleted-branch-does-not-exist";
-    fs.writeFileSync(taskJsonPath, JSON.stringify(data, null, 2));
-
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    const result = spawnSync(
-      pythonCmd,
-      [taskScriptPath, "validate", ".arbor/tasks/issue-106"],
-      { cwd: tmpDir, encoding: "utf-8", env: sessionEnv() },
-    );
-
-    expect(result.stdout).toContain(
-      "recorded branch 'task/deleted-branch-does-not-exist' no longer exists locally",
-    );
-  });
-
-  it("[issue-399.2] task.py archive warns when the recorded branch no longer exists locally", () => {
-    setupTaskRepo();
-    execSync("git init -q -b main", { cwd: tmpDir });
-    execSync("git config user.email test@example.com", { cwd: tmpDir });
-    execSync("git config user.name Test", { cwd: tmpDir });
-    execSync("git add -A", { cwd: tmpDir });
-    execSync("git commit -q -m init", { cwd: tmpDir });
-
-    const taskJsonPath = path.join(
-      tmpDir,
-      ".arbor",
-      "tasks",
-      "issue-106",
-      "task.json",
-    );
-    const data = JSON.parse(fs.readFileSync(taskJsonPath, "utf-8"));
-    data.branch = "task/deleted-branch-does-not-exist";
-    fs.writeFileSync(taskJsonPath, JSON.stringify(data, null, 2));
-
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    const result = spawnSync(
-      pythonCmd,
-      [taskScriptPath, "archive", ".arbor/tasks/issue-106", "--no-commit"],
-      { cwd: tmpDir, encoding: "utf-8", env: sessionEnv() },
-    );
-
-    expect(result.stderr).toContain(
-      "recorded branch 'task/deleted-branch-does-not-exist' no longer exists locally",
-    );
-  });
-
-  // --- Branch metadata recorded at start, validated at archive -------------
-
-  function initTaskGitRepo(branch: string, withRemote = false): void {
-    execSync(`git init -q -b ${branch}`, { cwd: tmpDir });
-    execSync("git config user.email test@example.com", { cwd: tmpDir });
-    execSync("git config user.name Test", { cwd: tmpDir });
-    execSync("git add -A", { cwd: tmpDir });
-    execSync("git commit -q -m init", { cwd: tmpDir });
-    if (withRemote) {
-      // Never contacted: only `git remote` (the PR-backed predicate) reads it.
-      execSync("git remote add origin https://example.invalid/repo.git", {
-        cwd: tmpDir,
-      });
-    }
-  }
-
-  function patchIssue106Task(fields: Record<string, unknown>): string {
-    const taskJsonPath = path.join(
-      tmpDir,
-      ".arbor",
-      "tasks",
-      "issue-106",
-      "task.json",
-    );
-    const data = JSON.parse(fs.readFileSync(taskJsonPath, "utf-8"));
-    fs.writeFileSync(
-      taskJsonPath,
-      JSON.stringify({ ...data, ...fields }, null, 2),
-    );
-    return taskJsonPath;
-  }
-
-  function readIssue106Task(): { branch: string | null; status: string } {
-    return JSON.parse(
-      fs.readFileSync(
-        path.join(tmpDir, ".arbor", "tasks", "issue-106", "task.json"),
-        "utf-8",
-      ),
-    );
-  }
-
-  it("[issue-399.3] task.py start records the checked-out branch when none is set", () => {
-    setupTaskRepo();
-    initTaskGitRepo("main");
-    execSync("git checkout -q -b feature/record-me", { cwd: tmpDir });
-    patchIssue106Task({
-      status: "planning",
-      branch: null,
-      base_branch: "main",
-    });
-
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    const result = spawnSync(
-      pythonCmd,
-      [taskScriptPath, "start", ".arbor/tasks/issue-106", "--no-worktree"],
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env: sessionEnv({ ARBOR_CONTEXT_ID: "start-branch-session" }),
-      },
-    );
-
-    expect(result.stdout).toContain("Branch recorded: feature/record-me");
-    expect(readIssue106Task()).toMatchObject({
-      branch: "feature/record-me",
-      status: "in_progress",
-    });
-  });
-
-  it("[issue-399.3] task.py start does not clobber an explicitly set branch", () => {
-    setupTaskRepo();
-    initTaskGitRepo("main");
-    execSync("git checkout -q -b feature/current", { cwd: tmpDir });
-    patchIssue106Task({
-      status: "planning",
-      branch: "task/set-by-hand",
-      base_branch: "main",
-    });
-
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    const result = spawnSync(
-      pythonCmd,
-      [taskScriptPath, "start", ".arbor/tasks/issue-106", "--no-worktree"],
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env: sessionEnv({ ARBOR_CONTEXT_ID: "start-noclobber-session" }),
-      },
-    );
-
-    expect(result.stdout).not.toContain("Branch recorded");
-    expect(readIssue106Task().branch).toBe("task/set-by-hand");
-  });
-
-  it("[issue-399.3] task.py start on a detached HEAD notes the skip and still starts", () => {
-    setupTaskRepo();
-    initTaskGitRepo("main");
-    execSync("git checkout -q --detach", { cwd: tmpDir });
-    patchIssue106Task({
-      status: "planning",
-      branch: null,
-      base_branch: "main",
-    });
-
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    const result = spawnSync(
-      pythonCmd,
-      [taskScriptPath, "start", ".arbor/tasks/issue-106", "--no-worktree"],
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env: sessionEnv({ ARBOR_CONTEXT_ID: "start-detached-session" }),
-      },
-    );
-
-    expect(result.status).toBe(0);
-    expect(result.stderr).toContain("no checked-out branch");
-    expect(readIssue106Task()).toMatchObject({
-      branch: null,
-      status: "in_progress",
-    });
-  });
-
-  it("[issue-399.3] task.py archive refuses a PR-backed task with no recorded branch", () => {
-    setupTaskRepo();
-    initTaskGitRepo("main", true);
-    patchIssue106Task({ branch: null, base_branch: "main" });
-
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    const result = spawnSync(
-      pythonCmd,
-      [taskScriptPath, "archive", ".arbor/tasks/issue-106", "--no-commit"],
-      { cwd: tmpDir, encoding: "utf-8", env: sessionEnv() },
-    );
-
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain("no branch is recorded");
-    expect(result.stderr).toContain("task.py set-branch");
-    expect(result.stderr).toContain("--skip-branch-validation");
-    // Refused before any mutation: the task stays put, still un-completed.
-    expect(
-      fs.existsSync(path.join(tmpDir, ".arbor", "tasks", "issue-106")),
-    ).toBe(true);
-    expect(readIssue106Task().status).toBe("in_progress");
-  });
-
-  it("[issue-399.3] task.py archive refuses a task whose branch equals its base_branch", () => {
-    setupTaskRepo();
-    initTaskGitRepo("main", true);
-    patchIssue106Task({ branch: "main", base_branch: "main" });
-
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    const result = spawnSync(
-      pythonCmd,
-      [taskScriptPath, "archive", ".arbor/tasks/issue-106", "--no-commit"],
-      { cwd: tmpDir, encoding: "utf-8", env: sessionEnv() },
-    );
-
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain("branch and base_branch are both 'main'");
-    expect(result.stderr).toContain("task.py set-base-branch");
-    expect(
-      fs.existsSync(path.join(tmpDir, ".arbor", "tasks", "issue-106")),
-    ).toBe(true);
-  });
-
-  it("[issue-399.3] task.py archive --skip-branch-validation archives despite missing branch metadata", () => {
-    setupTaskRepo();
-    initTaskGitRepo("main", true);
-    patchIssue106Task({ branch: null, base_branch: "main" });
-
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    const result = spawnSync(
-      pythonCmd,
-      [
-        taskScriptPath,
-        "archive",
-        ".arbor/tasks/issue-106",
-        "--no-commit",
-        "--skip-branch-validation",
-      ],
-      { cwd: tmpDir, encoding: "utf-8", env: sessionEnv() },
-    );
-
-    expect(result.status).toBe(0);
-    expect(
-      fs.existsSync(path.join(tmpDir, ".arbor", "tasks", "issue-106")),
-    ).toBe(false);
-  });
-
-  it("[issue-399.3] task.py archive still only warns when a PR-backed branch was merged and deleted", () => {
-    setupTaskRepo();
-    initTaskGitRepo("main", true);
-    patchIssue106Task({
-      branch: "feature/merged-and-deleted",
-      base_branch: "main",
-    });
-
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    const result = spawnSync(
-      pythonCmd,
-      [taskScriptPath, "archive", ".arbor/tasks/issue-106", "--no-commit"],
-      { cwd: tmpDir, encoding: "utf-8", env: sessionEnv() },
-    );
-
-    expect(result.status).toBe(0);
-    expect(result.stderr).toContain(
-      "recorded branch 'feature/merged-and-deleted' no longer exists locally",
-    );
-    expect(
-      fs.existsSync(path.join(tmpDir, ".arbor", "tasks", "issue-106")),
-    ).toBe(false);
   });
 });
 
@@ -5001,62 +1252,6 @@ describe("regression: cli_adapter platform support (beta.9, beta.13, beta.16)", 
   // helpers are all gone. task.py still guards against old invocations with
   // a clear deprecation message so users who muscle-memory-type the old
   // command get pointed at the new workflow.
-  it("[init-context-removal] task.py no longer registers init-context subparser", () => {
-    const taskScript = getAllScripts().get("task.py");
-    expect(taskScript).toBeDefined();
-    expect(taskScript as string).not.toMatch(
-      /subparsers\.add_parser\(\s*"init-context"/,
-    );
-  });
-
-  it("[init-context-removal] task.py emits deprecation message on init-context invocation", () => {
-    const taskScript = getAllScripts().get("task.py");
-    expect(taskScript).toBeDefined();
-    // Guard fires before argparse so user sees the real reason (not argparse's
-    // generic "invalid choice" error).
-    expect(taskScript as string).toMatch(
-      /sys\.argv\[1\]\s*==\s*"init-context"/,
-    );
-    expect(taskScript as string).toContain("v0.5.0-beta.12");
-    expect(taskScript as string).toContain("planning artifact guidance");
-  });
-
-  it("[init-context-removal] common/task_context.py removes cmd_init_context + get_check_context helpers", () => {
-    const taskContext = getAllScripts().get("common/task_context.py");
-    expect(taskContext).toBeDefined();
-    // Mechanical-fill path gone; only curate helpers remain.
-    expect(taskContext as string).not.toMatch(/def cmd_init_context\b/);
-    expect(taskContext as string).not.toMatch(/def get_check_context\b/);
-    expect(taskContext as string).not.toMatch(/def get_implement_backend\b/);
-    expect(taskContext as string).not.toMatch(/def get_implement_frontend\b/);
-    // Remaining surface — still callable by task.py.
-    expect(taskContext as string).toMatch(/def cmd_add_context\b/);
-    expect(taskContext as string).toMatch(/def cmd_validate\b/);
-    expect(taskContext as string).toMatch(/def cmd_list_context\b/);
-  });
-
-  it("[init-context-removal] task_store.cmd_create always creates jsonl manifests", () => {
-    const taskStore = getAllScripts().get("common/task_store.py");
-    expect(taskStore).toBeDefined();
-    // Dispatch reads the manifests on every project, so there is no platform
-    // probe gating their creation any more.
-    expect(taskStore as string).not.toMatch(/_SUBAGENT_CONFIG_DIRS/);
-    expect(taskStore as string).not.toMatch(/_has_subagent_platform/);
-    // Manifests are created empty — no placeholder row that PR preflight
-    // would later reject as unresolved scaffolding.
-    expect(taskStore as string).not.toMatch(/_write_seed_jsonl/);
-    expect(taskStore as string).not.toContain("_example");
-    expect(taskStore as string).toContain(
-      'jsonl_path.write_text("", encoding="utf-8")',
-    );
-
-    // The validator is the second half of the contract: placeholder rows left
-    // by older versions are a hard error, not a silently skipped comment.
-    const taskContext = getAllScripts().get("common/task_context.py");
-    expect(taskContext as string).toContain('"_example" in data');
-    expect(taskContext as string).toContain("Placeholder `_example` row");
-  });
-
   it("[migrate-flow-bugs] all breaking+recommendMigrate manifests include migrationGuide", () => {
     // Enforce going forward: every historical manifest where both
     // breaking=true AND recommendMigrate=true must have a non-empty
@@ -5350,31 +1545,6 @@ describe("regression: templates/markdown/spec contains only .md.txt files (0.5.0
       `Orphan non-.md.txt files in templates/markdown/spec/: ${orphans.join(", ")}`,
     ).toEqual([]);
   });
-});
-
-describe("regression: sub-agent context injection fallback (0.5.3)", () => {
-  // 0.5.3 hotfix: class-1 platforms (claude / cursor / opencode / kiro /
-  // codebuddy / droid) used to rely entirely on PreToolUse hook injection for
-  // sub-agent task context. When the hook silently failed (Windows + Claude
-  // Code issue #53254 / #25981 / #36156, --continue resume, fork
-  // distributions, hooks disabled) sub-agents received the dispatch prompt
-  // without prd / spec / jsonl context, with no recovery path.
-  //
-  // The fix: hook output now begins with a `<!-- arbor-hook-injected -->`
-  // marker, and every class-1 arbor-implement / arbor-check definition
-  // file carries a Arbor Context Loading Protocol section telling the
-  // sub-agent to load context itself when the marker is absent.
-  const HOOK_INJECTED_MARKER = "<!-- arbor-hook-injected -->";
-
-  it("dispatch_context.py emits the marker for every role prompt", () => {
-    const src = getAllScripts().get("common/dispatch_context.py") ?? "";
-    expect(src).toContain(`MARKER = "${HOOK_INJECTED_MARKER}"`);
-    // The one role template opens with the marker.
-    const body = src.split("def build_role_prompt(")[1] ?? "";
-    expect(body, "build_role_prompt must exist").not.toBe("");
-    expect(body.slice(0, 600)).toContain('return f"""{MARKER}');
-  });
-
 });
 
 describe("regression: configSectionsAdded (issue-codex-dispatch-mode)", () => {
@@ -5722,55 +1892,6 @@ describe("regression: safe auto-commit when .arbor/ is gitignored (0.5.10 → 0.
     expect(safeCommit).not.toMatch(/\["add", "-f", "--",/);
   });
 
-  it("[gitignore-arbor] task.py archive warns and skips when .arbor/ is ignored (default mode)", () => {
-    setupRepo({ gitignoreArbor: true });
-    // Create a task to archive.
-    writeFile(
-      ".arbor/tasks/issue-500/task.json",
-      JSON.stringify(
-        { title: "Test archive", status: "in_progress", package: null },
-        null,
-        2,
-      ),
-    );
-    writeFile(".arbor/tasks/issue-500/prd.md", "# PRD\n");
-
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    const result = spawnSync(pyCmd, [taskScriptPath, "archive", "issue-500"], {
-      cwd: tmpDir,
-      encoding: "utf-8",
-      env: { ...process.env, ARBOR_CONTEXT_ID: "session-arch" },
-    });
-    const stderr = result.stderr ?? "";
-    // 0.5.11: must NOT retry with -f, must NOT auto-commit. Warning must
-    // surface so the user knows their .gitignore won.
-    expect(stderr).not.toContain("Auto-committed");
-    expect(stderr).toContain("ignored by your .gitignore");
-    expect(stderr).toContain("Do NOT use `git add -f .arbor/`");
-
-    const tracked = listCommittedFiles();
-    // Nothing under .arbor/ should be tracked.
-    for (const t of tracked) {
-      expect(
-        t.startsWith(".arbor/"),
-        `should not commit anything under .arbor/ (got: ${t})`,
-      ).toBe(false);
-    }
-
-    // The archive directory move on disk still happened — only git was
-    // untouched.
-    const archiveExists = fs
-      .readdirSync(path.join(tmpDir, ".arbor/tasks/archive"))
-      .some((monthDir) => {
-        const monthPath = path.join(tmpDir, ".arbor/tasks/archive", monthDir);
-        return (
-          fs.statSync(monthPath).isDirectory() &&
-          fs.existsSync(path.join(monthPath, "issue-500"))
-        );
-      });
-    expect(archiveExists).toBe(true);
-  });
-
   // ===========================================================================
   // 0.5.11: session_auto_commit config (issue #245 + screenshot user)
   // ===========================================================================
@@ -5809,49 +1930,6 @@ describe("regression: safe auto-commit when .arbor/ is gitignored (0.5.10 → 0.
         path.join(tmpDir, ".arbor/workspace/test-dev/journal-1.md"),
       ),
     ).toBe(true);
-  });
-
-  it("[session_auto_commit=false] task.py archive skips git entirely", () => {
-    setupRepo({ gitignoreArbor: false });
-    writeConfigYaml("session_auto_commit: false\n");
-
-    writeFile(
-      ".arbor/tasks/issue-600/task.json",
-      JSON.stringify(
-        { title: "Test archive", status: "in_progress", package: null },
-        null,
-        2,
-      ),
-    );
-    writeFile(".arbor/tasks/issue-600/prd.md", "# PRD\n");
-
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    const result = spawnSync(pyCmd, [taskScriptPath, "archive", "issue-600"], {
-      cwd: tmpDir,
-      encoding: "utf-8",
-      env: { ...process.env, ARBOR_CONTEXT_ID: "session-arch-2" },
-    });
-    const stderr = result.stderr ?? "";
-    expect(stderr).not.toContain("Auto-committed");
-    expect(stderr).toContain("session_auto_commit: false");
-
-    const log = execSync("git log --oneline", {
-      cwd: tmpDir,
-      encoding: "utf-8",
-    });
-    expect(log.trim().split("\n").length).toBe(1);
-
-    // Archive directory move still happened on disk.
-    const archiveExists = fs
-      .readdirSync(path.join(tmpDir, ".arbor/tasks/archive"))
-      .some((monthDir) => {
-        const monthPath = path.join(tmpDir, ".arbor/tasks/archive", monthDir);
-        return (
-          fs.statSync(monthPath).isDirectory() &&
-          fs.existsSync(path.join(monthPath, "issue-600"))
-        );
-      });
-    expect(archiveExists).toBe(true);
   });
 
   it("[session_auto_commit] inline comment is stripped before parsing", () => {
@@ -5919,12 +1997,8 @@ describe("regression: safe auto-commit when .arbor/ is gitignored (0.5.10 → 0.
 // error to untangle.
 //
 // Fix: `run_git_retry_index_lock` retries ONLY index.lock failures — three
-// attempts over ~1.5s — and the archive path uses it for `add`,
-// `rm --cached` and `commit`. When the retries run out the move stays
-// complete and the commit is reported as pending: rolling the move back would
-// also have to undo the completed status, the re-parented children and the
-// cleared sessions, and a partial rollback is worse than a named pending
-// commit. The warning names the lock file and the command to run by hand.
+// attempts over ~1.5s. `task.py` is gone in arbor 1.0; the retry semantics of
+// `common/git.py` are still pinned below.
 // =============================================================================
 
 describe("regression: bounded index.lock retry on archive auto-commit", () => {
@@ -5947,10 +2021,6 @@ describe("regression: bounded index.lock retry on archive auto-commit", () => {
     const abs = path.join(tmpDir, rel);
     fs.mkdirSync(path.dirname(abs), { recursive: true });
     fs.writeFileSync(abs, content, "utf-8");
-  }
-
-  function lockFile(): string {
-    return path.join(tmpDir, ".git", "index.lock");
   }
 
   function setupRepo(): void {
@@ -5980,38 +2050,9 @@ describe("regression: bounded index.lock retry on archive auto-commit", () => {
     execSync('git commit -q -m "init"', { cwd: tmpDir });
   }
 
-  function runArchive(): { status: number | null; stderr: string } {
-    const taskScriptPath = path.join(tmpDir, ".arbor", "scripts", "task.py");
-    const result = spawnSync(pyCmd, [taskScriptPath, "archive", taskName], {
-      cwd: tmpDir,
-      encoding: "utf-8",
-      env: { ...process.env, ARBOR_CONTEXT_ID: "session-lock" },
-    });
-    return { status: result.status, stderr: result.stderr ?? "" };
-  }
-
-  function archivedTaskExists(): boolean {
-    const archiveRoot = path.join(tmpDir, ".arbor/tasks/archive");
-    if (!fs.existsSync(archiveRoot)) return false;
-    return fs.readdirSync(archiveRoot).some((monthDir) => {
-      const monthPath = path.join(archiveRoot, monthDir);
-      return (
-        fs.statSync(monthPath).isDirectory() &&
-        fs.existsSync(path.join(monthPath, taskName))
-      );
-    });
-  }
-
-  function gitLogLines(): string[] {
-    return execSync("git log --oneline", { cwd: tmpDir, encoding: "utf-8" })
-      .trim()
-      .split("\n")
-      .filter((l) => l.length > 0);
-  }
-
   it("[index-lock] retries only index.lock failures, bounded by the attempt count", () => {
-    // Deterministic cover for the retry semantics themselves: the end-to-end
-    // tests below depend on wall-clock timing, this one does not.
+    // Deterministic cover for the retry semantics themselves (no wall-clock
+    // timing involved).
     setupRepo();
     const probe = `
 import json
@@ -6088,81 +2129,6 @@ print(json.dumps({
       unrelated_calls: 1,
     });
   });
-
-  it("[index-lock] archive survives a lock that is released mid-retry", () => {
-    setupRepo();
-    fs.writeFileSync(lockFile(), "", "utf-8");
-
-    // Released after the first attempt is certain to have hit the lock, but
-    // before the retry window (~1.5s from that first attempt) closes.
-    const releaser = spawn(
-      pyCmd,
-      [
-        "-c",
-        `import os, time; time.sleep(1.2); os.path.exists(${JSON.stringify(
-          lockFile(),
-        )}) and os.remove(${JSON.stringify(lockFile())})`,
-      ],
-      { stdio: "ignore" },
-    );
-    releaser.unref();
-
-    const { status, stderr } = runArchive();
-
-    expect(status, stderr).toBe(0);
-    expect(stderr).toContain("Auto-committed");
-    expect(archivedTaskExists()).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, ".arbor/tasks", taskName))).toBe(
-      false,
-    );
-
-    const log = gitLogLines();
-    expect(log.length).toBe(2);
-    expect(log[0]).toContain(`chore(task): archive ${taskName}`);
-
-    // The move is fully recorded — no phantom deletes left behind for the
-    // source path.
-    const dirty = execSync("git status --porcelain", {
-      cwd: tmpDir,
-      encoding: "utf-8",
-    });
-    expect(dirty).not.toContain(`.arbor/tasks/${taskName}/`);
-  });
-
-  it("[index-lock] a lock that never clears aborts with a diagnostic naming it", () => {
-    setupRepo();
-    fs.writeFileSync(lockFile(), "", "utf-8");
-
-    const { status, stderr } = runArchive();
-
-    // Failure, not a misleading success.
-    expect(status, stderr).toBe(1);
-    expect(stderr).toContain("index.lock");
-    expect(stderr).toContain("another process is holding");
-    expect(stderr).toContain("gave up after 3 attempts");
-    // Says what is left to do, so neither a user nor an agent reading the
-    // log has to guess.
-    expect(stderr).toContain("only the commit is pending");
-    expect(stderr).toContain(
-      `git commit -m "chore(task): archive ${taskName}"`,
-    );
-    expect(stderr).toContain("Archive moved on disk");
-
-    // Consistent state: the move completed, nothing is half-moved.
-    expect(archivedTaskExists()).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, ".arbor/tasks", taskName))).toBe(
-      false,
-    );
-
-    // Nothing was committed — the pending commit is genuinely pending.
-    fs.rmSync(lockFile(), { force: true });
-    expect(gitLogLines().length).toBe(1);
-    const dirty = execSync("git status --porcelain", {
-      cwd: tmpDir,
-      encoding: "utf-8",
-    });
-    expect(dirty).toContain(`.arbor/tasks/${taskName}/`);
-  });
 });
 
 // =============================================================================
@@ -6234,322 +2200,12 @@ describe("regression: .arbor/scripts stays byte-identical to templates/arbor/scr
   }
 });
 
-describe("regression: task.py rename rewrites every reference in one pass", () => {
-  // Renaming a task used to be a hand-edited multi-file operation (directory
-  // name, task.json identity fields, parent/children back-references, jsonl
-  // context paths), and a partial hand-rename left dangling references that
-  // preflight gates reject later.
-  const pyCmd = process.platform === "win32" ? "python" : "python3";
-  const pad = (n: number): string => String(n).padStart(2, "0");
-  const now = new Date();
-  const datePrefix = `${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-  const yearMonth = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
-  let tmpDir: string;
-
-  beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-task-rename-"));
-    for (const [rel, content] of getAllScripts()) {
-      const abs = path.join(tmpDir, ".arbor", "scripts", rel);
-      fs.mkdirSync(path.dirname(abs), { recursive: true });
-      fs.writeFileSync(abs, content, "utf-8");
-    }
-    fs.writeFileSync(
-      path.join(tmpDir, ".arbor", ".developer"),
-      "name=test-dev\ninitialized_at=2026-08-09T00:00:00\n",
-    );
-    fs.mkdirSync(taskDir("archive"), { recursive: true });
-  });
-
-  afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  });
-
-  function runTask(...args: string[]): {
-    status: number | null;
-    stdout: string;
-    stderr: string;
-  } {
-    const proc = spawnSync(
-      pyCmd,
-      [path.join(".arbor", "scripts", "task.py"), ...args],
-      { cwd: tmpDir, encoding: "utf-8" },
-    );
-    return {
-      status: proc.status,
-      stdout: proc.stdout ?? "",
-      stderr: proc.stderr ?? "",
-    };
-  }
-
-  function taskDir(...segments: string[]): string {
-    return path.join(tmpDir, ".arbor", "tasks", ...segments);
-  }
-
-  function readTaskJson(name: string): Record<string, unknown> {
-    return JSON.parse(
-      fs.readFileSync(path.join(taskDir(name), "task.json"), "utf-8"),
-    ) as Record<string, unknown>;
-  }
-
-  function create(slug: string, parent?: string): string {
-    const args = [
-      "create",
-      slug,
-      "--description",
-      "rename fixture",
-      "--slug",
-      slug,
-      "--no-start",
-    ];
-    if (parent) args.push("--parent", parent);
-    const r = runTask(...args);
-    expect(r.status, r.stderr).toBe(0);
-    return `${datePrefix}-${slug}`;
-  }
-
-  /** Every `<file>:<line>` under .arbor/tasks/ that still names `taskName`. */
-  function scanForName(taskName: string): string[] {
-    const pattern = new RegExp(
-      `(?<![0-9A-Za-z_-])${taskName}(?![0-9A-Za-z_-])`,
-    );
-    const hits: string[] = [];
-    const walk = (dir: string): void => {
-      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        const abs = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-          walk(abs);
-          if (pattern.test(entry.name)) hits.push(`${abs}/ (directory name)`);
-          continue;
-        }
-        const lines = fs.readFileSync(abs, "utf-8").split("\n");
-        lines.forEach((line, index) => {
-          if (pattern.test(line)) hits.push(`${abs}:${index + 1}`);
-        });
-      }
-    };
-    walk(taskDir());
-    return hits;
-  }
-
-  it("[task-rename] a task with a parent and two children leaves no dangling reference", () => {
-    const parent = create("mum");
-    const target = create("target", parent);
-    const childA = create("kid-a", target);
-    const childB = create("kid-b", target);
-
-    const r = runTask("rename", target, "renamed");
-    expect(r.status, r.stderr).toBe(0);
-
-    const renamed = `${datePrefix}-renamed`;
-    expect(fs.existsSync(taskDir(target))).toBe(false);
-    expect(fs.existsSync(taskDir(renamed))).toBe(true);
-
-    // Identity fields carry the bare slug; back-references carry the full
-    // directory name.
-    expect(readTaskJson(renamed).id).toBe("renamed");
-    expect(readTaskJson(renamed).name).toBe("renamed");
-    expect(readTaskJson(renamed).parent).toBe(parent);
-    expect(readTaskJson(parent).children).toEqual([renamed]);
-    expect(readTaskJson(childA).parent).toBe(renamed);
-    expect(readTaskJson(childB).parent).toBe(renamed);
-
-    expect(scanForName(target)).toEqual([]);
-  });
-
-  it("[task-rename] legacy subtasks back-references are rewritten too", () => {
-    const parent = create("mum");
-    const target = create("target", parent);
-
-    const parentJson = readTaskJson(parent);
-    parentJson.subtasks = [target];
-    fs.writeFileSync(
-      path.join(taskDir(parent), "task.json"),
-      JSON.stringify(parentJson, null, 2) + "\n",
-    );
-
-    const r = runTask("rename", target, "renamed");
-    expect(r.status, r.stderr).toBe(0);
-    expect(r.stdout).toContain("subtasks[0]");
-    expect(readTaskJson(parent).subtasks).toEqual([`${datePrefix}-renamed`]);
-    expect(scanForName(target)).toEqual([]);
-  });
-
-  it("[task-rename] --dry-run prints the change set it would apply, and writes nothing", () => {
-    const parent = create("mum");
-    const target = create("target", parent);
-    create("kid", target);
-    fs.writeFileSync(
-      path.join(taskDir(target), "implement.jsonl"),
-      `{"file": ".arbor/tasks/${target}/research.md", "reason": "findings"}\n`,
-    );
-    fs.writeFileSync(
-      path.join(tmpDir, ".arbor", "workflow.md"),
-      `The plan is tracked in ${target}.\n`,
-    );
-
-    const dry = runTask("rename", target, "renamed", "--dry-run");
-    expect(dry.status, dry.stderr).toBe(0);
-    expect(dry.stderr).toContain("Dry run: nothing was written");
-    expect(fs.existsSync(taskDir(target))).toBe(true);
-    expect(fs.existsSync(taskDir(`${datePrefix}-renamed`))).toBe(false);
-    expect(readTaskJson(target).id).toBe("target");
-    expect(readTaskJson(parent).children).toEqual([target]);
-
-    const applied = runTask("rename", target, "renamed");
-    expect(applied.status, applied.stderr).toBe(0);
-
-    // The whole point of the dry run: what it printed is what the real run did.
-    expect(applied.stdout).toBe(dry.stdout);
-    expect(dry.stdout).toContain(
-      `dir: .arbor/tasks/${target} -> .arbor/tasks/${datePrefix}-renamed`,
-    );
-    expect(dry.stdout).toContain("task.json: id: target -> renamed");
-    expect(dry.stdout).toContain(
-      `backref: .arbor/tasks/${parent}/task.json: children[0]: ${target} -> ${datePrefix}-renamed`,
-    );
-    expect(dry.stdout).toContain(
-      `jsonl: .arbor/tasks/${target}/implement.jsonl:1:`,
-    );
-    // References outside the task dir are reported, never rewritten.
-    expect(dry.stdout).toContain(
-      "reported (not rewritten): .arbor/workflow.md:1",
-    );
-    expect(
-      fs.readFileSync(path.join(tmpDir, ".arbor", "workflow.md"), "utf-8"),
-    ).toContain(target);
-  });
-
-  it("[task-rename] jsonl paths under the task dir move, a sibling's do not", () => {
-    const target = create("target");
-    const sibling = create("target-other");
-    fs.writeFileSync(
-      path.join(taskDir(target), "check.jsonl"),
-      [
-        `{"file": ".arbor/tasks/${target}/research.md", "reason": "findings"}`,
-        `{"file": ".arbor/spec/guides/style.md", "reason": "spec"}`,
-        `{"file": ".arbor/tasks/${sibling}/notes.md", "reason": "sibling"}`,
-        "",
-      ].join("\n"),
-    );
-
-    expect(runTask("rename", target, "renamed").status).toBe(0);
-
-    const renamed = `${datePrefix}-renamed`;
-    const after = fs.readFileSync(
-      path.join(taskDir(renamed), "check.jsonl"),
-      "utf-8",
-    );
-    expect(after).toContain(`".arbor/tasks/${renamed}/research.md"`);
-    expect(after).toContain('".arbor/spec/guides/style.md"');
-    // `target` is a prefix of `target-other`; the sibling must survive intact.
-    expect(after).toContain(`".arbor/tasks/${sibling}/notes.md"`);
-  });
-
-  it("[task-rename] refuses an existing destination, an archived name, a bad slug and an unknown task", () => {
-    const other = create("other");
-    const target = create("target");
-
-    const occupied = runTask("rename", target, "other");
-    expect(occupied.status).not.toBe(0);
-    expect(occupied.stderr).toContain(`Task already exists: ${other}`);
-    expect(fs.existsSync(taskDir(target))).toBe(true);
-
-    fs.mkdirSync(taskDir("archive", yearMonth, `${datePrefix}-gone`), {
-      recursive: true,
-    });
-    const archived = runTask("rename", target, "gone");
-    expect(archived.status).not.toBe(0);
-    expect(archived.stderr).toContain(
-      `Task already archived: ${datePrefix}-gone`,
-    );
-
-    const badSlug = runTask("rename", target, "../evil");
-    expect(badSlug.status).not.toBe(0);
-    expect(badSlug.stderr).toContain("must be a plain name");
-
-    const unknown = runTask("rename", "no-such-task", "renamed");
-    expect(unknown.status).not.toBe(0);
-
-    // Every refusal is pre-flight: the task is still exactly where it was.
-    expect(fs.existsSync(taskDir(target))).toBe(true);
-    expect(readTaskJson(target).id).toBe("target");
-  });
-
-  it("[task-rename] refuses a slug carrying a date prefix, normalizing only its own", () => {
-    const target = create("target");
-
-    const wrongDate = runTask("rename", target, "01-02-renamed");
-    expect(wrongDate.status).not.toBe(0);
-    expect(wrongDate.stderr).toContain("keeps the task's own creation date");
-
-    // The task's own prefix pasted back in is a slip, not a request for
-    // MM-DD-MM-DD-slug (the create-side bug in #377).
-    const ownDate = runTask("rename", target, `${datePrefix}-renamed`);
-    expect(ownDate.status, ownDate.stderr).toBe(0);
-    expect(ownDate.stderr).toContain("should not include the MM-DD prefix");
-    expect(fs.existsSync(taskDir(`${datePrefix}-renamed`))).toBe(true);
-  });
-
-  it("[task-rename] moves an active-task session pointer to the new name", () => {
-    // Rename is the one lifecycle step where the task survives under a new
-    // name. Session pointers used to keep naming the old directory, so the
-    // very next turn resolved the active task as stale/missing.
-    const target = create("target");
-    const other = create("bystander");
-    const sessionsDir = path.join(tmpDir, ".arbor", ".runtime", "sessions");
-    fs.mkdirSync(sessionsDir, { recursive: true });
-    const sessionFile = path.join(sessionsDir, "sess-a.json");
-    const bystanderFile = path.join(sessionsDir, "sess-b.json");
-    fs.writeFileSync(
-      sessionFile,
-      JSON.stringify({ current_task: `.arbor/tasks/${target}` }),
-      "utf-8",
-    );
-    fs.writeFileSync(
-      bystanderFile,
-      JSON.stringify({ current_task: `.arbor/tasks/${other}` }),
-      "utf-8",
-    );
-
-    const r = runTask("rename", target, "renamed");
-    expect(r.status, r.stderr).toBe(0);
-
-    const renamed = `${datePrefix}-renamed`;
-    expect(JSON.parse(fs.readFileSync(sessionFile, "utf-8")).current_task).toBe(
-      `.arbor/tasks/${renamed}`,
-    );
-    // A session on a different task is left exactly as it was.
-    expect(
-      JSON.parse(fs.readFileSync(bystanderFile, "utf-8")).current_task,
-    ).toBe(`.arbor/tasks/${other}`);
-  });
-
-  it("[task-rename] refuses to rename an archived task", () => {
-    const target = create("target");
-    expect(runTask("archive", target, "--no-commit").status).toBe(0);
-
-    const r = runTask(
-      "rename",
-      path.posix.join(".arbor", "tasks", "archive", yearMonth, target),
-      "renamed",
-    );
-    expect(r.status).not.toBe(0);
-    expect(r.stderr).toContain("is not an active task under");
-    expect(
-      fs.existsSync(taskDir("archive", yearMonth, target, "task.json")),
-    ).toBe(true);
-  });
-});
-
 describe("regression: a linked worktree inherits developer identity", () => {
   // `.arbor/.developer` is gitignored (it carries a personal identity), so a
   // fresh `git worktree add` used to start with no identity at all and every
-  // task.py command failed with "No developer set" until init_developer.py was
-  // re-run per worktree — which blocks worktree-per-worker parallel runs.
+  // script failed with "No developer set" until init_developer.py was re-run
+  // per worktree — which blocks worktree-per-worker parallel runs.
   const pyCmd = process.platform === "win32" ? "python" : "python3";
-  const pad = (n: number): string => String(n).padStart(2, "0");
-  const now = new Date();
-  const datePrefix = `${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
   let tmpDir: string;
   let mainDir: string;
   let worktreeDir: string;
@@ -6592,9 +2248,10 @@ describe("regression: a linked worktree inherits developer identity", () => {
     git(mainDir, "worktree", "add", "-q", worktreeDir, "-b", "wt");
   }
 
-  function runTask(
+  function runScript(
     cwd: string,
-    args: string[],
+    script: string,
+    args: string[] = [],
     envOverrides: NodeJS.ProcessEnv = {},
   ): { status: number | null; stdout: string; stderr: string } {
     const env = { ...process.env, ...envOverrides };
@@ -6605,7 +2262,7 @@ describe("regression: a linked worktree inherits developer identity", () => {
     }
     const proc = spawnSync(
       pyCmd,
-      [path.join(cwd, ".arbor", "scripts", "task.py"), ...args],
+      [path.join(cwd, ".arbor", "scripts", script), ...args],
       { cwd, encoding: "utf-8", env },
     );
     return {
@@ -6615,39 +2272,14 @@ describe("regression: a linked worktree inherits developer identity", () => {
     };
   }
 
-  function createTask(
+  /** The identity get_developer.py resolves in `cwd`, or null when it fails. */
+  function developerIn(
     cwd: string,
-    slug: string,
-    extraArgs: string[] = [],
     envOverrides: NodeJS.ProcessEnv = {},
-  ): { status: number | null; stdout: string; stderr: string } {
-    return runTask(
-      cwd,
-      [
-        "create",
-        slug,
-        "--description",
-        "worktree identity fixture",
-        "--slug",
-        slug,
-        "--no-start",
-        ...extraArgs,
-      ],
-      envOverrides,
-    );
-  }
-
-  function assigneeOf(cwd: string, slug: string): unknown {
-    const taskJson = path.join(
-      cwd,
-      ".arbor",
-      "tasks",
-      `${datePrefix}-${slug}`,
-      "task.json",
-    );
-    return (
-      JSON.parse(fs.readFileSync(taskJson, "utf-8")) as Record<string, unknown>
-    ).assignee;
+  ): string | null {
+    const r = runScript(cwd, "get_developer.py", [], envOverrides);
+    expect(r.stderr).not.toContain("Traceback");
+    return r.status === 0 ? r.stdout.trim() : null;
   }
 
   beforeEach(() => {
@@ -6661,7 +2293,7 @@ describe("regression: a linked worktree inherits developer identity", () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("[worktree-identity] create/list/start work in a fresh worktree with no manual setup", () => {
+  it("[worktree-identity] a fresh worktree resolves the main checkout's identity with no manual setup", () => {
     buildRepo("main-dev");
 
     // The premise: git did not carry the gitignored identity file across.
@@ -6669,26 +2301,7 @@ describe("regression: a linked worktree inherits developer identity", () => {
       false,
     );
 
-    const created = createTask(worktreeDir, "inherited");
-    expect(created.status, created.stderr).toBe(0);
-    expect(assigneeOf(worktreeDir, "inherited")).toBe("main-dev");
-
-    const listed = runTask(worktreeDir, ["list", "--json", "--mine"]);
-    expect(listed.status, listed.stderr).toBe(0);
-    const tasks = (
-      JSON.parse(listed.stdout) as { tasks: { id: string; assignee: string }[] }
-    ).tasks;
-    expect(tasks.map((t) => [t.id, t.assignee])).toEqual([
-      ["inherited", "main-dev"],
-    ]);
-
-    const started = runTask(worktreeDir, [
-      "start",
-      `${datePrefix}-inherited`,
-      "--no-worktree",
-      "--allow-empty-context",
-    ]);
-    expect(started.status, started.stderr).toBe(0);
+    expect(developerIn(worktreeDir)).toBe("main-dev");
 
     // Inheritance is read-only: copying the file in would go stale and shadow
     // later changes made in the main checkout.
@@ -6699,8 +2312,7 @@ describe("regression: a linked worktree inherits developer identity", () => {
 
   it("[worktree-identity] a later main-checkout change is picked up, because nothing was copied", () => {
     buildRepo("main-dev");
-    expect(createTask(worktreeDir, "first").status).toBe(0);
-    expect(assigneeOf(worktreeDir, "first")).toBe("main-dev");
+    expect(developerIn(worktreeDir)).toBe("main-dev");
 
     fs.writeFileSync(
       path.join(mainDir, ".arbor", ".developer"),
@@ -6708,77 +2320,59 @@ describe("regression: a linked worktree inherits developer identity", () => {
       "utf-8",
     );
 
-    expect(createTask(worktreeDir, "second").status).toBe(0);
-    expect(assigneeOf(worktreeDir, "second")).toBe("renamed-dev");
+    expect(developerIn(worktreeDir)).toBe("renamed-dev");
   });
 
-  it("[worktree-identity] precedence: --assignee > ARBOR_DEVELOPER > local file > main checkout", () => {
+  it("[worktree-identity] precedence: ARBOR_DEVELOPER > local file > main checkout", () => {
     buildRepo("main-dev");
 
-    // 4. main checkout, in the worktree that has no file of its own
-    expect(createTask(worktreeDir, "inherit").status).toBe(0);
-    expect(assigneeOf(worktreeDir, "inherit")).toBe("main-dev");
+    // 3. main checkout, in the worktree that has no file of its own
+    expect(developerIn(worktreeDir)).toBe("main-dev");
 
-    // 3. a local file in the worktree wins over the main checkout
+    // 2. a local file in the worktree wins over the main checkout
     fs.writeFileSync(
       path.join(worktreeDir, ".arbor", ".developer"),
       "name=local-dev\ninitialized_at=2026-08-09T00:00:00\n",
       "utf-8",
     );
-    expect(createTask(worktreeDir, "local").status).toBe(0);
-    expect(assigneeOf(worktreeDir, "local")).toBe("local-dev");
+    expect(developerIn(worktreeDir)).toBe("local-dev");
 
-    // 2. the env var wins over both files
-    expect(
-      createTask(worktreeDir, "env", [], { ARBOR_DEVELOPER: "env-dev" }).status,
-    ).toBe(0);
-    expect(assigneeOf(worktreeDir, "env")).toBe("env-dev");
-
-    // 1. --assignee wins over everything
-    expect(
-      createTask(worktreeDir, "flag", ["--assignee", "flag-dev"], {
-        ARBOR_DEVELOPER: "env-dev",
-      }).status,
-    ).toBe(0);
-    expect(assigneeOf(worktreeDir, "flag")).toBe("flag-dev");
+    // 1. the env var wins over both files
+    expect(developerIn(worktreeDir, { ARBOR_DEVELOPER: "env-dev" })).toBe(
+      "env-dev",
+    );
   });
 
   it("[worktree-identity] the env var alone is enough in the main checkout too", () => {
     buildRepo(null);
-    expect(
-      createTask(mainDir, "envonly", [], { ARBOR_DEVELOPER: "env-dev" }).status,
-    ).toBe(0);
-    expect(assigneeOf(mainDir, "envonly")).toBe("env-dev");
+    expect(developerIn(mainDir, { ARBOR_DEVELOPER: "env-dev" })).toBe(
+      "env-dev",
+    );
   });
 
   it("[worktree-identity] a whitespace-only env var does not count as an identity", () => {
     buildRepo("main-dev");
-    expect(
-      createTask(worktreeDir, "blank", [], { ARBOR_DEVELOPER: "   " }).status,
-    ).toBe(0);
-    expect(assigneeOf(worktreeDir, "blank")).toBe("main-dev");
+    expect(developerIn(worktreeDir, { ARBOR_DEVELOPER: "   " })).toBe(
+      "main-dev",
+    );
   });
 
   it("[worktree-identity] with no identity anywhere, the error names all three sources", () => {
     buildRepo(null);
 
     for (const cwd of [mainDir, worktreeDir]) {
-      const created = createTask(cwd, "nobody");
-      expect(created.status).not.toBe(0);
-      expect(created.stderr).toContain("No developer set");
-      expect(created.stderr).toContain("init_developer.py");
-      expect(created.stderr).toContain("ARBOR_DEVELOPER");
-      expect(created.stderr).toContain("linked git worktree");
+      expect(developerIn(cwd)).toBeNull();
 
-      const listed = runTask(cwd, ["list", "--json", "--mine"]);
-      expect(listed.status).not.toBe(0);
-      const payload = JSON.parse(listed.stderr) as {
-        error: string;
-        hint: string;
-      };
-      expect(payload.error).toBe("No developer set");
-      expect(payload.hint).toContain("ARBOR_DEVELOPER");
-      expect(payload.hint).toContain("linked git worktree");
+      const session = runScript(cwd, "add_session.py", [
+        "--title",
+        "nobody",
+        "--no-commit",
+      ]);
+      expect(session.status).not.toBe(0);
+      expect(session.stderr).toContain("Developer not initialized");
+      expect(session.stderr).toContain("init_developer.py");
+      expect(session.stderr).toContain("ARBOR_DEVELOPER");
+      expect(session.stderr).toContain("linked git worktree");
     }
   });
 
@@ -6790,10 +2384,10 @@ describe("regression: a linked worktree inherits developer identity", () => {
     git(bareDir, "worktree", "add", "-q", bareWt, "wt");
     writeScripts(bareWt);
 
-    const created = createTask(bareWt, "nobody");
-    expect(created.status).toBe(1);
-    expect(created.stderr).toContain("No developer set");
-    expect(created.stderr).not.toContain("Traceback");
+    const r = runScript(bareWt, "get_developer.py");
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain("Developer not initialized");
+    expect(r.stderr).not.toContain("Traceback");
   });
 
   it("[worktree-identity] a bare repo nested inside an unrelated checkout does not leak that checkout's identity", () => {
@@ -6821,19 +2415,19 @@ describe("regression: a linked worktree inherits developer identity", () => {
     git(nestedBare, "worktree", "add", "-q", nestedWt, "wt");
     writeScripts(nestedWt);
 
-    const created = createTask(nestedWt, "leak");
-    expect(created.status).toBe(1);
-    expect(created.stderr).not.toContain("unrelated-stranger");
-    expect(created.stderr).toContain("No developer set");
+    const r = runScript(nestedWt, "get_developer.py");
+    expect(r.status).toBe(1);
+    expect(r.stdout + r.stderr).not.toContain("unrelated-stranger");
+    expect(r.stderr).toContain("Developer not initialized");
   });
 
   it("[worktree-identity] a directory that is not a git repo fails normally, never crashes", () => {
     writeScripts(mainDir);
 
-    const created = createTask(mainDir, "nogit");
-    expect(created.status).toBe(1);
-    expect(created.stderr).toContain("No developer set");
-    expect(created.stderr).not.toContain("Traceback");
+    const r = runScript(mainDir, "get_developer.py");
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain("Developer not initialized");
+    expect(r.stderr).not.toContain("Traceback");
   });
 });
 

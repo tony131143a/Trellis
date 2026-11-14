@@ -299,6 +299,9 @@ def start(task: Task, contract: Contract, events: list[str]) -> int:
             run = orca.create_run(executor, task.name)
         except ExecutorError as e:
             events.append(f"no node started: {e}")
+            with task.edit() as d:  # shown as the next step until a start succeeds
+                for nid in chosen:
+                    d["nodes"][nid]["start_error"] = str(e)
             return 0
         with task.edit() as d:
             d["orca_run"] = run

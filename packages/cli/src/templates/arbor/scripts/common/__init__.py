@@ -75,7 +75,4 @@ from .paths import (
     get_workspace_dir,
     get_active_journal_file,
     count_lines,
-    normalize_task_ref,
-    resolve_task_ref,
-    generate_task_date_prefix,
 )

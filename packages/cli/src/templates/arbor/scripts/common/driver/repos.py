@@ -22,7 +22,7 @@ from ..config import _is_true_config_value
 from ..contract import Contract, ContractError, contract_hash, find_contract, load_contract
 from ..execution import ExecutionError, frozen_execution, package_root
 from ..git import run_git
-from ..io import read_json_checked, write_json
+from ..io import describe_json_read_failure, read_json_checked, write_json
 from ..paths import DIR_TASKS, DIR_WORKFLOW, FILE_TASK_JSON
 from ..worktree import WorktreeError, add_worktree, branch_prefix, remove_worktree, run_setup
 from .executor import Executor, resolve_executor
@@ -89,7 +89,7 @@ class Task:
 def load_data(task_dir: Path) -> dict:
     data, reason = read_json_checked(task_dir / FILE_TASK_JSON)
     if data is None:
-        raise DriverError(f"cannot read {task_dir / FILE_TASK_JSON}: {reason}")
+        raise DriverError(". ".join(describe_json_read_failure(task_dir / FILE_TASK_JSON, reason)))
     if data.get("schema") != SCHEMA:
         raise DriverError(f"{task_dir.name} was started by arbor < 1.0: finish it with that version")
     return data

@@ -1,9 +1,9 @@
-"""Orca workers: every role dispatch runs as one supervised Orca worker.
+"""Orca workers: every node runs as one supervised Orca worker.
 
-The driver prepares a durable request record, starts the worker itself
+The driver writes a durable request record, starts the worker itself
 (``orca orchestration worker-start``) and later reads its state back
-(``orca orchestration worker-show``). The worker writes its complete reply to
-the request's reply file; Orca's ``worker_done`` only settles the dispatch.
+(``orca orchestration worker-show``). The worker writes its report to the
+record's report file; Orca's ``worker_done`` only settles the dispatch.
 
 Every worker of a task belongs to the task's Orca Run. A start carries the
 record's request id (``--retry-request``), so starting the same record again
@@ -18,13 +18,11 @@ import re
 import shlex
 import subprocess
 import uuid
-from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-from ..invariants import RefSnapshot
 from ..io import write_json
-from .executor import ExecResult, Executor, ExecutorError, utc_now
+from .executor import Executor, ExecutorError, utc_now
 
 REQUESTS = ".arbor/.runtime/workers"
 CALL_TIMEOUT_S = 60
@@ -34,39 +32,6 @@ START_TIMEOUT_S = 300
 MAX_FAILED_STARTS = 3
 # Orca shows a fresh worker as not working until its first turn is observed.
 IDLE_GRACE_S = 60
-
-SPEC_NOTE = (
-    "Read the file named by `Prompt:` in full before doing anything else: it is your complete dispatch "
-    "prompt (this header, your role instructions, the injected context and the brief).\n\n"
-    "When the work is done, write your complete final report, in the exact format your role instructions "
-    "define, to the file named by `Report:` (overwrite it). It is the only reply the Arbor driver reads, "
-    "and the one file you may write outside your role's write boundary. Then send Orca's `worker_done` "
-    "once, with `--report-path` set to that file. The driver takes the verdict from the report file, "
-    "not from `--outcome`."
-)
-RUNNING_NOTE = (
-    "The worker runs in Orca. Start every other ready item, then end your turn: Orca wakes you when a "
-    "worker reports, asks or stops. Then run `arbor.py sync` (it collects every settled worker) and "
-    "`arbor.py next`. Answer a worker's question with `orca orchestration reply`; a worker that stopped "
-    "without reporting gets `orca orchestration send --to dispatch:<orca_dispatch>`. Never do the role yourself."
-)
-
-
-def snapshot_dict(before: RefSnapshot) -> dict:
-    return {**asdict(before), "dirty": sorted(before.dirty)}
-
-
-def snapshot_from(data: dict) -> RefSnapshot:
-    return RefSnapshot(data["head"], data["head_ref"], data["branches"], data["remotes"],
-                       frozenset(data["dirty"]))
-
-
-def spec_text(prompt: str, prompt_path: Path, reply_path: Path) -> str:
-    """The worker's task spec: the dispatch header plus pointers to the
-    assembled prompt file (often >100 KB, never inline) and the reply file."""
-    header, _, _ = prompt.partition("\n\n")
-    return f"{header}\nPrompt: {prompt_path}\nReport: {reply_path}\n\n{SPEC_NOTE}\n"
-
 
 def request_path(main: Path, task: str, dispatch: str) -> Path:
     if not all(re.fullmatch(r"[\w.-]+", s) and s not in (".", "..") for s in (task, dispatch)):
@@ -86,7 +51,7 @@ def load(main: Path, path: str) -> tuple[Path, dict]:
     if not resolved.is_relative_to(root):
         raise ExecutorError(f"a worker request must be a driver-created {REQUESTS} file")
     record = json.loads(resolved.read_text(encoding="utf-8"))
-    if record.get("schema") != 2 or record.get("main") != str(main):
+    if record.get("schema") != 3 or record.get("main") != str(main):
         raise ExecutorError("worker request belongs to another checkout or schema")
     return resolved, record
 
@@ -94,21 +59,6 @@ def load(main: Path, path: str) -> tuple[Path, dict]:
 def dispatch_id(record: dict) -> str | None:
     """Orca's Dispatch id of a started worker."""
     return (record.get("orca") or {}).get("dispatch_id")
-
-
-def envelope(path: Path, record: dict) -> dict:
-    started = dispatch_id(record)
-    failed = (record.get("failed_starts") or [{}])[-1].get("error")
-    return {
-        "needs": "worker", "dispatch": record["dispatch"], "role": record["role"],
-        "request_path": str(path), "orca_dispatch": started,
-        "prompt_path": record["prompt_path"], "reply_path": record["reply_path"],
-        "timeout_s": record.get("timeout_s"), "started": record["started"],
-        "instructions": RUNNING_NOTE if started else (
-            (f"The last start failed ({failed}). Fix its cause, then " if failed else
-             "The worker is not started. Unless another `arbor.py run` is starting it right now, ")
-            + f"`arbor.py run --dispatch {record['dispatch']}` starts it."),
-    }
 
 
 def new_request_id() -> str:
@@ -158,7 +108,7 @@ def create_run(executor: Executor, task: str) -> str:
 def start(executor: Executor, record: dict) -> tuple[dict | None, str | None]:
     """Start the worker of ``record``: (its Orca ids, None) once Orca accepted
     the dispatch, otherwise (ids when a Dispatch exists, why the start failed)."""
-    agent = executor.agent_for(record["role"])
+    agent = record["agent"]
     retry = next((f for f in reversed(record.get("failed_starts") or []) if f.get("dispatch_id")), None)
     if retry:
         # The failed start may still hold its terminal; a retry does not clean it up.
@@ -166,7 +116,7 @@ def start(executor: Executor, record: dict) -> tuple[dict | None, str | None]:
         what = ["--task", retry["task_id"], "--retry-of", retry["dispatch_id"]]
     else:
         what = ["--spec-file", record["spec_path"],
-                "--task-title", f"{record['task']} {record['dispatch']} {record['role']}"]
+                "--task-title", f"{record['task']} {record['node']}"]
     args = ["orchestration", "worker-start", *what, "--run", record["run"],
             "--worktree", f"path:{record['worktree']}", "--agent", agent]
     if executor.keep_open:
@@ -255,20 +205,7 @@ def elapsed_s(record: dict) -> float:
     return (datetime.now(timezone.utc) - started).total_seconds()
 
 
-def _reply(record: dict) -> str:
-    reply_file = Path(record["reply_path"])
-    return reply_file.read_text(encoding="utf-8", errors="replace") if reply_file.is_file() else ""
-
-
 def has_reply(record: dict) -> bool:
-    """The worker wrote its report to the reply file."""
-    return bool(_reply(record).strip())
-
-
-def result_of(record: dict, error: str | None) -> ExecResult:
-    """The dispatch result: the reply file's text, and ``error`` when the
-    worker did not finish."""
-    reply = _reply(record)
-    return ExecResult(record["executor"], f"orca worker {dispatch_id(record) or '(not started)'}",
-                      0 if error is None else 1, reply, "", record["started"], utc_now(),
-                      round(elapsed_s(record), 3), error)
+    """The worker wrote its report to the report file."""
+    report = Path(record["report_path"])
+    return report.is_file() and bool(report.read_text(encoding="utf-8", errors="replace").strip())

@@ -7,14 +7,9 @@ import {
   commonInit,
   commonPaths,
   commonDeveloper,
-  commonGitContext,
-  commonTaskQueue,
-  commonTaskUtils,
-  commonActiveTask,
   getDeveloperScript,
   initDeveloperScript,
-  taskScript,
-  getContextScript,
+  arborScript,
   addSessionScript,
   gitignoreTemplate,
   getAllScripts,
@@ -33,14 +28,9 @@ describe("arbor template constants", () => {
     commonInit,
     commonPaths,
     commonDeveloper,
-    commonGitContext,
-    commonTaskQueue,
-    commonTaskUtils,
-    commonActiveTask,
     getDeveloperScript,
     initDeveloperScript,
-    taskScript,
-    getContextScript,
+    arborScript,
     addSessionScript,
     gitignoreTemplate,
   };
@@ -56,9 +46,8 @@ describe("arbor template constants", () => {
     const pyScripts = [
       commonInit,
       commonPaths,
-      commonActiveTask,
       getDeveloperScript,
-      taskScript,
+      arborScript,
     ];
     for (const script of pyScripts) {
       expect(
@@ -111,8 +100,8 @@ describe("getAllScripts", () => {
     expect(scripts.has("__init__.py")).toBe(true);
     expect(scripts.has("common/__init__.py")).toBe(true);
     expect(scripts.has("common/paths.py")).toBe(true);
-    expect(scripts.has("common/active_task.py")).toBe(true);
-    expect(scripts.has("task.py")).toBe(true);
+    expect(scripts.has("common/driver/sync.py")).toBe(true);
+    expect(scripts.has("arbor.py")).toBe(true);
     expect(scripts.has("get_developer.py")).toBe(true);
   });
 
@@ -132,7 +121,7 @@ describe("getAllScripts", () => {
     const scripts = getAllScripts();
     expect(scripts.get("__init__.py")).toBe(scriptsInit);
     expect(scripts.get("common/__init__.py")).toBe(commonInit);
-    expect(scripts.get("task.py")).toBe(taskScript);
+    expect(scripts.get("arbor.py")).toBe(arborScript);
   });
 
   it("does not contain multi_agent entries", () => {

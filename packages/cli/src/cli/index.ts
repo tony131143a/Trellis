@@ -65,7 +65,7 @@ program
   .command("init")
   .description("Initialize arbor in the current project")
   .option("--claude", "Include Claude Code commands")
-  .option("--codex", "Include Codex skills and hooks")
+  .option("--codex", "Include Codex skills")
   .option(
     "--with-statusline",
     "Install the Arbor statusLine for Claude Code (off by default)",

@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -98,11 +99,14 @@ def cmd_new(args: argparse.Namespace) -> int:
     (task_dir / "nodes").mkdir(parents=True)
     (task_dir / "reports").mkdir()
     (task_dir / "contract.md").write_text(default_contract_content(args.title), encoding="utf-8")
-    write_json(task_dir / FILE_TASK_JSON, {
+    written = write_json(task_dir / FILE_TASK_JSON, {
         "schema": SCHEMA, "name": task_dir.name, "title": args.title, "created": utc_now(), "status": "planning",
         "default_repo": repo, "contract_hash": None, "orca_run": None, "repos": {}, "nodes": {},
         "review": None, "reviewers": {}, "rounds": 0, "allowance": {"rounds": 0, "nodes": 0}, "stopped": None,
         "cleanup": {"done": []}})
+    if not written:
+        shutil.rmtree(task_dir, ignore_errors=True)
+        return refuse(f"cannot write {task_dir / FILE_TASK_JSON}")
     print(f"created {task_dir}")
     print(f"default repo: {repo}")
     print(f"next: fill {task_dir / 'contract.md'} with the user (read-only nodes can explore meanwhile: "

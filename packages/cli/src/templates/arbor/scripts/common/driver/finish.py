@@ -19,8 +19,10 @@ from datetime import datetime
 from pathlib import Path
 
 from ..arbor_config import get_executors_config
-from ..git import run_git
+from ..config import get_session_auto_commit
+from ..git import run_git, run_git_retry_index_lock
 from ..paths import DIR_ARCHIVE, DIR_WORKFLOW
+from ..safe_commit import safe_git_add
 from ..worktree import WorktreeError, is_ancestor, remove_worktree
 from . import plan
 from .executor import utc_now
@@ -231,17 +233,19 @@ def tail(task: Task) -> int:
     main = task.main
     old = f"{DIR_WORKFLOW}/tasks/{task.name}"
     new = Path(d["cleanup"]["archive"]).relative_to(main).as_posix()
-    busy = _control_busy(main)
+    busy = _control_busy(main) if get_session_auto_commit(main) else "session_auto_commit is false"
     if busy:
         print(f"note: {busy}; the archive move is not committed")
     else:
         paths = [new] + ([old] if run_git(["ls-files", "--", old], cwd=main)[1].strip() else [])
-        rc, _, err = run_git(["add", "-A", "--", *paths], cwd=main)
-        if rc != 0:
+        added, _, err = safe_git_add(paths, main, retry_on_index_lock=True)
+        if not added:
             print(f"note: git add failed ({err.strip()}); the archive move is not committed")
         elif run_git(["diff", "--cached", "--quiet", "--", *paths], cwd=main)[0] != 0:
-            git(main, "commit", "-q", "--no-verify", "-m", f"chore(task): archive {task.name}", "--only", "--", *paths)
-            print(f"committed the archive move of {task.name}")
+            rc, _, err = run_git_retry_index_lock(
+                ["commit", "-q", "--no-verify", "-m", f"chore(task): archive {task.name}", "--only", "--", *paths], cwd=main)
+            print(f"committed the archive move of {task.name}" if rc == 0 else
+                  f"note: git commit failed ({err.strip()}); the archive move is not committed")
     commits, subjects = [], []
     for key, repo in sorted(d["repos"].items()):
         sha = repo.get("merge_commit")

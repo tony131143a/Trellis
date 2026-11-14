@@ -1,6 +1,6 @@
 # Arbor
 
-Arbor is a spec-driven AI engineering workflow for **Claude Code and Codex**. The Python driver assembles task context, dispatches roles through a configured executor, records reports, Git observations and task state. Your session's main agent plans, gets the contract approved and drives the loop itself; the roles run as Orca workers; executable quality checks remain enforced.
+Arbor is a spec-driven AI engineering workflow for **Claude Code and Codex**, for work that is too large for one context or splits into parallel parts. The main agent (Claude Code, running inside Orca) writes a contract you approve and splits the work into node files. A Python driver runs every node as an Orca worker in its own git worktree, merges the results into an integration branch, runs the checks and ends every step with the one thing to do next. Small changes do not need it.
 
 ## Install and initialize
 
@@ -11,62 +11,91 @@ node packages/cli/bin/arbor.js init --codex --yes
 # Or: init --claude --yes
 ```
 
-Run init from the project that should receive Arbor. Adding `--codex` to an existing Arbor project installs the Codex layer. Existing model/provider/MCP settings in `.codex/config.toml` are not overwritten.
+Run init from the project that should receive Arbor.
 
-| Platform | Entry points | Project files |
+| Platform | What the main agent gets | Project files |
 |---|---|---|
-| Claude Code | `/arbor:workflow`, `/arbor:continue`, `/arbor:finish-work` | `.claude/` |
-| Codex | `$arbor-workflow`, `$arbor-continue`, `$arbor-finish-work` | `.agents/skills/`, `.codex/hooks.json`, `.codex/hooks/` |
+| Claude Code | a short block in `CLAUDE.md`; the skill `arbor` loads on demand | `CLAUDE.md`, `.claude/` |
+| Codex | a worker note in `AGENTS.md`; the spec skills | `AGENTS.md`, `.agents/skills/` |
 
-Codex loads repo instructions from `AGENTS.md`. SessionStart and UserPromptSubmit hooks provide session context and the next workflow step. Project hooks require a trusted project and review of their definitions through `/hooks`. If automatic hooks are unavailable or not yet trusted, invoke `$arbor-start`. Current Codex enables hooks by default; older installations may require `[features] hooks = true` in their user configuration.
+Arbor installs no hooks and no sub-agent definitions. Codex is mainly a worker: `agent: codex` is the default agent of every node. Specs live in `.arbor/spec/`, tasks in `.arbor/tasks/`, journals in `.arbor/workspace/`.
 
 StarFactory is no longer an installable Arbor platform. Update can remove unchanged historical Arbor templates after backing them up; locally modified files remain available for review. Uninstall only processes tracked Arbor files and preserves unrelated user content.
 
-## Roles and execution
+## The loop
 
-Arbor ships eight role instructions under `.arbor/agents/`:
+The driver is `python3 .arbor/scripts/arbor.py` (`arbor.py` below).
 
-- `explore`: inspect code and gather evidence.
-- `architect`: design a solution.
-- `test`: write acceptance tests.
-- `implement`: implement the requested behavior.
-- `review`: inspect a commit range, verify each finding and reproduce the ones it confirms; never edits code.
-- `fix`: repair confirmed issues.
-- `simplify`: simplify the implementation.
+1. **Contract.** `arbor.py new "<title>"`. The main agent explores, asks only what the code cannot answer, and writes `contract.md`: goal, scope, acceptance criteria, and a Verification map with one check command per criterion (`manual` for what only a person can judge). You approve it; `arbor.py start`.
+2. **Plan.** The main agent writes one file per node in the task's `nodes/` directory. The plan is that directory: add, edit or delete nodes at any time (a started node's file is frozen).
+3. **Run.** `arbor.py sync` starts every ready node in its own Orca worktree, then `arbor.py sync --wait` runs as a background command; the main agent ends its turn and is woken when a node settles.
+4. **React.** Each `sync` judges settled nodes (commits, paths, checks), merges good ones with `--no-ff` into the repository's integration branch, runs the full gate once nothing is running, and prints one `next:` line. A failed node: `retry`, `cancel` or change the plan. A red gate: add fix nodes.
+5. **Review.** `arbor.py review` writes one read-only reviewer node per repository. Reviewers run code and mark each finding `shown` (with a rerunnable command) or `read`. Findings become fix nodes; then `arbor.py review --pass`.
+6. **Finish.** `arbor.py finish` lists the manual checks and prints one `git merge --no-ff` per repository. You merge; run `finish` again to clean up, archive the task and write the journal entry.
 
-The driver includes each role's instructions, task context, brief and report requirements in its dispatch prompt. Roles run through the executor in `.arbor/config.yaml`; native Codex sub-agent definitions are not required.
+A node is one file, `nodes/<id>.md`:
 
-Two kinds of agent take part. The **main agent** is your session (Claude Code or Codex, normally one Orca agent session per task): it talks to you, writes the contract, splits multi-deliverable requests into child tasks, starts the task and drives BUILD → GATE → REVIEW → FINISH with `arbor.py next`, dispatching the **roles** through the executor. It asks you only at the human gates: tier, contract approval, surviving PLAUSIBLE findings, round caps (STOP) and the merge; which of those actually ask is the task's mandate (`mandate:` in `.arbor/config.yaml` per tier, `task.py create --mandate`): with `auto` the driver skips PLAUSIBLE findings, resumes the first STOP and `arbor.py finish` merges a small clean, in-scope, reviewed branch itself when you opt in to `merge=auto`; by default merging into your base branch is always your call. Child tasks run in parallel, each from its own session, skip their own review and merge into the parent's integration branch on their own; the parent then reviews and fixes them all at once there (`task.py integrate`), and only that branch reaches your base branch, through you. Inside a task, readers run in parallel (the 2 / 3 candidate readers of standard / full, which may only add their own repro scripts); writers run only the contract's targeted checks and GATE runs the full suite once.
+```
+---
+title: Add the redis channel adapter
+repo: server                              # package with its own git repository, or "."
+paths: [src/channel/**, tests/channel/**] # no paths = read-only node (research, review)
+after: [api-types]                        # nodes that must be merged first
+tier: strong                              # strong (default) | a tier from the config, e.g. light
+checks: [AC-2]                            # optional: Verification-map rows it can make green alone
+---
+The brief: the outcome, the files to read first, interfaces to match, what is out of scope.
+```
 
-The only executor is Orca (the multi-agent desktop app; its CLI is `orca`): the driver starts every role as an Orca worker inside the task's Orca workspace, and the main agent runs in an Orca agent tab of the repository's workspace:
+A writer node gets a worktree and a branch and may only change files inside its `paths`. A read-only node gets no worktree: it runs in the repository's existing checkout, also before `start`, and its result is its report. Nodes with overlapping `paths` run one after the other.
+
+| Command | What it does |
+|---|---|
+| `new "<title>" [--repo key]` | create the task directory and the contract skeleton |
+| `start` | contract approved: validate it, check that every repository is an Orca project, activate |
+| `sync [--wait] [--json]` | observe, judge, merge, start, gate; print `next:` |
+| `review` / `review --pass` | write reviewer nodes / record that the current HEADs were reviewed |
+| `finish` | merge commands per repository; then clean up, archive, journal |
+| `status [--all]` | state of the task, no side effects |
+| `cancel <id>`, `retry <id>`, `resume`, `abandon` | intervene; `resume` grants more nodes or fix rounds after a budget stops the task |
+
+## Prerequisites and configuration
+
+- Orca with its CLI (`orca`). The main agent runs inside Orca, and the control repository and every `git: true` package repository must be an Orca project: `orca repo add --path <repo>`. In Orca Settings, Agents, set each agent's permission mode so workers do not stop on prompts.
+- Python 3 for the scripts under `.arbor/scripts/`.
+
+`.arbor/config.yaml`:
 
 ```yaml
 executors:
   default: orca
   orca:
     type: orca
-    command: orca          # the Orca CLI; an absolute path when not on PATH (macOS: /Applications/Orca.app/Contents/Resources/bin/orca)
-    agent: codex           # Orca agent id every role starts as (codex, claude, omp, ...)
+    command: orca          # the Orca CLI; an absolute path when not on PATH
+    agent: codex           # Orca agent id of the `strong` tier
     timeout: 90m
     max_parallel: 5
-    keep_open: false       # true: a finished worker stays open in Orca
-    roles:                 # per-role agent override
-      explore:
+    max_nodes: 30          # nodes of one task before sync stops and asks
+    tiers:
+      light:               # mechanical edits; a cheaper agent
         agent: omp
+      review:              # reviewer nodes; an agent other than the writers'
+        agent: claude
 ```
 
-One-time setup: the repository (and every `git: true` package repository) is a project in Orca (`orca repo add --path <repo>`); the main agent runs inside Orca; in Orca Settings, Agents, set each agent's permission mode so workers do not stop on prompts (codex and claude have a Yolo preset; omp needs `--approval-mode yolo` as its launch arguments). A project that has Arbor's Codex hooks installed (`.codex/hooks.json`) makes Codex show "Hooks need review" on its first start; trust them once (start `codex` in the repository and choose "Trust all and continue"), otherwise a Codex worker fails to start with `agent_readiness: Agent startup blocked: agent-hooks-review-prompt`.
+Several independent repositories under one control repository are supported: declare each as a package with `git: true` (optionally `execution.base_ref` and `execution.merge_target`), name it in a node's `repo` and in the Verification map's `repo` column. Each (task, repository) pair gets its own integration branch, gate and merge command.
 
-Orca creates and removes every worktree (`orca worktree create` / `orca worktree rm`) and chooses its path (by default `~/orca/workspaces/<repo>/<name>`); the workspace is named `<task>` for a task, `<task>-<partition>` for a partition and `<parent task>` for a parent's integration branch. Orca's own setup hooks follow the repository's policy in Orca; `worktree.setup` in `.arbor/config.yaml` still runs synchronously and a non-zero exit fails the start.
-
-`arbor.py run` assembles the prompt (`.arbor/.runtime/prompts/<task>/d-NNN.md`), writes the worker's task spec beside it (the dispatch header plus `Prompt:` and `Report:` lines) and starts the worker itself with `orca orchestration worker-start`, in the task's Orca Run (`arbor <task>`, created by the task's first dispatch). The worker reads the prompt, writes its complete report to the `Report:` file (`.arbor/.runtime/replies/<task>/d-NNN.md`) and sends Orca's `worker_done` once; the driver takes the verdict from the report file, not from `--outcome`. The main agent ends its turn after starting every ready item; Orca wakes it when a worker reports, asks a question or stops, and it runs `arbor.py sync` (validates the report of every settled worker, collects a settled worker without a report as a failed dispatch, shows `waiting for a person` for a permission prompt you answer in the worker's Orca tab) and then `arbor.py next`. A worker's question arrives as Orca mail (`orca orchestration reply --id <message_id> --body "..."`). A failed start (agent CLI missing, a trust prompt, Orca unreachable) is not a failed dispatch: `arbor.py run` exits 1 and prints why, the request stays prepared, and `arbor.py run --dispatch d-NNN` retries it once the cause is fixed (it is safe to repeat; the third failed start in a row fails the dispatch). Do not substitute native Agent/Task/spawn_agent for a role.
-
-## Workflow and maintenance
-
-Project workflow, specs, tasks and journals live under `.arbor/`. See `.arbor/workflow.md` for the v2 contract, worktree and verification flow. Small changes can be edited and checked directly; explicit user instructions take precedence over the default workflow.
+## Upgrading from 0.x
 
 ```bash
-python3 .arbor/scripts/arbor.py next --json
+# 1. finish or abandon every started task with the old version: 1.0 refuses a pre-1.0 task.json
+arbor update --migrate   # 2. removes hooks, role files, workflow.md, slash commands; config.yaml is never overwritten
+orca repo add --path <repo>   # 3. every repository a task touches must be an Orca project
+```
+
+## Maintenance
+
+```bash
 python3 .arbor/scripts/arbor.py status
 arbor platforms --json
 arbor update --dry-run
