@@ -983,7 +983,7 @@ def cmd_sync(args: argparse.Namespace) -> int:
                 continue
             state, detail = orca.observe(executor, record)
             orca_id = orca.dispatch_id(record)
-            replied = bool(orca.result_of(record, None).stdout.strip())
+            replied = state in ("done", "failed", "idle") and orca.has_reply(record)
             if state == "running":
                 open_lines.append(f"{label}: running (orca dispatch {orca_id})")
             elif state == "waiting":
@@ -1002,11 +1002,10 @@ def cmd_sync(args: argparse.Namespace) -> int:
                     "worker_done.\"`")
             else:
                 # The report file is the reply: a worker that wrote it is collected whatever it told Orca.
-                if not replied:
-                    if state == "done":
-                        print(f"{label}: no reply in {record['reply_path']}; its output: "
-                              f"`orca orchestration worker-read --dispatch {orca_id}`")
-                elif state != "done":
+                if state == "done" and not replied:
+                    print(f"{label}: no reply in {record['reply_path']}; its output: "
+                          f"`orca orchestration worker-read --dispatch {orca_id}`")
+                elif state != "done" and replied:
                     print(f"{label}: {detail or 'its turn ended without worker_done'}; its report is written "
                           "and is validated as the reply")
                     if state == "idle":
@@ -1844,14 +1843,17 @@ def cmd_abandon(args: argparse.Namespace) -> int:
 def find_task_anywhere(main: Path, config: dict, name: str, roots: tuple[Path, ...] = ()) -> tuple[Path, dict] | None:
     """A task directory by name: main checkout, its task worktree, the archive,
     then the same places in ``roots`` (a parent's integration worktree)."""
-    worktree = branch_worktree(main, task_branch(name, branch_prefix(config)))
-    candidates = [main / DIR_WORKFLOW / DIR_TASKS / name,
-                  *([worktree / DIR_WORKFLOW / DIR_TASKS / name] if worktree else []),
-                  *sorted((main / DIR_WORKFLOW / DIR_TASKS / "archive").glob(f"*/{name}"))]
-    for root in roots:
-        candidates += [root / DIR_WORKFLOW / DIR_TASKS / name,
-                       *sorted((root / DIR_WORKFLOW / DIR_TASKS / "archive").glob(f"*/{name}"))]
-    for task_dir in candidates:
+    def candidates():
+        yield main / DIR_WORKFLOW / DIR_TASKS / name
+        worktree = branch_worktree(main, task_branch(name, branch_prefix(config)))  # only when needed: a git call
+        if worktree:
+            yield worktree / DIR_WORKFLOW / DIR_TASKS / name
+        yield from sorted((main / DIR_WORKFLOW / DIR_TASKS / "archive").glob(f"*/{name}"))
+        for root in roots:
+            yield root / DIR_WORKFLOW / DIR_TASKS / name
+            yield from sorted((root / DIR_WORKFLOW / DIR_TASKS / "archive").glob(f"*/{name}"))
+
+    for task_dir in candidates():
         data, _ = read_json_checked(task_dir / FILE_TASK_JSON) if (task_dir / FILE_TASK_JSON).is_file() else (None, "")
         if data is not None:
             return task_dir, data

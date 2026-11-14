@@ -48,29 +48,40 @@ class TaskWorktree:
     base_sha: str
 
 
-def list_worktrees(repo_root: Path) -> list[Path]:
-    """Resolved roots of every non-bare worktree registered for this repo
-    (the main checkout included). Empty outside a git repository."""
+def _worktree_entries(repo_root: Path) -> list[tuple[Path, str | None]]:
+    """(path as git lists it, checked-out branch or None) of every non-bare
+    worktree registered for this repo, the main checkout included. Empty
+    outside a git repository."""
     rc, out, _ = run_git(["worktree", "list", "--porcelain"], cwd=repo_root)
     if rc != 0:
         return []
-
-    roots: list[Path] = []
+    entries: list[tuple[Path, str | None]] = []
     current: Path | None = None
+    branch: str | None = None
     bare = False
     for line in [*out.splitlines(), ""]:
         if line.startswith("worktree "):
-            current = Path(line[len("worktree "):].strip())
-            bare = False
+            current, branch, bare = Path(line[len("worktree "):].strip()), None, False
+        elif line.startswith("branch "):
+            branch = line[len("branch "):].strip().removeprefix("refs/heads/")
         elif line.strip() == "bare":
             bare = True
         elif not line.strip():
             if current is not None and not bare:
-                try:
-                    roots.append(current.resolve())
-                except OSError:
-                    pass
+                entries.append((current, branch))
             current = None
+    return entries
+
+
+def list_worktrees(repo_root: Path) -> list[Path]:
+    """Resolved roots of every non-bare worktree registered for this repo
+    (the main checkout included). Empty outside a git repository."""
+    roots: list[Path] = []
+    for path, _ in _worktree_entries(repo_root):
+        try:
+            roots.append(path.resolve())
+        except OSError:
+            pass
     return roots
 
 
@@ -129,8 +140,10 @@ def add_worktree(config: dict, repo_root: Path, name: str, branch: str, start_po
     got = str(made.get("branch") or "").removeprefix("refs/heads/")
     if got != branch:
         # Orca suffixes a taken workspace name or branch instead of refusing.
-        _orca(config, ["worktree", "rm", "--worktree", f"path:{path}", "--force"])
-        run_git(["branch", "-D", got], cwd=repo_root)
+        try:
+            remove_worktree(config, repo_root, path, delete_branch=True, force=True)
+        except WorktreeError:
+            pass
         raise WorktreeError(f"Orca already has a workspace or branch named {name} / {branch} "
                             f"(it offered {got}); remove the old one first")
     return path.resolve()
@@ -138,31 +151,13 @@ def add_worktree(config: dict, repo_root: Path, name: str, branch: str, start_po
 
 def branch_worktree(repo_root: Path, branch: str) -> Path | None:
     """The worktree (the main checkout included) that has ``branch`` checked out."""
-    rc, out, _ = run_git(["worktree", "list", "--porcelain"], cwd=repo_root)
-    if rc != 0:
-        return None
-    current: Path | None = None
-    for line in out.splitlines():
-        if line.startswith("worktree "):
-            current = Path(line[len("worktree "):].strip())
-        elif line.strip() == f"branch refs/heads/{branch}" and current is not None:
-            return current
-    return None
+    return next((path for path, checked_out in _worktree_entries(repo_root) if checked_out == branch), None)
 
 
 def _worktree_branch(repo_root: Path, path: Path) -> str | None:
     """Branch checked out in the registered worktree at ``path``, if any."""
-    rc, out, _ = run_git(["worktree", "list", "--porcelain"], cwd=repo_root)
-    if rc != 0:
-        return None
     target = path.resolve()
-    current: Path | None = None
-    for line in out.splitlines():
-        if line.startswith("worktree "):
-            current = Path(line[len("worktree "):].strip()).resolve()
-        elif line.startswith("branch ") and current == target:
-            return line[len("branch "):].strip().removeprefix("refs/heads/")
-    return None
+    return next((branch for listed, branch in _worktree_entries(repo_root) if listed.resolve() == target), None)
 
 
 def remove_worktree(config: dict, repo_root: Path, path: Path, *, delete_branch: bool = False,

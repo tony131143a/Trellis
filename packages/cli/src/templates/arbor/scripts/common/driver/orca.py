@@ -171,12 +171,15 @@ def start(executor: Executor, record: dict) -> tuple[dict | None, str | None]:
             "--worktree", f"path:{record['worktree']}", "--agent", agent]
     if executor.keep_open:
         args.append("--keep-open")
-    result, error = call(executor, [*args, "--retry-request", record["request_id"]], START_TIMEOUT_S)
+
+    def attempt(request_id: str) -> tuple[dict, str | None]:
+        return call(executor, [*args, "--retry-request", request_id], START_TIMEOUT_S)
+
+    result, error = attempt(record["request_id"])
     if error and error.startswith("consumer_fenced"):
         # Another agent session coordinated the task's Run: this one takes it over. Nothing was started.
-        _, fenced = call(executor, ["orchestration", "run-use", "--id", record["run"]])
-        if fenced is None:
-            result, error = call(executor, [*args, "--retry-request", new_request_id()], START_TIMEOUT_S)
+        if call(executor, ["orchestration", "run-use", "--id", record["run"]])[1] is None:
+            result, error = attempt(new_request_id())
     ids = None
     if result.get("dispatchId"):
         ids = {"dispatch_id": result["dispatchId"], "task_id": result.get("taskId"),
@@ -252,11 +255,20 @@ def elapsed_s(record: dict) -> float:
     return (datetime.now(timezone.utc) - started).total_seconds()
 
 
+def _reply(record: dict) -> str:
+    reply_file = Path(record["reply_path"])
+    return reply_file.read_text(encoding="utf-8", errors="replace") if reply_file.is_file() else ""
+
+
+def has_reply(record: dict) -> bool:
+    """The worker wrote its report to the reply file."""
+    return bool(_reply(record).strip())
+
+
 def result_of(record: dict, error: str | None) -> ExecResult:
     """The dispatch result: the reply file's text, and ``error`` when the
     worker did not finish."""
-    reply_file = Path(record["reply_path"])
-    reply = reply_file.read_text(encoding="utf-8", errors="replace") if reply_file.is_file() else ""
+    reply = _reply(record)
     return ExecResult(record["executor"], f"orca worker {dispatch_id(record) or '(not started)'}",
                       0 if error is None else 1, reply, "", record["started"], utc_now(),
                       round(elapsed_s(record), 3), error)
