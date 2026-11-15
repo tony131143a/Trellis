@@ -19,6 +19,7 @@ its outcome back with ``arbor.py sync`` (see ``orca.py``).
         timeout: 90m         # 90m | 30s | 2h | plain seconds; absent = none
         max_parallel: 5      # simultaneous workers of one task
         max_nodes: 30        # nodes of one task before sync stops and asks
+        review_rounds: 1     # reviewer rounds of one task; 0 = the main agent reviews the diff itself
         main: claude         # optional: the agent that runs the driver (else detected); `none` = never inline
         keep_open: false     # true: a finished worker stays open in Orca
 
@@ -43,7 +44,7 @@ _TIMEOUT_RE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*([smh]?)\s*$", re.IGNORECASE)
 _UNIT_SECONDS = {"": 1, "s": 1, "m": 60, "h": 3600}
 FALLBACK_TO_WRITE = ("explore", "review", "light")  # tiers that run on `write` until they are configured
 EXECUTOR_KEYS = frozenset({"type", "command", "agent", "agents", "tiers", "timeout", "max_parallel", "max_nodes",
-                           "main", "keep_open"})
+                           "review_rounds", "main", "keep_open"})
 
 
 class ExecutorError(ValueError):
@@ -62,6 +63,7 @@ class Executor:
     max_nodes: int
     options: dict[str, tuple[str, str]] = field(default_factory=dict)  # tier -> (model, effort)
     main: str = ""  # the agent of the session that runs the driver; "" = detect
+    review_rounds: int = 1  # `arbor.py review` rounds of one task
 
     def main_agent(self) -> str:
         """Orca agent id of the session that runs the driver, '' when unknown (or `main: none`):
@@ -146,11 +148,12 @@ def resolve_executor(config: dict) -> Executor:
                **{t: _agent(v, f"executors.{chosen}.agents.{t}") for t, v in agents.items() if t != "write"}}
     write = _agent(agents.get("write") or spec.get("agent"), f"executor {chosen!r} (agents.write or agent)")
     entries["write"] = write
+    rounds = _count(spec.get("review_rounds"))
     return Executor(chosen, command, parse_timeout(spec.get("timeout")), _count(spec.get("max_parallel")),
                     str(spec.get("keep_open") or "").strip().lower() == "true", write[0],
                     {t: e[0] for t, e in entries.items() if t != "write"},
                     _count(spec.get("max_nodes")) or 30, {t: (e[1], e[2]) for t, e in entries.items()},
-                    _text(spec.get("main")))
+                    _text(spec.get("main")), 1 if rounds is None else rounds)
 
 
 def _count(value: object) -> int | None:

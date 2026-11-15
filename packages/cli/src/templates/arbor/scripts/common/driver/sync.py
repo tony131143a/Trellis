@@ -332,8 +332,6 @@ def start(task: Task, contract: Contract, events: list[str]) -> int:
             allowance = d["allowance"]
             if len(nodes) > executor.max_nodes + 10 * allowance["nodes"]:
                 d["stopped"] = "max_nodes"
-            elif d["rounds"] > 3 + allowance["rounds"]:
-                d["stopped"] = "rounds"
             if d.get("stopped"):
                 events.append(f"stopped: budget {d['stopped']} reached")
         if d.get("stopped") or not chosen:
@@ -517,6 +515,11 @@ def attention(task: Task) -> list[tuple[str, str]]:
     return items
 
 
+def rounds_left(task: Task) -> int:
+    """`arbor.py review` rounds still allowed (`review_rounds` + what `resume` granted)."""
+    return task.executor.review_rounds + task.data["allowance"]["rounds"] - task.data["rounds"]
+
+
 def next_step(task: Task) -> tuple[str, str]:
     d = task.data
     nodes = d["nodes"].values()
@@ -562,6 +565,13 @@ def next_step(task: Task) -> tuple[str, str]:
     if heads and all(reviewers.values()):
         reports = ", ".join(str(report_path(task, n, d["nodes"][n])) for ns in reviewers.values() for n in ns)
         return "review", f"review: read {reports}; real findings become fix nodes, otherwise arbor.py review --pass"
+    if rounds_left(task) <= 0:
+        reviewed = {r["repo"]: r["head"] for r in (d.get("reviewers") or {}).values()}  # the latest per repo
+        ranges = "; ".join(f"git -C {d['repos'][k]['worktree']} diff {reviewed.get(k, d['repos'][k]['base'])[:7]}"
+                           f"..{h[:7]}" for k, h in heads.items())
+        return "review", (f"review: no reviewer round left (executors.{task.executor.name}.review_rounds): read "
+                          f"{ranges or 'the diff'} yourself (after a review: do the fixes answer its findings?); "
+                          "anything wrong becomes fix nodes; then arbor.py review --pass")
     ranges = "; ".join(f"git -C {d['repos'][k]['worktree']} diff {d['repos'][k]['base'][:7]}..{h[:7]}"
                        for k, h in heads.items())
     return "review", ("review: arbor.py review starts one reviewer per repo (or review " + (ranges or "the diff")

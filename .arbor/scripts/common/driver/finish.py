@@ -28,7 +28,7 @@ from . import plan
 from .executor import utc_now
 from .prompt import review_brief
 from .repos import DriverError, Task, git, settings, tasks_dir
-from .sync import _heads, drift, map_rows
+from .sync import _heads, drift, map_rows, rounds_left
 
 
 def gate_problems(task: Task) -> list[str]:
@@ -76,6 +76,9 @@ def review_write(task: Task) -> int:
     if not todo:
         print("nothing to review: every integration HEAD is reviewed or has a reviewer node")
         return 0
+    if rounds_left(task) <= 0:
+        return _refuse([f"no reviewer round left ({d['rounds']} done; executors.{task.executor.name}.review_rounds): "
+                        "read the diff yourself, then arbor.py review --pass"])
     nodes_dir = task.dir / "nodes"
     taken = [int(m.group(1)) for p in nodes_dir.glob("review-*.md") if (m := re.fullmatch(r"review-(\d+)(?:-\d+)?", p.stem))]
     number = max(taken, default=0) + 1

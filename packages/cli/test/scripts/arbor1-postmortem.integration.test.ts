@@ -3,7 +3,7 @@
  * whose agent never started, an older driver copy in a worktree, worktrees
  * left by an interrupted start, non-ASCII paths, rejudge and retry of a
  * cancelled node, auto checks that are prose, unknown executor settings,
- * rounds per review, gates compared with the gate of the base, and an auto
+ * review rounds, gates compared with the gate of the base, and an auto
  * check that restates the gate.
  */
 
@@ -155,26 +155,37 @@ describe.skipIf(!hasPython())("arbor 1.0 postmortem fixes", { timeout: 180_000 }
     expect(res.stderr).toContain("unknown setting(s) agentz");
   });
 
-  it("counts a round per review, not per fix node, and stops at the fourth", () => {
+  it("allows review_rounds reviews (default 1), then leaves the fixes to the main agent", () => {
     p = setupProject();
     p.node("n1", { paths: "[src/**]" });
     p.sync();
     work(p, "n1", { write: [{ path: "src/feature.txt", content: "x\n" }] });
     p.sync();
-    for (const id of ["f1", "f2", "f3", "f4"]) {
-      p.node(id, { paths: `[${id}/**]` });
-      const out = p.sync();
-      work(p, id, { write: [{ path: `${id}/x`, content: "x\n" }] });
-      expect(out.nodes[id].status).toBe("running");
-    }
-    p.sync();
-    expect(p.taskJson().rounds).toBe(0);
-    const task = path.join(p.taskDir, "task.json");
-    fs.writeFileSync(task, JSON.stringify({ ...p.taskJson(), rounds: 3 }));
     expect(p.ok("review")).toContain("note: reviewers run on codex, the agent that wrote the code");
+    p.sync();
+    p.ok("cancel", "review-1");
+    p.node("f1", { paths: "[f1/**]" });
+    p.sync();
+    work(p, "f1", { write: [{ path: "f1/x", content: "x\n" }] });
     const out = p.sync();
-    expect(p.taskJson().rounds).toBe(4);
-    expect(out.next.text).toContain("the rounds budget is used up");
+    expect(out.nodes.f1.status).toBe("merged");
+    expect(p.taskJson().rounds).toBe(1); // a round per review, not per fix node
+    expect(out.next.text).toContain("review: no reviewer round left (executors.fake.review_rounds)");
+    const refused = p.run("review");
+    expect(refused.status).toBe(1);
+    expect(refused.stderr).toContain("no reviewer round left (1 done");
+    expect(p.ok("review", "--pass")).toContain("next: arbor.py finish");
+  });
+
+  it("leaves the review to the main agent with review_rounds: 0", () => {
+    p = setupProject({ executor: "    review_rounds: 0\n" });
+    p.node("n1", { paths: "[src/**]" });
+    p.sync();
+    work(p, "n1", { write: [{ path: "src/feature.txt", content: "x\n" }] });
+    const out = p.sync();
+    const repo = p.taskJson().repos["."];
+    expect(out.next.text).toContain(`${repo.base.slice(0, 7)}..${repo.head.slice(0, 7)} yourself`);
+    expect(p.run("review").status).toBe(1);
   });
 
   it("blocks a gate only on failures the base did not have", () => {

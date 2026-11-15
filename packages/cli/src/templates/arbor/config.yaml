@@ -91,6 +91,8 @@ max_journal_lines: 2000
 #   max_parallel  bounds simultaneous workers of one task
 #   max_nodes     bounds the nodes of one task (default 30); `arbor.py resume`
 #                 grants more
+#   review_rounds reviewer rounds of one task (default 1): after them the main
+#                 agent checks the fixes itself; 0 = it reviews the diff itself
 #   keep_open     true: a finished worker stays open in Orca (default: Orca
 #                 closes it shortly after it reports; its output stays readable)
 # Permissions belong to Orca: set each agent's permission mode under
@@ -114,6 +116,7 @@ executors:
     max_parallel: 5
     keep_open: false
     # max_nodes: 30
+    # review_rounds: 1
 
 #-------------------------------------------------------------------------------
 # Gate

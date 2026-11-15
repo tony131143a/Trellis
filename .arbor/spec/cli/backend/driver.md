@@ -102,7 +102,7 @@ several is an error naming them. `--task` also finds archived tasks.
 | `cancel <id>` | pending, invalid, failed become `cancelled`. A running node is cancelled only when `orca.stop` proves the worker stopped, else refused. The worktree stays and is named. |
 | `retry <id> [--force]` | A failed or cancelled node becomes pending with `attempt + 1`; refused without `--force` once the node has run twice. The old worktree is removed (not forced, branch deleted); when Orca refuses it stays and is noted. |
 | `rejudge <id>` | A failed writer whose worktree exists is set running and judged again (section 5, step 4) on that worktree; good, it is merged. For a judgment that was wrong, or commits fixed by hand. |
-| `resume` | Clears `stopped` and adds 1 to `allowance.nodes` (`max_nodes`) or `allowance.rounds`. |
+| `resume` | Clears `stopped` and adds 1 to `allowance.nodes` (`max_nodes`) or `allowance.rounds` (a task stopped by an older driver). |
 | `abandon [--reason R]` | Stops running workers (a worker Orca cannot prove stopped is noted), status `abandoned`. Removes nothing; prints the integration and node worktrees left behind. |
 
 ## 5. `sync` (`common/driver/sync.py`)
@@ -146,7 +146,7 @@ Each pass, in order (`sync_pass`):
    fewer than `max_parallel` running, no overlapping writer of the same repo running or
    chosen (first `seq` wins), and writers only when the task is `active`. Budgets, checked
    only when something is ready: nodes in the task `> max_nodes + 10 * allowance.nodes`
-   sets `stopped: max_nodes`; `rounds > 3 + allowance.rounds` sets `stopped: rounds`.
+   sets `stopped: max_nodes`. (Reviews are bounded by `review_rounds`, section 6.)
    Then: create the Orca Run if `orca_run` is empty (`orca.create_run`; failure is the event
    `no node started: ...`), create missing integration branches (section 8), and start the
    chosen nodes in parallel threads with no lock held (`start_one`): writer: node worktree
@@ -198,7 +198,7 @@ without further bookkeeping.
 | `sync` | `sync:` | pending nodes, or a repo whose HEAD has no gate result yet |
 | `fix` | `fix:` | a gate is red at the current HEAD; add fix nodes naming the failing check |
 | `finish` | `finish:` | `review.heads` equals the current HEADs |
-| `review` | `review:` | gates green, review missing or stale: either `arbor.py review` starts one reviewer per repo, or (when every repo has a `done` reviewer node at its HEAD) read the report paths, then `review --pass` |
+| `review` | `review:` | gates green, review missing or stale: either `arbor.py review` starts one reviewer per repo, or (when every repo has a `done` reviewer node at its HEAD) read the report paths, then `review --pass`; with no reviewer round left (`rounds_left`: `review_rounds + allowance.rounds - rounds`) `review: no reviewer round left ...` names `git diff <last reviewed head, else base>..<head>` per repo for the main agent to read itself |
 
 ## 6. `review`, `review --pass`, `finish` (`common/driver/finish.py`)
 
@@ -211,7 +211,7 @@ node are reported as unchecked (when the task has any repo).
   `nodes/review-<n>[-<k>].md` (`k` only when several repos): read-only, `title: Review <repo> <base7>..<head7>`,
   `repo`, `tier: review` when `executors.<default>.agents.review` exists (else `tier: write`, never `explore`), brief =
   `prompt.review_brief` (contract path, worktree, `git diff <base>..<head>`, the `GATE-n` and
-  `auto` checks already green). Records `reviewers[id] = {repo, head}` and increments `rounds`; notes when the review agent is the write agent. Prints `next: arbor.py sync`.
+  `auto` checks already green). Records `reviewers[id] = {repo, head}` and increments `rounds`; notes when the review agent is the write agent. Prints `next: arbor.py sync`. Refused with `no reviewer round left` when `rounds_left` is 0 (`executors.<default>.review_rounds`, default 1; 0 = no reviewer nodes).
 - `review --pass`: status `active`, no node `pending`, `running`, `failed` or `invalid`,
   contract hash unchanged, gates as above. Records `review = {heads, at}`.
 - `finish`, first run: status `active`; no node `pending`, `running`, `invalid` or `failed`;
@@ -267,7 +267,7 @@ node are reported as unchecked (when the task has any repo).
   with `command` and `agents.write` (or the older `agent`). `agents.<tier>` is an agent id or
   `{agent, model, effort}` (`effort` needs `model`: Orca takes `--effort` only with `--model`;
   `worker-start` gets `--model` and `--effort` when set); the older `tiers.<name>.agent` still
-  works. Optional `timeout`, `max_parallel`, `max_nodes` (default 30), `keep_open`; any other
+  works. Optional `timeout`, `max_parallel`, `max_nodes` (default 30), `review_rounds` (default 1), `keep_open`; any other
   key is an `ExecutorError` (an older driver must not misread a newer config). A node that
   names no tier gets `explore` when it is read-only (no `paths`) and `agents.explore` exists,
   else `write`. `main` (optional) is the agent of the session that runs the driver; unset, `executor.main_agent()` is `claude` when `CLAUDECODE` is set, else unknown; `none` disables. A read-only node whose agent is the main agent is `inline`: `start_one` records `inline: true` and `spec` and starts no Orca worker (`orca.stop` is a no-op), `observe` settles it when its report is non-empty, `judge` is unchanged, `wait` ignores it. Writers never inline. `agent_for(tier)` / `options_for(tier)` return the `write` entry for `write` and
