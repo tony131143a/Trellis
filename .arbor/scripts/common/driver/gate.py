@@ -6,11 +6,17 @@ Gate commands come from ``gate.commands`` in ``.arbor/config.yaml`` and are
 reported as ``GATE-1``, ``GATE-2``, ...; map checks keep their criterion id.
 After a review fix the gate also runs the ``exec`` repro of every fixed
 CONFIRMED finding as ``REPRO-1``, ``REPRO-2``, ... (each must exit 0).
+
+A check that times out is killed with everything it started. From pytest's
+summary a check keeps the ids of its failed tests and its skip count, so a
+gate can be compared with the gate of the task's base (``compare``).
 """
 
 from __future__ import annotations
 
+import os
 import re
+import signal
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -22,6 +28,9 @@ from ..git import run_git
 #: Upper bound for one check; a hung test runner must not hang the driver.
 CHECK_TIMEOUT_S = 30 * 60
 OUTPUT_TAIL_LINES = 30
+# pytest -q / -rf summary lines: "FAILED tests/x.py::test_y - AssertionError", "ERROR tests/z.py"
+_FAILED_RE = re.compile(r"^(?:FAILED|ERROR) (\S+)", re.MULTILINE)
+_SKIPPED_RE = re.compile(r"\b(\d+) skipped\b")
 
 
 @dataclass(frozen=True)
@@ -30,6 +39,8 @@ class CheckResult:
     command: str
     exit_code: int | None  # None: timed out / could not start
     output: str  # tail of combined stdout+stderr
+    failed_tests: tuple[str, ...] = ()  # test ids from a pytest summary
+    skipped: int | None = None  # from a pytest summary
 
     @property
     def passed(self) -> bool:
@@ -51,24 +62,56 @@ class GateResult:
 
 def run_check(check_id: str, command: str, worktree: Path) -> CheckResult:
     try:
-        proc = subprocess.run(
-            command,
-            shell=True,
-            cwd=worktree,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=CHECK_TIMEOUT_S,
-        )
-    except subprocess.TimeoutExpired:
-        return CheckResult(check_id, command, None, f"timed out after {CHECK_TIMEOUT_S}s")
+        # Its own process group: a timeout kills the test runner too, not only the shell.
+        proc = subprocess.Popen(command, shell=True, cwd=worktree, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace",
+                                start_new_session=True)
     except OSError as e:
         return CheckResult(check_id, command, None, f"could not run: {e}")
-    tail = "\n".join(proc.stdout.splitlines()[-OUTPUT_TAIL_LINES:])
-    return CheckResult(check_id, command, proc.returncode, tail)
+    try:
+        out, _ = proc.communicate(timeout=CHECK_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except OSError:
+            pass
+        out, _ = proc.communicate()
+        tail = "\n".join(out.splitlines()[-OUTPUT_TAIL_LINES:])
+        return CheckResult(check_id, command, None, f"{tail}\ntimed out after {CHECK_TIMEOUT_S}s".strip())
+    tail = "\n".join(out.splitlines()[-OUTPUT_TAIL_LINES:])
+    skipped = _SKIPPED_RE.findall(out[-2000:])
+    return CheckResult(check_id, command, proc.returncode, tail, tuple(sorted(set(_FAILED_RE.findall(out)))),
+                       int(skipped[-1]) if skipped else None)
+
+
+def compare(checks: list[CheckResult], baseline: dict | None) -> tuple[list[str], list[str]]:
+    """(the failing checks that block, notes) against the gate of the task's
+    base. A check that failed there too blocks only with a test that did not
+    fail there; when no test ids can be read it blocks, noted as red at the
+    base too. More skips than at the base are noted."""
+    base = (baseline or {}).get("checks") or {}
+    blocking, notes = [], []
+    for c in checks:
+        was = base.get(c.id)
+        if was and c.skipped is not None and was.get("skipped") is not None and c.skipped > was["skipped"]:
+            notes.append(f"{c.id} skips {c.skipped} tests, {was['skipped']} at the base")
+        if c.passed:
+            continue
+        if not was or was.get("passed"):
+            blocking.append(c.id)
+            continue
+        new = sorted(set(c.failed_tests) - set(was.get("failed_tests") or ()))
+        if c.failed_tests and was.get("failed_tests") and not new:
+            notes.append(f"{c.id} fails only where the base fails ({len(c.failed_tests)} tests): not blocking")
+        else:
+            blocking.append(c.id)
+            notes.append(f"{c.id} is red at the base too" + (f"; new failures: {', '.join(new[:10])}" if new else ""))
+    return blocking, notes
+
+
+def baseline_record(sha: str, checks: list[CheckResult]) -> dict:
+    return {"sha": sha, "checks": {c.id: {"passed": c.passed, "failed_tests": list(c.failed_tests),
+                                         "skipped": c.skipped} for c in checks}}
 
 
 def auto_checks(contract: Contract) -> list[tuple[str, str]]:

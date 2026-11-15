@@ -41,7 +41,8 @@ reviewers: {node id: {repo, head}},          # nodes written by `review`
 rounds, allowance: {rounds, nodes}, stopped: null | "rounds" | "max_nodes",
 cleanup: {done: [steps], archive: path},
 repos: {key: {root, branch, worktree, base, base_ref, merge_target, head,
-              gate: {sha, green, failing: [ids], at} | null, merged, merge_commit}},
+              baseline: {sha, checks: {id: {passed, failed_tests, skipped}}} | null,
+              gate: {sha, green, failing: [ids], notes, at} | null, merged, merge_commit}},
 nodes: {id: {seq, status: pending | invalid | running | merged | done | failed | cancelled,
              attempt, title, repo, tier, paths, after, checks,
              file_hash, changed_noted, worktree, branch, base, tree, request, agent,
@@ -92,14 +93,15 @@ several is an error naming them. `--task` also finds archived tasks.
 | Command | Contract |
 |---------|----------|
 | `new "<title>" [--slug s] [--repo key]` | Creates `<MM-DD>-<slug>` (slug derived from the title, cut to 40 chars; `--slug` matches `[a-z0-9][a-z0-9-]{0,59}`) with `contract.md` from `contract.default_contract_content`, empty `nodes/` and `reports/`, `task.json` status `planning`. Refuses an existing directory or unknown repo. |
-| `start [--reapprove]` | Planning only. Refuses unless `validate_contract` passes (every criterion has a map row, every `auto` row a command), every map `repo` exists, and `orca.ensure_projects` succeeds for `.`, the default repo and every map repo: it compares resolved paths with `orca repo list` and runs `orca repo add --path <root>` for a missing one (prints `added <root> to Orca`; a refused add refuses the start). `sync` does the same for the repos of the nodes it is about to start (event `added <root> to Orca`; a failure is the nodes' `start_error`). Records `contract_hash`, `approved`, status `active`. Creates no worktree and no Orca Run. `--reapprove` on an active task only re-records the hash. |
+| `start [--reapprove]` | Planning only. Refuses unless `validate_contract` passes (every criterion has a map row, every `auto` row a command), every map `repo` exists, and `orca.ensure_projects` succeeds for `.`, the default repo and every map repo: it compares resolved paths with `orca repo list` and runs `orca repo add --path <root>` for a missing one (prints `added <root> to Orca`; a refused add refuses the start). `sync` does the same for the repos of the nodes it is about to start (event `added <root> to Orca`; a failure is the nodes' `start_error`). Records `contract_hash`, `approved`, status `active`. Creates no worktree and no Orca Run. `--reapprove` on an active task runs `validate_contract` again and re-records the hash. An `auto` row whose first word (after `VAR=value` assignments) is no shell word, path or program on PATH is not a command (`contract.not_a_command`). |
 | `sync [--wait [DURATION]] [--json]` | Section 5. |
 | `review` | Section 6. |
 | `review --pass` | Section 6. |
 | `finish` | Section 6. |
 | `status [--json] [--all]` | No lock, no Orca call. Lists nodes, repos (HEAD, gate, merged), review, and the `next:` line; `--json` prints the `sync --json` object; `--all` prints one line per task. |
 | `cancel <id>` | pending, invalid, failed become `cancelled`. A running node is cancelled only when `orca.stop` proves the worker stopped, else refused. The worktree stays and is named. |
-| `retry <id> [--force]` | A failed node becomes pending with `attempt + 1`; refused without `--force` once the node has run twice. The old worktree is removed (not forced, branch deleted); when Orca refuses it stays and is noted. |
+| `retry <id> [--force]` | A failed or cancelled node becomes pending with `attempt + 1`; refused without `--force` once the node has run twice. The old worktree is removed (not forced, branch deleted); when Orca refuses it stays and is noted. |
+| `rejudge <id>` | A failed writer whose worktree exists is set running and judged again (section 5, step 4) on that worktree; good, it is merged. For a judgment that was wrong, or commits fixed by hand. |
 | `resume` | Clears `stopped` and adds 1 to `allowance.nodes` (`max_nodes`) or `allowance.rounds`. |
 | `abandon [--reason R]` | Stops running workers (a worker Orca cannot prove stopped is noted), status `abandoned`. Removes nothing; prints the integration and node worktrees left behind. |
 
@@ -108,8 +110,8 @@ several is an error naming them. `--task` also finds archived tasks.
 Each pass, in order (`sync_pass`):
 
 1. **Plan**: `plan.update` reads `nodes/*.md`. In `planning` an unparsable contract is
-   tolerated (read-only nodes still run); in `active` it is an error. A pass that adds a
-   valid writer node while any repo already has a gate result increments `rounds`.
+   tolerated (read-only nodes still run); in `active` it is an error. (`rounds` counts
+   reviews: `review` increments it when it writes reviewer nodes.)
 2. **Mail**: `orca orchestration check --run <orca_run>`; failure ignored; each message is
    printed as `orca mail: <type> from <sender>: <subject>: <body>` (keys `messages`, `mail`
    or `items`).
@@ -119,11 +121,15 @@ Each pass, in order (`sync_pass`):
    settled when the work is evidently complete (writer: commits beyond `base` and a clean
    worktree; reader: non-empty report) and `orca.stop` proves the stop, otherwise attention
    with the `orca orchestration send --to dispatch:<id> ...` hint; `done` or `failed`:
-   settled. An Orca error on one node is a note, not a failure.
+   settled. A `running` worker with nothing to show (writer: no commit and a clean
+   worktree; reader: empty report) 10 minutes after its start whose `worker-read` answers
+   `fallbackReason: session_not_reported` (the agent never began) is stopped and settled as
+   `the worker did not start: ...`. An Orca error on one node is a note, not a failure.
 4. **Judge** each settled node (Orca's outcome is not trusted):
    writer: no commit beyond `base` fails `no commits`; unclean tree `uncommitted changes`;
    files changed in `base..HEAD` outside `paths` `outside its paths: ...`; each `checks`
-   id is run (`gate.run_check`) in the node worktree, red fails `checks red: AC-1`.
+   id is run (`gate.run_check`) in the node worktree, red (after `gate.compare` with the
+   repo's baseline) fails `checks red: AC-1`.
    Reader: empty report fails `no report`; in the repo's integration worktree a changed
    `git status --porcelain` or HEAD fails `left changes in <path>` (a main checkout is not
    checked). Reader success sets `done`. A failed node keeps its worktree; its report's
@@ -152,15 +158,26 @@ Each pass, in order (`sync_pass`):
 7. **Gate**: only when nothing is running, nothing was started in this pass, and some node
    is `merged` or `done`: for each repo whose integration HEAD differs from `gate.sha`,
    `gate.run_gate(<repo gate.commands>, <contract limited to that repo's map rows>, <integration worktree>)`.
-   Checks are `GATE-1..n` first, then every `auto` row with a command; all run, each with
-   a 30-minute limit; green means all exit 0. Stored as `gate: {sha, green, failing, at}`.
+   Checks are `GATE-1..n` first, then every `auto` row with a command; all run, each in its
+   own process group with a 30-minute limit (a timeout kills the group). `gate.compare`
+   with the repo's `baseline`: a check red at the base too blocks only with a failed test id
+   (pytest `FAILED`/`ERROR` summary lines) the base did not have, or when no ids can be read;
+   more skips than at the base are noted. Green means nothing blocks. Stored as
+   `gate: {sha, green, failing (blocking), notes, at}`. Then `drift`: when `base_ref` is
+   `<remote>/<branch>`, `git fetch` it (60 s, failure ignored) and print how many commits it
+   moved past the integration HEAD and the files `git merge-tree` reports conflicting.
+   `finish` prints the same note under each merge command.
 8. **Report**: events, then `contract.md changed since it was approved: get it re-approved,
    then arbor.py start --reapprove` when the hash differs, then exactly one `next:` line.
    `--json` prints `{task, status, events, nodes, repos, contract_changed, next: {kind, text}}`.
 
 `--wait [DURATION]` (`30s`, `90m`, `2h`, seconds; default `executors.<default>.timeout`, else
-60 min) polls `orca.observe` of the running nodes every 10 s without any lock until one is
-no longer `running`, then does a normal pass. The gate result and `review.heads` are tied to HEAD shas, so any merge makes them stale
+60 min) first runs the **baseline**: for each repo without `baseline` whose integration HEAD
+is still its base, the repo's gate commands only (no map rows) are stored as `baseline`
+(HEAD already moved: `null`); a red baseline is an event asking to tell the user. Then it
+polls `orca.observe` of the running nodes every 10 s without any lock until one is
+no longer `running` or (checked once a minute) a worker evidently never started, then does
+a normal pass. The gate result and `review.heads` are tied to HEAD shas, so any merge makes them stale
 without further bookkeeping.
 
 ### `next:` kinds (`next_step`, first match wins)
@@ -190,7 +207,7 @@ node are reported as unchecked (when the task has any repo).
   `nodes/review-<n>[-<k>].md` (`k` only when several repos): read-only, `title: Review <repo> <base7>..<head7>`,
   `repo`, `tier: review` when `executors.<default>.agents.review` exists (else `tier: write`, never `explore`), brief =
   `prompt.review_brief` (contract path, worktree, `git diff <base>..<head>`, the `GATE-n` and
-  `auto` checks already green). Records `reviewers[id] = {repo, head}`. Prints `next: arbor.py sync`.
+  `auto` checks already green). Records `reviewers[id] = {repo, head}` and increments `rounds`; notes when the review agent is the write agent. Prints `next: arbor.py sync`.
 - `review --pass`: status `active`, no node `pending`, `running`, `failed` or `invalid`,
   contract hash unchanged, gates as above. Records `review = {heads, at}`.
 - `finish`, first run: status `active`; no node `pending`, `running`, `invalid` or `failed`;
@@ -237,13 +254,17 @@ node are reported as unchecked (when the task has any repo).
   A failing `worktree.setup` removes the new worktree (forced) and fails the same way.
 - **Node branch**: `<prefix><task>--<id>` (attempt n > 1: `--<id>--r<n>`), workspace
   `<task>-<id>` (`-r<n>`), parent = the integration worktree, cut from its HEAD at start.
-  `add_worktree` fails when Orca answered with a different branch (it suffixes taken names)
-  and removes what it just made.
+  `add_worktree` takes over a worktree that already has the branch checked out at the start
+  point with a clean tree (left by an interrupted start) and deletes a leftover branch at the
+  start point that has no worktree; either one with work on it is refused, never removed.
+  It fails when Orca answered with a different branch (it suffixes taken names) and removes
+  what it just made.
 - **Executor** (`executor.py`): `executors.default` names the entry; it must be `type: orca`
   with `command` and `agents.write` (or the older `agent`). `agents.<tier>` is an agent id or
   `{agent, model, effort}` (`effort` needs `model`: Orca takes `--effort` only with `--model`;
   `worker-start` gets `--model` and `--effort` when set); the older `tiers.<name>.agent` still
-  works. Optional `timeout`, `max_parallel`, `max_nodes` (default 30), `keep_open`. A node that
+  works. Optional `timeout`, `max_parallel`, `max_nodes` (default 30), `keep_open`; any other
+  key is an `ExecutorError` (an older driver must not misread a newer config). A node that
   names no tier gets `explore` when it is read-only (no `paths`) and `agents.explore` exists,
   else `write`. `main` (optional) is the agent of the session that runs the driver; unset, `executor.main_agent()` is `claude` when `CLAUDECODE` is set, else unknown; `none` disables. A read-only node whose agent is the main agent is `inline`: `start_one` records `inline: true` and `spec` and starts no Orca worker (`orca.stop` is a no-op), `observe` settles it when its report is non-empty, `judge` is unchanged, `wait` ignores it. Writers never inline. `agent_for(tier)` / `options_for(tier)` return the `write` entry for `write` and
   for `explore`, `review`, `light` when they are not configured, and `agent_for` raises
@@ -251,11 +272,19 @@ node are reported as unchecked (when the task has any repo).
 - **Orca calls** (`orca.call` runs `<command> <args> --json`, 60 s unless noted; a missing
   binary is an `ExecutorError`): `repo list` (`start`); `worktree create` and `worktree rm`
   (`worktree.py`, 120 s); `orchestration run-create --objective "arbor <task>"`;
-  `worker-start` (300 s; `--spec-file`, `--task-title "<task> <node>"`, `--run`,
+  `worker-start` (300 s; `--spec "Read <spec file> and do exactly what it says; ..."` — one
+  line, since a long typed prompt can stall an agent's input box —, `--task-title "<task> <node>"`, `--run`,
   `--worktree path:<dir>`, `--agent`, `--retry-request <id>`, `--keep-open` when set; the
   retry form uses `--task <id> --retry-of <dispatch>` after `worker-release`; `consumer_fenced`
   triggers `run-use --id <run>` and one new request); `worker-stop --dispatch`;
-  `worker-show --dispatch --full`; `orchestration check --run` (mail). Nothing else.
+  `worker-show --dispatch --full`; `worker-read --dispatch --limit 1` (the start check);
+  `orchestration check --run` (mail). Nothing else.
+- **Driver copy**: `arbor.py`, before importing `common`, finds the main checkout
+  (`git rev-parse --git-common-dir`) and, when its own `.arbor/scripts` is another
+  checkout's (a linked worktree carries the scripts of the commit it was cut from),
+  `execv`s the main checkout's `arbor.py` (note on stderr; `ARBOR_OWN_SCRIPTS=1` disables).
+- **Git output**: `git.run_git` passes `-c core.quotePath=false`, so non-ASCII paths are
+  printed as they are and match node globs.
 - **Worker spec** (`prompt.worker_spec`): first line `Arbor node: <task>/<node>`, then the
   contract path, `Paths you own` (or the read-only sentence), `Checks that must pass`, the
   report path, rules, and `Brief`. Writers must commit inside their paths and send

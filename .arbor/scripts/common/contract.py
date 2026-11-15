@@ -25,6 +25,8 @@ from __future__ import annotations
 import functools
 import hashlib
 import re
+import shlex
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Sequence
@@ -301,8 +303,31 @@ def validate_contract(contract: Contract) -> list[str]:
             errors.append(f"Verification map: entry {entry.id} names no acceptance criterion")
         if entry.kind == "auto" and not entry.check:
             errors.append(f"Verification map: {entry.id} is auto but its check is empty")
+        elif entry.kind == "auto" and (why := not_a_command(entry.check)):
+            errors.append(f"Verification map: {entry.id} is auto but its check is not a command: {why} "
+                          "(an auto check is run by the shell; describe it in a manual row instead)")
 
     return errors
+
+
+_SHELL_WORDS = {"!", ":", ".", "[", "[[", "builtin", "case", "cd", "command", "env", "eval", "exec", "exit", "export",
+                "false", "for", "if", "printf", "echo", "set", "source", "test", "time", "true", "until", "while"}
+
+
+def not_a_command(check: str) -> str | None:
+    """Why ``check`` cannot be a shell command, or None: its first word
+    (after ``VAR=value`` assignments) is no shell word, path or program on PATH."""
+    try:
+        words = shlex.split(check)
+    except ValueError as e:
+        return f"it does not parse ({e})"
+    words = [w.lstrip("({") for w in words]
+    while words and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", words[0]):
+        words.pop(0)
+    first = words[0] if words else ""
+    if not first or first in _SHELL_WORDS or "/" in first or shutil.which(first):
+        return None
+    return f"`{first}` is not a program on PATH"
 
 
 _GLOB_CHARS = "*?"

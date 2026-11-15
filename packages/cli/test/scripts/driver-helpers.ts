@@ -14,12 +14,14 @@
  *   worktree (git does).
  * - `run-create` -> `run-<n>`; `orchestration check` answers the `mail` of
  *   `fake.json`.
- * - `worker-start` keys a worker by its spec file's stem (`n1`, `n1.r2`):
+ * - `worker-start` keys a worker by the stem of the spec file its one-line
+ *   `--spec` names (`n1`, `n1.r2`):
  *   Orca dispatch id `orca-<key>`, a retry on the same Task
  *   `orca-<key>-r<n>`. `fake.json` `<key>.start` overrides the receipt (e.g.
  *   `{ "state": "failed" }`), `<key>.starts` gives one override per attempt,
  *   `<key>.fenced` refuses until `run-use`, `<key>.stop: "unknown"` makes
- *   `worker-stop` unable to prove the stop. The same `--retry-request` id
+ *   `worker-stop` unable to prove the stop, `<key>.session: false` makes
+ *   `worker-read` find no agent session. The same `--retry-request` id
  *   replays the first answer.
  * It keeps each worker's state in `<tmp>/orca/<id>.json` for `worker-show`
  * and logs every call in `<tmp>/orca/calls.jsonl`. It never runs an agent:
@@ -126,7 +128,7 @@ if command == "orchestration worker-start":
     if flag("--task"):  # a retry on the same Orca Task
         key = flag("--task")[len("task-"):]
     else:
-        key = pathlib.Path(flag("--spec-file")).stem
+        key = pathlib.Path(re.search(r"(\S+)\.md\b", flag("--spec")).group(1)).name
     spec = plan.get(key, {})
     if spec.get("fenced") and not (state / ("used-" + flag("--run"))).exists():
         fail("consumer_fenced", "worker-start needs the coordinator bound to the Run")
@@ -146,6 +148,11 @@ if command == "orchestration worker-start":
     answer = ({"ok": receipt["state"] == "ready", "result": receipt}, 0 if receipt["state"] == "ready" else 1)
     request.write_text(json.dumps(answer))
     emit(*answer)
+if command == "orchestration worker-read":
+    data = json.loads((state / (flag("--dispatch") + ".json")).read_text())
+    if plan.get(data.get("arbor"), {}).get("session") is False:
+        out({"dispatchId": flag("--dispatch"), "source": "terminal", "fallbackReason": "session_not_reported"})
+    out({"dispatchId": flag("--dispatch"), "source": "transcript", "fallbackReason": None})
 if command in ("orchestration worker-show", "orchestration worker-stop", "orchestration worker-release"):
     file = state / (flag("--dispatch") + ".json")
     if not file.exists():

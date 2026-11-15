@@ -126,7 +126,27 @@ def add_worktree(config: dict, repo_root: Path, name: str, branch: str, start_po
                  parent: Path | None) -> Path:
     """Create ``branch`` at ``start_point`` in a new Orca workspace ``name``
     (a child workspace of ``parent``) and return the path Orca gave it.
-    ``config`` is the control checkout's: it names the Orca CLI."""
+    ``config`` is the control checkout's: it names the Orca CLI.
+
+    A start that was interrupted after Orca made the worktree leaves it
+    unrecorded: an untouched one (``branch`` at ``start_point``, clean) is
+    taken over, and a leftover branch at ``start_point`` without a worktree is
+    deleted first. Either one with work on it is refused, never removed."""
+    rc, out, _ = run_git(["rev-parse", "--verify", "--quiet", f"{start_point}^{{commit}}"], cwd=repo_root)
+    start_sha = out.strip() if rc == 0 else start_point
+    left = branch_worktree(repo_root, branch)
+    tip_rc, tip, _ = run_git(["rev-parse", "--verify", "--quiet", f"refs/heads/{branch}"], cwd=repo_root)
+    if left is not None:
+        clean = run_git(["status", "--porcelain"], cwd=left)
+        if tip.strip() == start_sha and clean[0] == 0 and not clean[1].strip():
+            return left.resolve()
+        raise WorktreeError(f"{branch} is checked out at {left} with work on it (left by an earlier start); "
+                            "remove it or give the node another id")
+    if tip_rc == 0:
+        if tip.strip() != start_sha:
+            raise WorktreeError(f"branch {branch} exists with commits (left by an earlier start); delete it or "
+                                "give the node another id")
+        run_git(["branch", "-D", branch], cwd=repo_root)
     result, error = _orca(config, [
         "worktree", "create", "--repo", f"path:{repo_root}", "--name", name, "--branch", branch,
         "--base-branch", start_point,

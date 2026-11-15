@@ -15,9 +15,10 @@ Not for a change you can make and verify yourself.
 2. **Plan.** Write node files in the task's `nodes/` directory; `arbor sync` starts every ready node.
 3. **Wait.** Run `arbor sync --wait` as a background command and end your turn. Its exit calls you again.
 4. **React** to `next:`
-   - `decide`: read the node's report in `reports/` and the reason. Then `arbor retry <id>` (fix the brief first when it caused the failure), replace the node with others, or `arbor cancel <id>`. A worker waiting for a person: pass its question to the user.
+   - `decide`: read the node's report in `reports/` and the reason. Then `arbor retry <id>` (fix the brief first when it caused the failure; a cancelled node can be retried too), `arbor rejudge <id>` when the work in its worktree is good and only the judgment was wrong (after you fixed the plan, the contract or the commits), replace the node with others, or `arbor cancel <id>`. A worker waiting for a person: pass its question to the user.
    - `inline`: a read-only node uses your own agent. Run each such node in your built-in sub-agent (in parallel, with the model named), have its result in the report file, then `arbor sync`.
    - `fix`: the gate is red. Write fix nodes that quote the failing check and its output.
+   - Events to pass on: a `baseline … red before any change` line (the gate already fails at the task's base: ask the user whether the task fixes it), and `<ref> moved N commits past the task's integration branch` (the base moved on: merge it in early with a node, conflicts listed).
    - `plan`: work is missing. Add nodes.
    - `review`: `arbor review`, `arbor sync`, step 3. Reviewers run code. A finding marked `shown` carries the command that demonstrates it: quote it in a fix node. A finding marked `read`: verify it in the code first. None left: `arbor review --pass`.
    - `finish`: `arbor finish` prints the manual checks and one merge command per repository. The user checks and merges; run it again to clean up.

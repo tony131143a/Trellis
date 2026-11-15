@@ -42,6 +42,8 @@ from ..arbor_config import get_executors_config
 _TIMEOUT_RE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*([smh]?)\s*$", re.IGNORECASE)
 _UNIT_SECONDS = {"": 1, "s": 1, "m": 60, "h": 3600}
 FALLBACK_TO_WRITE = ("explore", "review", "light")  # tiers that run on `write` until they are configured
+EXECUTOR_KEYS = frozenset({"type", "command", "agent", "agents", "tiers", "timeout", "max_parallel", "max_nodes",
+                           "main", "keep_open"})
 
 
 class ExecutorError(ValueError):
@@ -123,6 +125,11 @@ def resolve_executor(config: dict) -> Executor:
     spec = section.get(chosen)
     if not isinstance(spec, dict):
         raise ExecutorError(f"executor {chosen!r} is not configured under executors:")
+    unknown = sorted(set(spec) - EXECUTOR_KEYS)
+    if unknown:
+        # An older driver must not quietly run every node on one agent because it misreads a newer config.
+        raise ExecutorError(f"executor {chosen!r}: unknown setting(s) {', '.join(unknown)} "
+                            f"(known: {', '.join(sorted(EXECUTOR_KEYS))}); is this driver older than the config?")
     kind = str(spec.get("type") or "orca")
     if kind != "orca":
         raise ExecutorError(f"executor {chosen!r}: unknown type {kind!r} (roles run as Orca workers only)")

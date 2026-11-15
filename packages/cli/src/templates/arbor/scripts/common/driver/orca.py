@@ -10,6 +10,10 @@ record's request id (``--retry-request``), so starting the same record again
 replays Orca's answer instead of starting a second worker. A start that
 failed after Orca created its Dispatch is retried on the same Orca Task
 (``--retry-of``).
+
+The prompt Orca types into the agent is one line naming the spec file: a
+long pasted prompt can stall an agent's input box (omp opens a menu for a
+large paste and the submitting Enter goes to it).
 """
 from __future__ import annotations
 
@@ -32,6 +36,8 @@ START_TIMEOUT_S = 300
 MAX_FAILED_STARTS = 3
 # Orca shows a fresh worker as not working until its first turn is observed.
 IDLE_GRACE_S = 60
+# A worker whose agent reported no session this long after the start never got going.
+SESSION_CHECK_S = 600
 
 def request_path(main: Path, task: str, dispatch: str) -> Path:
     if not all(re.fullmatch(r"[\w.-]+", s) and s not in (".", "..") for s in (task, dispatch)):
@@ -134,7 +140,7 @@ def start(executor: Executor, record: dict) -> tuple[dict | None, str | None]:
         call(executor, ["orchestration", "worker-release", "--dispatch", retry["dispatch_id"]])
         what = ["--task", retry["task_id"], "--retry-of", retry["dispatch_id"]]
     else:
-        what = ["--spec-file", record["spec_path"],
+        what = ["--spec", spec_pointer(record["spec_path"]),
                 "--task-title", f"{record['task']} {record['node']}"]
     args = ["orchestration", "worker-start", *what, "--run", record["run"],
             "--worktree", f"path:{record['worktree']}", "--agent", agent]
@@ -162,6 +168,28 @@ def start(executor: Executor, record: dict) -> tuple[dict | None, str | None]:
     stage = result.get("failedStage") or result.get("stage")
     last = " ".join(str(result.get("lastError") or error or "no Dispatch id").split())
     return ids, f"worker-start failed{f' at {stage}' if stage else ''}: {last}"
+
+
+def spec_pointer(spec_path: str) -> str:
+    """The one-line prompt of a worker: its whole assignment is the spec file."""
+    return f"Read {spec_path} and do exactly what it says; it is your whole assignment."
+
+
+def session_missing(executor: Executor, record: dict) -> str | None:
+    """Why the agent of a started worker evidently never began, or None.
+
+    Orca reads a worker's transcript once its agent reported a session; a
+    worker past ``SESSION_CHECK_S`` that Orca can only read as a terminal
+    because no session was reported (the agent crashed back to the shell, or
+    never received its prompt) did not start."""
+    if not record.get("orca") or elapsed_s(record["orca"]) < SESSION_CHECK_S:
+        return None
+    result, error = call(executor, ["orchestration", "worker-read", "--dispatch", str(dispatch_id(record)),
+                                    "--limit", "1"])
+    if error or result.get("fallbackReason") != "session_not_reported":
+        return None
+    return (f"its agent reported no session {SESSION_CHECK_S // 60:g} minutes after the start "
+            f"(see orca orchestration worker-read --dispatch {dispatch_id(record)})")
 
 
 def stop(executor: Executor, record: dict) -> bool:

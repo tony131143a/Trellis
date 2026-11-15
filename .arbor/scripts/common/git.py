@@ -39,7 +39,9 @@ def run_git(
     unbounded by default.
     """
     try:
-        git_args = ["git", "-c", "i18n.logOutputEncoding=UTF-8"] + args
+        # core.quotePath=false: git otherwise octal-escapes and quotes non-ASCII paths
+        # (e.g. Chinese file names), which then match no path glob of a node.
+        git_args = ["git", "-c", "i18n.logOutputEncoding=UTF-8", "-c", "core.quotePath=false"] + args
         result = subprocess.run(
             git_args,
             cwd=cwd,

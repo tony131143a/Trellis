@@ -12,9 +12,11 @@ that is a directory of node files; every node runs as one Orca worker.
     review [--pass]                         write reviewer nodes / record the review of the HEADs
     finish                                  merge commands, then cleanup, archive, journal
     status [--json] [--all]                 no side effects
-    cancel <id> | retry <id> [--force] | resume | abandon [--reason "…"]
+    cancel <id> | retry <id> [--force] | rejudge <id> | resume | abandon [--reason "…"]
 
 The default task is the only one in planning or active state.
+Run from a linked worktree of the control repository, this script hands over
+to the main checkout's copy, so an older copy in a worktree never drives.
 Exit codes: 0 ok, 1 refused or failed, 2 usage error.
 """
 
@@ -22,11 +24,37 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+
+
+def hand_over() -> None:
+    """Run the main checkout's driver instead of this copy when this copy is
+    another checkout's: a linked worktree of the control repository carries
+    the scripts of the commit it was cut from, which may be older. Runs before
+    the ``common`` imports, so an old copy's modules are never loaded."""
+    if os.environ.get("ARBOR_OWN_SCRIPTS"):
+        return
+    here = Path(__file__).absolute().parent  # .arbor may be a symlink: find the repo by the path as called
+    try:
+        common = subprocess.run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], cwd=here,
+                                capture_output=True, text=True, timeout=30).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return
+    own = Path(common).parent / ".arbor" / "scripts" / "arbor.py"
+    if common and own.is_file() and own.resolve().parent != here.resolve():
+        print(f"note: running the main checkout's driver {own}", file=sys.stderr)
+        os.environ["ARBOR_OWN_SCRIPTS"] = "1"
+        os.execv(sys.executable, [sys.executable, str(own), *sys.argv[1:]])
+
+
+if __name__ == "__main__":
+    hand_over()
 
 from common.contract import contract_hash, default_contract_content, find_contract, validate_contract
 from common.driver import finish as fin
@@ -121,6 +149,11 @@ def cmd_start(args: argparse.Namespace) -> int:
     if args.reapprove:
         if d["status"] != "active" or path is None:
             return refuse("--reapprove is for an active task with a contract.md")
+        errors = validate_contract(task.contract())
+        if errors:
+            for e in errors:
+                print(f"  {e}", file=sys.stderr)
+            return refuse("contract.md is not ready")
         with task.edit() as d:
             d["contract_hash"] = contract_hash(path)
         print("contract re-approved")
@@ -221,8 +254,8 @@ def cmd_cancel(args: argparse.Namespace) -> int:
 def cmd_retry(args: argparse.Namespace) -> int:
     task = load_task(args.task)
     rec = task.data["nodes"].get(args.node)
-    if rec is None or rec["status"] != "failed":
-        return refuse(f"{args.node} is not a failed node")
+    if rec is None or rec["status"] not in ("failed", "cancelled"):
+        return refuse(f"{args.node} is not a failed or cancelled node")
     if rec.get("attempt", 1) >= 2 and not args.force:
         return refuse(f"{args.node} already ran {rec['attempt']} times; arbor.py retry {args.node} --force, "
                       "or change the plan")
@@ -241,6 +274,26 @@ def cmd_retry(args: argparse.Namespace) -> int:
                     failed_starts=0)
     print(f"{args.node} is pending again (attempt {rec.get('attempt', 1) + 1}); its file is read again")
     print("next: arbor.py sync")
+    return 0
+
+
+def cmd_rejudge(args: argparse.Namespace) -> int:
+    """Judge a failed writer again on the worktree it left (after the plan or
+    the contract changed, or the commits were fixed by hand); merge it when good."""
+    task = load_task(args.task)
+    rec = task.data["nodes"].get(args.node)
+    if rec is None or rec["status"] != "failed" or not plan.is_writer(rec):
+        return refuse(f"{args.node} is not a failed writer node")
+    if not rec.get("worktree") or not Path(rec["worktree"]).is_dir() or not rec.get("base"):
+        return refuse(f"{args.node} has no worktree to judge (arbor.py retry {args.node})")
+    events: list[str] = []
+    with task.edit() as d:
+        d["nodes"][args.node].update(status="running", reason=None, ended=None, attention=None)
+    sy.settle(task, task.contract(), [(args.node, None)], events)
+    task.reload()
+    for line in events:
+        print(line)
+    print(f"next: {sy.next_step(task)[1]}")
     return 0
 
 
@@ -296,7 +349,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--json", action="store_true")
     p.add_argument("--all", action="store_true")
     p.set_defaults(func=cmd_status)
-    for name, func in (("cancel", cmd_cancel), ("retry", cmd_retry)):
+    for name, func in (("cancel", cmd_cancel), ("retry", cmd_retry), ("rejudge", cmd_rejudge)):
         p = sub.add_parser(name)
         p.add_argument("node")
         if name == "retry":

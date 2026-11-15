@@ -28,7 +28,7 @@ from . import plan
 from .executor import utc_now
 from .prompt import review_brief
 from .repos import DriverError, Task, git, settings, tasks_dir
-from .sync import _heads, map_rows
+from .sync import _heads, drift, map_rows
 
 
 def gate_problems(task: Task) -> list[str]:
@@ -96,6 +96,11 @@ def review_write(task: Task) -> int:
         print(f"wrote {path}")
     with task.edit() as d:
         d.setdefault("reviewers", {}).update(written)
+        d["rounds"] += 1  # a round: a review and the fixes it asks for
+    executor = task.executor
+    if executor.agent_for("review") == executor.agent_for("write"):
+        print(f"note: reviewers run on {executor.agent_for('write')}, the agent that wrote the code; a different "
+              f"agent finds more (executors.{executor.name}.agents.review)")
     print("next: arbor.py sync")
     return 0
 
@@ -158,6 +163,9 @@ def finish(task: Task) -> int:
             for key, repo in unmerged:
                 print(f"  {key}: git -C {repo['root']} merge --no-ff {repo['branch']}"
                       f"   (with {repo['merge_target']} checked out in {repo['root']})")
+                moved = drift(repo)
+                if moved:
+                    print(f"    note: {moved}")
             print("next: after the merges, arbor.py finish again")
             return 0
     return cleanup(task)

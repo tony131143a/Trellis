@@ -382,27 +382,6 @@ describe.skipIf(!hasPython())("arbor 1.0 sync", { timeout: 180_000 }, () => {
     expect(out.nodes.c.status).toBe("running");
   });
 
-  it("counts rounds of new writer nodes after the first gate and stops after three", () => {
-    p = setupProject();
-    p.node("n1", { paths: "[n1/**]" });
-    p.sync();
-    work(p, "n1", { write: [{ path: "n1/x", content: "x\n" }] });
-    expect(p.sync().repos["."].gate).toBeTruthy();
-    for (const id of ["r1", "r2", "r3"]) {
-      p.node(id, { paths: `[${id}/**]` });
-      expect(p.sync().nodes[id].status).toBe("running");
-    }
-    p.node("look", {}, "read only: does not count");
-    p.node("r4", { paths: "[r4/**]" });
-    let out = p.sync();
-    expect(out.rounds ?? p.taskJson().rounds).toBe(4);
-    expect(out.next.text).toContain("the rounds budget is used up");
-    expect(out.nodes.r4.status).toBe("pending");
-    p.ok("resume");
-    out = p.sync();
-    expect(out.nodes.r4.status).toBe("running");
-  });
-
   it("names fix when a gate is red, and reports contract changes", () => {
     p = setupProject();
     p.node("n1", { paths: "[docs/**]" });

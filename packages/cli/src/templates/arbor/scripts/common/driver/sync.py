@@ -7,7 +7,9 @@
     judge    a settled writer: commits, clean tree, paths, its checks
     merge    good writers --no-ff into their repo's integration branch
     start    every ready node, each in its own Orca worktree (writers)
-    gate     each integration HEAD not gated yet, once nothing runs
+    gate     each integration HEAD not gated yet, once nothing runs; compared
+             with the gate of its base (``sync --wait`` runs that one while
+             the first workers work); notes how far the base ref moved
     report   what happened and the one next step
 
 The task lock is held only to read and write task.json and around a merge;
@@ -29,7 +31,8 @@ from ..invariants import changed_files, snapshot_refs
 from ..worktree import WorktreeError, add_worktree, is_ancestor, merge_no_ff, remove_worktree, run_setup
 from . import orca, plan
 from .executor import FALLBACK_TO_WRITE, ExecutorError, parse_timeout, utc_now
-from .gate import format_checks, run_check, run_gate
+from ..git import run_git
+from .gate import baseline_record, compare, format_checks, run_check, run_gate
 from .lock import LockTimeout, task_lock
 from .prompt import worker_spec
 from .repos import DriverError, Task, create_integration, git, head, repo_keys, settings
@@ -78,6 +81,14 @@ def _done_idle(rec: dict, record: dict) -> bool:
     return count != "0" and snapshot_refs(wt).clean
 
 
+def _untouched(rec: dict, record: dict) -> bool:
+    """Nothing came of the worker yet: no commit or change in its worktree, no report."""
+    if not plan.is_writer(rec):
+        return not orca.has_reply(record)
+    wt = Path(rec["worktree"])
+    return git(wt, "rev-list", "--count", f"{rec['base']}..HEAD") == "0" and not git(wt, "status", "--porcelain")
+
+
 def observe(task: Task, events: list[str]) -> list[tuple[str, str | None]]:
     """(node, Orca's failure reason) of every running node that settled."""
     executor = task.executor
@@ -114,6 +125,15 @@ def observe(task: Task, events: list[str]) -> list[tuple[str, str | None]]:
                 notes[nid] = "idle with its work done, but Orca could not prove the worker stopped"
         elif state in ("done", "failed"):
             settled.append((nid, detail if state == "failed" else None))
+        elif state == "running":
+            try:
+                missing = _untouched(rec, record) and orca.session_missing(executor, record)
+            except DriverError as e:
+                missing, notes[nid] = None, str(e)
+            if missing and orca.stop(executor, record):
+                settled.append((nid, f"the worker did not start: {missing}"))
+            elif missing:
+                notes[nid] = f"{missing}; Orca could not prove the worker stopped"
     with task.edit() as d:
         for nid, note in notes.items():
             if d["nodes"].get(nid, {}).get("status") == "running":
@@ -142,7 +162,8 @@ def judge(task: Task, contract: Contract, rec: dict, detail: str | None) -> str 
     outside = [f for f in changed_files(wt, f"{rec['base']}..HEAD") if not path_matches(f, rec["paths"])]
     if outside:
         return f"outside its paths: {', '.join(outside)}"
-    red = [cid for cid, command in node_checks(contract, rec) if not run_check(cid, command, wt).passed]
+    results = [run_check(cid, command, wt) for cid, command in node_checks(contract, rec)]
+    red, _ = compare(results, (task.data["repos"].get(rec["repo"]) or {}).get("baseline"))
     return f"checks red: {', '.join(red)}" if red else None
 
 
@@ -371,20 +392,77 @@ def start(task: Task, contract: Contract, events: list[str]) -> int:
 # gate
 
 
+def _run_gate(task: Task, contract: Contract, key: str, wt: Path):
+    s = settings(task.main, task.config, key)
+    return run_gate(s.gate, replace(contract, verification_map=tuple(map_rows(task, contract, key))), wt)
+
+
 def gate(task: Task, contract: Contract, events: list[str]) -> None:
     for key, repo in sorted(task.data["repos"].items()):
         wt = Path(repo["worktree"])
         sha = head(wt)
         if (repo.get("gate") or {}).get("sha") == sha:
             continue
-        s = settings(task.main, task.config, key)
-        result = run_gate(s.gate, replace(contract, verification_map=tuple(map_rows(task, contract, key))), wt)
+        result = _run_gate(task, contract, key, wt)
+        failing, notes = compare(result.checks, repo.get("baseline"))
         with task.edit() as d:
-            d["repos"][key]["gate"] = {"sha": sha, "green": result.green, "failing": result.failing, "at": utc_now()}
-        verdict = "green" if result.green else f"red on {', '.join(result.failing)}"
+            d["repos"][key]["gate"] = {"sha": sha, "green": not failing, "failing": failing, "notes": notes,
+                                       "at": utc_now()}
+        verdict = "green" if not failing else f"red on {', '.join(failing)}"
         events.append(f"gate {key} at {sha[:7]}: {verdict}")
+        events += [f"  {n}" for n in notes]
         if result.checks:
             events.append(format_checks(result.checks))
+        moved = drift(repo)
+        if moved:
+            events.append(moved)
+
+
+def baseline(task: Task, events: list[str]) -> None:
+    """Run the gate commands (not the acceptance checks, which fail before the
+    work) at the base of every integration branch that has not moved yet, so
+    a later gate tells failures the task brought from failures it found."""
+    todo = [k for k, r in sorted(task.data["repos"].items()) if "baseline" not in r]
+    if not todo:
+        return
+    contract = replace(task.contract(), verification_map=())
+    for key in todo:
+        repo = task.data["repos"][key]
+        wt = Path(repo["worktree"])
+        sha = head(wt)
+        if sha != repo["base"]:  # merged into already: too late for its base
+            record = None
+        else:
+            result = run_gate(settings(task.main, task.config, key).gate, contract, wt)
+            record = baseline_record(sha, result.checks)
+            if result.green:
+                events.append(f"baseline {key} at {sha[:7]}: green")
+            else:
+                tests = sum(len(c.failed_tests) for c in result.checks)
+                events.append(f"baseline {key} at {sha[:7]}: red before any change, on {', '.join(result.failing)}"
+                              + (f" ({tests} failing tests)" if tests else "") + ". Tell the user: the task can fix "
+                              "them (a node) or leave them; tests that fail at the base do not block later gates")
+                events.append(format_checks([c for c in result.checks if not c.passed]))
+        with task.edit() as d:
+            d["repos"][key]["baseline"] = record
+
+
+def drift(repo: dict) -> str | None:
+    """How far ``base_ref`` (a remote branch) moved past the integration
+    branch, and the files a merge of it would conflict in; None when it did not."""
+    ref, root, wt = repo.get("base_ref") or "", Path(repo["root"]), Path(repo["worktree"])
+    remote, _, branch = ref.partition("/")
+    if not branch or remote not in run_git(["remote"], cwd=root)[1].split():
+        return None
+    run_git(["fetch", "-q", remote, branch], cwd=root, timeout=60)  # offline: compare with what is here
+    rc, count, _ = run_git(["rev-list", "--count", f"HEAD..{ref}"], cwd=wt)
+    if rc != 0 or count.strip() == "0":
+        return None
+    rc, out, _ = run_git(["merge-tree", "--write-tree", "--name-only", "HEAD", ref], cwd=wt)
+    conflicts = out.split("\n\n")[0].splitlines()[1:] if rc == 1 else []
+    return (f"{ref} moved {count.strip()} commits past the task's integration branch"
+            + (f"; merging it conflicts in {len(conflicts)} files: {', '.join(conflicts[:10])}" if conflicts else "")
+            + ": bring it in early with a node that merges it, rather than at finish")
 
 
 def mail(task: Task, events: list[str]) -> None:
@@ -498,15 +576,21 @@ def wait(task: Task, duration: str | None) -> None:
     seconds = parse_timeout(duration) if duration else (task.executor.timeout or 3600)
     deadline = time.monotonic() + (seconds or 0)
     executor = task.executor
+    checked = 0.0  # the last look for a worker that never started (one a minute)
     while time.monotonic() < deadline:
         task.reload()
         running = [r for r in task.data["nodes"].values() if r["status"] == "running" and not r.get("inline")]
         if not running:
             return
+        look = time.monotonic() - checked >= 60
+        checked = time.monotonic() if look else checked
         for rec in running:
             try:
-                state, _ = orca.observe(executor, orca.load(task.main, rec["request"])[1])
-            except (ExecutorError, OSError, ValueError):
+                record = orca.load(task.main, rec["request"])[1]
+                state, _ = orca.observe(executor, record)
+                if state == "running" and look and _untouched(rec, record) and orca.session_missing(executor, record):
+                    return
+            except (ExecutorError, OSError, ValueError, DriverError):
                 return
             if state != "running":
                 return
@@ -526,10 +610,8 @@ def sync_pass(task: Task) -> list[str]:
     with task.edit() as d:
         if d["status"] not in ("planning", "active"):
             raise DriverError(f"{task.name} is {d['status']}")
-        found, writers = plan.update(d["nodes"], task.dir / "nodes", default_repo(task), known(task, contract))
+        found, _ = plan.update(d["nodes"], task.dir / "nodes", default_repo(task), known(task, contract))
         events += found
-        if writers and any((r.get("gate") or {}).get("sha") for r in d["repos"].values()):
-            d["rounds"] += 1
     mail(task, events)
     settle(task, contract, observe(task, events), events)
     started = start(task, contract, events)
@@ -546,9 +628,11 @@ def run(task: Task, wait_for: str | None, waiting: bool, as_json: bool) -> int:
     guard = task.runtime("sync", task.name)
     try:
         with task_lock(guard, timeout=0):
+            events = []
             if waiting:
+                baseline(task, events)
                 wait(task, wait_for)
-            events = sync_pass(task)
+            events += sync_pass(task)
     except LockTimeout:
         print("another sync is running")
         return 0
