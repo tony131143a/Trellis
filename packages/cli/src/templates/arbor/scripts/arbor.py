@@ -156,6 +156,8 @@ def cmd_start(args: argparse.Namespace) -> int:
             return refuse("contract.md is not ready")
         with task.edit() as d:
             d["contract_hash"] = contract_hash(path)
+        for note in sy.restated_gates(task, task.contract()):
+            print(f"note: {note}")
         print("contract re-approved")
         return 0
     if d["status"] != "planning":
@@ -178,6 +180,8 @@ def cmd_start(args: argparse.Namespace) -> int:
         print(f"added {root} to Orca")
     with task.edit() as d:
         d.update(status="active", contract_hash=contract_hash(path) if path else None, approved=utc_now())
+    for note in sy.restated_gates(task, contract):
+        print(f"note: {note}")
     print(f"{task.name} is active")
     print(f"next: plan: write node files under {task.dir / 'nodes'}, then arbor.py sync")
     return 0

@@ -10,6 +10,10 @@ CONFIRMED finding as ``REPRO-1``, ``REPRO-2``, ... (each must exit 0).
 A check that times out is killed with everything it started. From pytest's
 summary a check keeps the ids of its failed tests and its skip count, so a
 gate can be compared with the gate of the task's base (``compare``).
+
+An auto check that is only gate commands joined by ``&&`` (the whole gate
+restated as a criterion) is not run again: it takes the result of those
+commands (``gate_parts``), and a node naming it leaves it to the gate.
 """
 
 from __future__ import annotations
@@ -41,6 +45,7 @@ class CheckResult:
     output: str  # tail of combined stdout+stderr
     failed_tests: tuple[str, ...] = ()  # test ids from a pytest summary
     skipped: int | None = None  # from a pytest summary
+    same_as: tuple[str, ...] = ()  # the GATE-n checks this one restates; it was not run again
 
     @property
     def passed(self) -> bool:
@@ -84,6 +89,27 @@ def run_check(check_id: str, command: str, worktree: Path) -> CheckResult:
                        int(skipped[-1]) if skipped else None)
 
 
+def _words(command: str) -> str:
+    return " ".join(command.split())
+
+
+def gate_parts(command: str, gate_commands: Sequence[str]) -> list[int] | None:
+    """The 1-based GATE-n numbers ``command`` is made of when it is nothing
+    but gate commands joined by ``&&``; else None. Exact text only (spacing
+    aside): a split inside quotes cannot match a gate command anyway."""
+    numbers = {_words(c): i for i, c in enumerate(gate_commands, start=1)}
+    parts = [numbers.get(_words(part)) for part in _words(command).split(" && ")]
+    return [n for n in parts if n is not None] if parts and None not in parts else None
+
+
+def _restated(cid: str, command: str, numbers: list[int], checks: list[CheckResult]) -> CheckResult:
+    parts = [checks[n - 1] for n in numbers]
+    failed = next((c for c in parts if not c.passed), None)
+    return CheckResult(cid, command, failed.exit_code if failed else 0, "",
+                       tuple(sorted({t for c in parts for t in c.failed_tests})), None,
+                       tuple(c.id for c in parts))
+
+
 def compare(checks: list[CheckResult], baseline: dict | None) -> tuple[list[str], list[str]]:
     """(the failing checks that block, notes) against the gate of the task's
     base. A check that failed there too blocks only with a test that did not
@@ -92,6 +118,10 @@ def compare(checks: list[CheckResult], baseline: dict | None) -> tuple[list[str]
     base = (baseline or {}).get("checks") or {}
     blocking, notes = [], []
     for c in checks:
+        if c.same_as:  # blocks exactly when a gate command it restates blocks
+            if any(g in blocking for g in c.same_as):
+                blocking.append(c.id)
+            continue
         was = base.get(c.id)
         if was and c.skipped is not None and was.get("skipped") is not None and c.skipped > was["skipped"]:
             notes.append(f"{c.id} skips {c.skipped} tests, {was['skipped']} at the base")
@@ -122,12 +152,16 @@ def auto_checks(contract: Contract) -> list[tuple[str, str]]:
 def run_gate(gate_commands: list[str], contract: Contract, worktree: Path,
              repros: Sequence[tuple[str, str]] = ()) -> GateResult:
     """Gate commands first, then every auto map check, then the
-    ``(finding id, command)`` repros as ``REPRO-n``; all of them run."""
+    ``(finding id, command)`` repros as ``REPRO-n``. An auto check that
+    restates gate commands takes their result instead of running again."""
     checks = [
         run_check(f"GATE-{i}", command, worktree)
         for i, command in enumerate(gate_commands, start=1)
     ]
-    checks += [run_check(cid, command, worktree) for cid, command in auto_checks(contract)]
+    gate = list(checks)
+    for cid, command in auto_checks(contract):
+        numbers = gate_parts(command, gate_commands)
+        checks.append(_restated(cid, command, numbers, gate) if numbers else run_check(cid, command, worktree))
     checks += [run_check(f"REPRO-{i}", command, worktree)
                for i, (_, command) in enumerate(repros, start=1)]
     return GateResult(checks)
@@ -165,6 +199,9 @@ def format_checks(checks: list[CheckResult]) -> str:
     lines: list[str] = []
     for c in checks:
         status = "pass" if c.passed else ("timeout" if c.exit_code is None else f"exit {c.exit_code}")
+        if c.same_as:
+            lines.append(f"- {c.id}: {status}  = {' && '.join(c.same_as)} (the gate commands; not run again)")
+            continue
         lines.append(f"- {c.id}: {status}  `{c.command}`")
         if not c.passed and c.output.strip():
             lines.append("  ```")

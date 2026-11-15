@@ -32,7 +32,7 @@ from ..worktree import WorktreeError, add_worktree, is_ancestor, merge_no_ff, re
 from . import orca, plan
 from .executor import FALLBACK_TO_WRITE, ExecutorError, parse_timeout, utc_now
 from ..git import run_git
-from .gate import baseline_record, compare, format_checks, run_check, run_gate
+from .gate import baseline_record, compare, format_checks, gate_parts, run_check, run_gate
 from .lock import LockTimeout, task_lock
 from .prompt import worker_spec
 from .repos import DriverError, Task, create_integration, git, head, repo_keys, settings
@@ -61,6 +61,19 @@ def map_rows(task: Task, contract: Contract, key: str) -> list:
 def node_checks(contract: Contract, rec: dict) -> list[tuple[str, str]]:
     rows = {e.id: e.check for e in contract.auto_checks()}
     return [(cid, rows[cid]) for cid in rec.get("checks") or [] if cid in rows]
+
+
+def restated_gates(task: Task, contract: Contract) -> list[str]:
+    """Notes for auto checks that only restate their repository's gate
+    commands: the gate runs them once and the check takes that result."""
+    notes = []
+    for e in contract.auto_checks():
+        key = e.repo or default_repo(task)
+        numbers = gate_parts(e.check, settings(task.main, task.config, key).gate) if e.check.strip() else None
+        if numbers:
+            notes.append(f"{e.id} restates the gate of {key} ({', '.join(f'GATE-{n}' for n in numbers)}): "
+                         "it is not run again, and a node naming it leaves it to the gate after the merge")
+    return notes
 
 
 def known(task: Task, contract: Contract) -> plan.Known:
@@ -162,7 +175,9 @@ def judge(task: Task, contract: Contract, rec: dict, detail: str | None) -> str 
     outside = [f for f in changed_files(wt, f"{rec['base']}..HEAD") if not path_matches(f, rec["paths"])]
     if outside:
         return f"outside its paths: {', '.join(outside)}"
-    results = [run_check(cid, command, wt) for cid, command in node_checks(contract, rec)]
+    gate_commands = settings(task.main, task.config, rec["repo"]).gate
+    results = [run_check(cid, command, wt) for cid, command in node_checks(contract, rec)
+               if not gate_parts(command, gate_commands)]  # the gate runs those after the merge
     red, _ = compare(results, (task.data["repos"].get(rec["repo"]) or {}).get("baseline"))
     return f"checks red: {', '.join(red)}" if red else None
 

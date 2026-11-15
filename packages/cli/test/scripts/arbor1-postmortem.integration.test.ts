@@ -3,7 +3,8 @@
  * whose agent never started, an older driver copy in a worktree, worktrees
  * left by an interrupted start, non-ASCII paths, rejudge and retry of a
  * cancelled node, auto checks that are prose, unknown executor settings,
- * rounds per review, and gates compared with the gate of the base.
+ * rounds per review, gates compared with the gate of the base, and an auto
+ * check that restates the gate.
  */
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -214,5 +215,25 @@ sys.exit(1 if fails else 0)
     out = p.sync();
     expect(out.repos["."].gate).toMatchObject({ green: false, failing: ["GATE-1"] });
     expect(out.events).toContain("  GATE-1 is red at the base too; new failures: tests/b.py::new");
+  });
+
+  it("runs the gate once when an auto check restates it", () => {
+    const g1 = "echo one >> $(git rev-parse --git-common-dir)/runs.log";
+    const g2 = "echo two >> $(git rev-parse --git-common-dir)/runs.log";
+    const contract = CONTRACT.replace(
+      "- AC-2:",
+      "- AC-3: Given the change When the gate runs Then it passes\n- AC-2:",
+    ).replace("| AC-2 | manual", `| AC-3 | auto   | \`${g1}  &&  ${g2}\` | - |\n| AC-2 | manual`);
+    p = setupProject({ contract, gate: [g1, g2], start: false });
+    expect(p.ok("start")).toContain("note: AC-3 restates the gate of . (GATE-1, GATE-2)");
+    p.node("n1", { paths: "[src/**]", checks: "[AC-1, AC-3]" });
+    p.sync();
+    work(p, "n1", { write: [{ path: "src/feature.txt", content: "f\n" }] });
+    const out = p.sync();
+    expect(out.nodes.n1.status).toBe("merged");
+    expect(out.repos["."].gate).toMatchObject({ green: true, failing: [] });
+    expect(out.events.join("\n")).toContain("- AC-3: pass  = GATE-1 && GATE-2 (the gate commands; not run again)");
+    // Once by the gate: not by the node's judge, not again as AC-3.
+    expect(fs.readFileSync(path.join(p.repo, ".git/runs.log"), "utf-8")).toBe("one\ntwo\n");
   });
 });

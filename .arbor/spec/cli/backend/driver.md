@@ -129,7 +129,8 @@ Each pass, in order (`sync_pass`):
    writer: no commit beyond `base` fails `no commits`; unclean tree `uncommitted changes`;
    files changed in `base..HEAD` outside `paths` `outside its paths: ...`; each `checks`
    id is run (`gate.run_check`) in the node worktree, red (after `gate.compare` with the
-   repo's baseline) fails `checks red: AC-1`.
+   repo's baseline) fails `checks red: AC-1`. A check that restates the gate (below) is
+   skipped: the gate runs it after the merge.
    Reader: empty report fails `no report`; in the repo's integration worktree a changed
    `git status --porcelain` or HEAD fails `left changes in <path>` (a main checkout is not
    checked). Reader success sets `done`. A failed node keeps its worktree; its report's
@@ -159,7 +160,10 @@ Each pass, in order (`sync_pass`):
    is `merged` or `done`: for each repo whose integration HEAD differs from `gate.sha`,
    `gate.run_gate(<repo gate.commands>, <contract limited to that repo's map rows>, <integration worktree>)`.
    Checks are `GATE-1..n` first, then every `auto` row with a command; all run, each in its
-   own process group with a 30-minute limit (a timeout kills the group). `gate.compare`
+   own process group with a 30-minute limit (a timeout kills the group). An `auto` row whose
+   command is only the repo's gate commands joined by `&&` (`gate.gate_parts`: exact text,
+   spacing aside) is not run: it takes their result (`same_as`; it blocks when one of them
+   blocks). `start` and `--reapprove` print `note: AC-n restates the gate of <repo> ...`. `gate.compare`
    with the repo's `baseline`: a check red at the base too blocks only with a failed test id
    (pytest `FAILED`/`ERROR` summary lines) the base did not have, or when no ids can be read;
    more skips than at the base are noted. Green means nothing blocks. Stored as

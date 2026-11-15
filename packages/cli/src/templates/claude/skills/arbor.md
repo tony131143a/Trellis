@@ -6,7 +6,7 @@ Not for a change you can make and verify yourself.
 
 ## Loop
 
-1. **Contract.** `arbor new "<title>"`. Explore first: a question you can answer in a few reads, or one your built-in exploration sub-agent can, you answer yourself; a larger survey is a read-only node (see Node file), several in parallel when it spans repositories. Ask the user only what the code cannot answer, once, in one message. Write `contract.md`: Goal, Scope, Acceptance criteria, Verification map (one command per criterion; `manual` for what only a person can judge). The user approves it, then `arbor start`. The contract is now frozen: changing it needs the user, then `arbor start --reapprove`.
+1. **Contract.** `arbor new "<title>"`. Explore first: a question you can answer in a few reads, or one your built-in exploration sub-agent can, you answer yourself; a larger survey is a read-only node (see Node file), several in parallel when it spans repositories. Ask the user only what the code cannot answer, once, in one message. Write `contract.md`: Goal, Scope, Acceptance criteria, Verification map (one command per criterion; `manual` for what only a person can judge; not the repo gate restated: it runs on every merged result anyway). The user approves it, then `arbor start`. The contract is now frozen: changing it needs the user, then `arbor start --reapprove`.
 2. **Plan.** Write node files in the task's `nodes/` directory; `arbor sync` starts every ready node.
 3. **Wait.** Run `arbor sync --wait` as a background command and end your turn. Its exit calls you again.
 4. **React** to `next:`
