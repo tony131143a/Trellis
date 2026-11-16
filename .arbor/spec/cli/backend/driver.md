@@ -226,7 +226,8 @@ node are reported as unchecked (when the task has any repo).
   worktrees of failed, cancelled and merged writer nodes (not forced; branches deleted only
   for merged ones; a refusal prints `leftover: ...` and does not block). `repo:<key>`: remove
   the integration worktree (not forced) and delete its branch; a refusal aborts with exit 1.
-  `archive`: move the task directory to `archive/<YYYY-MM>/<task>`, status `done`.
+  `archive`: move the task directory to `archive/<YYYY-MM>/<task>`, delete
+  `.arbor/.runtime/{specs,workers,sync}/<task>`, status `done`.
   Then (`tail`, also on every later `finish` of a done task): commit only the path move in the
   control repo (`git commit --only -- <old> <new> --no-verify`, message `chore(task): archive <task>`),
   skipped with a note when `session_auto_commit` is false or the control checkout is detached

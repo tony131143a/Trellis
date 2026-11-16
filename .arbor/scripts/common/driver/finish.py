@@ -27,7 +27,7 @@ from ..worktree import WorktreeError, is_ancestor, remove_worktree
 from . import plan
 from .executor import utc_now
 from .prompt import review_brief
-from .repos import DriverError, Task, git, settings, tasks_dir
+from .repos import RUNTIME, DriverError, Task, git, settings, tasks_dir
 from .sync import _heads, drift, map_rows, rounds_left
 
 
@@ -220,6 +220,9 @@ def cleanup(task: Task) -> int:
             shutil.move(str(task.dir), str(dest))
             print(f"archived to {dest}")
         task.dir = dest
+        # Worker briefs, Orca request records and the sync lock of the task: nothing reads them once it is done.
+        for kind in ("specs", "workers", "sync"):
+            shutil.rmtree(task.main / RUNTIME / kind / task.name, ignore_errors=True)
         task.reload()
         task.data.update(status="done", ended=utc_now())
         task.data["cleanup"]["done"].append("archive")

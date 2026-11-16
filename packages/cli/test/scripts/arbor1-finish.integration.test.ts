@@ -110,7 +110,10 @@ describe.skipIf(!hasPython())("arbor 1.0 review and finish", { timeout: 180_000 
     expect(p.ok("finish")).toContain("merge --no-ff");
     git(p.repo, "merge", "--no-ff", "-q", "-m", "merge feature", branch());
     const integration = wt();
+    const runtime = ["specs", "workers", "sync"].map((k) => path.join(p.repo, ".arbor/.runtime", k, p.task));
+    expect(runtime.every((d) => fs.existsSync(d))).toBe(true);
     const done = p.ok("finish");
+    expect(runtime.filter((d) => fs.existsSync(d))).toEqual([]);
     expect(done).toContain("journal entry written");
     expect(fs.existsSync(integration)).toBe(false);
     expect(git(p.repo, "branch", "--list", branch())).toBe("");
