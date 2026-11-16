@@ -37,12 +37,12 @@ Summarize the concrete findings from repository analysis.
 
 ## Rules
 - Adapt the spec file set to the real codebase.
-- Use real source examples with file paths.
+- Write rules that hold across features, each backed by a real file path; leave how single features work to the code.
 - Remove template-only sections that do not apply.
 - Do not modify product source code unless the task explicitly asks for it.
 
 ## Acceptance Criteria
-- [ ] Specs contain concrete examples and anti-patterns from the repository.
+- [ ] Specs state the repository's rules and anti-patterns, not feature walkthroughs.
 - [ ] No placeholder text remains.
 - [ ] Index files match the final spec files.
 - [ ] Claims are backed by source files, tests, or project docs.

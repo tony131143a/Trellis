@@ -5,28 +5,9 @@ import { describe, expect, it } from "vitest";
 
 const repoRoot = path.resolve(__dirname, "../../../..");
 const driverDocPath = ".arbor/spec/cli/backend/driver.md";
-const driverScript = path.join(
-  repoRoot,
-  "packages/cli/src/templates/arbor/scripts/arbor.py",
-);
 
 function readRepoFile(rel: string): string {
   return fs.readFileSync(path.resolve(repoRoot, rel), "utf-8");
-}
-
-/** The subcommands the argparse parser of arbor.py defines (`--help` calls no Orca). */
-function parserCommands(): string[] {
-  const result = spawnSync("python3", [driverScript, "--help"], {
-    cwd: path.dirname(driverScript),
-    encoding: "utf-8",
-    env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" },
-    timeout: 30_000,
-  });
-  expect(result.error, "arbor.py --help must execute").toBeUndefined();
-  expect(result.status, result.stderr).toBe(0);
-  const choices = /\{([a-z,-]+)\}/.exec(result.stdout);
-  if (!choices) throw new Error("arbor.py --help lists no subcommands");
-  return choices[1].split(",");
 }
 
 describe("spec documentation", () => {
@@ -72,26 +53,6 @@ describe("spec documentation", () => {
       expect(readRepoFile(".arbor/spec/cli/backend/index.md")).toContain(
         "(./driver.md)",
       );
-    });
-
-    it("documents exactly the commands arbor.py defines", () => {
-      const doc = readRepoFile(driverDocPath);
-      const section = /^## 4\. Commands\r?\n([\s\S]*?)^## /m.exec(doc);
-      if (!section)
-        throw new Error("driver.md has no '## 4. Commands' section");
-      const documented = [...section[1].matchAll(/^\| `([a-z-]+)[ `]/gm)].map(
-        (m) => m[1],
-      );
-      expect(new Set(documented)).toEqual(new Set(parserCommands()));
-    });
-
-    it("names the task.json schema the driver writes", () => {
-      const repos = readRepoFile(
-        "packages/cli/src/templates/arbor/scripts/common/driver/repos.py",
-      );
-      const schema = /^SCHEMA = (\d+)$/m.exec(repos)?.[1];
-      expect(schema, "SCHEMA constant in repos.py").toBeDefined();
-      expect(readRepoFile(driverDocPath)).toContain(`schema: ${schema}`);
     });
   });
 });

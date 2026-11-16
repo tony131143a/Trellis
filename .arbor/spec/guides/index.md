@@ -4,22 +4,7 @@ last_verified: 2026-11-13
 ---
 # Thinking Guides
 
-> **Purpose**: Expand your thinking to catch things you might not have considered.
-
----
-
-## Why Thinking Guides?
-
-**Most bugs and tech debt come from "didn't think of that"**, not from lack of skill:
-
-- Didn't think about what happens at layer boundaries → cross-layer bugs
-- Didn't think about code patterns repeating → duplicated code everywhere
-- Didn't think about edge cases → runtime errors
-- Didn't think about future maintainers → unreadable code
-
-These guides help you **ask the right questions before coding**.
-
----
+> **Purpose**: Ask the right questions before coding. Most bugs and tech debt come from "didn't think of that", not from lack of skill.
 
 ## Available Guides
 
@@ -29,85 +14,37 @@ These guides help you **ask the right questions before coding**.
 | [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md) | Think through data flow across layers | Features spanning multiple layers |
 | [Cross-Platform Thinking Guide](./cross-platform-thinking-guide.md) | Catch OS, shell, Python, path, and persistence assumptions | When commands, templates, scripts, or persisted JSON must work across platforms |
 
----
+## Thinking Triggers
 
-## Quick Reference: Thinking Triggers
+Read the [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md) when:
 
-### When to Think About Cross-Layer Issues
+- [ ] A feature touches 3+ layers, data format changes between layers, or multiple consumers need the same data
+- [ ] You are not sure where some logic belongs
+- [ ] You are adding a persisted JSON or config field, or UI / command code starts casting raw payload fields
 
-- [ ] Feature touches 3+ layers (API, Service, Component, Database)
-- [ ] Data format changes between layers
-- [ ] Multiple consumers need the same data
-- [ ] You're not sure where to put some logic
-- [ ] You are adding a persisted JSON field or config field
-- [ ] UI / command code starts casting raw payload fields directly
+Read the [Code Reuse Thinking Guide](./code-reuse-thinking-guide.md) when:
 
-→ Read [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md)
-
-### When to Think About Code Reuse
-
-- [ ] You're writing similar code to something that exists
-- [ ] You see the same pattern repeated 3+ times
-- [ ] You're adding a new field to multiple places
-- [ ] **You're modifying any constant or config**
-- [ ] **You're creating a new utility/helper function** ← Search first!
+- [ ] You are writing code similar to something that exists, or see a pattern repeated 3+ times
+- [ ] You are adding a field to multiple places, or modifying any constant or config
+- [ ] You are creating a new utility/helper function (search first)
 - [ ] Two files read the same untyped payload field with local casts
 - [ ] Multiple branches update the same derived state from `kind` / `action`
 
-→ Read [Code Reuse Thinking Guide](./code-reuse-thinking-guide.md)
+Read the [Cross-Platform Thinking Guide](./cross-platform-thinking-guide.md) when:
 
-### When to Think About Cross-Platform Issues
+- [ ] You are editing Python scripts, shell commands, or generated config, or documenting a command users copy into terminals
+- [ ] Code or docs assume `python3`, shebang execution, `/` separators, or POSIX-only shell behavior
+- [ ] You are changing persisted JSON or migrations that must work across macOS, Linux, and Windows
 
-- [ ] You are editing Python scripts, shell commands, or generated config
-- [ ] You are adding or documenting a command users copy into terminals
-- [ ] Code or docs assume `python3`, shebang execution, `/` path separators, or
-      POSIX-only shell behavior
-- [ ] You are changing persisted JSON or migrations that must work across
-      macOS, Linux, and Windows
+## Verifying AI Review Findings
 
-→ Read [Cross-Platform Thinking Guide](./cross-platform-thinking-guide.md)
+Verify every CRITICAL/WARNING finding against the actual code before prioritizing it:
 
-### When Verifying AI Cross-Review Results
+- [ ] "User input can be malicious": is the data actually external, or a trusted internal source such as a bundled manifest?
+- [ ] "Behavior change": do the code comments document it as intentional?
+- [ ] A variable misread: trace it to its definition (a Map keyed by path, not name)
+- [ ] A "bug" in a test: mentally delete the feature; if the test still passes, the test is tautological
 
-- [ ] Reviewer claims "user input can be malicious" → Check the actual data source (internal manifest? user config? external API?)
-- [ ] Reviewer flags "missing validation" → Is the data from a trusted internal source?
-- [ ] Reviewer says "behavior change" → Read the code comments — is it intentional design?
-- [ ] Reviewer identifies a "bug" in test → Mentally delete the feature being tested — does the test still pass? If yes → tautological test
+## Pre-Modification Rule
 
-**Common AI reviewer false-positive patterns**:
-1. **Trust boundary confusion**: Treating internal data (bundled JSON manifests) as untrusted external input
-2. **Ignoring design comments**: Flagging intentional behavior documented in code comments as bugs
-3. **Variable misreading**: Not tracing a variable to its actual definition (e.g., Map keyed by path vs name)
-
-**Verification rule**: Every CRITICAL/WARNING finding must be verified against the actual code before prioritizing. Budget ~35% false-positive rate for AI reviews.
-
----
-
-## Pre-Modification Rule (CRITICAL)
-
-> **Before changing ANY value, ALWAYS search first!**
-
-```bash
-# Search for the value you're about to change
-grep -r "value_to_change" .
-```
-
-This single habit prevents most "forgot to update X" bugs.
-
----
-
-## How to Use This Directory
-
-1. **Before coding**: Skim the relevant thinking guide
-2. **During coding**: If something feels repetitive or complex, check the guides
-3. **After bugs**: Add new insights to the relevant guide (learn from mistakes)
-
----
-
-## Contributing
-
-Found a new "didn't think of that" moment? Add it to the relevant guide.
-
----
-
-**Core Principle**: 30 minutes of thinking saves 3 hours of debugging.
+Before changing any value, search for every place it appears (`grep -r "value_to_change" .`). This prevents most "forgot to update X" bugs.

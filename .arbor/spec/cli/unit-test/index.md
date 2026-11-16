@@ -5,93 +5,43 @@ sources:
   - .github/workflows/ci.yml
   - .lintstagedrc
   - .husky/pre-commit
-last_verified: 2026-11-13
+last_verified: 2026-11-16
 ---
 # Unit Test Guidelines
 
-> Testing conventions and patterns for this project.
-
----
+> Testing conventions for `packages/cli`.
 
 ## Overview
 
-This project uses **Vitest** with TypeScript ESM. Tests live in a centralized `test/` directory mirroring `src/` structure. The goal is fast, reproducible tests with minimal mocking.
-
----
+Tests use Vitest with TypeScript ESM and live in a centralized `test/` directory mirroring `src/`. The goal is fast, reproducible tests with minimal mocking.
 
 ## Guidelines Index
 
-| Guide | Description | Status |
-|-------|-------------|--------|
-| [Conventions](./conventions.md) | File naming, structure, assertion patterns, test isolation (env-leak guard), when to write tests | Done |
-| [Mock Strategies](./mock-strategies.md) | What to mock, how, and the minimal mocking principle | Done |
-| [Integration Patterns](./integration-patterns.md) | Function-level integration tests for commands | Done |
+| Guide | Description |
+|-------|-------------|
+| [Conventions](./conventions.md) | Infrastructure, isolation, when to write tests, naming, structure, assertions, anti-patterns |
+| [Mock Strategies](./mock-strategies.md) | What to mock, the standard mock set, mock state |
+| [Integration Patterns](./integration-patterns.md) | Function-level command tests, matrices, Python script tests |
 
----
+## CI / Pipeline
 
-## Quick Reference
-
-```bash
-# Run all tests
-pnpm test
-
-# Watch mode
-pnpm test:watch
-
-# Run a specific test file
-pnpm test test/commands/init.integration.test.ts
-
-# Run with coverage report (terminal + HTML)
-pnpm test:coverage
-```
-
----
-
-## Code Coverage
-
-Coverage is generated automatically via `@vitest/coverage-v8`. Configuration is in `vitest.config.ts`.
-
-- **Terminal**: `pnpm test:coverage` prints per-file coverage table
-- **HTML report**: `./coverage/index.html` (gitignored, generated on demand)
-- **Source scope**: `src/**/*.ts` (excludes `src/cli/index.ts`)
-
-Do **not** maintain a manual coverage table — always run `pnpm test:coverage` for the real numbers.
-
----
-
-## CI / Pipeline Strategy
-
-| Stage | What Runs | Rationale |
-|-------|-----------|-----------|
-| **pre-commit** (husky) | `lint-staged` (`eslint --fix` + `prettier --write` on `packages/cli/src/**/*.ts`) | Keep fast; don't add tests here or developers will skip with `--no-verify` |
-| **CI** (GitHub Actions, PR gate) | Pin Python 3.9 → compile every tracked `.py` file → TypeScript + Python typecheck → `pnpm lint` → `pnpm build` → `pnpm test` | Parse all shipped scripts with the real minimum interpreter before running the suite, then enforce `basedpyright` so syntax and type regressions cannot hide in unexecuted templates |
-
-**When to reconsider**: If total test time exceeds 5 minutes, split into fast (unit) and slow (integration) stages. Currently unnecessary.
-
----
+- Pre-commit (`.husky/pre-commit`) runs only `lint-staged` (`.lintstagedrc`: `eslint --fix` and `prettier --write` on `packages/cli/src/**/*.ts`). Do not add tests there; a slow hook gets skipped with `--no-verify`.
+- CI (`.github/workflows/ci.yml`) is the test gate: it compiles every tracked `.py` with the minimum supported Python, typechecks TypeScript and Python (`basedpyright`), then runs lint, build and the full suite.
 
 ## Pre-Development Checklist
 
-Before writing or improving tests:
-
-1. Read [conventions.md](./conventions.md) — file naming, structure, assertion patterns, when to write tests
-2. Read [mock-strategies.md](./mock-strategies.md) — what to mock, how, minimal mocking principle
-3. For command-level tests, read [integration-patterns.md](./integration-patterns.md)
-
----
+1. Read [conventions.md](./conventions.md).
+2. Read [mock-strategies.md](./mock-strategies.md).
+3. For command-level or Python script tests, read [integration-patterns.md](./integration-patterns.md).
 
 ## Quality Check
 
-After writing tests:
+From `packages/cli`:
 
-1. Ensure tests follow conventions (naming, structure, assertions)
-2. Verify mocking is minimal — prefer real code paths
-3. Run validation:
-   ```bash
-   pnpm lint && pnpm typecheck && pnpm test
-   ```
-4. Check coverage decisions — report any gaps with rationale
+```bash
+pnpm lint && pnpm typecheck && pnpm test
+pnpm test test/commands/init.integration.test.ts   # one file
+pnpm test:coverage                                  # coverage report
+```
 
----
-
-**Language**: All documentation should be written in **English**.
+Report any coverage gap you leave, with the reason.

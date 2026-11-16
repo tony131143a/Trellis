@@ -1,6 +1,22 @@
 # Spec Writing
 
-Arbor specs are coding guidance for future agents. They should explain how to work in this repository, not how a generic project might be organized.
+Arbor specs are the rules of this repository for future agents: which parts exist, what each owns, how they interact, and how code is written among them. They explain how to work here, not how a generic project might be organized, and not what the code does line by line.
+
+## What Belongs
+
+Agents read the spec for an area before every task there. Each line costs context each time, and a line that describes one feature goes stale when that feature changes. Keep what stays true across features:
+
+- The framework: the systems or modules, what each owns, how they interact (who may call whom, through which public surface, who owns a shared contract).
+- Engineering rules: layering, ownership, transactions, error delivery, naming, how tests are organised.
+- Checks and commands that are specific and reliable.
+
+Leave out:
+
+- How a single feature works: flows, state transitions, request and response fields, error codes, config keys. The code and its tests are the source.
+- Target designs, decision records, migration status, history.
+- What a guard already checks, beyond one line that states the rule and names the guard.
+
+Test each candidate with two questions: would it still apply to a different feature in the same area, and will it still be true after the next few features land? A good spec doc changes rarely.
 
 ## Write From Evidence
 
@@ -11,7 +27,7 @@ Each important rule should be backed by one of these:
 - A project document that defines the convention.
 - A repeated pattern across multiple files.
 
-Use short snippets only when they make the rule clearer. Prefer linking to the file path and naming the symbol or behavior.
+Name the file path and the symbol or behavior. Quote code only when a few lines make the rule clearer.
 
 ## File Structure
 
@@ -28,8 +44,8 @@ Keep the spec tree aligned with the project:
 Good spec sections include:
 
 - When the rule applies.
-- The local pattern to follow.
-- The source or test files that prove the pattern.
+- The rule, as a sentence that says what must or must not happen, with the reason when it is not obvious.
+- The source, test or guard that shows or enforces it.
 - Common mistakes or anti-patterns.
 - Verification commands or checks when they are specific and reliable.
 
@@ -39,6 +55,8 @@ Avoid:
 - Generic framework advice.
 - Tool instructions that only work in one agent host.
 - Long copied code blocks.
+- Signature, field or error-code tables copied from the code.
+- Walkthroughs of how one feature works.
 - Rules based on a single accidental implementation detail.
 
 ## Example Shape
@@ -67,4 +85,4 @@ Before finishing:
 grep -R "To be filled\\|TODO: fill\\|placeholder" .arbor/spec
 ```
 
-Also check links, index files, and whether any spec still describes a template rather than this repository.
+Also check links, index files, and whether any spec still describes a template rather than this repository. Then read each doc once more and ask which lines would have to change if a single feature changed; those lines are feature detail and come out.

@@ -6,566 +6,95 @@ last_verified: 2026-11-13
 
 > **Purpose**: Catch platform-specific assumptions before they become bugs.
 
----
+Most cross-platform bugs come from implicit assumptions: that the shebang works, that `/` is the separator, that line endings are `\n`, that `grep` exists, that UTF-8 is the default. If it is not explicit, it is an assumption.
 
-## Why This Matters
+## 1. Script Execution
 
-**Most cross-platform bugs come from implicit assumptions**:
+Shebangs and `./script.py` do not work on Windows, and `python3` may not exist there (`python` usually does).
 
-- Assumed shebang works → breaks on Windows
-- Assumed `/` path separator → breaks on Windows
-- Assumed `\n` line endings → inconsistent behavior
-- Assumed command availability → `grep` vs `findstr`
+- User-facing docs, help text and error messages either state the rule (`python` on Windows, `python3` elsewhere) or render the command through the same `{{PYTHON_CMD}}` placeholder the code uses.
+- Config generated at init time uses the placeholder, resolved by platform detection; JavaScript that calls Python at runtime chooses the command by platform.
+- When Python must be verified as installed, render and execute exactly the command the probe accepted: `resolveSupportedPython()` (`commands/init.ts`) caches it with `setResolvedPythonCommand` (`configurators/shared.ts`) so every later template uses it. Do not probe one alias and render another.
+- The Python an AI CLI host spawns may not be your shell's `python3`: a minimal PATH can resolve to macOS system 3.9. Distributed templates target the lowest plausible version; see `cli/backend/script-conventions.md` for the PEP 604 rule.
+- Python calling Python uses `sys.executable`, not a hardcoded command.
 
----
+## 2. Path Handling
 
-## Platform Differences Checklist
+- Python uses `pathlib.Path` for every path operation, never string concatenation.
 
-### 1. Script Execution
+### Logical key vs filesystem path
 
-| Assumption | macOS/Linux | Windows |
-|------------|-------------|---------|
-| Shebang (`#!/usr/bin/env python3`) | ✅ Works | ❌ Ignored |
-| Direct execution (`./script.py`) | ✅ Works | ❌ Fails |
-| `python3` command | ✅ Always available | ⚠️ May need `python` |
-| `python` command | ⚠️ May be Python 2 | ✅ Usually Python 3 |
+A path string passed straight to `fs.*` stays OS-native. A path string that crosses OSes or is persisted (a Map key consumed elsewhere, a JSON field, a hash dictionary key) is POSIX.
 
-**Rule 1**: For user-facing docs, help text, and error messages, either:
+- Normalize with `toPosix` (`packages/cli/src/utils/posix.ts`) once at the boundary (collector exit or write time), not with `replaceAll` at every `path.join`.
+- This holds for writes too: `writeTemplateMap` (`configurators/shared.ts`) splits the map key on `/`, so a backslashed key writes one oddly named file instead of nested directories.
+- `path.relative()` yields `\` on Windows; `toPosix` it before using it as a lookup key.
 
-- state the platform rule explicitly (`python` on Windows, `python3` elsewhere), or
-- render the command through the same platform-aware helper / placeholder the code uses.
+## 3. Line Endings
 
-```python
-# BAD - Assumes shebang works
-print("Usage: ./script.py <args>")
-print("Run: script.py <args>")
+- `.gitattributes` enforces LF.
+- Content hashed or compared across OSes normalizes `\r\n` to `\n` first: `.gitattributes` governs only checkout, and files written by users, scripts or `core.autocrlf=true` can still be CRLF. Exemplar: `computeHash` in `packages/cli/src/utils/template-hash.ts`.
 
-# GOOD - Platform-aware wording
-print("Usage: python on Windows, python3 elsewhere")
-print("Run: {{PYTHON_CMD}} ./.arbor/scripts/arbor.py <args>")
-```
+## 4. Environment Variables
 
-**Rule 2**: When generating config files at init time, use placeholder + platform detection:
+- `HOME` is not set on Windows, the `PATH` separator differs, and names are case-insensitive there. Use `Path.home()` instead of reading `HOME`.
 
-```typescript
-// In the template (the opt-in statusLine entry configurators/claude.ts adds to settings.json):
-{ "command": "{{PYTHON_CMD}} .claude/hooks/statusline.py" }
+## 5. Command Availability
 
-// In configurator:
-function getPythonCommand(): string {
-  return process.platform === "win32" ? "python" : "python3";
-}
+- `grep`, `cat` and `tail -f` do not exist on Windows and `find` differs. Use the Python standard library instead of shell commands where possible.
 
-function replacePlaceholders(content: string): string {
-  return content.replace(/\{\{PYTHON_CMD\}\}/g, getPythonCommand());
-}
-```
+## 6. File Encoding
 
-**Rule 3**: When calling Python at runtime from JavaScript, detect platform dynamically:
+- Windows terminals and file I/O default to the system locale (CP1252, GBK). File I/O and subprocess calls pass `encoding="utf-8"` and `errors="replace"`.
+- Git commands force UTF-8 output with `-c i18n.logOutputEncoding=UTF-8` (`common/git.py`).
+- Scripts that print non-ASCII configure stdout encoding; see `cli/backend/script-conventions.md` → "Cross-platform".
 
-```javascript
-import { platform } from "os"
+## 7. External Data and Tool Contracts
 
-const PYTHON_CMD = platform() === "win32" ? "python" : "python3"
-execSync(`${PYTHON_CMD} "${scriptPath}"`, { ... })
-```
+- Formats of external tools (Claude Code, Codex, Orca) are verified from their documentation, not guessed.
+- TypeScript types are compile-time only. JSON files, API responses and user input are checked for required fields before use (filter or return early).
 
-**Rule 4**: If you need to verify Python is actually installed (not just choose
-the command), render and execute exactly the command the probe accepted. Arbor's
-helper is `resolveSupportedPython()` in `commands/init.ts`: it honors
-`ARBOR_PYTHON_CMD` (no probe), otherwise tries the platform's
-`PYTHON_CANDIDATES` in order (`python3`, `python`; on Windows `python`,
-`python3`, `py -3`), accepts the first whose `--version` is ≥ 3.9, and caches it
-with `setResolvedPythonCommand` (`configurators/shared.ts`) so every template
-written afterwards (`getPythonCommandForPlatform`, `replacePythonCommandLiterals`)
-uses the probed command. Don't probe one alias and render another.
+## Cross-Platform Persisted JSON
 
-**Rule 5**: Don't assume the Python version the AI CLI uses matches your shell's `python3`. The user's terminal may resolve `python3` → homebrew 3.11, but AI CLI hosts (including enterprise-forked Claude Code distributions) spawn subprocesses with a minimal PATH that resolves `python3` → `/usr/bin/python3` → macOS system 3.9. Distributed templates must either target the lowest plausible version or use `from __future__ import annotations` for PEP 604 syntax. See `cli/backend/script-conventions.md` → **CRITICAL: PEP 604 Annotations Require `from __future__ import annotations`** for the hard rule and audit check.
-
-**Rule 6**: When calling Python from Python, use `sys.executable`:
-
-```python
-import sys
-import subprocess
-
-# BAD - Hardcoded command
-subprocess.run(["python3", "other_script.py"])
-
-# GOOD - Use current interpreter
-subprocess.run([sys.executable, "other_script.py"])
-```
-
-### 2. Path Handling
-
-| Assumption | macOS/Linux | Windows |
-|------------|-------------|---------|
-| `/` separator | ✅ Works | ⚠️ Sometimes works |
-| `\` separator | ❌ Escape char | ✅ Native |
-| `pathlib.Path` | ✅ Works | ✅ Works |
-
-**Rule (Python)**: Use `pathlib.Path` for all path operations.
-
-```python
-# BAD - String concatenation
-path = base + "/" + filename
-
-# GOOD - pathlib
-from pathlib import Path
-path = Path(base) / filename
-```
-
-#### Logical key vs filesystem path (TypeScript)
-
-A path string has two distinct roles. **Treat them differently.**
-
-| Role | OS-native (`\` on Windows) | Always POSIX (`/`) |
-|------|---------------------------|--------------------|
-| `fs.readFileSync(p)` / `path.join(cwd, x)` for fs call | ✅ Required | ❌ May fail on Windows |
-| `Map<relPath, content>` key, JSON field, hash dictionary key, anything persisted across OS | ❌ Cross-OS mismatch | ✅ Required |
-
-**Rule**: Anywhere a path string crosses OS or persists (Map keys consumed by another OS, JSON fields, hash dictionary keys), normalize to POSIX. Anywhere it goes straight to `fs.*`, leave OS-native.
-
-**Single source of truth**: `packages/cli/src/utils/posix.ts` exports `toPosix(p)`. Don't sprinkle `replaceAll('\\', '/')` at every `path.join` site — apply `toPosix` **once at the boundary**: collector exit (Map key entering hash dictionary) or write-time (`saveHashes` before `JSON.stringify`).
-
-**This rule is now load-bearing for writes too**, not just for hash lookups: `writeTemplateMap` (`configurators/shared.ts`) reconstructs the target path by splitting the map key on `/`. A backslashed key would write one file named `a\b\c.md` instead of three nested directories.
-
-```typescript
-// BAD - logical key carries OS-native separator
-function collectTemplates(): Map<string, string> {
-  const files = new Map<string, string>();
-  for (const entry of walk(dir)) {
-    files.set(path.join(".claude", entry), readFile(entry));  // \ on Windows
-  }
-  return files;
-}
-
-// GOOD - normalize at the boundary
-import { toPosix } from "../utils/posix.js";
-
-function collectTemplates(): Map<string, string> {
-  const files = new Map<string, string>();
-  for (const entry of walk(dir)) {
-    files.set(toPosix(path.join(".claude", entry)), readFile(entry));
-  }
-  return files;
-}
-
-// ALSO ACCEPTABLE - write-side defense (for storage helpers like saveHashes)
-function saveHashes(cwd: string, hashes: Record<string, string>): void {
-  const normalized = Object.fromEntries(
-    Object.entries(hashes).map(([k, v]) => [toPosix(k), v])
-  );
-  fs.writeFileSync(getHashesPath(cwd), JSON.stringify(normalized, null, 2));
-}
-```
-
-**Common offender**: `path.relative(cwd, fullPath)` produces `\` on Windows. If you then use that string as a hash dictionary lookup key (`hashes[relPath]`), `toPosix` it first, or the lookup misses on Windows.
-
-### 3. Line Endings
-
-| Format | macOS/Linux | Windows | Git |
-|--------|-------------|---------|-----|
-| `\n` (LF) | ✅ Native | ⚠️ Some tools | ✅ Normalized |
-| `\r\n` (CRLF) | ⚠️ Extra char | ✅ Native | Converted |
-
-**Rule 1**: Use `.gitattributes` to enforce consistent line endings.
-
-```gitattributes
-* text=auto eol=lf
-*.sh text eol=lf
-*.py text eol=lf
-```
-
-**Rule 2**: When hashing or comparing **content** across platforms, normalize line endings before computing the hash. `.gitattributes` only governs git checkout — files written by users, scripts, or `core.autocrlf=true` may still arrive as CRLF, and `sha256(LF)` ≠ `sha256(CRLF)` for otherwise-identical content.
-
-```typescript
-// BAD - Windows users with autocrlf=true get a different hash
-export function computeHash(content: string): string {
-  return createHash("sha256").update(content, "utf-8").digest("hex");
-}
-
-// GOOD - normalize before hashing so logical content hashes identically
-export function computeHash(content: string): string {
-  const normalized = content.replace(/\r\n/g, "\n");
-  return createHash("sha256").update(normalized, "utf-8").digest("hex");
-}
-```
-
-Apply this rule wherever the hash crosses OS boundaries (template hash dictionary, content fingerprints stored in JSON).
-
-### 4. Environment Variables
-
-| Variable | macOS/Linux | Windows |
-|----------|-------------|---------|
-| `HOME` | ✅ Set | ❌ Use `USERPROFILE` |
-| `PATH` separator | `:` | `;` |
-| Case sensitivity | ✅ Case-sensitive | ❌ Case-insensitive |
-
-**Rule**: Use `pathlib.Path.home()` instead of environment variables.
-
-```python
-# BAD
-home = os.environ.get("HOME")
-
-# GOOD
-home = Path.home()
-```
-
-### 5. Command Availability
-
-| Command | macOS/Linux | Windows |
-|---------|-------------|---------|
-| `grep` | ✅ Built-in | ❌ Not available |
-| `find` | ✅ Built-in | ⚠️ Different syntax |
-| `cat` | ✅ Built-in | ❌ Use `type` |
-| `tail -f` | ✅ Built-in | ❌ Not available |
-
-**Rule**: Use Python standard library instead of shell commands when possible.
-
-```python
-# BAD - tail -f is not available on Windows
-subprocess.run(["tail", "-f", log_file])
-
-# GOOD - Cross-platform implementation
-def tail_follow(file_path: Path) -> None:
-    """Follow a file like 'tail -f', cross-platform compatible."""
-    with open(file_path, "r", encoding="utf-8", errors="replace") as f:
-        f.seek(0, 2)  # Go to end
-        while True:
-            line = f.readline()
-            if line:
-                print(line, end="", flush=True)
-            else:
-                time.sleep(0.1)
-```
-
-### 6. File Encoding
-
-| Default Encoding | macOS/Linux | Windows |
-|------------------|-------------|---------|
-| Terminal | UTF-8 | Often CP1252 or GBK |
-| File I/O | UTF-8 | System locale |
-| Git output | UTF-8 | May vary |
-
-**Rule**: Always explicitly specify `encoding="utf-8"` and use `errors="replace"`.
-
-> **Checklist**: When writing scripts that print non-ASCII, did you configure stdout encoding?
-> See `backend/script-conventions.md` for the specific pattern.
-
-```python
-# BAD - Relies on system default
-with open(file, "r") as f:
-    content = f.read()
-
-result = subprocess.run(cmd, capture_output=True, text=True)
-
-# GOOD - Explicit encoding with error handling
-with open(file, "r", encoding="utf-8", errors="replace") as f:
-    content = f.read()
-
-result = subprocess.run(
-    cmd,
-    capture_output=True,
-    text=True,
-    encoding="utf-8",
-    errors="replace"
-)
-```
-
-**Git commands**: Force UTF-8 output encoding:
-
-```python
-# Force git to output UTF-8
-git_args = ["git", "-c", "i18n.logOutputEncoding=UTF-8"] + args
-result = subprocess.run(
-    git_args,
-    capture_output=True,
-    text=True,
-    encoding="utf-8",
-    errors="replace"
-)
-```
-
----
+When a JSON file is read and written across OSes and an older format with cross-platform pollution (backslashed keys, CRLF-derived hashes) may already be on disk, give it a `__version` sentinel and have the loader discard legacy or unknown versions so the writer regenerates clean data. Discarding is safer than migrating in place because the corrections are correlated. Apply it only to recomputable data (hash dictionaries, caches); data the user would miss (task state, drafts, typed settings) gets a real migration. Exemplar: `HASHES_SCHEMA_VERSION` in `packages/cli/src/utils/template-hash.ts`.
 
 ## Change Propagation Checklist
 
-When making platform-related changes, check **all these locations**:
+- [ ] A new skill reaches every platform in `PLATFORM_IDS` (`configurators/index.ts`), not a remembered set
+- [ ] Docstrings, `--help` / argparse text, README usage, error messages that suggest commands, and Markdown docs are updated
+- [ ] `src/templates/`, the dogfooded `.arbor/scripts/` and the rebuilt `dist/` all carry the change
+- [ ] Searched for every affected location:
 
-### Skills Sync
-- [ ] New skill added to ALL platforms — the list is `PLATFORM_IDS` in `configurators/index.ts` (currently Claude Code and Codex), not a remembered set
-
-### Documentation & Help Text
-- [ ] Docstrings at top of Python files
-- [ ] `--help` output / argparse descriptions
-- [ ] Usage examples in README
-- [ ] Error messages that suggest commands
-- [ ] Markdown documentation (`.md` files)
-
-### Code Locations
-- [ ] `src/templates/` - Template files for new projects
-- [ ] `.arbor/scripts/` - Project's own scripts (if self-hosting)
-- [ ] `dist/` - Built output (rebuild after changes)
-
-### Search Pattern
 ```bash
-# Find all places that might need updating
-grep -r "python [a-z]" --include="*.py" --include="*.md"
 grep -r "{{PYTHON_CMD}}\\|python3\\|python " --include="*.py" --include="*.md"
 ```
 
----
-
 ## Pre-Commit Checklist
 
-Before committing cross-platform code:
-
-- [ ] User-facing Python invocations are platform-aware (`python` on Windows, `python3` elsewhere) or use `{{PYTHON_CMD}}`
+- [ ] User-facing Python invocations are platform-aware or use `{{PYTHON_CMD}}`
 - [ ] Python subprocesses from Python use `sys.executable`
-- [ ] All paths use `pathlib.Path`
-- [ ] No hardcoded path separators (`/` or `\`)
-- [ ] Path strings used as logical/persisted keys (Map keys, JSON fields, hash dictionary keys) are normalized via `toPosix()`; `fs.*` calls keep OS-native paths
-- [ ] Content hashes computed across OSes normalize line endings (`\r\n` → `\n`) before hashing
-- [ ] Cross-OS JSON with potential legacy pollution carries a `__version` sentinel and the loader discards unknown/legacy versions
-- [ ] No platform-specific commands without fallbacks (e.g., `tail -f`)
-- [ ] All file I/O specifies `encoding="utf-8"` and `errors="replace"`
-- [ ] All subprocess calls specify `encoding="utf-8"` and `errors="replace"`
+- [ ] Paths use `pathlib.Path`; no hardcoded separators
+- [ ] Logical/persisted path keys go through `toPosix()`; `fs.*` calls keep OS-native paths
+- [ ] Cross-OS content hashes normalize line endings first
+- [ ] Cross-OS JSON with possible legacy pollution carries a `__version` sentinel
+- [ ] No platform-specific commands without a fallback
+- [ ] File I/O and subprocess calls specify `encoding="utf-8"` and `errors="replace"`
 - [ ] Git commands use `-c i18n.logOutputEncoding=UTF-8`
-- [ ] External tool API formats verified from documentation
+- [ ] External tool formats verified from documentation
 - [ ] Documentation matches code behavior
-- [ ] Ran search to find all affected locations
 
-### 7. External Tool API Contracts
+When you find a platform bug: fix it, grep for the same pattern elsewhere, and add the question here if it can recur.
 
-When integrating with external tools (Claude Code, Codex, Orca, etc.), their API contracts are **implicit assumptions**.
+## Release Checklist
 
-**Rule**: Verify API formats from official documentation, don't guess.
+Versioned files:
 
----
+- [ ] `src/migrations/manifests/<version>.json` exists with the correct version, description and changelog
+- [ ] `pnpm build` copies the manifests to `dist/`
+- [ ] The upgrade path is tested from older versions, not only the adjacent one; a missing manifest breaks upgrades from older versions
 
-## Cross-Platform Persisted JSON: Schema Migration Sentinel
+Bundled assets (docs and changelog can move independently of the branch that owns the templates):
 
-When a JSON file may be read/written across OSes (committed to git, synced via cloud, copied between machines) **and an older format may already exist on user disks with cross-platform pollution** (Windows-style keys, CRLF-derived hashes, locale-encoded strings), add a `__version` sentinel and let the loader discard old formats so the writer regenerates clean data.
-
-**Why not migrate-in-place?** Path-key migration (`\\` → `/`) plus hash-input migration (CRLF → LF re-hash) plus encoding fixes are correlated — trying to translate the old payload risks producing wrong values. Discarding and regenerating is **safe**: the data is recomputable from disk, and `loadX` returning `{}` triggers the existing init/update path to rebuild canonical entries.
-
-```typescript
-const SCHEMA_VERSION = 2;
-type StoredV2 = { __version: number; hashes: Record<string, string> };
-
-export function loadHashes(cwd: string): Record<string, string> {
-  const file = getHashesPath(cwd);
-  if (!fs.existsSync(file)) return {};
-
-  try {
-    const parsed = JSON.parse(fs.readFileSync(file, "utf-8")) as unknown;
-
-    // Reject legacy flat format (no __version) and unknown versions.
-    // The next saveHashes / initializeHashes will write a fresh v2 file.
-    if (
-      !parsed ||
-      typeof parsed !== "object" ||
-      (parsed as StoredV2).__version !== SCHEMA_VERSION ||
-      typeof (parsed as StoredV2).hashes !== "object"
-    ) {
-      return {};
-    }
-    return (parsed as StoredV2).hashes;
-  } catch {
-    return {};
-  }
-}
-
-export function saveHashes(cwd: string, hashes: Record<string, string>): void {
-  const payload: StoredV2 = { __version: SCHEMA_VERSION, hashes };
-  fs.writeFileSync(getHashesPath(cwd), JSON.stringify(payload, null, 2));
-}
-```
-
-**When to apply**:
-- Hash dictionaries / content fingerprints (e.g., `.template-hashes.json`)
-- Cache files where stale entries are recomputable from authoritative source
-- Any cross-OS persisted file where format change correlates with cross-platform fixes
-
-**When NOT to apply** — if losing the data hurts the user (task state, drafts, settings the user typed). Use real migration there. Sentinel + discard is only safe when data is recomputable.
-
-**Reference**: `packages/cli/src/utils/template-hash.ts` v2 envelope (`HASHES_SCHEMA_VERSION = 2`).
-
----
-
-## JSON/External Data Defensive Checks
-
-When parsing JSON or external data, TypeScript types are **compile-time only**. Runtime data may not match.
-
-**Rule**: Always add defensive checks for required fields before using them.
-
-```typescript
-// BAD - Trusts TypeScript type definition
-interface MigrationItem {
-  from: string;  // TypeScript says required
-  to?: string;
-}
-
-function process(item: MigrationItem) {
-  const path = item.from;  // Runtime: could be undefined!
-}
-
-// GOOD - Defensive check before use
-function process(item: MigrationItem) {
-  if (!item.from) return;  // Skip invalid data
-  const path = item.from;  // Now guaranteed
-}
-```
-
-**When to apply**:
-- Parsing JSON files (manifests, configs)
-- API responses
-- User input
-- Any data from external sources
-
-**Pattern**: Check existence → then use
-
-```typescript
-// Filter pattern - skip invalid items
-const validItems = items.filter(item => item.from && item.to);
-
-// Early return pattern - bail on invalid
-if (!data.requiredField) {
-  console.warn("Missing required field");
-  return defaultValue;
-}
-```
-
----
-
-## Common Mistakes
-
-### 1. "It works on my Mac"
-
-```python
-# Developer's Mac
-subprocess.run(["./script.py"])  # Works!
-
-# User's Windows
-subprocess.run(["./script.py"])  # FileNotFoundError
-```
-
-### 2. "The shebang should handle it"
-
-```python
-#!/usr/bin/env python3
-# This line is IGNORED on Windows
-```
-
-### 3. "I updated the template"
-
-```
-src/templates/script.py  ← Updated
-.arbor/scripts/script.py  ← Forgot to sync!
-```
-
-No longer silent: a `.py` byte difference between the two trees fails the
-test suite. See `cli/backend/script-conventions.md` → "Two script trees, one
-content".
-
-### 4. "Python 3 is always python3"
-
-```bash
-# Developer's Mac/Linux
-python3 script.py  # Works!
-
-# User's Windows (Python from python.org)
-python3 script.py  # 'python3' is not recognized
-python script.py   # Works!
-
-# Arbor docs/config should say the rule, not guess one alias everywhere
-{{PYTHON_CMD}} script.py
-```
-
-### 5. "UTF-8 is the default everywhere"
-
-```python
-# Developer's Mac (UTF-8 default)
-subprocess.run(cmd, capture_output=True, text=True)  # Works!
-
-# User's Windows (GBK/CP1252 default)
-subprocess.run(cmd, capture_output=True, text=True)  # Garbled Chinese/Unicode
-```
-
-> **Note**: stdout encoding is also affected. See `backend/script-conventions.md` for the fix.
-
----
-
-## Recovery: When You Find a Platform Bug
-
-1. **Fix the immediate issue**
-2. **Search for similar patterns** (grep the codebase)
-3. **Update this guide** with the new pattern
-4. **Add to pre-commit checklist** if recurring
-
----
-
-**Core Principle**: If it's not explicit, it's an assumption. And assumptions break.
-
----
-
-## Release Checklist: Versioned Files
-
-When releasing a new version, ensure **all versioned files** are created/updated:
-
-- [ ] `src/migrations/manifests/{version}.json` - Migration manifest exists
-- [ ] Manifest has correct version, description, changelog
-- [ ] `pnpm build` copies manifests to `dist/`
-- [ ] Test upgrade path from older versions (not just adjacent)
-
-**Why this matters**: Missing manifests cause "path undefined" errors when users upgrade from older versions.
-
-```bash
-# Verify all expected manifests exist (from packages/cli)
-ls src/migrations/manifests/
-
-# Test upgrade path (ESM package: use a dynamic import)
-node --input-type=module -e "
-const { getMigrationsForVersion } = await import('./dist/migrations/index.js');
-const { VERSION } = await import('./dist/constants/version.js');
-console.log('From 0.1.0:', getMigrationsForVersion('0.1.0', VERSION).length);
-"
-```
-
-## Release Checklist: Bundled Assets
-
-When release notes or docs claim an asset is bundled, installed automatically, or
-included with Arbor, verify the whole distribution path:
-
-- [ ] Source file exists in the branch being tagged, not only in another branch,
-  or the docs tree.
-- [ ] `pnpm build` copies the asset into `dist/templates/**`.
-- [ ] `npm pack --dry-run --json` includes the expected `dist/**` path.
-- [ ] The built binary installs the asset in a fresh temp repository.
-- [ ] `.arbor/.template-hashes.json` tracks the generated asset path.
-- [ ] `arbor update --dry-run` reports `Already up to date!` in that temp
-  repository.
-
-**Why this matters**: docs/changelog text can move independently from the code
-branch that owns distributable templates. A feature can be documented as bundled
-while the published npm tarball still lacks the files.
-
-```bash
-pnpm --filter @tony131143a/arbor build
-
-cd packages/cli
-npm pack --dry-run --json | grep 'dist/templates/common/bundled-skills/<skill>/SKILL.md'
-cd ../..
-
-tmpdir=$(mktemp -d /tmp/arbor-built-bin-smoke-XXXXXX)
-printf '{"name":"arbor-smoke","version":"0.0.0"}\n' > "$tmpdir/package.json"
-git -C "$tmpdir" init -q
-(
-  cd "$tmpdir"
-  node /path/to/Arbor/packages/cli/bin/arbor.js init -u smoke --yes --claude --codex
-  test -f .claude/skills/<skill>/SKILL.md
-  test -f .agents/skills/<skill>/SKILL.md
-  grep -q '<skill>' .arbor/.template-hashes.json
-  node /path/to/Arbor/packages/cli/bin/arbor.js update --dry-run
-)
-```
+- [ ] The source file exists in the branch being tagged
+- [ ] `pnpm build` copies it into `dist/templates/**`, and `npm pack --dry-run --json` lists it
+- [ ] The built binary installs it in a fresh temp repository, `.arbor/.template-hashes.json` tracks it, and `arbor update --dry-run` there reports `Already up to date!`

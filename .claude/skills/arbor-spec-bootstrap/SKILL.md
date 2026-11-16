@@ -7,12 +7,14 @@ description: "Bootstrap project-specific Arbor coding specs with a single-agent 
 
 Use this skill to create or refresh `.arbor/spec/` guidelines from the real codebase. One capable agent owns the full loop: analyze the repository, choose the spec boundaries, write the docs, and verify the result.
 
+The spec is the abstract layer of the project: which parts exist, what each owns, how they interact, and the rules for writing code among them. It is not a description of what the code does. A bootstrap that copies the codebase into prose is long on the first day and wrong within a month; see [references/spec-writing.md](references/spec-writing.md) for what belongs.
+
 ## Workflow
 
 1. Confirm Arbor is initialized and inspect the current `.arbor/spec/` tree.
 2. Analyze the repository architecture with the best available tools: GitNexus, ABCoder, language tooling, and direct source reads.
 3. Decompose the spec work by package and layer only when that reflects the actual codebase.
-4. Fill or reshape the spec files with concrete patterns, file paths, examples, and anti-patterns from the project.
+4. Fill or reshape the spec files with the rules the project actually follows, each pointing at the file, test or guard that shows it.
 5. Verify that the final specs are internally consistent and contain no template placeholders.
 
 ## Reference Routing
@@ -28,13 +30,14 @@ Use this skill to create or refresh `.arbor/spec/` guidelines from the real code
 
 - Treat templates as starting points, not contracts. Delete, rename, split, or add spec files when the repository calls for it.
 - Prefer source-backed rules over generic advice. Every important recommendation should point at a real file or repeated local pattern.
+- Write rules, not walkthroughs. How a single feature works (its flow, fields, error codes, config keys) stays in the code and its tests.
 - Keep execution single-owner by default. Helpers (your own read-only sub-agents) are optional; they research or verify, and only the main agent writes `.arbor/spec/`.
 - Do not leave placeholder text, empty headings, or copied boilerplate in `.arbor/spec/`.
 
 ## Done Criteria
 
 - `.arbor/spec/` describes the project as it exists now.
-- Each relevant package or layer has practical coding guidance with real examples.
+- Each relevant package or layer has its rules, backed by real files, and no doc would need editing when a single feature changes.
 - Non-applicable template sections are removed.
 - `index.md` files match the final spec file set.
 - Any required setup or analysis assumptions are documented in the relevant spec or task notes.

@@ -4,138 +4,45 @@ last_verified: 2026-11-13
 ---
 # Code Reuse Thinking Guide
 
-> **Purpose**: Stop and think before creating new code - does it already exist?
+> **Purpose**: Stop and think before creating new code: does it already exist?
 
----
-
-## The Problem
-
-**Duplicated code is the #1 source of inconsistency bugs.**
-
-When you copy-paste or rewrite existing logic:
-- Bug fixes don't propagate
-- Behavior diverges over time
-- Codebase becomes harder to understand
-
----
+Duplicated code is the main source of inconsistency bugs: fixes do not propagate and behavior diverges.
 
 ## Before Writing New Code
 
-### Step 1: Search First
+Search first (`grep -r` for similar names and logic), then ask:
 
-```bash
-# Search for similar function names
-grep -r "functionName" .
-
-# Search for similar logic
-grep -r "keyword" .
-```
-
-### Step 2: Ask These Questions
-
-| Question | If Yes... |
-|----------|-----------|
-| Does a similar function exist? | Use or extend it |
-| Is this pattern used elsewhere? | Follow the existing pattern |
-| Could this be a shared utility? | Create it in the right place |
-| Am I copying code from another file? | **STOP** - extract to shared |
-
----
-
-## Common Duplication Patterns
-
-### Pattern 1: Copy-Paste Functions
-
-**Bad**: Copying a validation function to another file
-
-**Good**: Extract to shared utilities, import where needed
-
-### Pattern 2: Similar Components
-
-**Bad**: Creating a new component that's 80% similar to existing
-
-**Good**: Extend existing component with props/variants
-
-### Pattern 3: Repeated Constants
-
-**Bad**: Defining the same constant in multiple files
-
-**Good**: Single source of truth, import everywhere
-
-### Pattern 4: Repeated Payload Field Extraction
-
-**Bad**: Multiple consumers cast the same JSON/event fields locally:
-
-```typescript
-const description = (ev as { description?: string }).description;
-const context = (ev as { context?: ContextEntry[] }).context;
-```
-
-This is duplicated contract logic even when the code is only two lines. Each
-consumer now has its own definition of what a valid payload means.
-
-**Good**: Put the decoder, type guard, or projection next to the data owner:
-
-```typescript
-if (isThreadEvent(ev)) {
-  renderThreadEvent(ev);
-}
-```
-
-**Rule**: If the same untyped payload field is read in 2+ places, create a
-shared type guard / normalizer / projection before adding a third reader.
-
----
+- Does a similar function exist? Use or extend it.
+- Is this pattern used elsewhere? Follow it.
+- Could this be a shared utility? Create it in the right place.
+- Am I copying code from another file? Stop and extract it.
+- Am I defining a constant that exists elsewhere? Keep one source of truth.
+- Is a new component 80% like an existing one? Extend it with props or variants.
 
 ## When to Abstract
 
-**Abstract when**:
-- Same code appears 3+ times
-- Logic is complex enough to have bugs
-- Multiple people might need this
+- Abstract when the same code appears 3+ times, the logic is complex enough to have bugs, or several people need it.
+- Do not abstract a one-off, a trivial one-liner, or when the abstraction would be more complex than the duplication.
 
-**Don't abstract when**:
-- Only used once
-- Trivial one-liner
-- Abstraction would be more complex than duplication
+## Shared Contracts
 
----
+- Is the same untyped payload field read in 2+ places with local casts? Put a type guard, normalizer or projection next to the data owner before adding a third reader.
+- Is state derived from action-like values (`action`, `kind`, `status`, `phase`)? One reducer with one `switch` owns the transitions; display code and commands do not duplicate pieces of that replay model.
+- Adding a value to a Python `Literal` type? Python has no exhaustive check, so search every `if/elif/else` chain that switches on it and add an explicit branch; an unknown value raises instead of falling into `else`.
+- Do two mechanisms have to produce the same output (a directory copy and a hand-kept list)? Make one call the other; if the asymmetry cannot be removed, add a test comparing both outputs. When moving a directory structure, search for every code path that references the old one.
+
+## Arbor Template Scripts
+
+- A new file under `packages/cli/src/templates/arbor/scripts/` is registered once, in `getAllScripts()` (`src/templates/arbor/index.ts`); `commands/update.ts` iterates that map, and an unregistered script is never synced to user projects.
+- `.arbor/scripts/` and the template tree stay identical (test-enforced, see `cli/backend/script-conventions.md` → "Two script trees, one content"). Edit the template, then sync, double-checking source and destination:
+
+```bash
+rsync -av --delete --exclude='__pycache__' packages/cli/src/templates/arbor/scripts/ .arbor/scripts/
+```
 
 ## After Batch Modifications
 
-When you've made similar changes to multiple files:
-
-1. **Review**: Did you catch all instances?
-2. **Search**: Run grep to find any missed
-3. **Consider**: Should this be abstracted?
-
-### Reducers Should Use Exhaustive Structure
-
-When state is derived from action-like values (`action`, `kind`, `status`,
-`phase`), prefer a reducer with one `switch` over scattered `if/else` updates.
-
-```typescript
-// BAD - action-specific state transitions are hard to audit
-if (action === "opened") { ... }
-else if (action === "comment") { ... }
-else if (action === "status") { ... }
-
-// GOOD - one reducer owns the transition table
-switch (event.action) {
-  case "opened":
-    ...
-    return;
-  case "comment":
-    ...
-    return;
-}
-```
-
-This matters when the event log is the source of truth. A reducer is the
-documented replay model; display code and commands should not duplicate pieces
-of that replay model.
-
----
+Did you catch all instances? Grep for any you missed, and consider whether the change should be abstracted.
 
 ## Checklist Before Commit
 
@@ -143,82 +50,5 @@ of that replay model.
 - [ ] No copy-pasted logic that should be shared
 - [ ] No repeated untyped payload field extraction outside a shared decoder
 - [ ] Constants defined in one place
-- [ ] Similar patterns follow same structure
+- [ ] Similar patterns follow the same structure
 - [ ] Reducer/action transitions live in one reducer or command dispatcher
-
----
-
-## Gotcha: Python if/elif/else Exhaustive Check
-
-**Problem**: Python's if/elif/else chains have no compile-time exhaustive check. When you add a new value to a `Literal` type (e.g., `Platform`), existing if/elif/else chains silently fall through to `else` with wrong defaults.
-
-**Symptom**: New platform works partially — some methods return Claude defaults instead of platform-specific values. No error is raised.
-
-**Example** (illustrative):
-```python
-# BAD: "codex" falls through to else, returns the Claude default
-def config_dir(platform: str) -> str:
-    if platform == "claude":
-        return ".claude"
-    else:
-        return ".claude"  # codex silently gets ".claude"!
-
-# GOOD: explicit branch for every platform, unknown ids fail loudly
-def config_dir(platform: str) -> str:
-    if platform == "claude":
-        return ".claude"
-    elif platform == "codex":
-        return ".codex"
-    raise ValueError(f"unknown platform: {platform}")
-```
-
-**Prevention**: When adding a new value to a Python `Literal` type, search for ALL if/elif/else chains that switch on that type and add explicit branches. Don't rely on `else` being correct for new values.
-
----
-
-## Gotcha: Asymmetric Mechanisms Producing Same Output
-
-**Problem**: When two different mechanisms must produce the same file set (e.g., recursive directory copy for init vs. manual `files.set()` for update), structural changes (renaming, moving, adding subdirectories) only propagate through the automatic mechanism. The manual one silently drifts.
-
-**Symptom**: Init works perfectly, but update creates files at wrong paths or misses files entirely.
-
-**Prevention**:
-- **Best**: Eliminate the asymmetry — have the manual path call the automatic one (e.g., `collectTemplateFiles()` calls `getAllScripts()` instead of maintaining its own list)
-- **If asymmetry is unavoidable**: Add a regression test that compares outputs from both mechanisms
-- When migrating directory structures, search for ALL code paths that reference the old structure
-
-**Real example**: `arbor update` had a manual `files.set()` list for 11 scripts that `getAllScripts()` already tracked. Fix: replaced the manual list with a `for..of getAllScripts()` loop. See `update.ts` refactor in v0.4.0-beta.3.
-
----
-
-## Template File Registration (Arbor-specific)
-
-When adding new files to `src/templates/arbor/scripts/`:
-
-**Single registration point**: `src/templates/arbor/index.ts`
-
-1. Add `export const xxxScript = readTemplate("scripts/path/file.py");`
-2. Add to `getAllScripts()` Map
-
-That's it. `commands/update.ts` uses `getAllScripts()` directly — no manual sync needed.
-
-**Why this matters**: Without registration in `getAllScripts()`, `arbor update` won't sync the file to user projects. Bug fixes and features won't propagate.
-
-**History**: Before v0.4.0-beta.3, `update.ts` had its own hand-maintained file list that frequently fell out of sync with `getAllScripts()`. This caused 11 Python files to be silently skipped during `arbor update`. The fix was to eliminate the duplicate list and use `getAllScripts()` as the single source of truth.
-
-### Quick Checklist for New Scripts
-
-```bash
-# After adding a new .py file, verify it's in getAllScripts():
-grep -l "newFileName" src/templates/arbor/index.ts  # Should match
-```
-
-### Template Sync Convention
-
-`.arbor/scripts/` (dogfooded) and `packages/cli/src/templates/arbor/scripts/` (template) must stay identical — build-enforced for every `.py` file, see `cli/backend/script-conventions.md` → "Two script trees, one content". The template is the source; after editing it, sync the installed copy:
-
-```bash
-rsync -av --delete --exclude='__pycache__' packages/cli/src/templates/arbor/scripts/ .arbor/scripts/
-```
-
-**Gotcha**: Running rsync with wrong source/destination paths can create nested garbage directories (e.g., `.arbor/scripts/packages/cli/...`). Always double-check paths before running.
