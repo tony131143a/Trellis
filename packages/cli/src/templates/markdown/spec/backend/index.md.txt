@@ -49,14 +49,14 @@ After writing code, verify against these guidelines:
 
 ## How to Fill These Guidelines
 
-For each guideline file:
+These files hold the rules of your project: what stays true whichever feature is being built. For each guideline file:
 
-1. Document your project's **actual conventions** (not ideals)
-2. Include **code examples** from your codebase
-3. List **forbidden patterns** and why
-4. Add **common mistakes** your team has made
+1. Write the conventions the code **actually follows**, not ideals
+2. State each as a rule: what must or must not happen, and why when it is not obvious
+3. Point at the file, test or lint rule that shows or enforces it, instead of pasting the code
+4. Leave out how a single feature works (its flow, fields, error codes): the code and its tests are the source for that
 
-The goal is to help AI assistants and new team members understand how YOUR project works.
+Test each line with two questions: would it still apply to a different feature in the same area, and will it still be true after the next few features land?
 
 ---
 
