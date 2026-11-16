@@ -177,7 +177,7 @@ const SKILL_DESCRIPTIONS: Record<string, string> = {
   arbor:
     "Drive a task that is too large for one context or splits into parallel parts: freeze a contract with the user, split the work into nodes that Orca workers implement in their own worktrees, react to results, review, finish. Use for multi-file features, refactors and cross-repository work; not for a change you can make and verify yourself.",
   "update-spec":
-    "Captures executable contracts and coding conventions into .arbor/spec/ documents. Use when learning something valuable from debugging, implementing, or discussion that should be preserved for future sessions.",
+    "Decides whether something learned belongs in .arbor/spec/ and, when it does, records it as a short rule that holds across features. Use after a task, bug fix or review surfaced a convention, a module boundary or a recurring mistake, when a spec doc disagrees with the code, or when asked to update, trim or re-verify spec docs. Not for documenting how a single feature works.",
 };
 
 /**
