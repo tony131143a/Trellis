@@ -1,0 +1,27 @@
+.arbor/spec/cli/backend/script-conventions.md
+  s_abe0d878df1269::t_f1067dd7f16e94 143
+.arbor/spec/cli/backend/spec-lint.md
+  s_abe0d878df1269::t_a778b2f3805f3f 5,7,10,27,89
+packages/cli/src/migrations/manifests/1.0.0.json
+  s_abe0d878df1269::t_306155de52a01b 502-511
+packages/cli/src/templates/arbor/scripts/common/spec_lint.py
+  s_abe0d878df1269::t_313e75135ddf27 553,570,590,592
+packages/cli/src/templates/arbor/scripts/spec.py
+  s_abe0d878df1269::t_caa40182296375 6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "6a4c6b0bbe08657cfa40d04c23bf96a4fb9a0934",
+  "prompts": {},
+  "sessions": {
+    "s_abe0d878df1269": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3830cf95-a427-4b9c-8535-405fa328e10f",
+        "model": "deepseek-v4.1-flash-1017"
+      },
+      "human_author": "tangxk <71157673@chinatelecom.cn>"
+    }
+  }
+}
