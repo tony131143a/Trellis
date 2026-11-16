@@ -499,6 +499,16 @@
       "type": "delete",
       "from": ".codex/hooks/session-start.py",
       "description": "Arbor hooks removed in 1.0 (no hooks at all)"
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".arbor/scripts/common/spec_trace.py",
+      "description": "spec change provenance of task.py archive; 1.0 never wrote it, `spec.py lint --provenance` removed",
+      "allowed_hashes": [
+        "8b49baa7bd355e65237b685b582a432d795f0db40e320f1997c8b125f26de592",
+        "1aa4e07ad0a5fe770e81a4e2647d77802299fa7f45251b93c1acfa44dd1de82f",
+        "2e190ac13ff69405ab9189e582e572f4cebe8605e3aa73db36349d7e843dcff7"
+      ]
     }
   ],
   "configSectionsAdded": [],

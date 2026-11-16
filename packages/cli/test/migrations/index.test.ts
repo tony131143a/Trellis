@@ -486,7 +486,8 @@ describe("1.0.0 manifest", () => {
     expect(getAllMigrationVersions()).toContain("1.0.0");
     const migrations = getMigrationsForVersion("0.11.0", "1.0.0");
     expect(migrations.length).toBeGreaterThan(0);
-    expect(new Set(migrations.map((m) => m.type))).toEqual(new Set(["delete"]));
+    for (const m of migrations)
+      expect(["delete", "safe-file-delete"]).toContain(m.type);
     const metadata = getMigrationMetadata("0.11.0", "1.0.0");
     expect(metadata.breaking).toBe(true);
     expect(metadata.recommendMigrate).toBe(true);

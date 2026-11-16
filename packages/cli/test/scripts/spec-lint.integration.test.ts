@@ -227,10 +227,6 @@ interface JsonReport {
   docs: number;
   findings: JsonFinding[];
   summary: { errors: number; warnings: number; info: number };
-  provenance?: Record<
-    string,
-    { task: string; completedAt: string | null; source: string }[]
-  >;
 }
 
 /** spec.py stamps `date.today()` (local date); match it instead of UTC. */
@@ -297,7 +293,6 @@ describe.skipIf(!hasPython())("spec.py lint", () => {
 
     expect(report.docs).toBe(11);
     expect(report.summary).toEqual({ errors: 2, warnings: 5, info: 2 });
-    expect(report.provenance).toBeUndefined();
     expect(
       report.findings.map((f) => `${f.rule} ${f.path}:${f.line}`).sort(),
     ).toEqual(expected);
@@ -458,50 +453,6 @@ describe.skipIf(!hasPython())("spec.py lint", () => {
       "invalid-source:3",
       "invalid-source:4",
     ]);
-  });
-
-  it("--provenance reads spec_changes from archived task.json (R6)", () => {
-    writeCleanFixture(tmp);
-    write(tmp, ".arbor/tasks/archive/2026-10/10-01-older/task.json", [
-      JSON.stringify({
-        completedAt: "2026-10-02",
-        spec_changes: [".arbor/spec/backend/good.md"],
-        spec_changes_source: "since-created",
-      }),
-    ]);
-    write(tmp, ".arbor/tasks/archive/2026-10/10-20-newer/task.json", [
-      JSON.stringify({
-        completedAt: "2026-10-21",
-        spec_changes: [
-          ".arbor/spec/backend/good.md",
-          ".arbor/spec/backend/gone.md",
-        ],
-        spec_changes_source: "branch-diff",
-      }),
-    ]);
-
-    const j = runSpec(tmp, "lint", "--json", "--provenance");
-    const report = JSON.parse(j.stdout) as JsonReport;
-    expect(report.provenance).toEqual({
-      ".arbor/spec/backend/good.md": [
-        {
-          task: "10-20-newer",
-          completedAt: "2026-10-21",
-          source: "branch-diff",
-        },
-        {
-          task: "10-01-older",
-          completedAt: "2026-10-02",
-          source: "since-created",
-        },
-      ],
-    });
-
-    const t = runSpec(tmp, "lint", "--provenance");
-    expect(t.stdout).toContain(
-      ".arbor/spec/backend/good.md  last changed by 10-20-newer (2026-10-21)",
-    );
-    expect(t.stdout).not.toContain("gone.md");
   });
 });
 

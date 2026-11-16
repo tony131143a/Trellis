@@ -42,7 +42,6 @@ export const commonArborConfig = readTemplate("scripts/common/arbor_config.py");
 export const commonSafeCommit = readTemplate("scripts/common/safe_commit.py");
 export const commonSpecMeta = readTemplate("scripts/common/spec_meta.py");
 export const commonSpecLint = readTemplate("scripts/common/spec_lint.py");
-export const commonSpecTrace = readTemplate("scripts/common/spec_trace.py");
 export const commonContract = readTemplate("scripts/common/contract.py");
 export const commonExecution = readTemplate("scripts/common/execution.py");
 export const commonWorktree = readTemplate("scripts/common/worktree.py");
@@ -96,7 +95,6 @@ export function getAllScripts(): Map<string, string> {
     ["common/safe_commit.py", commonSafeCommit],
     ["common/spec_meta.py", commonSpecMeta],
     ["common/spec_lint.py", commonSpecLint],
-    ["common/spec_trace.py", commonSpecTrace],
     ["common/contract.py", commonContract],
     ["common/execution.py", commonExecution],
     ["common/worktree.py", commonWorktree],

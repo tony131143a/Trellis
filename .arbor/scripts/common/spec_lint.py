@@ -44,7 +44,6 @@ from .spec_meta import (
     parse_frontmatter,
     set_last_verified,
 )
-from .spec_trace import collect_provenance
 
 SEV_ERROR = "error"
 SEV_WARN = "warn"
@@ -551,22 +550,12 @@ def _plural(n: int, word: str) -> str:
     return f"{n} {word}" if n == 1 else f"{n} {word}s"
 
 
-def render_text(
-    docs: int,
-    findings: list[Finding],
-    provenance: dict[str, list[dict]] | None = None,
-) -> str:
+def render_text(docs: int, findings: list[Finding]) -> str:
     lines: list[str] = []
     for f in findings:
         lines.append(
             f"{_SEVERITY_LABEL[f.severity]:<5} {f.rule:<16} {f.path}:{f.line}  {f.message}"
         )
-    if provenance:
-        lines.append("provenance:")
-        for rel in sorted(provenance):
-            latest = provenance[rel][0]
-            when = latest.get("completedAt") or "unarchived"
-            lines.append(f"  {rel}  last changed by {latest['task']} ({when})")
     summary = summarize(findings)
     if not findings:
         lines.append(f"spec lint: {_plural(docs, 'doc')}, 0 findings")
@@ -578,18 +567,12 @@ def render_text(
     return "\n".join(lines)
 
 
-def render_json(
-    docs: int,
-    findings: list[Finding],
-    provenance: dict[str, list[dict]] | None = None,
-) -> str:
+def render_json(docs: int, findings: list[Finding]) -> str:
     payload: dict = {
         "docs": docs,
         "findings": [f.to_json() for f in findings],
         "summary": summarize(findings),
     }
-    if provenance is not None:
-        payload["provenance"] = provenance
     return json.dumps(payload, indent=2, ensure_ascii=False)
 
 
@@ -603,19 +586,10 @@ def cmd_lint(args: argparse.Namespace) -> int:
     ctx = discover_docs(repo_root, args.paths, args.package)
     findings = run_lint(ctx)
 
-    provenance: dict[str, list[dict]] | None = None
-    if args.provenance:
-        in_scope = {d.rel for d in ctx.docs}
-        provenance = {
-            rel: entries
-            for rel, entries in collect_provenance(repo_root).items()
-            if rel in in_scope
-        }
-
     if args.json:
-        print(render_json(len(ctx.docs), findings, provenance))
+        print(render_json(len(ctx.docs), findings))
     else:
-        print(render_text(len(ctx.docs), findings, provenance))
+        print(render_text(len(ctx.docs), findings))
 
     if args.strict and summarize(findings)["errors"] > 0:
         return 1
@@ -721,11 +695,6 @@ def build_parser() -> argparse.ArgumentParser:
     p_lint.add_argument("--package", help="Limit to .arbor/spec/<package>/")
     p_lint.add_argument("--json", action="store_true", help="Machine-readable output")
     p_lint.add_argument("--strict", action="store_true", help="Exit 1 when errors exist")
-    p_lint.add_argument(
-        "--provenance",
-        action="store_true",
-        help="Show which archived task last changed each doc",
-    )
 
     p_verify = sub.add_parser("verify", help="Stamp last_verified after re-checking a doc")
     p_verify.add_argument("paths", nargs="+", help="Spec docs to stamp")

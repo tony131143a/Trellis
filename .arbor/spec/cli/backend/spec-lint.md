@@ -2,12 +2,12 @@
 sources:
   - packages/cli/src/templates/arbor/scripts/spec.py
   - packages/cli/src/templates/arbor/scripts/common/spec_*.py
-last_verified: 2026-11-13
+last_verified: 2026-11-15
 ---
-# `spec.py` — Spec Freshness Lint and Change Traceability (Code Spec)
+# `spec.py` — Spec Freshness Lint (Code Spec)
 
 Executable contracts for `.arbor/scripts/spec.py`, `common/spec_meta.py`,
-`common/spec_lint.py`, and `common/spec_trace.py` (read by `lint --provenance`).
+and `common/spec_lint.py`.
 Read this before editing any of those files or the frontmatter of a spec doc.
 
 ## 1. Scope / Trigger
@@ -24,7 +24,7 @@ finish on its result. Do not add such a gate without a product decision.
 ## 2. Signatures
 
 ```text
-spec.py lint      [PATH...] [--package NAME] [--json] [--strict] [--provenance]
+spec.py lint      [PATH...] [--package NAME] [--json] [--strict]
 spec.py verify    PATH...   [--date YYYY-MM-DD]
 spec.py init-meta [PATH...] [--dry-run]
 ```
@@ -35,10 +35,6 @@ parse_frontmatter(text: str) -> FrontmatterResult   # meta, block_span, key_line
 set_last_verified(text: str, date: str) -> str       # line-level, preserves EOL
 build_block(sources: list[str], last_verified: str | None, eol: str = "\n") -> str
 extract_markdown_sources(text: str) -> list[str]     # `Sources:` bullets in first 30 lines
-
-# common/spec_trace.py
-collect_provenance(repo_root: Path) -> dict[str, list[dict]]
-manual_spec_changes(data: dict) -> list[str]
 
 # common/io.py (extended, default unchanged)
 write_text_atomic(path: Path, text: str, newline: str | None = None) -> bool
@@ -90,20 +86,7 @@ Findings carry `path:line`; line `0` means the whole file.
   `spec lint: N docs, E errors, W warnings, I info`. A clean run prints only
   `spec lint: N docs, 0 findings`.
 - `--json`: `{"docs", "findings": [{rule, severity, path, line, message, detail}],
-  "summary": {errors, warnings, info}}`, plus `"provenance": {path: [{task,
-  completedAt, source}]}` with `--provenance`.
-
-### Provenance (`lint --provenance`)
-
-- `collect_provenance` reads every `task.json` under `.arbor/tasks/archive/*/*/`
-  and `.arbor/tasks/*/` and, when it carries them, the optional fields
-  `spec_changes` (list of repo-relative paths, normalized to the `.arbor/spec/...`
-  suffix; non-spec entries dropped) and `spec_changes_source` (absent -> `"none"`).
-- Each spec path maps to `[{task, completedAt, source}]`, newest `completedAt`
-  first, entries without `completedAt` last. `cmd_lint` keeps only paths in the
-  lint scope; text output prints the newest entry per doc.
-- No shipped script writes these fields; the `task.json` that `arbor.py` and the
-  driver write has neither, so on such a tree the map is empty.
+  "summary": {errors, warnings, info}}`.
 
 ## 4. Validation & Error Matrix
 
@@ -134,7 +117,6 @@ Findings carry `path:line`; line `0` means the whole file.
 | Test file | Assertion points |
 |-----------|------------------|
 | `test/scripts/spec-lint.integration.test.ts` | each rule fires exactly once on its fixture with `path:line`; clean tree prints one summary line; `--json` shape; `--strict` exit 1; exit 2 cases; `verify` changes only the date bytes; `init-meta` seeds from a `Sources:` list; CRLF docs survive lint, `verify`, `init-meta` with zero bare `\n` |
-| `test/scripts/spec-lint.integration.test.ts` (`--provenance`) | archived `task.json` with `spec_changes` maps each doc to its tasks, newest first; paths outside the lint scope are dropped |
 | `test/regression.test.ts` | `.arbor/scripts/` and `templates/arbor/scripts/` hold the same `.py` files, byte-identical |
 | dogfood | `python3 .arbor/scripts/spec.py lint --strict` exits 0 on this repo |
 

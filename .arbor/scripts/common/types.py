@@ -49,11 +49,6 @@ class TaskData(TypedDict, total=False):
     relatedFiles: list[str]
     notes: str
     meta: dict
-    # Written by `task.py archive` (derived) and `task.py add-spec-change`
-    # (manual); absent on tasks created before 0.6.18. Readers treat absence
-    # as [] / "none".
-    spec_changes: list[str]
-    spec_changes_source: str
     # v2 driver state, written by `task.py start` (worktree mode) and the
     # driver; absent on tasks started without a worktree.
     state: str  # CONTRACT|BUILD|GATE|REVIEW|FINISH|DONE|STOP

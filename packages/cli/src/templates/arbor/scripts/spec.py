@@ -3,7 +3,7 @@
 Spec doc freshness lint and metadata tools.
 
 Usage:
-    python3 spec.py lint [PATH...] [--package NAME] [--json] [--strict] [--provenance]
+    python3 spec.py lint [PATH...] [--package NAME] [--json] [--strict]
     python3 spec.py verify PATH... [--date YYYY-MM-DD]
     python3 spec.py init-meta [PATH...] [--dry-run]
 

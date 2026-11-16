@@ -41,8 +41,9 @@ const FIXTURE = path.join(
 const SCRIPTS = ".arbor/scripts/";
 const isScript = (p: string) => p.startsWith(SCRIPTS);
 
+// `safe-file-delete` entries (hash-checked, run on every update) count as deletes too.
 const deletes = getMigrationsForVersion("0.11.0", "1.0.0").map((m) => {
-  expect(m.type).toBe("delete");
+  expect(["delete", "safe-file-delete"]).toContain(m.type);
   return m.from;
 });
 

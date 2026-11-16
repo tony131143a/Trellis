@@ -60,7 +60,6 @@ The shipped set is exactly `getAllScripts()` in
     ├── invariants.py     # Post-run invariants, checked with git
     ├── spec_meta.py      # Spec frontmatter parse / rewrite
     ├── spec_lint.py      # spec.py lint / verify / init-meta
-    ├── spec_trace.py     # Spec change traceability
     └── driver/           # arbor.py internals — see driver.md
 ```
 
@@ -141,7 +140,7 @@ Shared utilities imported by other scripts. **Never run directly.**
 | **Config** | `config.py` (imports `paths.py`, `arbor_config.py`) | Typed accessors over `.arbor/config.yaml` |
 | **Git staging** | `safe_commit.py` | Scoped auto-commit paths |
 | **Task / driver** | `contract.py`, `execution.py`, `worktree.py`, `invariants.py`, `driver/` | Used by `arbor.py` |
-| **Spec tooling** | `spec_meta.py`, `spec_lint.py`, `spec_trace.py` | Used by `spec.py` |
+| **Spec tooling** | `spec_meta.py`, `spec_lint.py` | Used by `spec.py` |
 
 ### Entry Scripts (`*.py`)
 
