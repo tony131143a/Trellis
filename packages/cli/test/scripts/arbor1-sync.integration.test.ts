@@ -175,6 +175,36 @@ describe.skipIf(!hasPython())("arbor 1.0 sync", { timeout: 180_000 }, () => {
     expect(spec).toContain("Brief\nDo n1.");
   });
 
+  it("hands the reports of the nodes it comes after and of its earlier attempts to a new worker", () => {
+    p = setupProject();
+    p.node("look", {});
+    p.node("base", { paths: "[base/**]" });
+    p.node("n1", { paths: "[src/**]", after: "[look, base]" });
+    p.sync();
+    work(p, "look", { report: "found: src/a.ts:run\n" });
+    work(p, "base", { write: [{ path: "base/x", content: "x\n" }] });
+    p.sync();
+    let spec = fs.readFileSync(request(p, "n1").spec_path, "utf-8");
+    const reports = path.join(p.taskDir, "reports");
+    expect(spec).toContain(
+      `Reports to start from (what earlier workers found and changed; read them before the code):\n` +
+        `${path.join(reports, "look.md")} (node look)\n${path.join(reports, "base.md")} (node base)\n`,
+    );
+    work(p, "n1", { write: [{ path: "docs/out", content: "x\n" }], report: "tried src/b\n" });
+    expect(p.sync().nodes.n1.status).toBe("failed");
+    p.ok("retry", "n1");
+    p.sync();
+    spec = fs.readFileSync(request(p, "n1.r2").spec_path, "utf-8");
+    expect(spec).toContain(`${path.join(reports, "n1.md")} (attempt 1 of this node)`);
+  });
+
+  it("names no reports when there is nothing to hand over", () => {
+    p = setupProject();
+    p.node("n1", { paths: "[src/**]" });
+    p.sync();
+    expect(fs.readFileSync(request(p, "n1").spec_path, "utf-8")).not.toContain("Reports to start from");
+  });
+
   it("keeps running nodes at max_parallel", () => {
     p = setupProject({ executor: "    max_parallel: 2\n" });
     for (const id of ["a", "b", "c"]) p.node(id, { paths: `[${id}/**]` });

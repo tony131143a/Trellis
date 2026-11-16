@@ -50,6 +50,17 @@ def report_path(task: Task, nid: str, rec: dict) -> Path:
     return task.dir / "reports" / f"{nid}{suffix(rec)}.md"
 
 
+def handover(task: Task, nid: str, rec: dict) -> list[tuple[str, Path]]:
+    """The non-empty reports a new worker of ``nid`` starts from: those of the nodes it comes after,
+    then those of its own earlier attempts."""
+    nodes = task.data["nodes"]
+    found = [(f"node {d}", report_path(task, d, nodes[d])) for d in rec.get("after") or [] if d in nodes]
+    found += [(f"attempt {a} of this node", report_path(task, nid, {"attempt": a}))
+              for a in range(1, rec.get("attempt", 1))]
+    return [(label, path) for label, path in found
+            if path.is_file() and path.read_text(encoding="utf-8", errors="replace").strip()]
+
+
 def default_repo(task: Task) -> str:
     return task.data.get("default_repo") or "."
 
@@ -292,7 +303,8 @@ def start_one(task: Task, contract: Contract, nid: str, rec: dict, repo: dict | 
     if not spec.is_file():  # a start retried after a failure keeps the spec of its first try
         brief = plan.read(task.dir / "nodes" / f"{nid}.md", rec["repo"]).brief
         spec.write_text(worker_spec(task.name, nid, task.dir / "contract.md", rec.get("paths") or [],
-                                    node_checks(contract, rec), report, brief, workdir, inline), encoding="utf-8")
+                                    node_checks(contract, rec), report, brief, workdir, inline,
+                                    handover(task, nid, rec)), encoding="utf-8")
     path = orca.request_path(task.main, task.name, name)
     record = orca.load(task.main, str(path))[1] if path.is_file() else {
         "schema": 3, "main": str(task.main), "task": task.name, "node": nid, "attempt": attempt,

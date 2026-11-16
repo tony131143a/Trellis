@@ -6,11 +6,11 @@ Not for a change you can make and verify yourself.
 
 ## Loop
 
-1. **Contract.** `arbor new "<title>"`. Explore first: a question you can answer in a few reads, or one your built-in exploration sub-agent can, you answer yourself; a larger survey is a read-only node (see Node file), several in parallel when it spans repositories. Ask the user only what the code cannot answer, once, in one message. Write `contract.md`: Goal, Scope, Acceptance criteria, Verification map (one command per criterion; `manual` for what only a person can judge; not the repo gate restated: it runs on every merged result anyway). The user approves it, then `arbor start`. The contract is now frozen: changing it needs the user, then `arbor start --reapprove`.
+1. **Contract.** `arbor new "<title>"`. Explore first, and note `path:symbol` anchors and what you ruled out as you go: they become the briefs: a question you can answer in a few reads, or one your built-in exploration sub-agent can, you answer yourself; a larger survey is a read-only node (see Node file), several in parallel when it spans repositories. Ask the user only what the code cannot answer, once, in one message. Write `contract.md`: Goal, Scope, Acceptance criteria, Verification map (one command per criterion; `manual` for what only a person can judge; not the repo gate restated: it runs on every merged result anyway). The user approves it, then `arbor start`. The contract is now frozen: changing it needs the user, then `arbor start --reapprove`.
 2. **Plan.** Write node files in the task's `nodes/` directory; `arbor sync` starts every ready node.
 3. **Wait.** Run `arbor sync --wait` as a background command and end your turn. Its exit calls you again.
 4. **React** to `next:`
-   - `decide`: read the node's report in `reports/` and the reason. Then `arbor retry <id>` (fix the brief first when it caused the failure; a cancelled node can be retried too), `arbor rejudge <id>` when the work in its worktree is good and only the judgment was wrong (after you fixed the plan, the contract or the commits), replace the node with others, or `arbor cancel <id>`. A worker waiting for a person: pass its question to the user.
+   - `decide`: read the node's report in `reports/` and the reason. Then `arbor retry <id>` (fix the brief first when it caused the failure; the new attempt gets the failed report too; a cancelled node can be retried too), `arbor rejudge <id>` when the work in its worktree is good and only the judgment was wrong (after you fixed the plan, the contract or the commits), replace the node with others, or `arbor cancel <id>`. A worker waiting for a person: pass its question to the user.
    - `inline`: a read-only node uses your own agent. Run each such node in your built-in sub-agent (in parallel, with the model named), have its result in the report file, then `arbor sync`.
    - `fix`: the gate is red. Write fix nodes that quote the failing check and its output.
    - Events to pass on: a `baseline … red before any change` line (the gate already fails at the task's base: ask the user whether the task fixes it), and `<ref> moved N commits past the task's integration branch` (the base moved on: merge it in early with a node, conflicts listed).
@@ -43,9 +43,19 @@ A node without `paths` is read-only: research or review by another model, kept o
 - Parallel nodes get disjoint `paths`. Overlapping nodes run one after the other.
 - Where nodes meet at an interface, pin it first: a small node lands the types or signatures and the others come `after` it, or each brief carries the exact signature.
 - `after` only for a real dependency: every edge costs parallelism.
-- `tier: light` for mechanical edits a check can prove (renames, moves, one pattern applied to many files).
+- `tier: light` for mechanical edits a check can prove (renames, moves, one pattern applied to many files). Its brief lists every file and the exact pattern: a light worker should not need to explore.
+- Exploration a writer would repeat, too large for your own reads, is a read-only node the writer comes `after`: its report is handed to the writer.
 - List only `checks` the node can pass alone; the gate on the merged result is the judge.
 
 ## Brief
 
-The worker sees only the brief and the contract. Give it: the outcome and why it matters; the files to read first, including the `.arbor/spec/` files that cover the area; interfaces to match or expose, verbatim; what is out of scope; the command that shows it is done. Do not dictate the implementation.
+Hand over what you found, not a summary of it. The worker starts a fresh session with only the contract, the brief and the reports of the nodes it comes `after` (and of its own failed attempts): every read the brief does not carry, it pays for again.
+
+- **Outcome**: what changes and why it matters; the command that shows it is done.
+- **Anchors**: the places the work touches, as `path:symbol` (a line number only as a hint), each with one line on what is there: the code to change, its callers, the tests that cover it, the `.arbor/spec/` files for the area.
+- **Ruled out**: what you checked and rejected, and why.
+- **First step**: the first concrete change, or the test or command that shows the problem, when you have seen it in the code.
+- **Interfaces** to match or expose, verbatim; what is out of scope.
+- **Open**: what you did not check: the worker's own exploration starts there.
+
+Write only what you or a report actually read; point to a report section instead of retyping it. Beyond the first step, leave the implementation to the worker. A brief that needs more than a screen of anchors is a node to split.

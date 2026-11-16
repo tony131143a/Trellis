@@ -5,18 +5,19 @@ from __future__ import annotations
 from pathlib import Path
 
 WRITER_RULES = """\
-- Read the files the brief names before you edit. Match the conventions of the surrounding code.
+- The brief hands over what the coordinator already found: anchors (path and symbol; line numbers are hints, earlier merges move them), causes ruled out, often the first change. Start there: open the anchors and confirm them; do not survey again what the brief or the reports below already cover. Where the code contradicts the brief, follow the code and say so in the report.
+- Match the conventions of the surrounding code.
 - Change only files inside your paths. If the work needs anything else, stop and say so in the report.
 - Commit your work on the current branch (subject "{task}/{node}: <summary>"). Leave nothing uncommitted or untracked.
 - Never push, merge, rebase, switch branches, run arbor.py or start other agents.
 - Do not ask questions: decide, and note the assumption in the report.
-- Finish by writing the report file (at most 30 lines: what changed, the result of each check, what the coordinator must know), then send Orca's worker_done once with --report-path set to it. When you are blocked, write why in the report and still send worker_done."""
+- Finish by writing the report file (at most 30 lines: what changed, with the files and the interfaces as committed; the result of each check; where the brief was wrong or missing something; what the coordinator or a later node must know), then send Orca's worker_done once with --report-path set to it. When you are blocked, write why in the report and still send worker_done."""
 
 READER_RULES = """\
-- Read the files the brief names. Match what you report to the code as it is.
+- Start from the anchors the brief names and the reports below; do not survey again what they already cover. Match what you report to the code as it is.
 - Never push, merge, rebase, switch branches, run arbor.py or start other agents.
 - Do not ask questions: decide, and note the assumption in the report.
-- Finish by writing the report file (findings with file:line references), then send Orca's worker_done once with --report-path set to it. When you are blocked, write why in the report and still send worker_done."""
+- Finish by writing the report file (findings with file:line references, and what you checked and ruled out), then send Orca's worker_done once with --report-path set to it. When you are blocked, write why in the report and still send worker_done."""
 
 REVIEW_BRIEF = """\
 Review a diff you did not write, against the contract. This is not a read-through: run things.
@@ -34,8 +35,10 @@ End the report with the line `findings: <n>` (0 is a valid result), then what yo
 
 
 def worker_spec(task: str, node: str, contract: Path, paths: list[str], checks: list[tuple[str, str]],
-                report: Path, brief: str, workdir: Path, inline: bool = False) -> str:
-    """``paths`` empty: a read-only node working in ``workdir``."""
+                report: Path, brief: str, workdir: Path, inline: bool = False,
+                handover: list[tuple[str, Path]] | None = None) -> str:
+    """``paths`` empty: a read-only node working in ``workdir``. ``handover``: (label, report) pairs
+    of the nodes this one comes after and of its own earlier attempts."""
     if paths:
         scope = f"Paths you own: {', '.join(paths)}"
     else:
@@ -54,8 +57,12 @@ def worker_spec(task: str, node: str, contract: Path, paths: list[str], checks: 
     ]
     if checks:
         lines += ["Checks that must pass:", *(f"{cid}: {command}" for cid, command in checks)]
+    if handover:
+        lines += ["Reports to start from (what earlier workers found and changed; read them before the code):",
+                  *(f"{path} ({label})" for label, path in handover)]
     rules = READER_RULES.split("- Finish by")[0] + (
-        "- Finish by writing the report file (findings with file:line references); it is your result. "
+        "- Finish by writing the report file (findings with file:line references, and what you checked and ruled out); "
+        "it is your result. "
         "When you are blocked, write why in the report." if inline else "- Finish by" + READER_RULES.split("- Finish by")[1])
     lines += [f"Report file: {report}", "", "Rules",
               (WRITER_RULES if paths else rules).format(task=task, node=node), "", "Brief", brief.strip(), ""]

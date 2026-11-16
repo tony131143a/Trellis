@@ -44,8 +44,8 @@
     ".arbor/scripts/common/driver/orca.py": "95e320ed45e68c12d325bd03b0278e1f6c5310a322f9219bbc3793fff0f8bd02",
     ".arbor/scripts/common/driver/plan.py": "7a95d4529d58b82603aa62088707e4158e18f55853bad09e1083a3e6291dc73c",
     ".arbor/scripts/common/driver/repos.py": "3b7574972e24d804b149f35fced4cabf5cac18f4ac70f07ed7e21a5f32c8bb1e",
-    ".arbor/scripts/common/driver/sync.py": "c43017db64c3aa4e0d3dee86241a5355a8fdf5eaffb155af7d6c1956ff9158db",
-    ".arbor/scripts/common/driver/prompt.py": "c1c967fcff10852347bd3a30c0548074960044e98e74505f535f4f44abfca031",
-    ".claude/skills/arbor/SKILL.md": "f34df425e140a8bb9fa22992f04ba62b101fd17b4be2c637f9604adae9b0d8ff"
+    ".arbor/scripts/common/driver/sync.py": "5340403a11e41253f1beffde762653ea9afe930f9c9507843b7d5074dc6ffac7",
+    ".arbor/scripts/common/driver/prompt.py": "ab3711eba4445fd4d18fa0e38bbffb5510621624a8d3a25f09708dbed91d9de5",
+    ".claude/skills/arbor/SKILL.md": "63cdf41d0c9771d17c17b3873ce2e06e0798b89a3ec26586694d6c70719445ff"
   }
 }
