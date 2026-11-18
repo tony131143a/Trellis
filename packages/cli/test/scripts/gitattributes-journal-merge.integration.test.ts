@@ -20,7 +20,10 @@ const GITATTRIBUTES_TEMPLATE = path.resolve(
   "../../src/templates/arbor/gitattributes.txt",
 );
 
-function git(cwd: string, ...args: string[]): { status: number; stdout: string; stderr: string } {
+function git(
+  cwd: string,
+  ...args: string[]
+): { status: number; stdout: string; stderr: string } {
   const r = spawnSync("git", args, { cwd, encoding: "utf-8" });
   return { status: r.status ?? 1, stdout: r.stdout, stderr: r.stderr };
 }
@@ -28,7 +31,9 @@ function git(cwd: string, ...args: string[]): { status: number; stdout: string; 
 function gitOk(cwd: string, ...args: string[]): string {
   const r = git(cwd, ...args);
   if (r.status !== 0) {
-    throw new Error(`git ${args.join(" ")} failed (rc=${r.status}): ${r.stderr}`);
+    throw new Error(
+      `git ${args.join(" ")} failed (rc=${r.status}): ${r.stderr}`,
+    );
   }
   return r.stdout.trim();
 }
@@ -79,12 +84,18 @@ describe("journal-*.md merge=union gitattributes rule", () => {
     );
 
     gitOk(tmp, "checkout", "-q", "-b", "branch-a");
-    fs.appendFileSync(journalPath, "\n## Session 2: branch-a work\n\nfrom branch a\n");
+    fs.appendFileSync(
+      journalPath,
+      "\n## Session 2: branch-a work\n\nfrom branch a\n",
+    );
     gitOk(tmp, "commit", "-aq", "-m", "session on branch-a");
 
     gitOk(tmp, "checkout", "-q", "main");
     gitOk(tmp, "checkout", "-q", "-b", "branch-b");
-    fs.appendFileSync(journalPath, "\n## Session 2: branch-b work\n\nfrom branch b\n");
+    fs.appendFileSync(
+      journalPath,
+      "\n## Session 2: branch-b work\n\nfrom branch b\n",
+    );
     gitOk(tmp, "commit", "-aq", "-m", "session on branch-b");
 
     const merge = git(tmp, "merge", "branch-a", "--no-edit");

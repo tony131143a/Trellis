@@ -84,7 +84,9 @@ describe("init + uninstall: manifest accuracy + homedir guard", () => {
     // Sanity: Arbor's own Codex files (skills only) ARE tracked; nothing
     // under .codex/ is.
     const keys = Object.keys(hashes);
-    expect(keys.filter((k) => k.startsWith(".agents/skills/")).length).toBeGreaterThan(0);
+    expect(
+      keys.filter((k) => k.startsWith(".agents/skills/")).length,
+    ).toBeGreaterThan(0);
     expect(keys.filter((k) => k.startsWith(".codex/"))).toEqual([]);
   });
 

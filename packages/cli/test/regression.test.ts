@@ -356,9 +356,11 @@ describe("regression: JSON read/write failure reporting", () => {
   const canProvokePermissionFailure =
     process.platform !== "win32" && process.getuid?.() !== 0;
 
-  function runPython(
-    args: string[],
-  ): { status: number | null; stdout: string; stderr: string } {
+  function runPython(args: string[]): {
+    status: number | null;
+    stdout: string;
+    stderr: string;
+  } {
     const result = spawnSync(pythonCmd, args, {
       cwd: tmpDir,
       encoding: "utf-8",
@@ -455,10 +457,7 @@ describe("regression: JSON read/write failure reporting", () => {
 
   it("[audit] arbor.py on a corrupt or non-UTF-8 task.json names the file and the failure, without a traceback", () => {
     writeTaskJson("08-09-broken", "{ not json");
-    writeTaskJson(
-      "08-09-latin",
-      Buffer.from([0x7b, 0x22, 0xff, 0x22, 0x7d]),
-    );
+    writeTaskJson("08-09-latin", Buffer.from([0x7b, 0x22, 0xff, 0x22, 0x7d]));
 
     for (const [name, reason] of [
       ["08-09-broken", "not valid JSON"],

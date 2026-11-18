@@ -131,7 +131,9 @@ describe("1.0.0 migration", () => {
     for (const p of deletes) {
       if (fs.existsSync(abs(p))) continue; // a script the 1.0 build still ships
       const content =
-        p === ".codex/hooks.json" ? json(CODEX_011_HOOKS_JSON) : `# 0.11 ${p}\n`;
+        p === ".codex/hooks.json"
+          ? json(CODEX_011_HOOKS_JSON)
+          : `# 0.11 ${p}\n`;
       write(p, content);
       entries[p] = computeHash(content);
     }
@@ -173,7 +175,9 @@ describe("1.0.0 migration", () => {
   });
 
   it("deletes exactly the non-script paths 0.11 installed and 1.0 does not", () => {
-    const installed011 = JSON.parse(fs.readFileSync(FIXTURE, "utf-8")) as string[];
+    const installed011 = JSON.parse(
+      fs.readFileSync(FIXTURE, "utf-8"),
+    ) as string[];
     const installed100 = new Set(Object.keys(loadHashes(tmpDir)));
     const removed = installed011.filter(
       (p) => !isScript(p) && !installed100.has(p),
@@ -186,7 +190,9 @@ describe("1.0.0 migration", () => {
   });
 
   it("deletes no script the 1.0 driver still installs, and every 0.11 script it dropped", () => {
-    const installed011 = JSON.parse(fs.readFileSync(FIXTURE, "utf-8")) as string[];
+    const installed011 = JSON.parse(
+      fs.readFileSync(FIXTURE, "utf-8"),
+    ) as string[];
     const installed100 = new Set(Object.keys(loadHashes(tmpDir)));
     const stillInstalled = deletes.filter(
       (p) => isScript(p) && installed100.has(p),
@@ -254,7 +260,9 @@ describe("1.0.0 migration", () => {
     >;
     expect(after.hooks).toEqual({ PreToolUse: [userHook] });
     expect(after.permissions).toEqual({ allow: ["Bash(git:*)"] });
-    expect(after.env).toEqual({ CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR: "1" });
+    expect(after.env).toEqual({
+      CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR: "1",
+    });
     expect(read(".claude/settings.json")).not.toContain(".claude/hooks/");
     expect(fs.existsSync(abs(".claude/hooks"))).toBe(false);
   });

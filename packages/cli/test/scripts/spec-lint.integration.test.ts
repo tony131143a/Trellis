@@ -647,9 +647,7 @@ describe.skipIf(!hasPython())("spec.py init-meta", () => {
     expect(read(tmp, ".arbor/spec/frontend/index.md").startsWith("---")).toBe(
       false,
     );
-    expect(read(tmp, ".arbor/spec/guides/g.md").startsWith("---")).toBe(
-      false,
-    );
+    expect(read(tmp, ".arbor/spec/guides/g.md").startsWith("---")).toBe(false);
 
     const explicit = runSpec(tmp, "init-meta", ".arbor/spec/guides/g.md");
     expect(explicit.stdout).toContain(

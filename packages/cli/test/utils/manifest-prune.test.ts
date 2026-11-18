@@ -36,7 +36,11 @@ describe("pruneOrphanManifestKeys", () => {
     };
     saveHashes(tmpDir, hashes);
 
-    const { pruned, hashes: kept } = pruneOrphanManifestKeys(tmpDir, [], hashes);
+    const { pruned, hashes: kept } = pruneOrphanManifestKeys(
+      tmpDir,
+      [],
+      hashes,
+    );
 
     expect(pruned).toEqual([]);
     expect(kept).toEqual(hashes);

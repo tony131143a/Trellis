@@ -22,7 +22,9 @@ describe.skipIf(!hasPython())("arbor 1.0 plan", { timeout: 120_000 }, () => {
   afterEach(() => p?.cleanup());
 
   it("parses the spec's node example, comments and all list forms", () => {
-    p = setupProject({ executor: "    tiers:\n      light:\n        agent: omp\n" });
+    p = setupProject({
+      executor: "    tiers:\n      light:\n        agent: omp\n",
+    });
     writeFile(
       p.taskDir,
       "nodes/n1.md",
@@ -124,12 +126,19 @@ describe.skipIf(!hasPython())("arbor 1.0 plan", { timeout: 120_000 }, () => {
     fs.rmSync(path.join(p.taskDir, "nodes/third.md"));
     p.node("first", { paths: "elsewhere/**" });
     out = p.sync();
-    expect(out.nodes.second).toMatchObject({ title: "Second, edited", paths: ["b2/**"] });
+    expect(out.nodes.second).toMatchObject({
+      title: "Second, edited",
+      paths: ["b2/**"],
+    });
     expect(out.nodes.third).toBeUndefined();
     expect(out.events).toContain("third removed (its file is gone)");
-    expect(out.events).toContain("node first changed after it started; ignored");
+    expect(out.events).toContain(
+      "node first changed after it started; ignored",
+    );
     expect(out.nodes.first.paths).toEqual(["a/**"]);
     out = p.sync();
-    expect(out.events).not.toContain("node first changed after it started; ignored");
+    expect(out.events).not.toContain(
+      "node first changed after it started; ignored",
+    );
   });
 });

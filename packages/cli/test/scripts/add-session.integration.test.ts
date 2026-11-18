@@ -109,7 +109,11 @@ function tryAddSession(
   };
 }
 
-function runAddSession(repo: string, title: string, extraArgs: string[] = []): void {
+function runAddSession(
+  repo: string,
+  title: string,
+  extraArgs: string[] = [],
+): void {
   const r = tryAddSession(repo, title, extraArgs);
   if (r.status !== 0) {
     throw new Error(`add_session failed: ${r.stderr}`);
@@ -145,7 +149,8 @@ function countMarkers(repo: string, num = 1): number {
 
 /** Every distinct record marker present in a journal, in order of appearance. */
 function distinctMarkers(repo: string, num = 1): string[] {
-  const seen = readJournal(repo, num).match(/<!-- arbor-session:[^>]*-->/g) ?? [];
+  const seen =
+    readJournal(repo, num).match(/<!-- arbor-session:[^>]*-->/g) ?? [];
   return [...new Set(seen)];
 }
 
@@ -175,7 +180,12 @@ describe.skipIf(!hasPython())("add_session.py auto-commit", () => {
   });
 
   afterEach(() => {
-    fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    fs.rmSync(tmp, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 100,
+    });
   });
 
   it("does not sweep pre-staged unrelated files into the session commit (#579)", () => {
@@ -316,11 +326,20 @@ describe.skipIf(!hasPython())("add_session.py auto-commit", () => {
 
   it("stages only Arbor-owned paths in the session auto-commit", () => {
     seedCommit(tmp);
-    fs.writeFileSync(path.join(tmp, "unrelated.txt"), "user work in progress\n");
+    fs.writeFileSync(
+      path.join(tmp, "unrelated.txt"),
+      "user work in progress\n",
+    );
 
     runAddSession(tmp, "scoped staging");
 
-    const lastFiles = git(tmp, "show", "HEAD", "--name-only", "--pretty=format:")
+    const lastFiles = git(
+      tmp,
+      "show",
+      "HEAD",
+      "--name-only",
+      "--pretty=format:",
+    )
       .split("\n")
       .map((s) => s.trim())
       .filter(Boolean);
@@ -345,7 +364,12 @@ describe.skipIf(!hasPython())("add_session.py commit evidence (R1)", () => {
   });
 
   afterEach(() => {
-    fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    fs.rmSync(tmp, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 100,
+    });
   });
 
   it("renders the real local commit subject, never a (see git log) placeholder", () => {
@@ -467,245 +491,303 @@ describe.skipIf(!hasPython())("add_session.py record marker", () => {
   });
 
   afterEach(() => {
-    fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    fs.rmSync(tmp, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 100,
+    });
   });
 
   it("keeps two same-day sessions distinct", () => {
-    runAddSession(tmp, "first session", ["--summary", "one", "--branch", BRANCH]);
-    runAddSession(tmp, "second session", ["--summary", "two", "--branch", BRANCH]);
+    runAddSession(tmp, "first session", [
+      "--summary",
+      "one",
+      "--branch",
+      BRANCH,
+    ]);
+    runAddSession(tmp, "second session", [
+      "--summary",
+      "two",
+      "--branch",
+      BRANCH,
+    ]);
     expect(sessionNumbers(tmp)).toEqual([1, 2]);
     expect(countMarkers(tmp)).toBe(2);
     expect(readIndex(tmp)).toContain("**Total Sessions**: 2");
   });
 
   it("writes the versioned marker form", () => {
-    runAddSession(tmp, "marker run", ["--summary", "marker", "--branch", BRANCH]);
+    runAddSession(tmp, "marker run", [
+      "--summary",
+      "marker",
+      "--branch",
+      BRANCH,
+    ]);
     expect(readJournal(tmp)).toMatch(
       /^<!-- arbor-session: v=2 fp=[0-9a-f]{16} -->$/m,
     );
   });
 });
 
-describe.skipIf(!hasPython())("add_session.py retry convergence (R2-R5)", () => {
-  let tmp: string;
+describe.skipIf(!hasPython())(
+  "add_session.py retry convergence (R2-R5)",
+  () => {
+    let tmp: string;
 
-  beforeEach(() => {
-    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-session-retry-"));
-    setupRepo(tmp);
-    seedCommit(tmp);
-  });
+    beforeEach(() => {
+      tmp = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-session-retry-"));
+      setupRepo(tmp);
+      seedCommit(tmp);
+    });
 
-  afterEach(() => {
-    fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-  });
+    afterEach(() => {
+      fs.rmSync(tmp, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 100,
+      });
+    });
 
-  it("repairs the index row on retry when the index update failed after the append", () => {
-    const indexBefore = fs.readFileSync(indexPath(tmp), "utf-8");
-    // Break the auto-update markers so update_index refuses, after the journal
-    // append has already landed.
-    fs.writeFileSync(
-      indexPath(tmp),
-      indexBefore.replace("@@@auto:current-status", "BROKEN-MARKER"),
-    );
+    it("repairs the index row on retry when the index update failed after the append", () => {
+      const indexBefore = fs.readFileSync(indexPath(tmp), "utf-8");
+      // Break the auto-update markers so update_index refuses, after the journal
+      // append has already landed.
+      fs.writeFileSync(
+        indexPath(tmp),
+        indexBefore.replace("@@@auto:current-status", "BROKEN-MARKER"),
+      );
 
-    const first = tryAddSession(tmp, "index fault", ["--summary", "fault run"]);
-    expect(first.status).toBe(1);
-    expect(first.stderr).toContain("Markers not found in index.md");
-    expect(first.stderr).toContain("[BLOCKED] Checkpoint:");
-    expect(sessionNumbers(tmp)).toEqual([1]);
+      const first = tryAddSession(tmp, "index fault", [
+        "--summary",
+        "fault run",
+      ]);
+      expect(first.status).toBe(1);
+      expect(first.stderr).toContain("Markers not found in index.md");
+      expect(first.stderr).toContain("[BLOCKED] Checkpoint:");
+      expect(sessionNumbers(tmp)).toEqual([1]);
 
-    // Repair the index and re-run the identical command.
-    fs.writeFileSync(indexPath(tmp), indexBefore);
-    const second = tryAddSession(tmp, "index fault", ["--summary", "fault run"]);
+      // Repair the index and re-run the identical command.
+      fs.writeFileSync(indexPath(tmp), indexBefore);
+      const second = tryAddSession(tmp, "index fault", [
+        "--summary",
+        "fault run",
+      ]);
 
-    expect(second.status).toBe(0);
-    expect(second.stderr).toContain("[RESUME]");
-    expect(second.stderr).toContain("journal-recorded");
-    // No second entry, and the row for session 1 is now present.
-    expect(sessionNumbers(tmp)).toEqual([1]);
-    expect(countMarkers(tmp)).toBe(1);
-    expect(readIndex(tmp)).toMatch(/^\|\s*1\s*\|/m);
-    expect(readIndex(tmp)).toContain("**Total Sessions**: 1");
-  });
+      expect(second.status).toBe(0);
+      expect(second.stderr).toContain("[RESUME]");
+      expect(second.stderr).toContain("journal-recorded");
+      // No second entry, and the row for session 1 is now present.
+      expect(sessionNumbers(tmp)).toEqual([1]);
+      expect(countMarkers(tmp)).toBe(1);
+      expect(readIndex(tmp)).toMatch(/^\|\s*1\s*\|/m);
+      expect(readIndex(tmp)).toContain("**Total Sessions**: 1");
+    });
 
-  it("exits non-zero with a checkpoint when the auto-commit fails, then resumes at the commit step", () => {
-    breakCommits(tmp);
+    it("exits non-zero with a checkpoint when the auto-commit fails, then resumes at the commit step", () => {
+      breakCommits(tmp);
 
-    const first = tryAddSession(tmp, "commit fault", ["--summary", "fault run"]);
-    expect(first.status).toBe(1);
-    expect(first.stderr).toContain("Auto-commit failed");
-    expect(first.stderr).toContain("[BLOCKED] Checkpoint:");
-    expect(first.stderr).toContain("resumes at the commit step");
-    expect(sessionNumbers(tmp)).toEqual([1]);
+      const first = tryAddSession(tmp, "commit fault", [
+        "--summary",
+        "fault run",
+      ]);
+      expect(first.status).toBe(1);
+      expect(first.stderr).toContain("Auto-commit failed");
+      expect(first.stderr).toContain("[BLOCKED] Checkpoint:");
+      expect(first.stderr).toContain("resumes at the commit step");
+      expect(sessionNumbers(tmp)).toEqual([1]);
 
-    // A retry while the commit is still broken must not duplicate anything.
-    const second = tryAddSession(tmp, "commit fault", ["--summary", "fault run"]);
-    expect(second.status).toBe(1);
-    expect(second.stderr).toContain("[RESUME]");
-    expect(second.stderr).toContain("index-recorded");
-    expect(sessionNumbers(tmp)).toEqual([1]);
-    expect(readIndex(tmp)).toContain("**Total Sessions**: 1");
+      // A retry while the commit is still broken must not duplicate anything.
+      const second = tryAddSession(tmp, "commit fault", [
+        "--summary",
+        "fault run",
+      ]);
+      expect(second.status).toBe(1);
+      expect(second.stderr).toContain("[RESUME]");
+      expect(second.stderr).toContain("index-recorded");
+      expect(sessionNumbers(tmp)).toEqual([1]);
+      expect(readIndex(tmp)).toContain("**Total Sessions**: 1");
 
-    // With the commit repaired, the same command finishes the operation.
-    repairCommits(tmp);
-    const third = tryAddSession(tmp, "commit fault", ["--summary", "fault run"]);
-    expect(third.status).toBe(0);
-    expect(third.stderr).toContain("[RESUME]");
-    expect(third.stderr).toContain("Auto-committed");
-    expect(sessionNumbers(tmp)).toEqual([1]);
-    expect(countMarkers(tmp)).toBe(1);
+      // With the commit repaired, the same command finishes the operation.
+      repairCommits(tmp);
+      const third = tryAddSession(tmp, "commit fault", [
+        "--summary",
+        "fault run",
+      ]);
+      expect(third.status).toBe(0);
+      expect(third.stderr).toContain("[RESUME]");
+      expect(third.stderr).toContain("Auto-committed");
+      expect(sessionNumbers(tmp)).toEqual([1]);
+      expect(countMarkers(tmp)).toBe(1);
 
-    const committed = git(
-      tmp,
-      "show",
-      `HEAD:.arbor/workspace/${DEVELOPER}/journal-1.md`,
-    );
-    expect(committed).toContain("## Session 1: commit fault");
-  });
+      const committed = git(
+        tmp,
+        "show",
+        `HEAD:.arbor/workspace/${DEVELOPER}/journal-1.md`,
+      );
+      expect(committed).toContain("## Session 1: commit fault");
+    });
 
-  it("treats an identical request as a new session once the earlier one is committed", () => {
-    runAddSession(tmp, "same prose", ["--summary", "identical summary"]);
-    runAddSession(tmp, "same prose", ["--summary", "identical summary"]);
-    // A third identical run has to keep working. It would not if the new
-    // entries reused the committed record's marker: classify_record refuses
-    // to resume once a marker matches more than one entry.
-    runAddSession(tmp, "same prose", ["--summary", "identical summary"]);
+    it("treats an identical request as a new session once the earlier one is committed", () => {
+      runAddSession(tmp, "same prose", ["--summary", "identical summary"]);
+      runAddSession(tmp, "same prose", ["--summary", "identical summary"]);
+      // A third identical run has to keep working. It would not if the new
+      // entries reused the committed record's marker: classify_record refuses
+      // to resume once a marker matches more than one entry.
+      runAddSession(tmp, "same prose", ["--summary", "identical summary"]);
 
-    expect(sessionNumbers(tmp)).toEqual([1, 2, 3]);
-    expect(countMarkers(tmp)).toBe(3);
-    expect(readIndex(tmp)).toContain("**Total Sessions**: 3");
-    // Each generation carries its own marker; duplicates would make every
-    // later run ambiguous.
-    expect(distinctMarkers(tmp).length).toBe(3);
-  });
+      expect(sessionNumbers(tmp)).toEqual([1, 2, 3]);
+      expect(countMarkers(tmp)).toBe(3);
+      expect(readIndex(tmp)).toContain("**Total Sessions**: 3");
+      // Each generation carries its own marker; duplicates would make every
+      // later run ambiguous.
+      expect(distinctMarkers(tmp).length).toBe(3);
+    });
 
-  it("makes a committed record a no-op when the caller supplies an idempotency key", () => {
-    runAddSession(tmp, "keyed work", [
-      "--summary",
-      "keyed summary",
-      "--idempotency-key",
-      "retry-001",
-    ]);
-    expect(sessionNumbers(tmp)).toEqual([1]);
+    it("makes a committed record a no-op when the caller supplies an idempotency key", () => {
+      runAddSession(tmp, "keyed work", [
+        "--summary",
+        "keyed summary",
+        "--idempotency-key",
+        "retry-001",
+      ]);
+      expect(sessionNumbers(tmp)).toEqual([1]);
 
-    const second = tryAddSession(tmp, "keyed work", [
-      "--summary",
-      "keyed summary",
-      "--idempotency-key",
-      "retry-001",
-    ]);
+      const second = tryAddSession(tmp, "keyed work", [
+        "--summary",
+        "keyed summary",
+        "--idempotency-key",
+        "retry-001",
+      ]);
 
-    expect(second.status).toBe(0);
-    expect(second.stderr).toContain("already recorded and committed");
-    expect(sessionNumbers(tmp)).toEqual([1]);
-    expect(readIndex(tmp)).toContain("**Total Sessions**: 1");
-  });
+      expect(second.status).toBe(0);
+      expect(second.stderr).toContain("already recorded and committed");
+      expect(sessionNumbers(tmp)).toEqual([1]);
+      expect(readIndex(tmp)).toContain("**Total Sessions**: 1");
+    });
 
-  it("refuses to resume when two entries carry the same record marker", () => {
-    runAddSession(tmp, "dup work", ["--summary", "dup summary", "--no-commit"]);
+    it("refuses to resume when two entries carry the same record marker", () => {
+      runAddSession(tmp, "dup work", [
+        "--summary",
+        "dup summary",
+        "--no-commit",
+      ]);
 
-    // Duplicate the pending entry — the retry must not pick one at random.
-    const journal = readJournal(tmp);
-    const entry = journal.slice(journal.indexOf("## Session 1:"));
-    fs.writeFileSync(journalPath(tmp), journal + "\n\n" + entry);
+      // Duplicate the pending entry — the retry must not pick one at random.
+      const journal = readJournal(tmp);
+      const entry = journal.slice(journal.indexOf("## Session 1:"));
+      fs.writeFileSync(journalPath(tmp), journal + "\n\n" + entry);
 
-    const r = tryAddSession(tmp, "dup work", [
-      "--summary",
-      "dup summary",
-      "--no-commit",
-    ]);
+      const r = tryAddSession(tmp, "dup work", [
+        "--summary",
+        "dup summary",
+        "--no-commit",
+      ]);
 
-    expect(r.status).toBe(1);
-    expect(r.stderr).toContain("journal entries carrying this record's marker");
-    expect(countMarkers(tmp)).toBe(2);
-  });
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain(
+        "journal entries carrying this record's marker",
+      );
+      expect(countMarkers(tmp)).toBe(2);
+    });
 
-  it("refuses to resume from a marker with no session heading above it", () => {
-    runAddSession(tmp, "orphan work", [
-      "--summary",
-      "orphan summary",
-      "--no-commit",
-    ]);
+    it("refuses to resume from a marker with no session heading above it", () => {
+      runAddSession(tmp, "orphan work", [
+        "--summary",
+        "orphan summary",
+        "--no-commit",
+      ]);
 
-    fs.writeFileSync(
-      journalPath(tmp),
-      readJournal(tmp).replace("## Session 1: orphan work", "## Notes"),
-    );
+      fs.writeFileSync(
+        journalPath(tmp),
+        readJournal(tmp).replace("## Session 1: orphan work", "## Notes"),
+      );
 
-    const r = tryAddSession(tmp, "orphan work", [
-      "--summary",
-      "orphan summary",
-      "--no-commit",
-    ]);
+      const r = tryAddSession(tmp, "orphan work", [
+        "--summary",
+        "orphan summary",
+        "--no-commit",
+      ]);
 
-    expect(r.status).toBe(1);
-    expect(r.stderr).toContain("without a '## Session N:' heading");
-  });
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain("without a '## Session N:' heading");
+    });
 
-  it("stops after a verified journal + index when auto-commit is disabled", () => {
-    fs.writeFileSync(
-      path.join(tmp, ".arbor", "config.yaml"),
-      "session_auto_commit: false\n",
-    );
-    const logBefore = git(tmp, "log", "--oneline");
+    it("stops after a verified journal + index when auto-commit is disabled", () => {
+      fs.writeFileSync(
+        path.join(tmp, ".arbor", "config.yaml"),
+        "session_auto_commit: false\n",
+      );
+      const logBefore = git(tmp, "log", "--oneline");
 
-    const r = tryAddSession(tmp, "no auto commit", ["--summary", "local only"]);
+      const r = tryAddSession(tmp, "no auto commit", [
+        "--summary",
+        "local only",
+      ]);
 
-    expect(r.status).toBe(0);
-    expect(r.stderr).toContain("session_auto_commit: false");
-    expect(r.stderr).not.toContain("Auto-committed");
-    expect(sessionNumbers(tmp)).toEqual([1]);
-    expect(readIndex(tmp)).toContain("**Total Sessions**: 1");
-    expect(git(tmp, "log", "--oneline")).toBe(logBefore);
-  });
+      expect(r.status).toBe(0);
+      expect(r.stderr).toContain("session_auto_commit: false");
+      expect(r.stderr).not.toContain("Auto-committed");
+      expect(sessionNumbers(tmp)).toEqual([1]);
+      expect(readIndex(tmp)).toContain("**Total Sessions**: 1");
+      expect(git(tmp, "log", "--oneline")).toBe(logBefore);
+    });
 
-  it("writes journal and index but skips git for --no-commit", () => {
-    const logBefore = git(tmp, "log", "--oneline");
+    it("writes journal and index but skips git for --no-commit", () => {
+      const logBefore = git(tmp, "log", "--oneline");
 
-    const r = tryAddSession(tmp, "manual commit", ["--no-commit"]);
+      const r = tryAddSession(tmp, "manual commit", ["--no-commit"]);
 
-    expect(r.status).toBe(0);
-    expect(sessionNumbers(tmp)).toEqual([1]);
-    expect(git(tmp, "log", "--oneline")).toBe(logBefore);
-    expect(git(tmp, "status", "--porcelain")).toContain("journal-1.md");
-  });
+      expect(r.status).toBe(0);
+      expect(sessionNumbers(tmp)).toEqual([1]);
+      expect(git(tmp, "log", "--oneline")).toBe(logBefore);
+      expect(git(tmp, "status", "--porcelain")).toContain("journal-1.md");
+    });
 
-  it("rotates to a new journal file and records the entry there", () => {
-    fs.writeFileSync(
-      path.join(tmp, ".arbor", "config.yaml"),
-      "session_auto_commit: true\nmax_journal_lines: 12\n",
-    );
+    it("rotates to a new journal file and records the entry there", () => {
+      fs.writeFileSync(
+        path.join(tmp, ".arbor", "config.yaml"),
+        "session_auto_commit: true\nmax_journal_lines: 12\n",
+      );
 
-    const r = tryAddSession(tmp, "rotating work", ["--summary", "rotate"]);
+      const r = tryAddSession(tmp, "rotating work", ["--summary", "rotate"]);
 
-    expect(r.status).toBe(0);
-    expect(r.stderr).toContain("Exceeds 12 lines");
-    expect(fs.existsSync(journalPath(tmp, 2))).toBe(true);
-    expect(sessionNumbers(tmp, 2)).toEqual([1]);
-    expect(readJournal(tmp, 1)).not.toContain("rotating work");
-    expect(readIndex(tmp)).toContain("**Active File**: `journal-2.md`");
-  });
+      expect(r.status).toBe(0);
+      expect(r.stderr).toContain("Exceeds 12 lines");
+      expect(fs.existsSync(journalPath(tmp, 2))).toBe(true);
+      expect(sessionNumbers(tmp, 2)).toEqual([1]);
+      expect(readJournal(tmp, 1)).not.toContain("rotating work");
+      expect(readIndex(tmp)).toContain("**Active File**: `journal-2.md`");
+    });
 
-  it("resumes a rotated entry without appending a second one", () => {
-    fs.writeFileSync(
-      path.join(tmp, ".arbor", "config.yaml"),
-      "session_auto_commit: true\nmax_journal_lines: 12\n",
-    );
-    breakCommits(tmp);
+    it("resumes a rotated entry without appending a second one", () => {
+      fs.writeFileSync(
+        path.join(tmp, ".arbor", "config.yaml"),
+        "session_auto_commit: true\nmax_journal_lines: 12\n",
+      );
+      breakCommits(tmp);
 
-    const first = tryAddSession(tmp, "rotated retry", ["--summary", "rotate"]);
-    expect(first.status).toBe(1);
+      const first = tryAddSession(tmp, "rotated retry", [
+        "--summary",
+        "rotate",
+      ]);
+      expect(first.status).toBe(1);
 
-    repairCommits(tmp);
-    const second = tryAddSession(tmp, "rotated retry", ["--summary", "rotate"]);
+      repairCommits(tmp);
+      const second = tryAddSession(tmp, "rotated retry", [
+        "--summary",
+        "rotate",
+      ]);
 
-    expect(second.status).toBe(0);
-    expect(second.stderr).toContain("[RESUME]");
-    expect(sessionNumbers(tmp, 2)).toEqual([1]);
-    expect(countMarkers(tmp, 2)).toBe(1);
-    expect(fs.existsSync(journalPath(tmp, 3))).toBe(false);
-  });
-});
+      expect(second.status).toBe(0);
+      expect(second.stderr).toContain("[RESUME]");
+      expect(sessionNumbers(tmp, 2)).toEqual([1]);
+      expect(countMarkers(tmp, 2)).toBe(1);
+      expect(fs.existsSync(journalPath(tmp, 3))).toBe(false);
+    });
+  },
+);
 
 describe.skipIf(!hasPython())("add_session.py session numbering", () => {
   let tmp: string;
@@ -717,7 +799,12 @@ describe.skipIf(!hasPython())("add_session.py session numbering", () => {
   });
 
   afterEach(() => {
-    fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    fs.rmSync(tmp, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 100,
+    });
   });
 
   it("does not reuse a number already claimed on a concurrent branch", () => {
@@ -762,67 +849,83 @@ describe.skipIf(!hasPython())("add_session.py session numbering", () => {
  * not necessarily the git toplevel. Every git path the recorder builds has to
  * be interpreted relative to the Arbor root, not the git root.
  */
-describe.skipIf(!hasPython())("add_session.py with .arbor below the git root", () => {
-  let outer: string;
-  let project: string;
+describe.skipIf(!hasPython())(
+  "add_session.py with .arbor below the git root",
+  () => {
+    let outer: string;
+    let project: string;
 
-  beforeEach(() => {
-    outer = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-session-nested-"));
-    git(outer, "init", "-q", "-b", "main");
-    git(outer, "config", "user.email", "test@example.com");
-    git(outer, "config", "user.name", "Test");
-    project = path.join(outer, "project");
-    stampArbor(project);
-    seedCommit(project);
-  });
+    beforeEach(() => {
+      outer = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-session-nested-"));
+      git(outer, "init", "-q", "-b", "main");
+      git(outer, "config", "user.email", "test@example.com");
+      git(outer, "config", "user.name", "Test");
+      project = path.join(outer, "project");
+      stampArbor(project);
+      seedCommit(project);
+    });
 
-  afterEach(() => {
-    fs.rmSync(outer, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-  });
+    afterEach(() => {
+      fs.rmSync(outer, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 100,
+      });
+    });
 
-  it("verifies the committed record and still numbers a repeat as a new session", () => {
-    const first = tryAddSession(project, "nested layout", [
-      "--summary",
-      "nested run",
-    ]);
-    expect(first.status).toBe(0);
-    expect(first.stderr).toContain("Auto-committed");
-    // The post-commit check re-reads the marker from `HEAD:<journal>`. A
-    // git-root-relative lookup finds nothing here and reports a false block.
-    expect(first.stderr).not.toContain("[BLOCKED] Checkpoint:");
+    it("verifies the committed record and still numbers a repeat as a new session", () => {
+      const first = tryAddSession(project, "nested layout", [
+        "--summary",
+        "nested run",
+      ]);
+      expect(first.status).toBe(0);
+      expect(first.stderr).toContain("Auto-committed");
+      // The post-commit check re-reads the marker from `HEAD:<journal>`. A
+      // git-root-relative lookup finds nothing here and reports a false block.
+      expect(first.stderr).not.toContain("[BLOCKED] Checkpoint:");
 
-    // The record is committed, so an identical request is a new session
-    // rather than a "pending" one adopted for repair.
-    const second = tryAddSession(project, "nested layout", [
-      "--summary",
-      "nested run",
-    ]);
-    expect(second.status).toBe(0);
-    expect(second.stderr).not.toContain("[RESUME]");
-    expect(sessionNumbers(project)).toEqual([1, 2]);
-  });
-});
+      // The record is committed, so an identical request is a new session
+      // rather than a "pending" one adopted for repair.
+      const second = tryAddSession(project, "nested layout", [
+        "--summary",
+        "nested run",
+      ]);
+      expect(second.status).toBe(0);
+      expect(second.stderr).not.toContain("[RESUME]");
+      expect(sessionNumbers(project)).toEqual([1, 2]);
+    });
+  },
+);
 
-describe.skipIf(!hasPython())("add_session.py outside any git repository", () => {
-  let project: string;
+describe.skipIf(!hasPython())(
+  "add_session.py outside any git repository",
+  () => {
+    let project: string;
 
-  beforeEach(() => {
-    project = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-session-nogit-"));
-    stampArbor(project);
-  });
+    beforeEach(() => {
+      project = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-session-nogit-"));
+      stampArbor(project);
+    });
 
-  afterEach(() => {
-    fs.rmSync(project, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-  });
+    afterEach(() => {
+      fs.rmSync(project, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 100,
+      });
+    });
 
-  it("records the session and exits 0 — a configured skip, not a retry loop", () => {
-    // No git here means auto-commit can never succeed; that must be
-    // COMMIT_BLOCKED (exit 0, like a gitignored .arbor/), not the
-    // COMMIT_FAILED checkpoint whose "fix the git error" advice never applies.
-    const result = tryAddSession(project, "no git", ["--summary", "no repo"]);
-    expect(result.status).toBe(0);
-    expect(result.stderr).toContain("Not a git repository");
-    expect(result.stderr).not.toContain("[BLOCKED] Checkpoint:");
-    expect(sessionNumbers(project)).toEqual([1]);
-  });
-});
+    it("records the session and exits 0 — a configured skip, not a retry loop", () => {
+      // No git here means auto-commit can never succeed; that must be
+      // COMMIT_BLOCKED (exit 0, like a gitignored .arbor/), not the
+      // COMMIT_FAILED checkpoint whose "fix the git error" advice never applies.
+      const result = tryAddSession(project, "no git", ["--summary", "no repo"]);
+      expect(result.status).toBe(0);
+      expect(result.stderr).toContain("Not a git repository");
+      expect(result.stderr).not.toContain("[BLOCKED] Checkpoint:");
+      expect(sessionNumbers(project)).toEqual([1]);
+    });
+  },
+);

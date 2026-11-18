@@ -18,23 +18,43 @@ describe("test Git subprocess isolation", () => {
   it("prevents inherited global Trace2 configuration from reaching background listeners", () => {
     const trace = path.join(tmp, "events.jsonl");
     const config = path.join(tmp, "gitconfig");
-    fs.writeFileSync(config, `[trace2]\n\teventTarget = ${JSON.stringify(trace)}\n`);
-    const env = { ...process.env, GIT_CONFIG_GLOBAL: config, GIT_CONFIG_NOSYSTEM: "1" };
+    fs.writeFileSync(
+      config,
+      `[trace2]\n\teventTarget = ${JSON.stringify(trace)}\n`,
+    );
+    const env = {
+      ...process.env,
+      GIT_CONFIG_GLOBAL: config,
+      GIT_CONFIG_NOSYSTEM: "1",
+    };
 
     // Prove this global configuration emits events without the test isolation.
     const controlEnv: NodeJS.ProcessEnv = { ...env };
     delete controlEnv.GIT_TRACE2_EVENT;
-    const control = spawnSync("git", ["init", "-q", "-b", "main", "control-repo"], {
-      cwd: tmp, encoding: "utf-8", env: controlEnv,
-    });
+    const control = spawnSync(
+      "git",
+      ["init", "-q", "-b", "main", "control-repo"],
+      {
+        cwd: tmp,
+        encoding: "utf-8",
+        env: controlEnv,
+      },
+    );
     expect(control.status, control.stdout + control.stderr).toBe(0);
     expect(fs.readFileSync(trace, "utf-8")).toContain('"event":"version"');
     fs.unlinkSync(trace);
 
     // The setup's environment must propagate through child processes to Git.
-    const isolated = spawnSync(process.execPath, ["-e", `
+    const isolated = spawnSync(
+      process.execPath,
+      [
+        "-e",
+        `
       require("node:child_process").execFileSync("git", ["init", "-q", "-b", "main", "isolated-repo"], { stdio: "pipe" });
-    `], { cwd: tmp, encoding: "utf-8", env });
+    `,
+      ],
+      { cwd: tmp, encoding: "utf-8", env },
+    );
     expect(isolated.status, isolated.stdout + isolated.stderr).toBe(0);
     expect(fs.existsSync(trace)).toBe(false);
   });

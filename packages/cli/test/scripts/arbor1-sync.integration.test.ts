@@ -25,10 +25,16 @@ import {
 
 let p: Project;
 const integration = () => p.taskJson().repos["."].worktree as string;
-const branches = () => git(p.repo, "branch", "--format=%(refname:short)").split("\n");
+const branches = () =>
+  git(p.repo, "branch", "--format=%(refname:short)").split("\n");
 
 function patchRequest(key: string, patch: (r: Json) => void): void {
-  const file = path.join(p.repo, ".arbor/.runtime/workers", p.task, `${key}.json`);
+  const file = path.join(
+    p.repo,
+    ".arbor/.runtime/workers",
+    p.task,
+    `${key}.json`,
+  );
   const rec = JSON.parse(fs.readFileSync(file, "utf-8"));
   patch(rec);
   fs.writeFileSync(file, JSON.stringify(rec));
@@ -38,7 +44,9 @@ describe.skipIf(!hasPython())("arbor 1.0 sync", { timeout: 180_000 }, () => {
   afterEach(() => p?.cleanup());
 
   it("gives a read-only node without a tier the explore tier, a writer the write one", () => {
-    p = setupProject({ executor: "    tiers:\n      explore:\n        agent: omp\n" });
+    p = setupProject({
+      executor: "    tiers:\n      explore:\n        agent: omp\n",
+    });
     p.node("look", {});
     p.node("edit", { paths: "[src/**]" });
     p.node("pinned", { tier: "write" });
@@ -59,30 +67,46 @@ describe.skipIf(!hasPython())("arbor 1.0 sync", { timeout: 180_000 }, () => {
     expect(out.events).toContain("started look [explore omp]");
     expect(out.events).toContain("started edit [write codex]");
     const starts = orcaCalls(p).filter((c) => c[1] === "worker-start");
-    expect(starts.some((c) => c.includes("omp") && !c.includes("--model"))).toBe(true);
-    expect(starts.some((c) => c.includes("codex") && !c.includes("--effort"))).toBe(true);
+    expect(
+      starts.some((c) => c.includes("omp") && !c.includes("--model")),
+    ).toBe(true);
+    expect(
+      starts.some((c) => c.includes("codex") && !c.includes("--effort")),
+    ).toBe(true);
   });
 
   it("passes the model and effort of the review entry to the reviewer worker", () => {
-    p = setupProject({ executor: "    agents:\n      write: codex\n      review:\n        agent: claude\n        model: opus\n        effort: high\n" });
+    p = setupProject({
+      executor:
+        "    agents:\n      write: codex\n      review:\n        agent: claude\n        model: opus\n        effort: high\n",
+    });
     p.node("n1", { paths: "[src/**]" });
     p.sync();
     work(p, "n1", { write: [{ path: "src/feature.txt", content: "f\n" }] });
     p.sync();
     p.ok("review");
-    expect(p.sync().events).toContain("started review-1 [review claude opus high]");
-    const start = orcaCalls(p).filter((c) => c[1] === "worker-start" && c.includes("claude"))[0];
-    expect(start.slice(start.indexOf("--model"), start.indexOf("--model") + 4)).toEqual(["--model", "opus", "--effort", "high"]);
+    expect(p.sync().events).toContain(
+      "started review-1 [review claude opus high]",
+    );
+    const start = orcaCalls(p).filter(
+      (c) => c[1] === "worker-start" && c.includes("claude"),
+    )[0];
+    expect(
+      start.slice(start.indexOf("--model"), start.indexOf("--model") + 4),
+    ).toEqual(["--model", "opus", "--effort", "high"]);
   });
 
   it("leaves a read-only node whose agent is the main agent to the main agent, no Orca worker", () => {
     p = setupProject({
-      executor: "    main: claude\n    agents:\n      write: codex\n      explore:\n        agent: claude\n        model: sonnet\n",
+      executor:
+        "    main: claude\n    agents:\n      write: codex\n      explore:\n        agent: claude\n        model: sonnet\n",
     });
     p.node("look", {});
     p.node("edit", { paths: "[src/**]" });
     let out = p.sync();
-    expect(out.events).toContain("started look [explore claude sonnet] in this session");
+    expect(out.events).toContain(
+      "started look [explore claude sonnet] in this session",
+    );
     expect(out.events).toContain("started edit [write codex]");
     const starts = orcaCalls(p).filter((c) => c[1] === "worker-start");
     expect(starts).toHaveLength(1);
@@ -99,7 +123,10 @@ describe.skipIf(!hasPython())("arbor 1.0 sync", { timeout: 180_000 }, () => {
     expect(out.next.text).toContain("look [claude sonnet]");
     expect(out.next.text).toContain("reports/look.md");
 
-    fs.writeFileSync(path.join(p.taskDir, "reports/look.md"), "found it: src/x.ts:3\n");
+    fs.writeFileSync(
+      path.join(p.taskDir, "reports/look.md"),
+      "found it: src/x.ts:3\n",
+    );
     out = p.sync();
     expect(out.nodes.look.status).toBe("done");
     expect(out.next.kind).not.toBe("inline");
@@ -107,18 +134,25 @@ describe.skipIf(!hasPython())("arbor 1.0 sync", { timeout: 180_000 }, () => {
 
   it("runs the node in Orca when `main: none` or the main agent is another one", () => {
     for (const main of ["    main: none\n", "    main: codex\n"]) {
-      p = setupProject({ executor: `${main}    agents:\n      write: codex\n      explore: claude\n` });
+      p = setupProject({
+        executor: `${main}    agents:\n      write: codex\n      explore: claude\n`,
+      });
       p.node("look", {});
       const out = p.sync();
       expect(out.events).toContain("started look [explore claude]");
       expect(out.nodes.look.inline).toBeFalsy();
-      expect(orcaCalls(p).filter((c) => c[1] === "worker-start")).toHaveLength(1);
+      expect(orcaCalls(p).filter((c) => c[1] === "worker-start")).toHaveLength(
+        1,
+      );
       p.cleanup();
     }
   });
 
   it("a read-only node that left changes behind fails even when the main agent ran it", () => {
-    p = setupProject({ executor: "    main: claude\n    agents:\n      write: codex\n      explore: claude\n" });
+    p = setupProject({
+      executor:
+        "    main: claude\n    agents:\n      write: codex\n      explore: claude\n",
+    });
     p.node("n1", { paths: "[src/**]" });
     p.sync();
     work(p, "n1", { write: [{ path: "src/a.txt", content: "a\n" }] });
@@ -133,15 +167,22 @@ describe.skipIf(!hasPython())("arbor 1.0 sync", { timeout: 180_000 }, () => {
   });
 
   it("still reads `tier: strong`, the old name of write, in node files and old task records", () => {
-    p = setupProject({ executor: "    agents:\n      write: codex\n      review: claude\n" });
+    p = setupProject({
+      executor: "    agents:\n      write: codex\n      review: claude\n",
+    });
     p.node("old", { paths: "[src/**]", tier: "strong" });
     const out = p.sync();
-    expect(out.nodes.old).toMatchObject({ status: "running", tier: "write", agent: "codex" });
+    expect(out.nodes.old).toMatchObject({
+      status: "running",
+      tier: "write",
+      agent: "codex",
+    });
   });
 
   it("refuses an effort without a model", () => {
     p = setupProject({
-      executor: "    agents:\n      write: codex\n      review:\n        agent: claude\n        effort: high\n",
+      executor:
+        "    agents:\n      write: codex\n      review:\n        agent: claude\n        effort: high\n",
       start: false,
     });
     const res = p.run("start");
@@ -165,14 +206,18 @@ describe.skipIf(!hasPython())("arbor 1.0 sync", { timeout: 180_000 }, () => {
     expect(out.status).toBe("active");
     expect(out.events).toContain("started n1 [write codex]");
     expect(out.next.kind).toBe("wait");
-    expect(out.next.text).toContain('run "arbor.py sync --wait" in the background');
+    expect(out.next.text).toContain(
+      'run "arbor.py sync --wait" in the background',
+    );
     p.node("n2", { paths: "[docs/**]" });
     p.sync();
     expect(orcaCalls(p).filter((c) => c[1] === "run-create")).toHaveLength(1);
     const spec = fs.readFileSync(request(p, "n1").spec_path, "utf-8");
     expect(spec.split("\n")[0]).toBe(`Arbor node: ${p.task}/n1`);
     expect(spec).toContain("Paths you own: src/**");
-    expect(spec).toContain(`Report file: ${path.join(p.taskDir, "reports", "n1.md")}`);
+    expect(spec).toContain(
+      `Report file: ${path.join(p.taskDir, "reports", "n1.md")}`,
+    );
     expect(spec).toContain("Brief\nDo n1.");
   });
 
@@ -191,19 +236,26 @@ describe.skipIf(!hasPython())("arbor 1.0 sync", { timeout: 180_000 }, () => {
       `Reports to start from (what earlier workers found and changed; read them before the code):\n` +
         `${path.join(reports, "look.md")} (node look)\n${path.join(reports, "base.md")} (node base)\n`,
     );
-    work(p, "n1", { write: [{ path: "docs/out", content: "x\n" }], report: "tried src/b\n" });
+    work(p, "n1", {
+      write: [{ path: "docs/out", content: "x\n" }],
+      report: "tried src/b\n",
+    });
     expect(p.sync().nodes.n1.status).toBe("failed");
     p.ok("retry", "n1");
     p.sync();
     spec = fs.readFileSync(request(p, "n1.r2").spec_path, "utf-8");
-    expect(spec).toContain(`${path.join(reports, "n1.md")} (attempt 1 of this node)`);
+    expect(spec).toContain(
+      `${path.join(reports, "n1.md")} (attempt 1 of this node)`,
+    );
   });
 
   it("names no reports when there is nothing to hand over", () => {
     p = setupProject();
     p.node("n1", { paths: "[src/**]" });
     p.sync();
-    expect(fs.readFileSync(request(p, "n1").spec_path, "utf-8")).not.toContain("Reports to start from");
+    expect(fs.readFileSync(request(p, "n1").spec_path, "utf-8")).not.toContain(
+      "Reports to start from",
+    );
   });
 
   it("keeps running nodes at max_parallel", () => {
@@ -230,36 +282,70 @@ describe.skipIf(!hasPython())("arbor 1.0 sync", { timeout: 180_000 }, () => {
     const out = p.sync();
     const merged = out.nodes.n1;
     expect(merged.status).toBe("merged");
-    expect(out.events).toContain(`merged n1 (${merged.merged_sha.slice(0, 7)})`);
+    expect(out.events).toContain(
+      `merged n1 (${merged.merged_sha.slice(0, 7)})`,
+    );
     expect(fs.existsSync(node.worktree)).toBe(false);
     expect(branches()).not.toContain(`arbor/${p.task}--n1`);
     expect(git(integration(), "rev-parse", "HEAD")).toBe(merged.merged_sha);
-    expect(git(integration(), "log", "-1", "--format=%s")).toBe(`merge ${p.task}/n1`);
-    expect(out.repos["."].gate).toMatchObject({ sha: merged.merged_sha, green: true });
+    expect(git(integration(), "log", "-1", "--format=%s")).toBe(
+      `merge ${p.task}/n1`,
+    );
+    expect(out.repos["."].gate).toMatchObject({
+      sha: merged.merged_sha,
+      green: true,
+    });
     expect(out.next.kind).toBe("review");
-    expect(out.next.text).toContain("arbor.py review starts one reviewer per repo");
+    expect(out.next.text).toContain(
+      "arbor.py review starts one reviewer per repo",
+    );
     expect(p.run("status").stdout).toContain("next: review:");
   });
 
   it.each([
-    ["unchanged", "README.md", ["AC-1: `README.md` is unchanged since the task base; its check may pass on existing tests"]],
+    [
+      "unchanged",
+      "README.md",
+      [
+        "AC-1: `README.md` is unchanged since the task base; its check may pass on existing tests",
+      ],
+    ],
     ["changed", "src/feature.txt", []],
-  ])("notes on the gate an auto check whose map file the writer left unchanged (%s)", (_name, file, notes) => {
-    p = setupProject({ contract: CONTRACT.replace("| `test -f src/feature.txt` | -    |", `| \`test -f src/feature.txt\` | ${file} |`) });
-    p.node("n1", { paths: "[src/**]", checks: "[AC-1]" });
-    p.sync();
-    work(p, "n1", { write: [{ path: "src/feature.txt", content: "f\n" }] });
-    const out = p.sync();
-    expect(out.repos["."].gate).toMatchObject({ green: true, notes });
-    for (const note of notes) expect(out.events).toContain(`  ${note}`);
-  });
+  ])(
+    "notes on the gate an auto check whose map file the writer left unchanged (%s)",
+    (_name, file, notes) => {
+      p = setupProject({
+        contract: CONTRACT.replace(
+          "| `test -f src/feature.txt` | -    |",
+          `| \`test -f src/feature.txt\` | ${file} |`,
+        ),
+      });
+      p.node("n1", { paths: "[src/**]", checks: "[AC-1]" });
+      p.sync();
+      work(p, "n1", { write: [{ path: "src/feature.txt", content: "f\n" }] });
+      const out = p.sync();
+      expect(out.repos["."].gate).toMatchObject({ green: true, notes });
+      for (const note of notes) expect(out.events).toContain(`  ${note}`);
+    },
+  );
 
   it.each([
-    ["outside its paths", { write: [{ path: "docs/x.md", content: "x\n" }] }, "outside its paths: docs/x.md"],
-    ["no commits", { settle: "failed" as const }, "no commits (the worker settled as failed: worker said it failed)"],
+    [
+      "outside its paths",
+      { write: [{ path: "docs/x.md", content: "x\n" }] },
+      "outside its paths: docs/x.md",
+    ],
+    [
+      "no commits",
+      { settle: "failed" as const },
+      "no commits (the worker settled as failed: worker said it failed)",
+    ],
     [
       "uncommitted changes",
-      { write: [{ path: "src/a", content: "a\n" }], dirty: [{ path: "src/b", content: "b\n" }] },
+      {
+        write: [{ path: "src/a", content: "a\n" }],
+        dirty: [{ path: "src/b", content: "b\n" }],
+      },
       "uncommitted changes",
     ],
   ])("fails a writer with %s and keeps its worktree", (_name, w, reason) => {
@@ -273,14 +359,19 @@ describe.skipIf(!hasPython())("arbor 1.0 sync", { timeout: 180_000 }, () => {
     expect(out.events).toContain("  | line one");
     expect(fs.existsSync(out.nodes.n1.worktree)).toBe(true);
     expect(out.next.kind).toBe("decide");
-    expect(out.next.text).toContain(`n1: ${reason} (retry n1 | cancel n1 | edit or add nodes)`);
+    expect(out.next.text).toContain(
+      `n1: ${reason} (retry n1 | cancel n1 | edit or add nodes)`,
+    );
   });
 
   it("judges a worker that reported failure by its committed work", () => {
     p = setupProject();
     p.node("n1", { paths: "[src/**]" });
     p.sync();
-    work(p, "n1", { write: [{ path: "src/a", content: "a\n" }], settle: "failed" });
+    work(p, "n1", {
+      write: [{ path: "src/a", content: "a\n" }],
+      settle: "failed",
+    });
     expect(p.sync().nodes.n1.status).toBe("merged");
   });
 
@@ -289,7 +380,10 @@ describe.skipIf(!hasPython())("arbor 1.0 sync", { timeout: 180_000 }, () => {
     p.node("n1", { paths: "[src/**]", checks: "[AC-1]" });
     p.sync();
     work(p, "n1", { write: [{ path: "src/other.txt", content: "x\n" }] });
-    expect(p.sync().nodes.n1).toMatchObject({ status: "failed", reason: "checks red: AC-1" });
+    expect(p.sync().nodes.n1).toMatchObject({
+      status: "failed",
+      reason: "checks red: AC-1",
+    });
   });
 
   it("fails the second of two conflicting writers with the files", () => {
@@ -311,7 +405,10 @@ describe.skipIf(!hasPython())("arbor 1.0 sync", { timeout: 180_000 }, () => {
     fs.writeFileSync(path.join(p.taskDir, "task.json"), JSON.stringify(data));
     work(p, "b", { write: [{ path: "lib/b.txt", content: "b\n" }] });
     const out = p.sync();
-    expect(out.nodes.b).toMatchObject({ status: "failed", reason: "merge conflict: src/a.txt" });
+    expect(out.nodes.b).toMatchObject({
+      status: "failed",
+      reason: "merge conflict: src/a.txt",
+    });
     expect(fs.existsSync(bwt)).toBe(true);
     expect(git(integration(), "status", "--porcelain")).toBe("");
   });
@@ -321,7 +418,12 @@ describe.skipIf(!hasPython())("arbor 1.0 sync", { timeout: 180_000 }, () => {
     p.node("a", { paths: "[a/**]" });
     p.node("b", { paths: "[b/**]" });
     p.sync();
-    const idle = { projection: { stage: { activity: "done" }, liveness: { verdict: "live" } } };
+    const idle = {
+      projection: {
+        stage: { activity: "done" },
+        liveness: { verdict: "live" },
+      },
+    };
     for (const key of ["a", "b"]) {
       setOrcaState(p, `orca-${key}`, idle);
       patchRequest(key, (r) => (r.orca.started = "2020-01-01T00:00:00Z"));
@@ -329,20 +431,28 @@ describe.skipIf(!hasPython())("arbor 1.0 sync", { timeout: 180_000 }, () => {
     work(p, "a", { write: [{ path: "a/x", content: "x\n" }], settle: null });
     const out = p.sync();
     expect(out.nodes.a.status).toBe("merged");
-    expect(orcaCalls(p).some((c) => c[1] === "worker-stop" && c[3] === "orca-a")).toBe(true);
+    expect(
+      orcaCalls(p).some((c) => c[1] === "worker-stop" && c[3] === "orca-a"),
+    ).toBe(true);
     expect(out.nodes.b.status).toBe("running");
     expect(out.next.kind).toBe("decide");
-    expect(out.next.text).toContain("orca orchestration send --to dispatch:orca-b");
+    expect(out.next.text).toContain(
+      "orca orchestration send --to dispatch:orca-b",
+    );
   });
 
   it("reports a worker waiting for a person", () => {
     p = setupProject();
     p.node("n1", { paths: "[src/**]" });
     p.sync();
-    setOrcaState(p, "orca-n1", { observation: { agentWait: { reason: "approve rm -rf" } } });
+    setOrcaState(p, "orca-n1", {
+      observation: { agentWait: { reason: "approve rm -rf" } },
+    });
     const out = p.sync();
     expect(out.nodes.n1.status).toBe("running");
-    expect(out.next.text).toContain("n1: waiting for a person (approve rm -rf)");
+    expect(out.next.text).toContain(
+      "n1: waiting for a person (approve rm -rf)",
+    );
   });
 
   it("recovers a merge whose save was lost", () => {
@@ -350,10 +460,21 @@ describe.skipIf(!hasPython())("arbor 1.0 sync", { timeout: 180_000 }, () => {
     p.node("n1", { paths: "[src/**]" });
     p.sync();
     work(p, "n1", { write: [{ path: "src/a", content: "a\n" }] });
-    git(integration(), "merge", "--no-ff", "-q", "-m", "earlier merge", `arbor/${p.task}--n1`);
+    git(
+      integration(),
+      "merge",
+      "--no-ff",
+      "-q",
+      "-m",
+      "earlier merge",
+      `arbor/${p.task}--n1`,
+    );
     const before = git(integration(), "rev-parse", "HEAD");
     const out = p.sync();
-    expect(out.nodes.n1).toMatchObject({ status: "merged", merged_sha: before });
+    expect(out.nodes.n1).toMatchObject({
+      status: "merged",
+      merged_sha: before,
+    });
     expect(git(integration(), "rev-parse", "HEAD")).toBe(before);
   });
 
@@ -388,10 +509,16 @@ describe.skipIf(!hasPython())("arbor 1.0 sync", { timeout: 180_000 }, () => {
     expect(fs.existsSync(old)).toBe(false);
     out = p.sync();
     const n1 = out.nodes.n1;
-    expect(n1).toMatchObject({ status: "running", attempt: 2, branch: `arbor/${p.task}--n1--r2` });
+    expect(n1).toMatchObject({
+      status: "running",
+      attempt: 2,
+      branch: `arbor/${p.task}--n1--r2`,
+    });
     expect(path.basename(n1.worktree)).toBe(`${p.task}-n1-r2`);
     expect(n1.base).toBe(out.nodes.base.merged_sha);
-    expect(request(p, "n1.r2").report_path).toBe(path.join(p.taskDir, "reports", "n1.r2.md"));
+    expect(request(p, "n1.r2").report_path).toBe(
+      path.join(p.taskDir, "reports", "n1.r2.md"),
+    );
     work(p, "n1.r2", { write: [{ path: "src/x", content: "x\n" }] });
     expect(p.sync().nodes.n1.status).toBe("merged");
     expect(p.run("retry", "n1").status).toBe(1);
@@ -399,16 +526,24 @@ describe.skipIf(!hasPython())("arbor 1.0 sync", { timeout: 180_000 }, () => {
 
   it("retries a failed start on the same Orca Task and fails the node on the third", () => {
     p = setupProject();
-    p.plan({ n1: { start: { state: "failed", lastError: "agent did not boot" } } });
+    p.plan({
+      n1: { start: { state: "failed", lastError: "agent did not boot" } },
+    });
     p.node("n1", { paths: "[src/**]" });
     let out = p.sync();
     expect(out.nodes.n1).toMatchObject({ status: "pending", failed_starts: 1 });
-    expect(out.next.text).toContain("start failed: worker-start failed: agent did not boot");
+    expect(out.next.text).toContain(
+      "start failed: worker-start failed: agent did not boot",
+    );
     out = p.sync();
     expect(out.nodes.n1.failed_starts).toBe(2);
-    const retries = orcaCalls(p).filter((c) => c[1] === "worker-start" && c.includes("--retry-of"));
+    const retries = orcaCalls(p).filter(
+      (c) => c[1] === "worker-start" && c.includes("--retry-of"),
+    );
     expect(retries[0]).toContain("orca-n1");
-    expect(orcaCalls(p).filter((c) => c[0] === "worktree" && c[1] === "create")).toHaveLength(2);
+    expect(
+      orcaCalls(p).filter((c) => c[0] === "worktree" && c[1] === "create"),
+    ).toHaveLength(2);
     out = p.sync();
     expect(out.nodes.n1.status).toBe("failed");
     expect(out.nodes.n1.reason).toContain("start failed 3 times");
@@ -419,7 +554,9 @@ describe.skipIf(!hasPython())("arbor 1.0 sync", { timeout: 180_000 }, () => {
     for (const id of ["a", "b", "c"]) p.node(id, { paths: `[${id}/**]` });
     let out = p.sync();
     expect(out.next).toMatchObject({ kind: "stopped" });
-    expect(out.next.text).toContain("max_nodes budget is used up; arbor.py resume grants more");
+    expect(out.next.text).toContain(
+      "max_nodes budget is used up; arbor.py resume grants more",
+    );
     expect(out.nodes.a.status).toBe("pending");
     p.ok("resume");
     out = p.sync();
@@ -432,10 +569,16 @@ describe.skipIf(!hasPython())("arbor 1.0 sync", { timeout: 180_000 }, () => {
     p.sync();
     work(p, "n1", { write: [{ path: "docs/a", content: "a\n" }] });
     const out = p.sync();
-    expect(out.repos["."].gate).toMatchObject({ green: false, failing: ["AC-1"] });
+    expect(out.repos["."].gate).toMatchObject({
+      green: false,
+      failing: ["AC-1"],
+    });
     expect(out.next).toEqual({
       kind: "fix",
-      text: ". red on AC-1; add fix nodes (their brief names the failing check)".replace(/^/, "fix: "),
+      text: ". red on AC-1; add fix nodes (their brief names the failing check)".replace(
+        /^/,
+        "fix: ",
+      ),
     });
     fs.appendFileSync(path.join(p.taskDir, "contract.md"), "\nmore\n");
     expect(p.ok("sync")).toContain(
@@ -449,17 +592,26 @@ describe.skipIf(!hasPython())("arbor 1.0 sync", { timeout: 180_000 }, () => {
     p.node("w", { paths: "[src/**]" });
     let out = p.sync();
     expect(out.status).toBe("planning");
-    expect(out.nodes.look).toMatchObject({ status: "running", worktree: p.repo });
+    expect(out.nodes.look).toMatchObject({
+      status: "running",
+      worktree: p.repo,
+    });
     expect(out.nodes.w.status).toBe("pending");
     expect(orcaCalls(p).some((c) => c[0] === "worktree")).toBe(false);
     const spec = fs.readFileSync(request(p, "look").spec_path, "utf-8");
-    expect(spec).toContain(`You work read-only in ${p.repo}: you may run commands`);
-    expect(JSON.parse(fs.readFileSync(orcaState(p, "orca-look"), "utf-8")).worktree).toBe(p.repo);
+    expect(spec).toContain(
+      `You work read-only in ${p.repo}: you may run commands`,
+    );
+    expect(
+      JSON.parse(fs.readFileSync(orcaState(p, "orca-look"), "utf-8")).worktree,
+    ).toBe(p.repo);
     work(p, "look", { report: "found it\n" });
     out = p.sync();
     expect(out.nodes.look.status).toBe("done");
     expect(out.next.kind).toBe("contract");
-    expect(out.next.text).toContain("get the user's approval, then arbor.py start");
+    expect(out.next.text).toContain(
+      "get the user's approval, then arbor.py start",
+    );
   });
 
   it("runs read-only nodes while the draft contract does not parse", () => {
@@ -470,7 +622,12 @@ describe.skipIf(!hasPython())("arbor 1.0 sync", { timeout: 180_000 }, () => {
     );
     p.node("look", {}, "Explore.");
     let out = p.sync();
-    expect(out.events.some((e: string) => e.includes("contract.md") && e.includes("read-only nodes run anyway"))).toBe(true);
+    expect(
+      out.events.some(
+        (e: string) =>
+          e.includes("contract.md") && e.includes("read-only nodes run anyway"),
+      ),
+    ).toBe(true);
     expect(out.nodes.look.status).toBe("running");
     work(p, "look");
     out = p.sync();
@@ -491,8 +648,14 @@ describe.skipIf(!hasPython())("arbor 1.0 sync", { timeout: 180_000 }, () => {
     writeFile(integration(), "scratch.txt", "left\n");
     work(p, "messy");
     out = p.sync();
-    expect(out.nodes.quiet).toMatchObject({ status: "failed", reason: "no report" });
-    expect(out.nodes.messy).toMatchObject({ status: "failed", reason: `left changes in ${integration()}` });
+    expect(out.nodes.quiet).toMatchObject({
+      status: "failed",
+      reason: "no report",
+    });
+    expect(out.nodes.messy).toMatchObject({
+      status: "failed",
+      reason: `left changes in ${integration()}`,
+    });
   });
 
   it("cancels a running node only when Orca proves the stop", () => {
@@ -515,6 +678,8 @@ describe.skipIf(!hasPython())("arbor 1.0 sync", { timeout: 180_000 }, () => {
     );
     const res = p.run("--task", p.task, "sync");
     expect(res.status).toBe(1);
-    expect(res.stderr).toContain(`${p.task} was started by arbor < 1.0: finish it with that version`);
+    expect(res.stderr).toContain(
+      `${p.task} was started by arbor < 1.0: finish it with that version`,
+    );
   });
 });

@@ -83,9 +83,15 @@ describe("init() integration", () => {
 
     // The skill `arbor` plus the kept skills; no hooks, commands,
     // sub-agent definitions, role files or workflow.md.
-    for (const skill of ["arbor", "arbor-spec-bootstrap", "arbor-update-spec"]) {
+    for (const skill of [
+      "arbor",
+      "arbor-spec-bootstrap",
+      "arbor-update-spec",
+    ]) {
       expect(
-        fs.existsSync(path.join(tmpDir, ".claude", "skills", skill, "SKILL.md")),
+        fs.existsSync(
+          path.join(tmpDir, ".claude", "skills", skill, "SKILL.md"),
+        ),
         skill,
       ).toBe(true);
     }
@@ -114,7 +120,8 @@ describe("init() integration", () => {
       vi
         .mocked(execSync)
         .mock.calls.some(
-          ([cmd]) => typeof cmd === "string" && cmd.includes("init_developer.py"),
+          ([cmd]) =>
+            typeof cmd === "string" && cmd.includes("init_developer.py"),
         ),
     ).toBe(true);
     expect(console.log).toHaveBeenCalledWith(
@@ -156,7 +163,9 @@ describe("init() integration", () => {
     expect(fs.existsSync(path.join(tmpDir, ".codex"))).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, ".agents", "skills"))).toBe(false);
     expect(
-      fs.existsSync(path.join(tmpDir, ".claude", "skills", "arbor", "SKILL.md")),
+      fs.existsSync(
+        path.join(tmpDir, ".claude", "skills", "arbor", "SKILL.md"),
+      ),
     ).toBe(true);
   });
 
@@ -177,7 +186,9 @@ describe("init() integration", () => {
     );
     await init({ yes: true, codex: true });
     expect(
-      fs.existsSync(path.join(tmpDir, ".agents/skills/arbor-update-spec/SKILL.md")),
+      fs.existsSync(
+        path.join(tmpDir, ".agents/skills/arbor-update-spec/SKILL.md"),
+      ),
     ).toBe(true);
     expect(
       fs.existsSync(
@@ -737,7 +748,10 @@ describe("init() integration", () => {
     expect(loadHashes(tmpDir)[FILE_NAMES.CLAUDE]).toBe(computeHash(expected));
 
     // A re-init replaces a stale block in place instead of appending again.
-    fs.writeFileSync(claudeMd, expected.replace("load the skill `arbor`", "(stale)"));
+    fs.writeFileSync(
+      claudeMd,
+      expected.replace("load the skill `arbor`", "(stale)"),
+    );
     await init({ yes: true, claude: true, force: true });
     expect(fs.readFileSync(claudeMd, "utf-8")).toBe(expected);
   });

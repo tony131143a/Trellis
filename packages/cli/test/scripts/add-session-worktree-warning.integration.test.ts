@@ -72,12 +72,19 @@ function setupRepo(tmp: string, autoCommit: boolean): void {
   git(tmp, "commit", "-q", "-m", "initial");
 }
 
-function runAddSession(
-  repo: string,
-): { status: number; stdout: string; stderr: string } {
+function runAddSession(repo: string): {
+  status: number;
+  stdout: string;
+  stderr: string;
+} {
   const r = spawnSync(
     "python3",
-    [".arbor/scripts/add_session.py", "--title", "parallel session", "--no-commit"],
+    [
+      ".arbor/scripts/add_session.py",
+      "--title",
+      "parallel session",
+      "--no-commit",
+    ],
     { cwd: repo, encoding: "utf-8" },
   );
   return { status: r.status ?? 1, stdout: r.stdout, stderr: r.stderr };
@@ -97,9 +104,19 @@ describe.skipIf(!hasPython())("add_session.py worktree warning", () => {
       spawnSync("git", ["worktree", "remove", "--force", worktreeDir], {
         cwd: tmp,
       });
-      fs.rmSync(worktreeDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+      fs.rmSync(worktreeDir, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 100,
+      });
     }
-    fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    fs.rmSync(tmp, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 100,
+    });
   });
 
   it("stays silent in the main working tree even with auto-commit enabled", () => {

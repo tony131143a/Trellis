@@ -82,88 +82,115 @@ function setup(): void {
   });
 }
 
-describe.skipIf(!hasPython())("arbor 1.0 polyrepo", { timeout: 240_000 }, () => {
-  afterEach(() => p?.cleanup());
+describe.skipIf(!hasPython())(
+  "arbor 1.0 polyrepo",
+  { timeout: 240_000 },
+  () => {
+    afterEach(() => p?.cleanup());
 
-  it("start adds the repos Orca does not know; a refused add refuses the start", () => {
-    setup();
-    p.plan({ repo_add: "fail" });
-    const res = p.run("start");
-    expect(res.status).toBe(1);
-    expect(res.stderr).toContain(`\`orca repo add --path ${api()}\` failed: invalid_argument: not a git repository`);
-    expect(p.taskJson().status).toBe("planning");
+    it("start adds the repos Orca does not know; a refused add refuses the start", () => {
+      setup();
+      p.plan({ repo_add: "fail" });
+      const res = p.run("start");
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain(
+        `\`orca repo add --path ${api()}\` failed: invalid_argument: not a git repository`,
+      );
+      expect(p.taskJson().status).toBe("planning");
 
-    p.plan({});
-    const out = p.ok("start");
-    expect(out).toContain(`added ${api()} to Orca`);
-    expect(out).toContain(`added ${web()} to Orca`);
-    expect(out).not.toContain(`added ${p.repo} to Orca`);
-    expect(out).toContain("is active");
-    const known = JSON.parse(fs.readFileSync(path.join(p.tmp, "orca-repos.json"), "utf-8"));
-    expect(known).toEqual([p.repo, api(), web()]);
-  });
-
-  it("sync adds the repo of a node that start did not name", () => {
-    p = setupProject({
-      config: PACKAGES,
-      start: false,
-      before: (repo) => {
-        initRepo(path.join(repo, "web"), "dev");
-        fs.appendFileSync(path.join(repo, ".gitignore"), "/web/\n");
-      },
+      p.plan({});
+      const out = p.ok("start");
+      expect(out).toContain(`added ${api()} to Orca`);
+      expect(out).toContain(`added ${web()} to Orca`);
+      expect(out).not.toContain(`added ${p.repo} to Orca`);
+      expect(out).toContain("is active");
+      const known = JSON.parse(
+        fs.readFileSync(path.join(p.tmp, "orca-repos.json"), "utf-8"),
+      );
+      expect(known).toEqual([p.repo, api(), web()]);
     });
-    p.ok("start");
-    p.node("w", { repo: "web", paths: "[src/**]" });
-    const out = p.sync();
-    expect(out.events).toContain(`added ${web()} to Orca`);
-    expect(out.nodes.w.status).toBe("running");
-  });
 
-  it("runs nodes of three repos in parallel, gates each repo by its map rows, and merges per repo", () => {
-    setup();
-    p.orcaRepos([p.repo, api(), web()]);
-    p.ok("start");
-    p.node("a", { repo: "api", paths: "[src/**]", checks: "[AC-1]" });
-    p.node("w", { repo: "web", paths: "[src/**]" });
-    p.node("c", { paths: "[docs/**]" });
-    let out = p.sync();
-    for (const id of ["a", "w", "c"]) expect(out.nodes[id].status).toBe("running");
-    const devApi = git(api(), "rev-parse", "dev");
-    expect(out.repos.api).toMatchObject({ branch: `arbor/${p.task}`, base: devApi, merge_target: "dev" });
-    expect(out.repos.web.merge_target).toBe("dev");
-    expect(out.repos["."].merge_target).toBe("main");
-    expect(git(api(), "branch", "--list", `arbor/${p.task}--a`)).not.toBe("");
+    it("sync adds the repo of a node that start did not name", () => {
+      p = setupProject({
+        config: PACKAGES,
+        start: false,
+        before: (repo) => {
+          initRepo(path.join(repo, "web"), "dev");
+          fs.appendFileSync(path.join(repo, ".gitignore"), "/web/\n");
+        },
+      });
+      p.ok("start");
+      p.node("w", { repo: "web", paths: "[src/**]" });
+      const out = p.sync();
+      expect(out.events).toContain(`added ${web()} to Orca`);
+      expect(out.nodes.w.status).toBe("running");
+    });
 
-    work(p, "a", { write: [{ path: "src/a.txt", content: "a\n" }] });
-    work(p, "w", { write: [{ path: "src/other.txt", content: "w\n" }] });
-    work(p, "c", { write: [{ path: "docs/c.md", content: "c\n" }] });
-    out = p.sync();
-    for (const id of ["a", "w", "c"]) expect(out.nodes[id].status).toBe("merged");
-    expect(out.repos.api.gate).toMatchObject({ green: true, failing: [] });
-    expect(out.repos.web.gate).toMatchObject({ green: false, failing: ["AC-2"] });
-    expect(out.repos["."].gate.green).toBe(true);
-    expect(out.next.text).toBe("fix: web red on AC-2; add fix nodes (their brief names the failing check)");
+    it("runs nodes of three repos in parallel, gates each repo by its map rows, and merges per repo", () => {
+      setup();
+      p.orcaRepos([p.repo, api(), web()]);
+      p.ok("start");
+      p.node("a", { repo: "api", paths: "[src/**]", checks: "[AC-1]" });
+      p.node("w", { repo: "web", paths: "[src/**]" });
+      p.node("c", { paths: "[docs/**]" });
+      let out = p.sync();
+      for (const id of ["a", "w", "c"])
+        expect(out.nodes[id].status).toBe("running");
+      const devApi = git(api(), "rev-parse", "dev");
+      expect(out.repos.api).toMatchObject({
+        branch: `arbor/${p.task}`,
+        base: devApi,
+        merge_target: "dev",
+      });
+      expect(out.repos.web.merge_target).toBe("dev");
+      expect(out.repos["."].merge_target).toBe("main");
+      expect(git(api(), "branch", "--list", `arbor/${p.task}--a`)).not.toBe("");
 
-    p.node("w2", { repo: "web", paths: "[src/**]" });
-    p.sync();
-    work(p, "w2", { write: [{ path: "src/w.txt", content: "w\n" }] });
-    out = p.sync();
-    expect(out.repos.web.gate.green).toBe(true);
-    expect(out.next.kind).toBe("review");
+      work(p, "a", { write: [{ path: "src/a.txt", content: "a\n" }] });
+      work(p, "w", { write: [{ path: "src/other.txt", content: "w\n" }] });
+      work(p, "c", { write: [{ path: "docs/c.md", content: "c\n" }] });
+      out = p.sync();
+      for (const id of ["a", "w", "c"])
+        expect(out.nodes[id].status).toBe("merged");
+      expect(out.repos.api.gate).toMatchObject({ green: true, failing: [] });
+      expect(out.repos.web.gate).toMatchObject({
+        green: false,
+        failing: ["AC-2"],
+      });
+      expect(out.repos["."].gate.green).toBe(true);
+      expect(out.next.text).toBe(
+        "fix: web red on AC-2; add fix nodes (their brief names the failing check)",
+      );
 
-    p.ok("review", "--pass");
-    const fin = p.ok("finish");
-    expect(fin).toContain("AC-3: look at it");
-    for (const [key, root] of [[".", p.repo], ["api", api()], ["web", web()]]) {
-      const target = key === "." ? "main" : "dev";
-      expect(fin).toContain(`${key}: git -C ${root} merge --no-ff arbor/${p.task}   (with ${target} checked out in ${root})`);
-    }
-    expect(fin.match(/merge --no-ff/g)).toHaveLength(3);
-    for (const root of [p.repo, api(), web()]) git(root, "merge", "--no-ff", "-q", "-m", "merge", `arbor/${p.task}`);
-    const done = p.ok("finish");
-    expect(done).toContain("journal entry written");
-    expect(done).toContain(`${p.task}: done`);
-    for (const root of [api(), web()]) expect(git(root, "branch", "--list", `arbor/${p.task}*`)).toBe("");
-    expect(orcaCalls(p).filter((c) => c[1] === "run-create")).toHaveLength(1);
-  });
-});
+      p.node("w2", { repo: "web", paths: "[src/**]" });
+      p.sync();
+      work(p, "w2", { write: [{ path: "src/w.txt", content: "w\n" }] });
+      out = p.sync();
+      expect(out.repos.web.gate.green).toBe(true);
+      expect(out.next.kind).toBe("review");
+
+      p.ok("review", "--pass");
+      const fin = p.ok("finish");
+      expect(fin).toContain("AC-3: look at it");
+      for (const [key, root] of [
+        [".", p.repo],
+        ["api", api()],
+        ["web", web()],
+      ]) {
+        const target = key === "." ? "main" : "dev";
+        expect(fin).toContain(
+          `${key}: git -C ${root} merge --no-ff arbor/${p.task}   (with ${target} checked out in ${root})`,
+        );
+      }
+      expect(fin.match(/merge --no-ff/g)).toHaveLength(3);
+      for (const root of [p.repo, api(), web()])
+        git(root, "merge", "--no-ff", "-q", "-m", "merge", `arbor/${p.task}`);
+      const done = p.ok("finish");
+      expect(done).toContain("journal entry written");
+      expect(done).toContain(`${p.task}: done`);
+      for (const root of [api(), web()])
+        expect(git(root, "branch", "--list", `arbor/${p.task}*`)).toBe("");
+      expect(orcaCalls(p).filter((c) => c[1] === "run-create")).toHaveLength(1);
+    });
+  },
+);

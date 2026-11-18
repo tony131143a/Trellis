@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  DIR_NAMES,
-  FILE_NAMES,
-  PATHS,
-} from "../../src/constants/paths.js";
+import { DIR_NAMES, FILE_NAMES, PATHS } from "../../src/constants/paths.js";
 
 // =============================================================================
 // DIR_NAMES — constant structure
@@ -60,7 +56,9 @@ describe("PATHS", () => {
   });
 
   it("WORKSPACE is WORKFLOW/workspace", () => {
-    expect(PATHS.WORKSPACE).toBe(`${DIR_NAMES.WORKFLOW}/${DIR_NAMES.WORKSPACE}`);
+    expect(PATHS.WORKSPACE).toBe(
+      `${DIR_NAMES.WORKFLOW}/${DIR_NAMES.WORKSPACE}`,
+    );
   });
 
   it("TASKS is WORKFLOW/tasks", () => {

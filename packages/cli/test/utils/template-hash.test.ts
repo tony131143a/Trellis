@@ -351,7 +351,10 @@ describe("initializeHashes", () => {
 
   it("excludes workspace and tasks directories", () => {
     fs.mkdirSync(path.join(tmpDir, ".arbor", "workspace"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".arbor", "workspace", "data.md"), "user data");
+    fs.writeFileSync(
+      path.join(tmpDir, ".arbor", "workspace", "data.md"),
+      "user data",
+    );
     fs.mkdirSync(path.join(tmpDir, ".arbor", "tasks"), { recursive: true });
     fs.writeFileSync(path.join(tmpDir, ".arbor", "tasks", "task.json"), "{}");
 
@@ -365,12 +368,27 @@ describe("initializeHashes", () => {
   });
 
   it("excludes spec/ directory files from hashing", () => {
-    fs.mkdirSync(path.join(tmpDir, ".arbor", "spec", "guides"), { recursive: true });
-    fs.mkdirSync(path.join(tmpDir, ".arbor", "spec", "frontend"), { recursive: true });
-    fs.mkdirSync(path.join(tmpDir, ".arbor", "spec", "backend"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".arbor", "spec", "guides", "index.md"), "# Guides");
-    fs.writeFileSync(path.join(tmpDir, ".arbor", "spec", "frontend", "index.md"), "# Frontend");
-    fs.writeFileSync(path.join(tmpDir, ".arbor", "spec", "backend", "index.md"), "# Backend");
+    fs.mkdirSync(path.join(tmpDir, ".arbor", "spec", "guides"), {
+      recursive: true,
+    });
+    fs.mkdirSync(path.join(tmpDir, ".arbor", "spec", "frontend"), {
+      recursive: true,
+    });
+    fs.mkdirSync(path.join(tmpDir, ".arbor", "spec", "backend"), {
+      recursive: true,
+    });
+    fs.writeFileSync(
+      path.join(tmpDir, ".arbor", "spec", "guides", "index.md"),
+      "# Guides",
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, ".arbor", "spec", "frontend", "index.md"),
+      "# Frontend",
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, ".arbor", "spec", "backend", "index.md"),
+      "# Backend",
+    );
 
     const count = initializeHashes(tmpDir);
     const hashes = loadHashes(tmpDir);
@@ -437,9 +455,7 @@ describe("initializeHashes", () => {
     });
     const hashes = loadHashes(tmpDir);
 
-    expect(hashes).toHaveProperty(
-      ".pi/skills/arbor-update-spec/SKILL.md",
-    );
+    expect(hashes).toHaveProperty(".pi/skills/arbor-update-spec/SKILL.md");
     expect(count).toBe(1);
   });
 });

@@ -189,9 +189,10 @@ describe("detectMonorepo", () => {
 
     const result = assertPackages(detectMonorepo(tmpDir));
     expect(result).toHaveLength(2);
-    expect(result.map((p) => p.name).sort()).toEqual(
-      ["@scope/bar", "@scope/foo"],
-    );
+    expect(result.map((p) => p.name).sort()).toEqual([
+      "@scope/bar",
+      "@scope/foo",
+    ]);
     expect(result.every((p) => !p.isSubmodule)).toBe(true);
     expect(result.every((p) => !p.isGitRepo)).toBe(true);
   });
@@ -473,10 +474,7 @@ describe("detectMonorepo polyrepo fallback", () => {
 
     const result = assertPackages(detectMonorepo(tmpDir));
     expect(result).toHaveLength(2);
-    expect(result.map((p) => p.path).sort()).toEqual([
-      "apps/api",
-      "apps/web",
-    ]);
+    expect(result.map((p) => p.path).sort()).toEqual(["apps/api", "apps/web"]);
     expect(result.every((p) => p.isGitRepo)).toBe(true);
   });
 
@@ -530,7 +528,10 @@ describe("detectMonorepo polyrepo fallback", () => {
     );
     const pkgDir = path.join(tmpDir, "packages", "lib");
     fs.mkdirSync(pkgDir, { recursive: true });
-    fs.writeFileSync(path.join(pkgDir, "package.json"), JSON.stringify({ name: "lib" }));
+    fs.writeFileSync(
+      path.join(pkgDir, "package.json"),
+      JSON.stringify({ name: "lib" }),
+    );
 
     // Sibling .git that polyrepo would otherwise pick up
     mkRepoDir("standalone-a");

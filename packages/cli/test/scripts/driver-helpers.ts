@@ -290,10 +290,14 @@ export function setupProject(opts: ProjectOptions = {}): Project {
     ".arbor/.runtime/\n.arbor/.developer\n**/__pycache__/\n/*-wt/\n",
   );
   fs.writeFileSync(path.join(tmp, "orca-repos.json"), JSON.stringify([repo]));
-  const r = spawnSync("python3", [".arbor/scripts/init_developer.py", "tester"], {
-    cwd: repo,
-    encoding: "utf-8",
-  });
+  const r = spawnSync(
+    "python3",
+    [".arbor/scripts/init_developer.py", "tester"],
+    {
+      cwd: repo,
+      encoding: "utf-8",
+    },
+  );
   if (r.status !== 0) throw new Error(`init_developer failed: ${r.stderr}`);
   opts.before?.(repo);
   git(repo, "add", "-A");
@@ -315,7 +319,13 @@ export function setupProject(opts: ProjectOptions = {}): Project {
       );
     return res.stdout;
   };
-  const created = ok("new", "Feature", "--slug", "feat", ...(opts.newArgs ?? []));
+  const created = ok(
+    "new",
+    "Feature",
+    "--slug",
+    "feat",
+    ...(opts.newArgs ?? []),
+  );
   const taskDir = created.match(/^created (.+)$/m)?.[1] ?? "";
   const task = path.basename(taskDir);
   fs.writeFileSync(
@@ -344,7 +354,10 @@ export function setupProject(opts: ProjectOptions = {}): Project {
     plan: (spec) =>
       fs.writeFileSync(path.join(tmp, "fake.json"), JSON.stringify(spec)),
     orcaRepos: (paths) =>
-      fs.writeFileSync(path.join(tmp, "orca-repos.json"), JSON.stringify(paths)),
+      fs.writeFileSync(
+        path.join(tmp, "orca-repos.json"),
+        JSON.stringify(paths),
+      ),
     cleanup: () =>
       fs.rmSync(tmp, {
         recursive: true,
@@ -366,7 +379,10 @@ export function request(p: Project, key: string): Json {
 }
 
 /** The fake Orca state file of a started worker. */
-export function orcaState(p: Pick<Project, "tmp">, orcaDispatch: string): string {
+export function orcaState(
+  p: Pick<Project, "tmp">,
+  orcaDispatch: string,
+): string {
   return path.join(p.tmp, "orca", `${orcaDispatch}.json`);
 }
 
@@ -423,7 +439,9 @@ export function work(p: Project, key: string, w: Work = {}): void {
       dispatch: {
         id: rec.orca.dispatch_id,
         status: settle,
-        ...(settle === "failed" ? { terminationReason: "worker said it failed" } : {}),
+        ...(settle === "failed"
+          ? { terminationReason: "worker said it failed" }
+          : {}),
       },
     });
 }

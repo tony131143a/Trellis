@@ -25,7 +25,7 @@ Tests use Vitest with TypeScript ESM and live in a centralized `test/` directory
 
 ## CI / Pipeline
 
-- Pre-commit (`.husky/pre-commit`) runs only `lint-staged` (`.lintstagedrc`: `eslint --fix` and `prettier --write` on `packages/cli/src/**/*.ts`). Do not add tests there; a slow hook gets skipped with `--no-verify`.
+- Pre-commit (`.husky/pre-commit`) runs only `lint-staged` (`.lintstagedrc`: `eslint --fix` and `prettier --write` on `packages/cli/{src,test}/**/*.ts`). Do not add tests there; a slow hook gets skipped with `--no-verify`.
 - CI (`.github/workflows/ci.yml`) is the test gate: it compiles every tracked `.py` with the minimum supported Python, typechecks TypeScript and Python (`basedpyright`), then runs lint, build and the full suite.
 
 ## Pre-Development Checklist

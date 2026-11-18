@@ -396,7 +396,11 @@ describe("uninstall() integration", () => {
     for (const hook of legacyHooks) {
       fs.writeFileSync(path.join(tmpDir, hook), "# arbor hook\n");
     }
-    const hashFile = path.join(tmpDir, DIR_NAMES.WORKFLOW, ".template-hashes.json");
+    const hashFile = path.join(
+      tmpDir,
+      DIR_NAMES.WORKFLOW,
+      ".template-hashes.json",
+    );
     const manifest = JSON.parse(fs.readFileSync(hashFile, "utf-8")) as {
       hashes: Record<string, string>;
     };
