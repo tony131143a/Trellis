@@ -74,7 +74,6 @@ describe.skipIf(!hasPython())("arbor 1.0 postmortem fixes", { timeout: 180_000 }
     const res = spawnSync("python3", [path.join(wt, ".arbor/scripts/arbor.py"), "status"], {
       cwd: wt,
       encoding: "utf-8",
-      env: { ...process.env, CLAUDECODE: "" },
     });
     expect(res.stderr).toContain(`running the main checkout's driver ${path.join(p.repo, ".arbor/scripts/arbor.py")}`);
     expect(res.status).toBe(0);

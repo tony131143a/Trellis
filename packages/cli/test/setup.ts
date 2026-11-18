@@ -1,3 +1,10 @@
+// Host-session variables the scripts under test read: the developer override,
+// Claude Code's marker (the driver takes it as its main agent) and the marker
+// arbor.py sets when it hands over to the main checkout's driver.
+delete process.env.ARBOR_DEVELOPER;
+delete process.env.CLAUDECODE;
+delete process.env.ARBOR_OWN_SCRIPTS;
+
 // Global Trace2 listeners (e.g. git-ai) can keep writing Git objects after a
 // fixture's command exits, racing rmSync with ENOTEMPTY. An explicit "0"
 // overrides trace2.eventTarget for this test process and its Git descendants;
