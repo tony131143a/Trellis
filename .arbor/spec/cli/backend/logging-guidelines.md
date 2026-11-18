@@ -2,7 +2,7 @@
 sources:
   - packages/cli/src/commands/init.ts
   - packages/cli/src/cli/index.ts
-last_verified: 2026-11-16
+last_verified: 2026-11-18
 ---
 # Logging Guidelines
 

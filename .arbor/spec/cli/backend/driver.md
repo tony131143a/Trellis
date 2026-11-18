@@ -7,7 +7,7 @@ sources:
   - packages/cli/src/templates/arbor/scripts/common/driver/executor.py
   - packages/cli/src/templates/arbor/scripts/common/worktree.py
   - packages/cli/test/scripts/driver-helpers.ts
-last_verified: 2026-11-17
+last_verified: 2026-11-18
 ---
 # `arbor.py` Task Driver
 

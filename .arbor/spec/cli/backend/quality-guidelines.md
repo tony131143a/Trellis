@@ -3,7 +3,7 @@ sources:
   - packages/cli/tsconfig.json
   - packages/cli/eslint.config.js
   - packages/cli/package.json
-last_verified: 2026-11-16
+last_verified: 2026-11-18
 ---
 # Quality Guidelines
 
@@ -33,7 +33,7 @@ Enforced by `packages/cli/eslint.config.js`; never ignore an ESLint or TypeScrip
 
 - **Explicit flags take precedence.** A convenience flag such as `-y` means "skip interactive prompts", not "ignore my other flags": check explicit flags first and apply defaults only when none were given (`init()` and `handleReinit()` in `commands/init.ts`).
 - **Batch flags never prompt.** `--force`, `--skip-all`, `--create-new` (or a command-specific `--yes`) are consent for non-interactive execution, so they also bypass the final confirmation; `--dry-run` returns before any mutation or prompt. A later prompt crashes CI and smoke tests when stdin is closed. Exemplar: the `Proceed?` gate in `commands/update.ts`.
-- **Data-driven options.** Similar options come from one registry, not repeated if-else: adding a tool is one `AI_TOOLS` entry in `types/ai-tools.ts`, from which `getInitToolChoices()` (`configurators/index.ts`) derives flags, choices and defaults.
+- **Data-driven options.** Similar options come from one registry, not repeated if-else: adding a tool is one `AI_TOOLS` entry in `types/ai-tools.ts`, from which `getInitToolChoices()` (`configurators/index.ts`) derives the init prompt's choices and defaults.
 - **A fix reaches every entry path.** When a command has several entry paths into the same behaviour (early-return guards, fast paths such as `handleReinit`), list them before claiming a fix; prefer funnelling them into one logic over patching each. Write one test per entry path, using the flag combination that selects it: a convenience flag that bypasses a guard does not cover that path.
 - **Unquote exactly one layer.** Remove one pair of matching surrounding quotes; never Python's greedy `str.strip('"')`. Test sanitization with nested and mixed quotes (`"echo 'hello'"`).
 

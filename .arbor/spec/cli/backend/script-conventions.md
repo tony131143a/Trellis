@@ -9,7 +9,7 @@ sources:
   - packages/cli/src/templates/arbor/scripts/common/config.py
   - packages/cli/src/templates/arbor/scripts/common/arbor_config.py
   - packages/cli/src/configurators/shared.ts
-last_verified: 2026-11-17
+last_verified: 2026-11-18
 ---
 # Script Conventions
 
@@ -61,7 +61,7 @@ Foundation modules (`io.py`, `log.py`, `git.py`, `arbor_config.py`) import nothi
 
 - Every `.arbor/config.yaml` key is read through `common/config.py` or `common/arbor_config.py`; never write a custom reader, even a small one. A hand-rolled `split(":")` reads `key: false  # opt out` as `"false  # opt out"`.
 - `parse_simple_yaml` lives in `arbor_config.py` and nowhere else; `regression.test.ts` asserts `config.py` has no `def parse_simple_yaml(`.
-- Each key gets its own `get_<key>` accessor owning its `DEFAULT_<KEY>` constant, its type coercion and a stderr-warned fallback on invalid values. Config errors never raise: a bad config line should not block scripts.
+- Each key gets its own `get_<key>` accessor owning its `DEFAULT_<KEY>` constant, its type coercion and a stderr-warned fallback on invalid values. These accessors never raise: a bad config line should not block scripts. The `executors` section is the exception: `resolve_executor` refuses a setting it cannot use, so that a node never runs on a misread config.
 - Every boolean value goes through `coerce_config_bool`. One helper for every key, because an accepted-here, rejected-there split is worse than a narrow set applied consistently.
 - Every key the scripts read is documented in `packages/cli/src/templates/arbor/config.yaml` with its effect and accepted values.
 - Accessor tests cover the absent key, a value with an inline comment, quoted values, and an invalid value that falls back without raising.

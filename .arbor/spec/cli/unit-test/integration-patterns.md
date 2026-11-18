@@ -4,7 +4,7 @@ sources:
   - packages/cli/test/commands/init.integration.test.ts
   - packages/cli/test/configurators/platforms.test.ts
   - packages/cli/test/scripts/driver-helpers.ts
-last_verified: 2026-11-16
+last_verified: 2026-11-18
 ---
 # Integration Test Patterns
 

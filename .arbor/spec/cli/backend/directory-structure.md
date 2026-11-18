@@ -5,7 +5,7 @@ sources:
   - packages/cli/src/templates/markdown/index.ts
   - packages/cli/src/templates/arbor/gitattributes.txt
   - packages/cli/scripts/copy-templates.js
-last_verified: 2026-11-16
+last_verified: 2026-11-18
 ---
 # Directory Structure
 
@@ -56,7 +56,7 @@ packages/cli/
 ## Naming
 
 - `kebab-case` for TypeScript files and directories.
-- Template sources use `.md.txt` / `.yaml.txt`, so IDEs and readers do not take them for real docs.
+- Spec template sources under `templates/markdown/spec/` use `.md.txt`, so IDEs and readers do not take them for real docs.
 
 ## Don't: Leak dogfood spec into templates/markdown/spec/
 

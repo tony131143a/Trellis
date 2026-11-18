@@ -3,7 +3,7 @@ sources:
   - packages/cli/test/commands/update.integration.test.ts
   - packages/cli/test/commands/init.integration.test.ts
   - packages/cli/src/utils/file-writer.ts
-last_verified: 2026-11-16
+last_verified: 2026-11-18
 ---
 # Mock Strategies
 

@@ -5,7 +5,7 @@ sources:
   - .github/workflows/ci.yml
   - .lintstagedrc
   - .husky/pre-commit
-last_verified: 2026-11-16
+last_verified: 2026-11-18
 ---
 # Unit Test Guidelines
 

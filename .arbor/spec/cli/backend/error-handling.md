@@ -2,7 +2,7 @@
 sources:
   - packages/cli/src/cli/index.ts
   - packages/cli/src/commands/init.ts
-last_verified: 2026-11-16
+last_verified: 2026-11-18
 ---
 # Error Handling
 

@@ -4,7 +4,7 @@ sources:
   - packages/cli/src/utils/managed-removal.ts
   - packages/cli/src/utils/managed-paths.ts
   - packages/cli/src/templates/arbor/scripts/common/io.py
-last_verified: 2026-11-16
+last_verified: 2026-11-18
 ---
 # Filesystem Safety — Atomic Writes & Destructive-Op Guards
 

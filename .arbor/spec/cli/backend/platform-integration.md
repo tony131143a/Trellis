@@ -7,7 +7,7 @@ sources:
   - packages/cli/src/templates/common/index.ts
   - packages/cli/src/utils/managed-removal.ts
   - packages/cli/src/utils/retired-platforms.ts
-last_verified: 2026-11-16
+last_verified: 2026-11-18
 ---
 # Platform Integration
 
