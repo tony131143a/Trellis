@@ -87,61 +87,6 @@ def run_git_retry_index_lock(
     return rc, out, err
 
 
-def index_lock_path(repo_root: Path) -> str:
-    """Path of the lock file git is contending on, for diagnostics.
-
-    Asks git so worktrees and `GIT_DIR` setups name the real file rather
-    than a `.git/` guess that does not exist there.
-    """
-    rc, out, _ = run_git(["rev-parse", "--git-path", "index.lock"], cwd=repo_root)
-    if rc == 0 and out.strip():
-        return out.strip()
-    return ".git/index.lock"
-
-
-def resolve_default_branch(repo_root: Path) -> str | None:
-    """Resolve the repository's default branch (origin/HEAD target).
-
-    Tries the local `refs/remotes/origin/HEAD` symbolic ref first (no
-    network access), then falls back to `git remote show origin` (which
-    may hit the network but also repairs a missing/stale symbolic-ref).
-    Returns None when neither resolves, so callers can fall back to their
-    own pre-existing behavior.
-    """
-    rc, out, _ = run_git(["symbolic-ref", "refs/remotes/origin/HEAD"], cwd=repo_root)
-    if rc == 0 and out.strip():
-        return out.strip().rsplit("/", 1)[-1]
-
-    rc, out, _ = run_git(["remote", "show", "origin"], cwd=repo_root)
-    if rc == 0:
-        for line in out.splitlines():
-            line = line.strip()
-            if line.startswith("HEAD branch:"):
-                branch = line.split(":", 1)[1].strip()
-                if branch and branch != "(unknown)":
-                    return branch
-
-    return None
-
-
-def current_branch_name(repo_root: Path) -> str | None:
-    """Return the checked-out branch name, or None when there isn't one.
-
-    Empty output covers detached HEAD and "not a git repository" alike, and
-    callers treat both the same way: there is no branch worth recording.
-    """
-    rc, out, _ = run_git(["branch", "--show-current"], cwd=repo_root)
-    if rc != 0:
-        return None
-    return out.strip() or None
-
-
-def has_git_remote(repo_root: Path) -> bool:
-    """Whether the repository has at least one configured remote."""
-    rc, out, _ = run_git(["remote"], cwd=repo_root)
-    return rc == 0 and bool(out.strip())
-
-
 def main_worktree_root(repo_root: Path) -> Path | None:
     """Root of the main working tree when `repo_root` is a linked worktree.
 

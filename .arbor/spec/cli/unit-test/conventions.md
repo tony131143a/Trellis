@@ -3,7 +3,7 @@ sources:
   - packages/cli/vitest.config.ts
   - packages/cli/test/setup.ts
   - packages/cli/eslint.config.js
-last_verified: 2026-11-16
+last_verified: 2026-11-18
 ---
 # Test Conventions
 
@@ -16,9 +16,9 @@ last_verified: 2026-11-16
 
 ## Test Isolation
 
-- `test/setup.ts` (registered as `setupFiles`) runs before any test: it deletes host-session env vars (`CLAUDE_PROJECT_DIR`, `CODEX_THREAD_ID`, ...) so a suite run inside an agent session sees the same environment as CI, and sets `GIT_TRACE2_EVENT=0`.
+- `test/setup.ts` (registered as `setupFiles`) runs before any test and sets `GIT_TRACE2_EVENT=0`.
 - `GIT_TRACE2_EVENT` is set to `"0"` rather than deleted: global Trace2 listeners keep writing Git objects after a fixture's command exits and race `rmSync`, and deleting the variable would still inherit the user's global configuration. `test/git-isolation.integration.test.ts` proves the override reaches a Git child process.
-- Add a variable to the delete list when a production resolver honors it as a user override, when a script under test writes to the path it names, or when it redirects a script's notion of which repository it is in.
+- `test/setup.ts` deletes a host-session env var when a production resolver honors it as a user override, when a script under test writes to the path it names, or when it redirects a script's notion of which repository it is in, so a suite run inside an agent session sees the same environment as CI.
 - A test that intentionally exercises an env override sets the variable inside the test and restores it in `afterEach`.
 
 ## When to Write Tests

@@ -134,7 +134,7 @@ def resolve_executor(config: dict) -> Executor:
                             f"(known: {', '.join(sorted(EXECUTOR_KEYS))}); is this driver older than the config?")
     kind = str(spec.get("type") or "orca")
     if kind != "orca":
-        raise ExecutorError(f"executor {chosen!r}: unknown type {kind!r} (roles run as Orca workers only)")
+        raise ExecutorError(f"executor {chosen!r}: unknown type {kind!r} (nodes run as Orca workers only)")
     command = str(spec.get("command") or "").strip()
     if not command:
         raise ExecutorError(f"executor {chosen!r}: command is not set (the Orca CLI)")

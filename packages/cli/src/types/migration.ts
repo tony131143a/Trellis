@@ -82,22 +82,6 @@ export interface MigrationManifest {
 }
 
 /**
- * Classification of how a migration should be handled
- */
-export type MigrationClassification =
-  | "auto" // Unmodified by user, can auto-migrate
-  | "confirm" // Modified by user, needs confirmation
-  | "conflict" // Both old and new files exist
-  | "skip"; // Old file doesn't exist, nothing to do
-
-/**
- * Classified migration item with its determined action
- */
-export interface ClassifiedMigrationItem extends MigrationItem {
-  classification: MigrationClassification;
-}
-
-/**
  * Result of classifying all migrations
  */
 export interface ClassifiedMigrations {

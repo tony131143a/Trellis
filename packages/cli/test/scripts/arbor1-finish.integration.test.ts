@@ -107,6 +107,8 @@ describe.skipIf(!hasPython())("arbor 1.0 review and finish", { timeout: 180_000 
     const out = p.ok("finish");
     expect(out).toContain("AC-2: read src/feature.txt");
     expect(out).toContain(`.: git -C ${p.repo} merge --no-ff ${branch()}   (with main checked out in ${p.repo})`);
+    expect(out).not.toContain("Reviewer reports");
+    expect(out).not.toContain("Corrections in this task");
     expect(p.ok("finish")).toContain("merge --no-ff");
     git(p.repo, "merge", "--no-ff", "-q", "-m", "merge feature", branch());
     const integration = wt();
@@ -134,6 +136,32 @@ describe.skipIf(!hasPython())("arbor 1.0 review and finish", { timeout: 180_000 
     expect(
       fs.readFileSync(path.join(p.repo, ".arbor/workspace/tester/journal-1.md"), "utf-8").split("<!-- arbor-session:").length,
     ).toBe(journal.split("<!-- arbor-session:").length);
+  });
+
+  it("lists the reviewer reports and the corrections: retried nodes and writers added after the review", () => {
+    built();
+    p.node("bad", { paths: "[lib/**]", title: "Add the lib" });
+    p.sync();
+    work(p, "bad", { write: [{ path: "elsewhere/x", content: "x\n" }] });
+    expect(p.sync().nodes.bad.status).toBe("failed");
+    p.ok("retry", "bad");
+    p.sync();
+    work(p, "bad.r2", { write: [{ path: "lib/x", content: "x\n" }] });
+    expect(p.sync().nodes.bad.status).toBe("merged");
+    p.ok("review");
+    p.sync();
+    work(p, "review-1", { report: "src/feature.txt:1 breaks AC-1 (blocker, shown)\nfindings: 1\n" });
+    p.sync();
+    p.node("fix", { paths: "[src/**]", title: "Fix the feature" });
+    p.sync();
+    work(p, "fix", { write: [{ path: "src/feature.txt", content: "g\n" }] });
+    expect(p.sync().nodes.fix.status).toBe("merged");
+    p.ok("review", "--pass");
+    const out = p.ok("finish");
+    expect(out).toContain(`Reviewer reports (they hold the findings left for the user to decide):\n  ${path.join(p.taskDir, "reports/review-1.md")}\n`);
+    expect(out).toContain("Corrections in this task:\n  bad: Add the lib (retried)\n  fix: Fix the feature (added after the review)\n");
+    expect(out).toContain("record a rule with the arbor-update-spec skill");
+    expect(out.indexOf("Corrections in this task")).toBeLessThan(out.indexOf("merge --no-ff"));
   });
 
   it("commits the move of a task directory that was already committed", () => {

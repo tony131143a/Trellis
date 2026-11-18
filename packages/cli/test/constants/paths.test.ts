@@ -3,9 +3,6 @@ import {
   DIR_NAMES,
   FILE_NAMES,
   PATHS,
-  getWorkspaceDir,
-  getTaskDir,
-  getArchiveDir,
 } from "../../src/constants/paths.js";
 
 // =============================================================================
@@ -17,7 +14,6 @@ describe("DIR_NAMES", () => {
     expect(DIR_NAMES).toHaveProperty("WORKFLOW");
     expect(DIR_NAMES).toHaveProperty("WORKSPACE");
     expect(DIR_NAMES).toHaveProperty("TASKS");
-    expect(DIR_NAMES).toHaveProperty("ARCHIVE");
     expect(DIR_NAMES).toHaveProperty("SPEC");
     expect(DIR_NAMES).toHaveProperty("SCRIPTS");
   });
@@ -40,11 +36,8 @@ describe("DIR_NAMES", () => {
 
 describe("FILE_NAMES", () => {
   it("has all expected keys", () => {
-    expect(FILE_NAMES).toHaveProperty("DEVELOPER");
-    expect(FILE_NAMES).toHaveProperty("CURRENT_TASK");
-    expect(FILE_NAMES).toHaveProperty("TASK_JSON");
-    expect(FILE_NAMES).toHaveProperty("PRD");
-    expect(FILE_NAMES).toHaveProperty("JOURNAL_PREFIX");
+    expect(FILE_NAMES).toHaveProperty("AGENTS");
+    expect(FILE_NAMES).toHaveProperty("CLAUDE");
   });
 
   it("all values are non-empty strings", () => {
@@ -60,10 +53,6 @@ describe("FILE_NAMES", () => {
 // =============================================================================
 
 describe("PATHS", () => {
-  it("WORKFLOW equals DIR_NAMES.WORKFLOW", () => {
-    expect(PATHS.WORKFLOW).toBe(DIR_NAMES.WORKFLOW);
-  });
-
   it("all paths start with DIR_NAMES.WORKFLOW", () => {
     for (const value of Object.values(PATHS)) {
       expect(value.startsWith(DIR_NAMES.WORKFLOW)).toBe(true);
@@ -86,71 +75,9 @@ describe("PATHS", () => {
     expect(PATHS.SCRIPTS).toBe(`${DIR_NAMES.WORKFLOW}/${DIR_NAMES.SCRIPTS}`);
   });
 
-  it("DEVELOPER_FILE is WORKFLOW/.developer", () => {
-    expect(PATHS.DEVELOPER_FILE).toBe(
-      `${DIR_NAMES.WORKFLOW}/${FILE_NAMES.DEVELOPER}`,
-    );
-  });
-
-  it("CURRENT_TASK_FILE is WORKFLOW/.current-task", () => {
-    expect(PATHS.CURRENT_TASK_FILE).toBe(
-      `${DIR_NAMES.WORKFLOW}/${FILE_NAMES.CURRENT_TASK}`,
-    );
-  });
-
   it("uses / separator (not backslash)", () => {
     for (const value of Object.values(PATHS)) {
       expect(value).not.toContain("\\");
     }
-  });
-});
-
-// =============================================================================
-// getWorkspaceDir — pure string concatenation
-// =============================================================================
-
-describe("getWorkspaceDir", () => {
-  it("returns correct path for developer name", () => {
-    expect(getWorkspaceDir("john")).toBe(".arbor/workspace/john");
-  });
-
-  it("handles hyphenated names", () => {
-    expect(getWorkspaceDir("john-doe")).toBe(".arbor/workspace/john-doe");
-  });
-
-  it("handles empty string", () => {
-    expect(getWorkspaceDir("")).toBe(".arbor/workspace/");
-  });
-});
-
-// =============================================================================
-// getTaskDir — pure string concatenation
-// =============================================================================
-
-describe("getTaskDir", () => {
-  it("returns correct path for task name", () => {
-    expect(getTaskDir("01-21-my-task")).toBe(".arbor/tasks/01-21-my-task");
-  });
-
-  it("handles nested-looking names", () => {
-    expect(getTaskDir("sub/task")).toBe(".arbor/tasks/sub/task");
-  });
-
-  it("handles empty string", () => {
-    expect(getTaskDir("")).toBe(".arbor/tasks/");
-  });
-});
-
-// =============================================================================
-// getArchiveDir — pure, no arguments
-// =============================================================================
-
-describe("getArchiveDir", () => {
-  it("returns correct archive path", () => {
-    expect(getArchiveDir()).toBe(".arbor/tasks/archive");
-  });
-
-  it("is under PATHS.TASKS", () => {
-    expect(getArchiveDir().startsWith(PATHS.TASKS + "/")).toBe(true);
   });
 });

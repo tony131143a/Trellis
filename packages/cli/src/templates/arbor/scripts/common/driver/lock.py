@@ -1,6 +1,6 @@
 """
-A portable per-task lock: parallel ``arbor run --partition`` processes share
-one ``task.json`` and one task branch.
+A portable per-task lock: driver processes running at the same time share
+one ``task.json``.
 
 The lock is the directory ``<task>/.lock`` (``os.mkdir`` is atomic on every
 platform) holding the owner's pid. A waiter retries for ``TIMEOUT_S``; a lock
@@ -8,8 +8,9 @@ whose owner pid is dead is taken over. Inside one process the lock is
 re-entrant. The directory carries a ``.gitignore`` of ``*`` so git never
 sees it.
 
-Hold it around every read-modify-write of task.json, dispatch-id
-allocation and the task-dir commit; never around an executor run.
+Hold it around every read-modify-write of task.json (``Task.edit`` in
+``repos.py``) and around one ``sync`` pass (``sync.py:run``, on a runtime
+guard path); never around a worker run.
 """
 
 from __future__ import annotations

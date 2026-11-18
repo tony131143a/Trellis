@@ -9,7 +9,7 @@ sources:
   - packages/cli/src/templates/arbor/scripts/common/config.py
   - packages/cli/src/templates/arbor/scripts/common/arbor_config.py
   - packages/cli/src/configurators/shared.ts
-last_verified: 2026-11-16
+last_verified: 2026-11-17
 ---
 # Script Conventions
 
@@ -70,7 +70,7 @@ Foundation modules (`io.py`, `log.py`, `git.py`, `arbor_config.py`) import nothi
 
 - An entry script has a shebang, a usage docstring with its exit codes, `from __future__ import annotations`, a `main(argv: list[str] | None = None) -> int`, and `sys.exit(main())` under `if __name__ == "__main__":`.
 - Exit codes: 0 success, 1 error or refused, 2 usage error (argparse exits 2).
-- `main()` returns the exit code; helpers do not call `sys.exit`. Errors go to stderr with context; the `common/log.py` `log_*` helpers print to stdout, so errors use `print(..., file=sys.stderr)`.
+- `main()` returns the exit code; helpers do not call `sys.exit`. Errors go to stderr with context: `print(..., file=sys.stderr)`.
 - Library modules raise a module-specific exception whose message the entry script prints as-is. Lower-layer exceptions are translated at the driver boundary (`driver/repos.py` re-raises them as `DriverError`), so `arbor.py:main` catches only the types it names.
 - `spec.py lint` is advisory by design: nothing gates a commit or a task finish on its result. Adding such a gate is a product decision, not a script change.
 - Argument parsing uses `argparse` subparsers with `set_defaults(func=...)` dispatch (`arbor.py:build_parser`); repeatable values use `action="append"`; machine-readable output is an explicit `--json` flag, not a separate script.
@@ -80,5 +80,5 @@ Foundation modules (`io.py`, `log.py`, `git.py`, `arbor_config.py`) import nothi
 - `from __future__ import annotations` first, then the standard library, then local imports, each group separated by a blank line.
 - Root-level scripts import `from common.<module>`; modules inside `common/` use relative imports.
 - A user-facing script that grows too large stays a thin entry shim over a library module (`spec.py` → `common.spec_lint.main`), so the path that docs and skills reference stays stable.
-- Import inside a function body only for a true circular dependency (`paths.py:get_spec_dir` imports `config`); restructure first if you can.
+- Import inside a function body only for a true circular dependency; restructure first if you can.
 - When several functions need the same file, read it once and pass the parsed data.

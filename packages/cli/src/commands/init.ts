@@ -11,7 +11,6 @@ import {
   resolveCliFlag,
   configurePlatform,
   getConfiguredPlatforms,
-  getPlatformsWithPythonHooks,
 } from "../configurators/index.js";
 import {
   getPythonCommandForPlatform,
@@ -87,42 +86,6 @@ function detectPythonVersion(command: string): PythonProbe {
     }
     return null;
   }
-}
-
-export function requireSupportedPython(command: string): string {
-  // Final escape hatch — set when the user knows python3 is on PATH but
-  // the probe keeps failing for environment-specific reasons.
-  if (process.env.ARBOR_SKIP_PYTHON_CHECK === "1") {
-    return `version check skipped (ARBOR_SKIP_PYTHON_CHECK=1)`;
-  }
-
-  const versionOutput = detectPythonVersion(command);
-
-  if (versionOutput === "sandbox-restricted") {
-    console.warn(
-      chalk.yellow(
-        `⚠ Python version check skipped — sandboxed environment blocked ` +
-          `child_process spawn (EPERM/EACCES). Assuming "${command}" is on ` +
-          `PATH. If init fails later, re-run on the host or set ` +
-          `ARBOR_SKIP_PYTHON_CHECK=1.`,
-      ),
-    );
-    return `version unknown (sandbox-restricted)`;
-  }
-
-  if (!versionOutput) {
-    throw new Error(
-      `Python command "${command}" not found. Arbor init requires Python ≥ 3.9.`,
-    );
-  }
-
-  if (!isSupportedPythonVersion(versionOutput)) {
-    throw new Error(
-      `${versionOutput} detected via "${command}", but Arbor init requires Python ≥ 3.9.`,
-    );
-  }
-
-  return versionOutput;
 }
 
 /**
@@ -506,9 +469,7 @@ function writeMonorepoConfig(cwd: string, packages: DetectedPackage[]): void {
   for (const pkg of packages) {
     lines.push(`  ${sanitizePkgName(pkg.name)}:`);
     lines.push(`    path: ${pkg.path}`);
-    if (pkg.isSubmodule) {
-      lines.push("    type: submodule");
-    } else if (pkg.isGitRepo) {
+    if (pkg.isGitRepo) {
       lines.push("    git: true");
     }
   }
@@ -533,7 +494,7 @@ interface InitAnswers {
 
 export async function init(options: InitOptions): Promise<void> {
   // Refuse to run in $HOME — running here would scoop platform runtime data
-  // (Claude/Codex/OpenCode session histories etc.) into the arbor hash
+  // (Claude Code/Codex session histories etc.) into the arbor hash
   // manifest, and a subsequent `arbor uninstall` would wipe it.
   if (isCwdHomedir() && !homedirBypassEnabled()) {
     console.error(chalk.red(homedirGuardMessage("init")));
@@ -718,7 +679,7 @@ export async function init(options: InitOptions): Promise<void> {
     // Explicit flags take precedence (works with or without -y)
     tools = explicitTools;
   } else if (options.yes) {
-    // No explicit tools + -y: default to Cursor and Claude
+    // No explicit tools + -y: the defaultChecked platforms (Claude Code)
     tools = TOOLS.filter((t) => t.defaultChecked).map((t) => t.key);
   } else {
     // Interactive mode
@@ -797,13 +758,7 @@ export async function init(options: InitOptions): Promise<void> {
       }
     }
 
-    const pythonPlatforms = getPlatformsWithPythonHooks();
-    const hasSelectedPythonPlatform = pythonPlatforms.some((id) =>
-      tools.includes(AI_TOOLS[id].cliFlag),
-    );
-    if (hasSelectedPythonPlatform) {
-      logPythonAdaptationNotice(pythonCmd);
-    }
+    logPythonAdaptationNotice(pythonCmd);
 
     // Create root files (AGENTS.md skips if exists; CLAUDE.md merges its block)
     await createRootFiles(cwd, tools);

@@ -134,21 +134,6 @@ export function updateHashes(cwd: string, files: Map<string, string>): void {
 }
 
 /**
- * Update hash for a single file by reading its current content
- */
-export function updateHashFromFile(cwd: string, relativePath: string): void {
-  const fullPath = path.join(cwd, relativePath);
-  if (!fs.existsSync(fullPath)) {
-    return;
-  }
-
-  const content = fs.readFileSync(fullPath, "utf-8");
-  const hashes = loadHashes(cwd);
-  hashes[toPosix(relativePath)] = computeHash(content);
-  saveHashes(cwd, hashes);
-}
-
-/**
  * Remove hash entry for a file (e.g., after deletion)
  */
 export function removeHash(cwd: string, relativePath: string): void {
@@ -213,52 +198,6 @@ export function isTemplateModified(
 }
 
 /**
- * Check if a file matches its original template content
- * (Useful for determining if a file can be safely auto-migrated)
- *
- * @param cwd - Working directory
- * @param relativePath - Relative path to the file
- * @param originalContent - Original template content
- * @returns true if file matches original template
- */
-export function matchesOriginalTemplate(
-  cwd: string,
-  relativePath: string,
-  originalContent: string,
-): boolean {
-  const fullPath = path.join(cwd, relativePath);
-
-  if (!fs.existsSync(fullPath)) {
-    return false;
-  }
-
-  const currentContent = fs.readFileSync(fullPath, "utf-8");
-  return currentContent === originalContent;
-}
-
-/**
- * Get modification status for multiple files
- *
- * @param cwd - Working directory
- * @param relativePaths - Array of relative paths to check
- * @param hashes - Stored template hashes
- * @returns Map of path to modification status
- */
-export function getModificationStatus(
-  cwd: string,
-  relativePaths: string[],
-  hashes: TemplateHashes,
-): Map<string, boolean> {
-  const result = new Map<string, boolean>();
-
-  for (const relativePath of relativePaths) {
-    result.set(relativePath, isTemplateModified(cwd, relativePath, hashes));
-  }
-
-  return result;
-}
-
-/**
  * Patterns to exclude from hash tracking (only applied to the .arbor/ walk).
  */
 const EXCLUDE_FROM_HASH = [
@@ -268,7 +207,6 @@ const EXCLUDE_FROM_HASH = [
   ".developer", // Developer identity file
   "workspace/", // Workspace files (user data)
   "tasks/", // Task files (user data)
-  ".current-task", // Current task marker (file, not directory)
   ".arbor/spec/", // User-customized spec files
   ".backup-", // Backup directories
 ];

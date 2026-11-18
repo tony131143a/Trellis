@@ -18,7 +18,6 @@ describe("AI_TOOLS registry", () => {
       expect(config.name.length).toBeGreaterThan(0);
       expect(config.configDir.startsWith(".")).toBe(true);
       expect(config.cliFlag.length).toBeGreaterThan(0);
-      expect(config.templateDirs).toContain("common");
     }
   });
 });

@@ -18,7 +18,6 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from ..arbor_config import get_executors_config
 from ..config import get_session_auto_commit
 from ..git import run_git, run_git_retry_index_lock
 from ..paths import DIR_ARCHIVE, DIR_WORKFLOW
@@ -28,7 +27,7 @@ from . import plan
 from .executor import utc_now
 from .prompt import review_brief
 from .repos import RUNTIME, DriverError, Task, git, settings, tasks_dir
-from .sync import _heads, drift, map_rows, rounds_left
+from .sync import _heads, drift, map_rows, report_path, rounds_left
 
 
 def gate_problems(task: Task) -> list[str]:
@@ -162,6 +161,7 @@ def finish(task: Task) -> int:
                 print("Manual acceptance checks (confirm them with the user before merging):")
                 for e in manual:
                     print(f"  {e.id}: {e.check}")
+            corrections_and_reports(task)
             print("Merge each integration branch (the user does this):")
             for key, repo in unmerged:
                 print(f"  {key}: git -C {repo['root']} merge --no-ff {repo['branch']}"
@@ -172,6 +172,32 @@ def finish(task: Task) -> int:
             print("next: after the merges, arbor.py finish again")
             return 0
     return cleanup(task)
+
+
+def corrections_and_reports(task: Task) -> None:
+    """The reviewer reports (the findings no fix node took are the user's), then the corrections: retried
+    nodes (reviewers aside) and writers added after the first reviewer node."""
+    nodes = task.data["nodes"]
+    reviewers = sorted((n for n in task.data.get("reviewers") or {} if n in nodes), key=lambda n: nodes[n]["seq"])
+    reports = [p for p in (report_path(task, n, nodes[n]) for n in reviewers) if p.is_file()]
+    if reports:
+        print("Reviewer reports (they hold the findings left for the user to decide):")
+        for p in reports:
+            print(f"  {p}")
+    first = nodes[reviewers[0]]["seq"] if reviewers else None
+    corrections = []
+    for nid, rec in sorted(nodes.items(), key=lambda kv: kv[1]["seq"]):
+        if nid in reviewers:
+            continue
+        kinds = (["retried"] if rec.get("attempt", 1) > 1 else []) + (
+            ["added after the review"] if first is not None and rec["seq"] > first and plan.is_writer(rec) else [])
+        if kinds:
+            corrections.append(f"  {nid}: {rec.get('title') or nid} ({', '.join(kinds)})")
+    if corrections:
+        print("Corrections in this task:")
+        print("\n".join(corrections))
+        print("  For each: would the mistake come back in another feature? If yes, record a rule with the "
+              "arbor-update-spec skill; if no, nothing is recorded.")
 
 
 def cleanup(task: Task) -> int:
@@ -251,7 +277,7 @@ def tail(task: Task) -> int:
         print(f"note: {busy}; the archive move is not committed")
     else:
         paths = [new] + ([old] if run_git(["ls-files", "--", old], cwd=main)[1].strip() else [])
-        added, _, err = safe_git_add(paths, main, retry_on_index_lock=True)
+        added, err = safe_git_add(paths, main, retry_on_index_lock=True)
         if not added:
             print(f"note: git add failed ({err.strip()}); the archive move is not committed")
         elif run_git(["diff", "--cached", "--quiet", "--", *paths], cwd=main)[0] != 0:

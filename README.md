@@ -18,7 +18,7 @@ Run init from the project that should receive Arbor.
 | Claude Code | a short block in `CLAUDE.md`; the skill `arbor` loads on demand | `CLAUDE.md`, `.claude/` |
 | Codex | a worker note in `AGENTS.md`; the spec skills | `AGENTS.md`, `.agents/skills/` |
 
-Arbor installs no hooks and no sub-agent definitions. Codex is mainly a worker: `agent: codex` is the default agent of every node. Specs live in `.arbor/spec/`, tasks in `.arbor/tasks/`, journals in `.arbor/workspace/`.
+Arbor installs no hooks and no sub-agent definitions. Codex is mainly a worker: `agents.write: codex` in `.arbor/config.yaml` makes it the default agent of every node. Specs live in `.arbor/spec/`, tasks in `.arbor/tasks/`, journals in `.arbor/workspace/`.
 
 StarFactory is no longer an installable Arbor platform. Update can remove unchanged historical Arbor templates after backing them up; locally modified files remain available for review. Uninstall only processes tracked Arbor files and preserves unrelated user content.
 
@@ -30,8 +30,8 @@ The driver is `python3 .arbor/scripts/arbor.py` (`arbor.py` below).
 2. **Plan.** The main agent writes one file per node in the task's `nodes/` directory. The plan is that directory: add, edit or delete nodes at any time (a started node's file is frozen).
 3. **Run.** `arbor.py sync` starts every ready node in its own Orca worktree, then `arbor.py sync --wait` runs as a background command; the main agent ends its turn and is woken when a node settles.
 4. **React.** Each `sync` judges settled nodes (commits, paths, checks), merges good ones with `--no-ff` into the repository's integration branch, runs the full gate once nothing is running, and prints one `next:` line. A failed node: `retry`, `cancel` or change the plan. A red gate: add fix nodes.
-5. **Review.** `arbor.py review` writes one read-only reviewer node per repository. Reviewers run code and mark each finding `shown` (with a rerunnable command) or `read`. Findings become fix nodes; then `arbor.py review --pass`.
-6. **Finish.** `arbor.py finish` lists the manual checks and prints one `git merge --no-ff` per repository. You merge; run `finish` again to clean up, archive the task and write the journal entry.
+5. **Review.** `arbor.py review` writes one read-only reviewer node per repository. Reviewers run code, mark each finding `shown` (with a rerunnable command) or `read`, and name the acceptance criterion or existing caller it breaks. A blocker that is shown and tied to the contract becomes a fix node; the other findings are left for you; then `arbor.py review --pass`.
+6. **Finish.** `arbor.py finish` lists the manual checks, the reviewer reports with the findings left for you and the task's corrections, and prints one `git merge --no-ff` per repository. You merge; run `finish` again to clean up, archive the task and write the journal entry.
 
 A node is one file, `nodes/<id>.md`:
 

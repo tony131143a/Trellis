@@ -8,7 +8,7 @@ sources:
   - packages/cli/src/utils/manifest-prune.ts
   - packages/cli/src/utils/retired-platforms.ts
   - packages/cli/src/utils/cwd-guard.ts
-last_verified: 2026-11-16
+last_verified: 2026-11-18
 ---
 # Migration System
 
@@ -44,8 +44,7 @@ How `arbor update` moves a project's template files from one Arbor version to th
 ## Protected paths
 
 No migration modifies or deletes these (user data): `.arbor/workspace`, `.arbor/tasks`,
-`.arbor/spec`, `.arbor/.developer`, `.arbor/.current-task` (`PROTECTED_PATHS` in
-`commands/update.ts`). `rename` / `rename-dir` may move a file into a protected path, never
+`.arbor/spec`, `.arbor/.developer` (`PROTECTED_PATHS` in `commands/update.ts`). `rename` / `rename-dir` may move a file into a protected path, never
 out of one; other types are refused in both directions.
 
 ## Template hashes

@@ -7,7 +7,7 @@ sources:
   - packages/cli/src/templates/arbor/scripts/common/driver/executor.py
   - packages/cli/src/templates/arbor/scripts/common/worktree.py
   - packages/cli/test/scripts/driver-helpers.ts
-last_verified: 2026-11-16
+last_verified: 2026-11-17
 ---
 # `arbor.py` Task Driver
 
@@ -31,6 +31,8 @@ Python 3.9, stdlib only. Conventions shared with the other scripts are in
 - Any command on a `task.json` without `schema: 3` fails (`repos.load_data`).
 - Writers have `paths`; a node without `paths` is read-only (`plan.is_writer`).
 - Writers must commit inside their paths; read-only workers change and commit nothing.
+- The driver never interprets a report: it checks that one exists, echoes its first lines when a
+  node fails and hands its path on. Findings, their severity and evidence are text for the main agent.
 
 ## Locks
 

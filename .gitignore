@@ -141,20 +141,10 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
-# Ralph Loop state file
-.arbor/.ralph-state.json
-
 # Arbor local state (should not be committed)
-.arbor/.current-task
 .arbor/.runtime/
 .arbor/.developer
-.arbor/hooks.local.json
 .gitnexus/
-
-# Multi-agent temp files
-.session-id
-.agent-log
-.agent-runner.sh
 
 # OpenCode local config (contains local proxy settings)
 opencode.json

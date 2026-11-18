@@ -4,43 +4,11 @@ import path from "node:path";
 import os from "node:os";
 import {
   setWriteMode,
-  getWriteMode,
   writeFile,
   ensureDir,
   startRecordingWrites,
   stopRecordingWrites,
 } from "../../src/utils/file-writer.js";
-
-// =============================================================================
-// setWriteMode / getWriteMode — global state
-// =============================================================================
-
-describe("setWriteMode / getWriteMode", () => {
-  afterEach(() => {
-    // Reset to default after each test
-    setWriteMode("ask");
-  });
-
-  it("defaults to 'ask'", () => {
-    setWriteMode("ask");
-    expect(getWriteMode()).toBe("ask");
-  });
-
-  it("can be set to 'force'", () => {
-    setWriteMode("force");
-    expect(getWriteMode()).toBe("force");
-  });
-
-  it("can be set to 'skip'", () => {
-    setWriteMode("skip");
-    expect(getWriteMode()).toBe("skip");
-  });
-
-  it("can be set to 'append'", () => {
-    setWriteMode("append");
-    expect(getWriteMode()).toBe("append");
-  });
-});
 
 // =============================================================================
 // ensureDir — creates directories recursively

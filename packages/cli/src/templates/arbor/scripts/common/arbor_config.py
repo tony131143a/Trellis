@@ -4,9 +4,8 @@ Standalone reader for .arbor/config.yaml.
 
 Owns the minimal YAML parser used across Arbor. ``common.config`` imports
 ``parse_simple_yaml`` from here rather than keeping its own copy: this module
-imports nothing from the package, so hooks can load it as a single file, and
-one parser cannot drift from another. Returns an empty dict on
-missing/malformed files so callers stay simple.
+imports nothing from the package, and one parser cannot drift from another.
+Returns an empty dict on missing/malformed files so callers stay simple.
 
 Supported subset: ``key: value`` scalars (everything is a string), nested
 mappings by indentation, ``- `` lists of scalars, ``#`` comments (whole-line
@@ -247,7 +246,8 @@ def read_arbor_config(repo_root: Optional[Path] = None) -> dict:
     return parsed if isinstance(parsed, dict) else {}
 
 
-# Defaults for the v2 sections. Every value is a string, as the parser returns.
+# Defaults for the worktree: and executors: sections. Every value is a string,
+# as the parser returns.
 DEFAULT_WORKTREE_CONFIG: dict = {"setup": "", "branch_prefix": "arbor/"}
 DEFAULT_EXECUTORS_CONFIG: dict = {
     "default": "orca",

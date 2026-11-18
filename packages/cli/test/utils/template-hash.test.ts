@@ -7,12 +7,9 @@ import {
   loadHashes,
   saveHashes,
   updateHashes,
-  updateHashFromFile,
   removeHash,
   renameHash,
   isTemplateModified,
-  matchesOriginalTemplate,
-  getModificationStatus,
   initializeHashes,
 } from "../../src/utils/template-hash.js";
 
@@ -162,42 +159,6 @@ describe("updateHashes", () => {
 });
 
 // =============================================================================
-// updateHashFromFile — reads file and updates hash
-// =============================================================================
-
-describe("updateHashFromFile", () => {
-  let tmpDir: string;
-
-  beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-test-"));
-    fs.mkdirSync(path.join(tmpDir, ".arbor"), { recursive: true });
-  });
-
-  afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  });
-
-  it("updates hash from actual file content", () => {
-    const content = "file content here";
-    fs.writeFileSync(path.join(tmpDir, "test.txt"), content);
-
-    updateHashFromFile(tmpDir, "test.txt");
-
-    const loaded = loadHashes(tmpDir);
-    expect(loaded["test.txt"]).toBe(computeHash(content));
-  });
-
-  it("does nothing when file does not exist", () => {
-    saveHashes(tmpDir, { other: "hash" });
-    updateHashFromFile(tmpDir, "nonexistent.txt");
-
-    const loaded = loadHashes(tmpDir);
-    expect(loaded).toEqual({ other: "hash" });
-    expect(loaded).not.toHaveProperty("nonexistent.txt");
-  });
-});
-
-// =============================================================================
 // removeHash
 // =============================================================================
 
@@ -308,75 +269,6 @@ describe("isTemplateModified", () => {
 
     const result = isTemplateModified(tmpDir, "file.txt", hashes);
     expect(result).toBe(true);
-  });
-});
-
-// =============================================================================
-// matchesOriginalTemplate
-// =============================================================================
-
-describe("matchesOriginalTemplate", () => {
-  let tmpDir: string;
-
-  beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-test-"));
-  });
-
-  afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  });
-
-  it("returns false when file does not exist", () => {
-    expect(matchesOriginalTemplate(tmpDir, "missing.txt", "content")).toBe(false);
-  });
-
-  it("returns true when file matches original content exactly", () => {
-    const content = "template content";
-    fs.writeFileSync(path.join(tmpDir, "file.txt"), content);
-    expect(matchesOriginalTemplate(tmpDir, "file.txt", content)).toBe(true);
-  });
-
-  it("returns false when file content differs", () => {
-    fs.writeFileSync(path.join(tmpDir, "file.txt"), "modified");
-    expect(matchesOriginalTemplate(tmpDir, "file.txt", "original")).toBe(false);
-  });
-});
-
-// =============================================================================
-// getModificationStatus — batch check
-// =============================================================================
-
-describe("getModificationStatus", () => {
-  let tmpDir: string;
-
-  beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-test-"));
-    fs.mkdirSync(path.join(tmpDir, ".arbor"), { recursive: true });
-  });
-
-  afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  });
-
-  it("returns Map with correct status for each file", () => {
-    const content1 = "unmodified";
-    const content2 = "modified content";
-    fs.writeFileSync(path.join(tmpDir, "a.txt"), content1);
-    fs.writeFileSync(path.join(tmpDir, "b.txt"), content2);
-
-    const hashes = {
-      "a.txt": computeHash(content1),
-      "b.txt": computeHash("original content"),
-    };
-
-    const status = getModificationStatus(tmpDir, ["a.txt", "b.txt"], hashes);
-    expect(status.get("a.txt")).toBe(false); // unmodified
-    expect(status.get("b.txt")).toBe(true); // modified
-  });
-
-  it("handles missing files", () => {
-    const status = getModificationStatus(tmpDir, ["nonexistent.txt"], {});
-    expect(status.get("nonexistent.txt")).toBe(false);
   });
 });
 

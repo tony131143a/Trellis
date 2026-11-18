@@ -131,24 +131,6 @@ describe("regression: branch context in session records (issue-106)", () => {
     expect(addSessionScript).not.toContain("**Base Branch**");
   });
 
-  it("[issue-106] add_session.py index table header has 5 columns including Branch", () => {
-    expect(addSessionScript).toContain(
-      "| # | Date | Title | Commits | Branch |",
-    );
-    expect(addSessionScript).not.toContain(
-      "| # | Date | Title | Commits | Branch | Base Branch |",
-    );
-  });
-
-  it("[issue-106] add_session.py migrates old 4/6-column headers to 5-column", () => {
-    expect(addSessionScript).toMatch(
-      /re\.match\(\r?\n\s+r"\^\\\|\\s\*#\\s\*\\\|\\s\*Date\\s\*\\\|\\s\*Title\\s\*\\\|\\s\*Commits\\s\*\\\|\\s\*Branch\\s\*\\\|\\s\*Base Branch\\s\*\\\|\\s\*\$",/,
-    );
-    expect(addSessionScript).toContain(
-      String.raw`re.match(r"^\|\s*#\s*\|\s*Date\s*\|\s*Title\s*\|\s*Commits\s*\|\s*Branch\s*\|\s*$", line)`,
-    );
-  });
-
   it("[issue-106] developer.py init template has 5-column session history table", () => {
     expect(commonDeveloper).toContain(
       "| # | Date | Title | Commits | Branch |",
@@ -189,18 +171,7 @@ describe("regression: add_session.py runtime branch context (issue-106)", () => 
     }
   }
 
-  function createWorkspaceIndex(
-    headerMode: "legacy4" | "legacy6" | "current5",
-  ): void {
-    let header = "| # | Date | Title | Commits | Branch |";
-    let separator = "|---|------|-------|---------|--------|";
-    if (headerMode === "legacy4") {
-      header = "| # | Date | Title | Commits |";
-      separator = "|---|------|-------|---------|";
-    } else if (headerMode === "legacy6") {
-      header = "| # | Date | Title | Commits | Branch | Base Branch |";
-      separator = "|---|------|-------|---------|--------|-------------|";
-    }
+  function createWorkspaceIndex(): void {
     const indexContent = `# Workspace Index - test-dev
 
 ## Current Status
@@ -222,8 +193,8 @@ describe("regression: add_session.py runtime branch context (issue-106)", () => 
 ## Session History
 
 <!-- @@@auto:session-history -->
-${header}
-${separator}
+| # | Date | Title | Commits | Branch |
+|---|------|-------|---------|--------|
 <!-- @@@/auto:session-history -->
 `;
     fs.writeFileSync(
@@ -233,12 +204,7 @@ ${separator}
     );
   }
 
-  function setupSessionRepo(options?: {
-    gitBranch?: string;
-    headerMode?: "legacy4" | "legacy6" | "current5";
-    taskBranch?: string;
-    taskBaseBranch?: string;
-  }): void {
+  function setupSessionRepo(options?: { gitBranch?: string }): void {
     writeArborScripts();
 
     fs.mkdirSync(path.join(tmpDir, ".arbor", "workspace", "test-dev"), {
@@ -254,42 +220,7 @@ ${separator}
       "# Journal - test-dev (Part 1)\n\n---\n",
       "utf-8",
     );
-    createWorkspaceIndex(options?.headerMode ?? "current5");
-
-    if (options?.taskBranch || options?.taskBaseBranch) {
-      const taskDir = path.join(tmpDir, ".arbor", "tasks", "issue-106");
-      fs.mkdirSync(taskDir, { recursive: true });
-      fs.mkdirSync(path.join(tmpDir, ".arbor", ".runtime", "sessions"), {
-        recursive: true,
-      });
-      fs.writeFileSync(
-        path.join(tmpDir, ".arbor", ".runtime", "sessions", "session-a.json"),
-        JSON.stringify(
-          {
-            current_task: ".arbor/tasks/issue-106",
-            platform: "test",
-          },
-          null,
-          2,
-        ),
-        "utf-8",
-      );
-      fs.writeFileSync(
-        path.join(taskDir, "task.json"),
-        JSON.stringify(
-          {
-            title: "Issue 106 task",
-            status: "in_progress",
-            package: null,
-            branch: options.taskBranch ?? null,
-            base_branch: options.taskBaseBranch ?? null,
-          },
-          null,
-          2,
-        ),
-        "utf-8",
-      );
-    }
+    createWorkspaceIndex();
 
     if (options?.gitBranch) {
       execSync("git init -q", { cwd: tmpDir });
@@ -313,19 +244,11 @@ ${separator}
       command.push("--branch", JSON.stringify(options.branch));
     }
 
-    execSync(command.join(" "), {
-      cwd: tmpDir,
-      encoding: "utf-8",
-      env: { ...process.env, ARBOR_CONTEXT_ID: "session-a" },
-    });
+    execSync(command.join(" "), { cwd: tmpDir, encoding: "utf-8" });
   }
 
-  it("[issue-106] prefers explicit CLI branch over task.json and git", () => {
-    setupSessionRepo({
-      gitBranch: "feature/from-git",
-      taskBranch: "task/from-task",
-      taskBaseBranch: "main",
-    });
+  it("[issue-106] prefers an explicit --branch over the git branch", () => {
+    setupSessionRepo({ gitBranch: "feature/from-git" });
 
     runAddSession("CLI branch wins", { branch: "cli/from-arg" });
 
@@ -340,18 +263,13 @@ ${separator}
 
     expect(journal).toContain("**Branch**: `cli/from-arg`");
     expect(journal).not.toContain("**Base Branch**:");
-    expect(journal).not.toContain("task/from-task");
     expect(journal).not.toContain("feature/from-git");
     expect(index).toContain("`cli/from-arg` |");
-    expect(index).not.toContain("`task/from-task`");
     expect(index).not.toContain("`feature/from-git`");
   });
 
-  it("[issue-106] falls back to git branch and migrates old 6-column session history", () => {
-    setupSessionRepo({
-      gitBranch: "feature/from-git",
-      headerMode: "legacy6",
-    });
+  it("[issue-106] falls back to the git branch", () => {
+    setupSessionRepo({ gitBranch: "feature/from-git" });
 
     runAddSession("Git branch fallback");
 
@@ -369,28 +287,6 @@ ${separator}
     expect(index).toContain("| # | Date | Title | Commits | Branch |");
     expect(index).toContain("|---|------|-------|---------|--------|");
     expect(index).toContain("`feature/from-git` |");
-    expect(index).not.toContain(
-      "| # | Date | Title | Commits | Branch | Base Branch |\n|---|------|-------|---------|--------|-------------|",
-    );
-  });
-
-  it("[issue-106] migrates old 4-column session history directly to 5 columns", () => {
-    setupSessionRepo({
-      headerMode: "legacy4",
-    });
-
-    runAddSession("Legacy 4-column migration");
-
-    const index = fs.readFileSync(
-      path.join(tmpDir, ".arbor", "workspace", "test-dev", "index.md"),
-      "utf-8",
-    );
-
-    expect(index).toContain("| # | Date | Title | Commits | Branch |");
-    expect(index).toContain("|---|------|-------|---------|--------|");
-    expect(index).not.toContain(
-      "| # | Date | Title | Commits |\n|---|------|-------|---------|",
-    );
   });
 
   it("[issue-106] records a session even when no branch information is available", () => {
@@ -1231,27 +1127,18 @@ describe("regression: platform additions (beta.9, beta.13, beta.16)", () => {
       expect(tool.name.length).toBeGreaterThan(0);
       expect(tool.configDir.startsWith(".")).toBe(true);
       expect(tool.cliFlag.length).toBeGreaterThan(0);
-      expect(Array.isArray(tool.templateDirs)).toBe(true);
-      expect(tool.templateDirs).toContain("common");
       expect(typeof tool.defaultChecked).toBe("boolean");
-      expect(typeof tool.hasPythonHooks).toBe("boolean");
     }
   });
 });
 
-describe("regression: cli_adapter platform support (beta.9, beta.13, beta.16)", () => {
+describe("regression: registered platforms and migration guides", () => {
   it("[codex] only Claude Code and Codex are registered", () => {
     expect(Object.keys(AI_TOOLS)).toEqual(["claude-code", "codex"]);
     expect(AI_TOOLS.codex.configDir).toBe(".codex");
     expect(AI_TOOLS.codex.supportsAgentSkills).toBe(true);
-    expect(AI_TOOLS.codex.templateContext.cmdRefPrefix).toBe("$");
   });
 
-  // v0.5.0-beta.12 removed `task.py init-context`; jsonl manifests are now
-  // curated during planning when needed. The subparser, cmd_init_context, and get_check_context
-  // helpers are all gone. task.py still guards against old invocations with
-  // a clear deprecation message so users who muscle-memory-type the old
-  // command get pointed at the new workflow.
   it("[migrate-flow-bugs] all breaking+recommendMigrate manifests include migrationGuide", () => {
     // Enforce going forward: every historical manifest where both
     // breaking=true AND recommendMigrate=true must have a non-empty
@@ -1776,21 +1663,16 @@ describe("regression: safe auto-commit when .arbor/ is gitignored (0.5.10 → 0.
       "# Journal - test-dev (Part 1)\n\n---\n",
     );
     writeWorkspaceIndex();
-    // Ignored caches/backups must exist on disk to prove they don't get
-    // staged when -f is forced on specific paths.
+    // Caches and backups on disk that the auto-commit must never stage.
     writeFile(
       ".arbor/.backup-2026-05-09/should-not-be-committed.txt",
       "secret-backup\n",
     );
     writeFile(
-      ".arbor/worktrees/wt-a/should-not-be-committed.txt",
-      "secret-worktree\n",
-    );
-    writeFile(
       ".arbor/.template-hashes.json",
       '{"_": "should-not-be-committed"}\n',
     );
-    writeFile(".arbor/.runtime/sessions/should-not-be-committed.json", "{}\n");
+    writeFile(".arbor/.runtime/should-not-be-committed.json", "{}\n");
 
     if (options?.gitignoreArbor) {
       writeFile(".gitignore", ".arbor/\n");
@@ -1809,11 +1691,7 @@ describe("regression: safe auto-commit when .arbor/ is gitignored (0.5.10 → 0.
     const result = spawnSync(
       pyCmd,
       [scriptPath, "--title", "Test", "--summary", "Test"],
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env: { ...process.env, ARBOR_CONTEXT_ID: "session-a" },
-      },
+      { cwd: tmpDir, encoding: "utf-8" },
     );
     return {
       stdout: result.stdout ?? "",
@@ -1872,6 +1750,12 @@ describe("regression: safe auto-commit when .arbor/ is gitignored (0.5.10 → 0.
 
     const tracked = listCommittedFiles();
     expect(tracked).toContain(".arbor/workspace/test-dev/journal-1.md");
+    expect(tracked).toContain(".arbor/workspace/test-dev/index.md");
+    // Only the journal and index are staged, never the caches beside them.
+    expect(tracked.filter((f) => f.startsWith(".arbor/"))).toEqual([
+      ".arbor/workspace/test-dev/index.md",
+      ".arbor/workspace/test-dev/journal-1.md",
+    ]);
   });
 
   it("[gitignore-arbor] safe_commit module ships and contains the negative warning + new config hint", () => {
@@ -1883,7 +1767,6 @@ describe("regression: safe auto-commit when .arbor/ is gitignored (0.5.10 → 0.
     expect(safeCommit).toBeTruthy();
     expect(safeCommit).toContain("Do NOT use `git add -f .arbor/`");
     expect(safeCommit).toContain("safe_arbor_paths_to_add");
-    expect(safeCommit).toContain("safe_archive_paths_to_add");
     expect(safeCommit).toContain("safe_git_add");
     // 0.5.11: new hint pointing users at the config knob.
     expect(safeCommit).toContain("session_auto_commit: false");
@@ -1987,73 +1870,40 @@ describe("regression: safe auto-commit when .arbor/ is gitignored (0.5.10 → 0.
 });
 
 // =============================================================================
-// regression: transient .git/index.lock during archive auto-commit
+// regression: transient .git/index.lock during the archive auto-commit
 // =============================================================================
 //
-// `task.py archive` moves the task directory on disk BEFORE it stages and
-// commits. Another process holding `.git/index.lock` for a fraction of a
-// second (IDE git integration, status daemon, a parallel session) made that
-// auto-commit fail outright, leaving the user with a completed move and a git
-// error to untangle.
+// `arbor.py finish` moves the task directory into the archive BEFORE it
+// stages and commits. Another process holding `.git/index.lock` for a fraction
+// of a second (IDE git integration, status daemon, a parallel session) made
+// that auto-commit fail outright, leaving the user with a completed move and a
+// git error to untangle.
 //
-// Fix: `run_git_retry_index_lock` retries ONLY index.lock failures — three
-// attempts over ~1.5s. `task.py` is gone in arbor 1.0; the retry semantics of
-// `common/git.py` are still pinned below.
+// Fix: `run_git_retry_index_lock` (common/git.py) retries ONLY index.lock
+// failures — three attempts over ~1.5s.
 // =============================================================================
 
-describe("regression: bounded index.lock retry on archive auto-commit", () => {
+describe("regression: run_git_retry_index_lock retries only index.lock failures", () => {
   let tmpDir: string;
   const pyCmd = process.platform === "win32" ? "python" : "python3";
-  const taskName = "issue-lock";
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-index-lock-"));
-    execSync("git init -q -b main", { cwd: tmpDir });
-    execSync('git config user.email "test@arbor.local"', { cwd: tmpDir });
-    execSync('git config user.name "Arbor Test"', { cwd: tmpDir });
-  });
-
-  afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  });
-
-  function writeFile(rel: string, content: string): void {
-    const abs = path.join(tmpDir, rel);
-    fs.mkdirSync(path.dirname(abs), { recursive: true });
-    fs.writeFileSync(abs, content, "utf-8");
-  }
-
-  function setupRepo(): void {
     const scriptsDir = path.join(tmpDir, ".arbor", "scripts");
     for (const [rel, content] of getAllScripts()) {
       const abs = path.join(scriptsDir, rel);
       fs.mkdirSync(path.dirname(abs), { recursive: true });
       fs.writeFileSync(abs, content, "utf-8");
     }
-    writeFile(
-      ".arbor/.developer",
-      "name=test-dev\ninitialized_at=2026-08-09T00:00:00\n",
-    );
-    writeFile(
-      `.arbor/tasks/${taskName}/task.json`,
-      JSON.stringify(
-        { title: "Locked archive", status: "in_progress", package: null },
-        null,
-        2,
-      ),
-    );
-    writeFile(`.arbor/tasks/${taskName}/prd.md`, "# PRD\n");
-    writeFile("README.md", "test\n");
-    // The task must be tracked: an untracked task dir makes a failed
-    // auto-commit inconsequential, which is not the case under test.
-    execSync("git add -A", { cwd: tmpDir });
-    execSync('git commit -q -m "init"', { cwd: tmpDir });
-  }
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
 
   it("[index-lock] retries only index.lock failures, bounded by the attempt count", () => {
     // Deterministic cover for the retry semantics themselves (no wall-clock
     // timing involved).
-    setupRepo();
     const probe = `
 import json
 import sys

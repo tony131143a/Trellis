@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 WRITER_RULES = """\
-- The brief hands over what the coordinator already found: anchors (path and symbol; line numbers are hints, earlier merges move them), causes ruled out, often the first change. Start there: open the anchors and confirm them; do not survey again what the brief or the reports below already cover. Where the code contradicts the brief, follow the code and say so in the report.
+- The brief hands over what the coordinator already found: anchors (path and symbol; line numbers are hints, earlier merges move them), an exemplar whose pattern to copy, causes ruled out, often the first change. Start there: open the anchors and confirm them; do not survey again what the brief or the reports below already cover. Where the code contradicts the brief, follow the code and say so in the report.
 - Match the conventions of the surrounding code.
 - Change only files inside your paths. If the work needs anything else, stop and say so in the report.
 - Commit your work on the current branch (subject "{task}/{node}: <summary>"). Leave nothing uncommitted or untracked.
@@ -29,7 +29,8 @@ Already green at {head}, do not just rerun them:
 Look for: behaviour that breaks an acceptance criterion or existing callers; wrong results on real inputs (boundaries, empty input, error paths, concurrency); acceptance criteria that no test or check really exercises; tests that cannot fail.
 Test your suspicions: run the code, a targeted test, or a scratch script or test you write for the purpose. Dependencies are installed here. Remove every scratch file afterwards.
 
-Each finding: `path:line`, one sentence stating the defect; the input or state that triggers it and what happens; severity `blocker` (a criterion is not met, data loss, or a crash on a normal path) or `should-fix`; evidence `shown` (the exact command or test you ran, pasted so it can be rerun, and the relevant output) or `read` (argued from the code only; say why you could not run it).
+Each finding: `path:line`, one sentence stating the defect; what it breaks: the acceptance criterion by its id, or the existing caller or test as `path:symbol`; the input or state that triggers it and what happens; severity `blocker` (a criterion is not met, data loss, or a crash on a normal path) or `should-fix`; evidence `shown` (the exact command or test you ran, pasted so it can be rerun, and the relevant output) or `read` (argued from the code only; say why you could not run it).
+A finding that breaks neither goes last, under the heading `Outside the contract`, one line each, for the user to read.
 No style remarks, no rewrites, no praise. A suspicion that did not survive a run or a careful read is left out.
 End the report with the line `findings: <n>` (0 is a valid result), then what you ran and what you did not review."""
 

@@ -1,7 +1,7 @@
 /**
  * AI Tool Types and Registry
  *
- * Defines supported AI coding tools and which command templates they can use.
+ * Defines the supported AI coding tools and the registry data derived helpers read.
  */
 
 /**
@@ -10,57 +10,10 @@
 export type AITool = "claude-code" | "codex";
 
 /**
- * Template directory categories
- */
-export type TemplateDir = "common" | "claude" | "codex";
-
-/**
  * CLI flag names for platform selection (e.g., --claude, --codex)
  * Must match keys in InitOptions (src/commands/init.ts)
  */
 export type CliFlag = "claude" | "codex";
-
-/**
- * Template context for placeholder resolution.
- * Controls how common templates are rendered per platform.
- */
-export interface TemplateContext {
-  /** Prefix for cross-referencing other commands/skills */
-  cmdRefPrefix:
-    | "/arbor:"
-    | "/arbor-"
-    | "$"
-    | "/"
-    | "/skill arbor-"
-    | "/skill:arbor-"
-    | "arbor-";
-  /** Description of AI executor actions shown in role tables */
-  executorAI:
-    | "Bash scripts or Task calls"
-    | "Bash scripts or tool calls"
-    | "Bash scripts or Agent calls"
-    | "Bash scripts or file reads";
-  /** Label for user-invocable actions */
-  userActionLabel:
-    | "Slash commands"
-    | "Skills"
-    | "Workflows"
-    | "Prompts"
-    | "Commands";
-  /** Platform supports spawning sub-agents with isolated context */
-  agentCapable: boolean;
-  /** Platform has hook system (SessionStart, PreToolUse) */
-  hasHooks: boolean;
-  /**
-   * CLI flag value for this platform (e.g. "claude", "codex").
-   * Substituted into template commands via {{CLI_FLAG}} so rendered skill /
-   * command files can pass `--platform <flag>` to scripts that need to know
-   * the invoking platform, removing the need to re-detect at runtime.
-   * Duplicates the top-level `AIToolConfig.cliFlag` for convenience — the
-   * invariant is maintained in `AI_TOOLS` config blocks.
-   */
-  cliFlag: CliFlag;
-}
 
 /**
  * Configuration for an AI tool
@@ -68,8 +21,6 @@ export interface TemplateContext {
 export interface AIToolConfig {
   /** Display name of the tool */
   name: string;
-  /** Command template directory names to include */
-  templateDirs: TemplateDir[];
   /** Config directory name in the project root (e.g., ".claude") */
   configDir: string;
   /**
@@ -78,16 +29,10 @@ export interface AIToolConfig {
    * to the platform's managed paths automatically.
    */
   supportsAgentSkills?: boolean;
-  /** Additional managed paths beyond configDir */
-  extraManagedPaths?: string[];
   /** CLI flag name for --flag options (e.g., "claude" for --claude) */
   cliFlag: CliFlag;
   /** Whether this tool is checked by default in interactive init prompt */
   defaultChecked: boolean;
-  /** Whether this tool uses Python hooks (affects Windows encoding detection) */
-  hasPythonHooks: boolean;
-  /** Template context for placeholder resolution in common templates */
-  templateContext: TemplateContext;
 }
 
 /**
@@ -96,7 +41,7 @@ export interface AIToolConfig {
  *
  * When adding a new platform, add an entry here and create:
  * 1. src/configurators/{platform}.ts — configure function
- * 2. src/templates/{platform}/ — template files
+ * 2. src/templates/{platform}/ — the platform's own template files, if any
  * 3. Register in src/configurators/index.ts — PLATFORM_FUNCTIONS
  * 4. Add CLI flag in src/cli/index.ts
  * 5. Add to InitOptions in src/commands/init.ts
@@ -104,45 +49,18 @@ export interface AIToolConfig {
 export const AI_TOOLS: Record<AITool, AIToolConfig> = {
   "claude-code": {
     name: "Claude Code",
-    templateDirs: ["common", "claude"],
     configDir: ".claude",
     cliFlag: "claude",
     defaultChecked: true,
-    hasPythonHooks: true,
-    templateContext: {
-      cmdRefPrefix: "/arbor:",
-      executorAI: "Bash scripts or Task calls",
-      userActionLabel: "Slash commands",
-      agentCapable: true,
-      hasHooks: true,
-      cliFlag: "claude",
-    },
   },
   codex: {
     name: "Codex",
-    templateDirs: ["common", "codex"],
     configDir: ".codex",
     supportsAgentSkills: true,
     cliFlag: "codex",
     defaultChecked: false,
-    hasPythonHooks: true,
-    templateContext: {
-      cmdRefPrefix: "$",
-      executorAI: "Bash scripts or tool calls",
-      userActionLabel: "Skills",
-      agentCapable: true,
-      hasHooks: true,
-      cliFlag: "codex",
-    },
   },
 };
-
-/**
- * Get the configuration for a specific AI tool
- */
-export function getToolConfig(tool: AITool): AIToolConfig {
-  return AI_TOOLS[tool];
-}
 
 /**
  * Get all managed paths for a specific tool.
@@ -153,15 +71,5 @@ export function getManagedPaths(tool: AITool): string[] {
   if (config.supportsAgentSkills) {
     paths.push(".agents/skills");
   }
-  if (config.extraManagedPaths) {
-    paths.push(...config.extraManagedPaths);
-  }
   return paths;
-}
-
-/**
- * Get template directories for a specific tool
- */
-export function getTemplateDirs(tool: AITool): TemplateDir[] {
-  return AI_TOOLS[tool].templateDirs;
 }

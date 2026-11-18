@@ -275,3 +275,86 @@ describe("configYamlTemplate: executors and gate", () => {
     expect(configYamlTemplate).toContain("type: orca");
   });
 });
+
+// =============================================================================
+// config.yaml — every documented key has a reader
+// =============================================================================
+
+describe("config.yaml keys", () => {
+  const scriptsDir = path.resolve(
+    __dirname,
+    "../../src/templates/arbor/scripts",
+  );
+  const repoRoot = path.resolve(__dirname, "../../../..");
+
+  // The template with its commented-out example keys switched on.
+  const exampleConfig = configYamlTemplate
+    .split("\n")
+    .map((line) =>
+      line.replace(/^(\s*)# ?(\s*(?:[a-z_]+:(?: \S+)?|- ".*"))$/, "$1$2"),
+    )
+    .join("\n");
+
+  function parse(yaml: string): Record<string, unknown> {
+    const out = execFileSync(
+      "python3",
+      [
+        "-c",
+        "import json, sys; sys.path.insert(0, sys.argv[1]); " +
+          "from common.arbor_config import parse_simple_yaml; " +
+          "print(json.dumps(parse_simple_yaml(sys.stdin.read())))",
+        scriptsDir,
+      ],
+      { input: yaml, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
+    );
+    return JSON.parse(out) as Record<string, unknown>;
+  }
+
+  // Children of these are names the user picks (packages, executors, tiers);
+  // executors.default is the one key among them.
+  const namedBy = new Set(["packages", "executors", "agents"]);
+
+  function keyNames(node: unknown, parent: string, out: Set<string>): void {
+    if (node === null || typeof node !== "object" || Array.isArray(node)) {
+      return;
+    }
+    for (const [key, value] of Object.entries(node)) {
+      if (!namedBy.has(parent) || key === "default") out.add(key);
+      keyNames(value, namedBy.has(parent) ? "" : key, out);
+    }
+  }
+
+  it("the template documents only keys a script reads", () => {
+    const sources = [...getAllScripts().values()].join("\n");
+    const keys = new Set<string>();
+    keyNames(parse(exampleConfig), "", keys);
+    expect(keys).toContain("merge_target"); // commented examples are covered
+    const unread = [...keys].filter(
+      (key) => !sources.includes(`"${key}"`) && !sources.includes(`'${key}'`),
+    );
+    expect(unread).toEqual([]);
+  });
+
+  it("this repository's .arbor/config.yaml has only template sections and resolves", () => {
+    const out = execFileSync(
+      "python3",
+      [
+        "-c",
+        "import json, sys; sys.path.insert(0, sys.argv[1]); " +
+          "from pathlib import Path; " +
+          "from common.arbor_config import read_arbor_config; " +
+          "from common.driver.executor import resolve_executor; " +
+          "config = read_arbor_config(Path(sys.argv[2])); " +
+          "resolve_executor(config); print(json.dumps(sorted(config)))",
+        scriptsDir,
+        repoRoot,
+      ],
+      { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
+    );
+    const sections = Object.keys(parse(exampleConfig));
+    const extra = (JSON.parse(out) as string[]).filter(
+      (key) => !sections.includes(key),
+    );
+    expect(extra).toEqual([]);
+  });
+});

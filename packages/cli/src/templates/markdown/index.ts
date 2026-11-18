@@ -30,14 +30,6 @@ export const claudeMdContent: string = readLocalTemplate("claude.md");
 // Workspace index template (developer work records)
 export const workspaceIndexContent: string =
   readLocalTemplate("workspace-index.md");
-
-// Backwards compatibility alias
-export const agentProgressIndexContent = workspaceIndexContent;
-
-// Gitignore (template file - .gitignore is ignored by npm)
-export const workflowGitignoreContent: string =
-  readLocalTemplate("gitignore.txt");
-
 // =============================================================================
 // Structure templates (generic templates from .txt files)
 // These are NOT dogfooded - they are generic templates for new projects

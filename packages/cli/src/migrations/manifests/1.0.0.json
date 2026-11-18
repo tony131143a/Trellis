@@ -509,6 +509,23 @@
         "1aa4e07ad0a5fe770e81a4e2647d77802299fa7f45251b93c1acfa44dd1de82f",
         "2e190ac13ff69405ab9189e582e572f4cebe8605e3aa73db36349d7e843dcff7"
       ]
+    },
+    {
+      "type": "safe-file-delete",
+      "from": ".arbor/scripts/common/types.py",
+      "description": "TypedDicts of the 0.x task.json and agent registry; nothing in 1.0 imports them",
+      "allowed_hashes": [
+        "8572a8a6dcc6559af1b4d46192e324ee0e36517e7156f7c7957709ee3e8902b7",
+        "a4e589a3b5f4fd14594e4a287da52bd18a55f2fbefbcb99487cefe9000a25c19",
+        "7bff52d2aca54b1ad4b279d0071698114f3a39102130dce4f341165ed9dd41c2",
+        "8d7c9ff41660121c79912edec439581423a6f50489f83868e883dc5ab06a6225",
+        "30d834d9a814207d0ed4bf3da73552800b9be48825f585f994854202dcad36f0",
+        "281dcec408fc8a5769e417ff9b7607ef2ca6750b46f8d5ade5a2ba1ebc3746ae",
+        "1b09c64de43769b213f5311fa2aaebe5a937faac403e18e1efdc41bb2c93a5b9",
+        "9962081cc2608fb9d1deb32c6880e336f62cdca6b338e7ae813304701e155ee9",
+        "0c7de22bf2139024d9351fc47d63388b5168c44eb0897a66d7adc888f14843f7",
+        "d623ada858d3cb55093c5c95c9ce182b99b5865b7441742297542fad3b21cc06"
+      ]
     }
   ],
   "configSectionsAdded": [],

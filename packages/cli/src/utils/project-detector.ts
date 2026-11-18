@@ -194,22 +194,6 @@ export function detectProjectType(cwd: string): ProjectType {
   return "unknown";
 }
 
-/**
- * Get human-readable description of project type
- */
-export function getProjectTypeDescription(type: ProjectType): string {
-  switch (type) {
-    case "frontend":
-      return "Frontend project (UI/client-side)";
-    case "backend":
-      return "Backend project (server-side/API)";
-    case "fullstack":
-      return "Fullstack project (frontend + backend)";
-    case "unknown":
-      return "Unknown project type (defaults to fullstack)";
-  }
-}
-
 // =============================================================================
 // Monorepo Detection
 // =============================================================================

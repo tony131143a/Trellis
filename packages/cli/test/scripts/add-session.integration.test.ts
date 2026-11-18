@@ -7,11 +7,9 @@
  * templates into a fresh git repo and exercises the actual `python3
  * add_session.py` paths — no source-string assertions.
  *
- * Scope-creep guard (#303): the session auto-commit must stage ONLY the
- * current developer's journal/index + the CURRENT task dir. Dirty changes in
- * OTHER parallel-window task dirs must NOT be bundled into the session commit.
- * This mirrors `task-archive.integration.test.ts`'s "does not bundle dirty
- * changes from other task dirs" for the session route.
+ * Scope-creep guard (#303): the session auto-commit stages ONLY the current
+ * developer's journal and index. Task directories, dirty or not, stay out of
+ * the session commit.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -81,53 +79,10 @@ function stampArbor(tmp: string): void {
   }
 }
 
-function makeTask(
-  repo: string,
-  name: string,
-  prdBody: string,
-  branch?: string,
-): void {
+function makeTask(repo: string, name: string, prdBody: string): void {
   const dir = path.join(repo, ".arbor", "tasks", name);
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, "prd.md"), prdBody);
-  const taskJson: Record<string, unknown> = {
-    id: name,
-    name,
-    title: name,
-    status: "in_progress",
-    priority: "P2",
-    createdAt: "2026-06-18",
-    assignee: DEVELOPER,
-    creator: DEVELOPER,
-    subtasks: [],
-    children: [],
-    relatedFiles: [],
-    meta: {},
-  };
-  if (branch) {
-    taskJson.branch = branch;
-  }
-  fs.writeFileSync(
-    path.join(dir, "task.json"),
-    JSON.stringify(taskJson) + "\n",
-  );
-}
-
-/**
- * Point the active-task resolver at `taskName`. With exactly one session file
- * present, `resolve_active_task` uses the single-session fallback, so
- * `get_current_task` returns this task without needing a platform context.
- */
-function setCurrentTask(repo: string, taskName: string): void {
-  const sessionsDir = path.join(repo, ".arbor", ".runtime", "sessions");
-  fs.mkdirSync(sessionsDir, { recursive: true });
-  fs.writeFileSync(
-    path.join(sessionsDir, "session.json"),
-    JSON.stringify({
-      current_task: `.arbor/tasks/${taskName}`,
-      platform: "session",
-    }) + "\n",
-  );
 }
 
 interface RunResult {
@@ -194,10 +149,8 @@ function distinctMarkers(repo: string, num = 1): string[] {
   return [...new Set(seen)];
 }
 
-/** Seed a task + initial commit so HEAD and a current task both exist. */
-function seedTask(repo: string, name = "task-a"): void {
-  makeTask(repo, name, `${name} prd\n`);
-  setCurrentTask(repo, name);
+/** Commit the stamped `.arbor/` tree so HEAD exists. */
+function seedCommit(repo: string): void {
   git(repo, "add", "-A");
   git(repo, "commit", "-q", "-m", "initial");
 }
@@ -225,44 +178,8 @@ describe.skipIf(!hasPython())("add_session.py auto-commit", () => {
     fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
-  it("does not bundle dirty changes from other task dirs (scope-creep fix)", () => {
-    makeTask(tmp, "task-a", "task A prd\n");
-    makeTask(tmp, "task-b", "task B prd v1\n");
-    setCurrentTask(tmp, "task-a");
-    git(tmp, "add", "-A");
-    git(tmp, "commit", "-q", "-m", "initial");
-
-    // Dirty edit in task-b BEFORE recording a session in task-a's context.
-    fs.appendFileSync(
-      path.join(tmp, ".arbor", "tasks", "task-b", "prd.md"),
-      "DIRTY EDIT IN TASK-B SHOULD NOT BE COMMITTED\n",
-    );
-
-    runAddSession(tmp, "task-a work");
-
-    // Last commit is the session auto-commit; inspect its files.
-    const lastFiles = git(
-      tmp,
-      "show",
-      "HEAD",
-      "--name-only",
-      "--pretty=format:",
-    )
-      .split("\n")
-      .map((s) => s.trim())
-      .filter(Boolean);
-
-    // task-b paths must NOT appear in the session commit.
-    const leaked = lastFiles.filter((f) => f.includes("/task-b/"));
-    expect(leaked).toEqual([]);
-
-    // task-b dirty change still in working tree.
-    const status = git(tmp, "status", "--porcelain");
-    expect(status).toMatch(/\.arbor\/tasks\/task-b\/prd\.md/);
-  });
-
   it("does not sweep pre-staged unrelated files into the session commit (#579)", () => {
-    seedTask(tmp);
+    seedCommit(tmp);
 
     // The developer stages an unrelated file BEFORE the script runs.
     fs.writeFileSync(path.join(tmp, "README.md"), "unrelated staged work\n");
@@ -290,11 +207,8 @@ describe.skipIf(!hasPython())("add_session.py auto-commit", () => {
     expect(status).toMatch(/^A\s+README\.md/m);
   });
 
-  it("omits Main Changes/Testing/Next Steps sections for a legacy call (#394)", () => {
-    makeTask(tmp, "task-a", "task A prd\n");
-    setCurrentTask(tmp, "task-a");
-    git(tmp, "add", "-A");
-    git(tmp, "commit", "-q", "-m", "initial");
+  it("omits Main Changes/Testing/Next Steps sections for a call without --change/--test/--next-step (#394)", () => {
+    seedCommit(tmp);
 
     runAddSession(tmp, "placeholder-free work");
 
@@ -315,10 +229,7 @@ describe.skipIf(!hasPython())("add_session.py auto-commit", () => {
   });
 
   it("renders bullets for --change/--test/--next-step and keeps the [OK] testing prefix (#394)", () => {
-    makeTask(tmp, "task-a", "task A prd\n");
-    setCurrentTask(tmp, "task-a");
-    git(tmp, "add", "-A");
-    git(tmp, "commit", "-q", "-m", "initial");
+    seedCommit(tmp);
 
     runAddSession(tmp, "structured work", [
       "--change",
@@ -345,11 +256,8 @@ describe.skipIf(!hasPython())("add_session.py auto-commit", () => {
     expect(journal).toContain("- Ship it");
   });
 
-  it("falls back to the current checkout branch when task.json branch is stale", () => {
-    makeTask(tmp, "task-a", "task A prd\n", "deleted-task-branch");
-    setCurrentTask(tmp, "task-a");
-    git(tmp, "add", "-A");
-    git(tmp, "commit", "-q", "-m", "initial");
+  it("records the checkout branch when no --branch is given", () => {
+    seedCommit(tmp);
 
     runAddSession(tmp, "stale branch work");
 
@@ -365,24 +273,11 @@ describe.skipIf(!hasPython())("add_session.py auto-commit", () => {
     expect(journal).toContain("**Branch**: `main`");
     expect(index).toContain("| 1 |");
     expect(index).toContain("| `main` |");
-    expect(journal).not.toContain("deleted-task-branch");
-    expect(index).not.toContain("deleted-task-branch");
   });
 
-  it("does not wide-scan task dirs when the current task is unresolvable (>=2 sessions)", () => {
+  it("leaves dirty task directories out of the session commit (#303)", () => {
     makeTask(tmp, "task-a", "task A prd\n");
     makeTask(tmp, "task-b", "task B prd v1\n");
-    // TWO session files → resolve_active_task refuses to guess and returns
-    // None. The guard must stage only journal/index, never the wide scan.
-    setCurrentTask(tmp, "task-a");
-    const sessionsDir = path.join(tmp, ".arbor", ".runtime", "sessions");
-    fs.writeFileSync(
-      path.join(sessionsDir, "session2.json"),
-      JSON.stringify({
-        current_task: ".arbor/tasks/task-b",
-        platform: "session",
-      }) + "\n",
-    );
     git(tmp, "add", "-A");
     git(tmp, "commit", "-q", "-m", "initial");
 
@@ -396,7 +291,7 @@ describe.skipIf(!hasPython())("add_session.py auto-commit", () => {
       "DIRTY B\n",
     );
 
-    runAddSession(tmp, "ambiguous-session work");
+    runAddSession(tmp, "session work");
 
     const lastFiles = git(
       tmp,
@@ -409,7 +304,7 @@ describe.skipIf(!hasPython())("add_session.py auto-commit", () => {
       .map((s) => s.trim())
       .filter(Boolean);
 
-    // No task dir at all in the session commit when the task is unresolvable.
+    // No task dir at all in the session commit.
     const taskFiles = lastFiles.filter((f) => f.includes("/tasks/"));
     expect(taskFiles).toEqual([]);
 
@@ -420,7 +315,7 @@ describe.skipIf(!hasPython())("add_session.py auto-commit", () => {
   });
 
   it("stages only Arbor-owned paths in the session auto-commit", () => {
-    seedTask(tmp);
+    seedCommit(tmp);
     fs.writeFileSync(path.join(tmp, "unrelated.txt"), "user work in progress\n");
 
     runAddSession(tmp, "scoped staging");
@@ -446,7 +341,7 @@ describe.skipIf(!hasPython())("add_session.py commit evidence (R1)", () => {
   beforeEach(() => {
     tmp = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-session-evidence-"));
     setupRepo(tmp);
-    seedTask(tmp);
+    seedCommit(tmp);
   });
 
   afterEach(() => {
@@ -561,144 +456,21 @@ describe.skipIf(!hasPython())("add_session.py commit evidence (R1)", () => {
   });
 });
 
-/**
- * Marker as the two schemes render it, for the same record inputs.
- *
- * Reconstructs the fingerprint payload the way `cmd_add_session` builds it,
- * by importing the real module — so the v1 form is produced by the shipped
- * `compute_legacy_fingerprint`, not by a copy of it here. The caller asserts
- * that `v2` matches what is actually in the journal before trusting `v1`; if
- * this reconstruction ever drifts from the command, that check fails loudly
- * instead of the test quietly passing on a marker nothing would have written.
- */
-function markersFor(
-  repo: string,
-  title: string,
-  summary: string,
-  branch: string,
-  legacyDate: string,
-): { v2: string; v1: string } {
-  const harness = [
-    "import sys, json",
-    `sys.path.insert(0, ${JSON.stringify(".arbor/scripts")})`,
-    "import add_session as a",
-    "payload = a._fingerprint_payload(",
-    `    ${JSON.stringify(DEVELOPER)}, ${JSON.stringify(title)},`,
-    `    ${JSON.stringify(summary)}, None, ${JSON.stringify(branch)},`,
-    "    [], None, None, None, None, None,",
-    ")",
-    "print(json.dumps({",
-    "  'v2': a.render_marker(a.compute_record_fingerprint(payload)),",
-    `  'v1': a.render_legacy_marker(a.compute_legacy_fingerprint(payload, ${JSON.stringify(legacyDate)})),`,
-    "}))",
-  ].join("\n");
-  const r = spawnSync("python3", ["-c", harness], {
-    cwd: repo,
-    encoding: "utf-8",
-  });
-  if (r.status !== 0) {
-    throw new Error(`marker harness failed: ${r.stderr}`);
-  }
-  return JSON.parse(r.stdout);
-}
-
-/** Rewrite the pending entry into the pre-versioning marker scheme. */
-function downgradeToLegacyMarker(
-  repo: string,
-  v2Marker: string,
-  v1Marker: string,
-  legacyDate: string,
-): void {
-  const before = readJournal(repo);
-  expect(before).toContain(v2Marker);
-  fs.writeFileSync(
-    journalPath(repo),
-    before
-      .replace(v2Marker, v1Marker)
-      .replace(/^\*\*Date\*\*: \d{4}-\d{2}-\d{2}$/m, `**Date**: ${legacyDate}`),
-  );
-}
-
-describe.skipIf(!hasPython())("add_session.py fingerprint date rollover", () => {
+describe.skipIf(!hasPython())("add_session.py record marker", () => {
   let tmp: string;
-  const TITLE = "rollover run";
-  const SUMMARY = "interrupted before the commit";
   const BRANCH = "main";
-  const ARGS = ["--summary", SUMMARY, "--branch", BRANCH];
 
   beforeEach(() => {
-    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-session-rollover-"));
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-session-marker-"));
     setupRepo(tmp);
-    seedTask(tmp);
+    seedCommit(tmp);
   });
 
   afterEach(() => {
     fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
-  it("resumes a record written yesterday under the pre-versioning scheme", () => {
-    // Interrupt after the journal and index writes, before the commit.
-    breakCommits(tmp);
-    const first = tryAddSession(tmp, TITLE, ARGS);
-    expect(first.status).toBe(1);
-    expect(first.stderr).toContain("Auto-commit failed");
-    expect(sessionNumbers(tmp)).toEqual([1]);
-
-    // Stage what a pre-change run would have left behind on an earlier day.
-    const { v2, v1 } = markersFor(tmp, TITLE, SUMMARY, BRANCH, "2020-01-01");
-    downgradeToLegacyMarker(tmp, v2, v1, "2020-01-01");
-
-    repairCommits(tmp);
-    const second = tryAddSession(tmp, TITLE, ARGS);
-
-    expect(second.status).toBe(0);
-    expect(second.stderr).toContain("[RESUME]");
-    // The record was found and finished — not appended a second time.
-    expect(sessionNumbers(tmp)).toEqual([1]);
-    expect(countMarkers(tmp)).toBe(1);
-    expect(readIndex(tmp)).toContain("**Total Sessions**: 1");
-    // Its marker is left as written; an in-flight entry is not rewritten.
-    expect(readJournal(tmp)).toContain(v1);
-  });
-
-  it("resolves a same-day legacy marker too, not just one across a rollover", () => {
-    breakCommits(tmp);
-    expect(tryAddSession(tmp, TITLE, ARGS).status).toBe(1);
-
-    const today = readJournal(tmp).match(/^\*\*Date\*\*: (\d{4}-\d{2}-\d{2})$/m);
-    if (!today) throw new Error("journal entry carries no **Date** line");
-    const date = today[1];
-    const { v2, v1 } = markersFor(tmp, TITLE, SUMMARY, BRANCH, date);
-    downgradeToLegacyMarker(tmp, v2, v1, date);
-
-    repairCommits(tmp);
-    const second = tryAddSession(tmp, TITLE, ARGS);
-    expect(second.status).toBe(0);
-    expect(second.stderr).toContain("[RESUME]");
-    expect(sessionNumbers(tmp)).toEqual([1]);
-    expect(countMarkers(tmp)).toBe(1);
-  });
-
-  it("does not adopt a legacy entry whose inputs differ", () => {
-    breakCommits(tmp);
-    expect(tryAddSession(tmp, TITLE, ARGS).status).toBe(1);
-    const { v2, v1 } = markersFor(tmp, TITLE, SUMMARY, BRANCH, "2020-01-01");
-    downgradeToLegacyMarker(tmp, v2, v1, "2020-01-01");
-    repairCommits(tmp);
-
-    // A different summary is a different record; resuming it would be wrong.
-    const other = tryAddSession(tmp, TITLE, [
-      "--summary",
-      "a genuinely different session",
-      "--branch",
-      BRANCH,
-    ]);
-    expect(other.status).toBe(0);
-    expect(sessionNumbers(tmp)).toEqual([1, 2]);
-    expect(countMarkers(tmp)).toBe(2);
-  });
-
-  it("keeps two same-day sessions distinct now that the date is not an input", () => {
+  it("keeps two same-day sessions distinct", () => {
     runAddSession(tmp, "first session", ["--summary", "one", "--branch", BRANCH]);
     runAddSession(tmp, "second session", ["--summary", "two", "--branch", BRANCH]);
     expect(sessionNumbers(tmp)).toEqual([1, 2]);
@@ -707,7 +479,7 @@ describe.skipIf(!hasPython())("add_session.py fingerprint date rollover", () => 
   });
 
   it("writes the versioned marker form", () => {
-    runAddSession(tmp, TITLE, ARGS);
+    runAddSession(tmp, "marker run", ["--summary", "marker", "--branch", BRANCH]);
     expect(readJournal(tmp)).toMatch(
       /^<!-- arbor-session: v=2 fp=[0-9a-f]{16} -->$/m,
     );
@@ -720,7 +492,7 @@ describe.skipIf(!hasPython())("add_session.py retry convergence (R2-R5)", () => 
   beforeEach(() => {
     tmp = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-session-retry-"));
     setupRepo(tmp);
-    seedTask(tmp);
+    seedCommit(tmp);
   });
 
   afterEach(() => {
@@ -941,7 +713,7 @@ describe.skipIf(!hasPython())("add_session.py session numbering", () => {
   beforeEach(() => {
     tmp = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-session-number-"));
     setupRepo(tmp);
-    seedTask(tmp);
+    seedCommit(tmp);
   });
 
   afterEach(() => {
@@ -1001,7 +773,7 @@ describe.skipIf(!hasPython())("add_session.py with .arbor below the git root", (
     git(outer, "config", "user.name", "Test");
     project = path.join(outer, "project");
     stampArbor(project);
-    seedTask(project);
+    seedCommit(project);
   });
 
   afterEach(() => {
@@ -1037,9 +809,6 @@ describe.skipIf(!hasPython())("add_session.py outside any git repository", () =>
   beforeEach(() => {
     project = fs.mkdtempSync(path.join(os.tmpdir(), "arbor-session-nogit-"));
     stampArbor(project);
-    // seedTask() commits via git; there is no repo here by design.
-    makeTask(project, "task-a", "task-a prd\n");
-    setCurrentTask(project, "task-a");
   });
 
   afterEach(() => {

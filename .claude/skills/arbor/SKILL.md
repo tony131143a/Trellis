@@ -20,8 +20,8 @@ Not for a change you can make and verify yourself.
    - `fix`: the gate is red. Write fix nodes that quote the failing check and its output.
    - Events to pass on: a `baseline … red before any change` line (the gate already fails at the task's base: ask the user whether the task fixes it), and `<ref> moved N commits past the task's integration branch` (the base moved on: merge it in early with a node, conflicts listed).
    - `plan`: work is missing. Add nodes.
-   - `review`: `arbor review`, `arbor sync`, step 3. Reviewers run code. A finding marked `shown` carries the command that demonstrates it: quote it in a fix node. A finding marked `read`: verify it in the code first. None left: `arbor review --pass`. One review round is the default (`review_rounds`): after it, `next:` says no round is left; read the fix diff it names yourself, check that the fixes answer the findings, then `arbor review --pass`.
-   - `finish`: `arbor finish` prints the manual checks and one merge command per repository. The user checks and merges; run it again to clean up.
+   - `review`: `arbor review`, `arbor sync`, step 3. Reviewers run code. A finding becomes a fix node when it is a `blocker`, `shown` (quote its command in the fix node) and names the criterion or existing caller it breaks; a `read` finding that would qualify: verify it in the code first; every other finding is kept for the user at finish. None left: `arbor review --pass`. One review round is the default (`review_rounds`): after it, `next:` says no round is left; read the fix diff it names yourself, check that the fixes answer the findings, then `arbor review --pass`.
+   - `finish`: `arbor finish` prints the manual checks, the reviewer reports, the task's corrections and one merge command per repository. Before the user merges, give them one summary: per acceptance criterion its evidence (the green gate check, or the manual check), the review findings not fixed, and the assumptions and brief corrections the worker reports name; for a manual row whose result an agent can produce (command output, a screenshot), produce it first with a read-only node and show the user the artifact. For each correction, ask whether the mistake would come back in another feature: if yes, record a rule with the `arbor-update-spec` skill; if no, nothing is recorded. The user checks and merges; run it again to clean up.
    - `ask the user`: a budget is used up. Report and propose; `arbor resume` only with their agreement.
 
 The plan is yours to change: add nodes when a result shows more work; edit or delete nodes that have not started.
@@ -58,6 +58,7 @@ Hand over what you found, not a summary of it. The worker starts a fresh session
 
 - **Outcome**: what changes and why it matters; the command that shows it is done.
 - **Anchors**: the places the work touches, as `path:symbol` (a line number only as a hint), each with one line on what is there: the code to change, its callers, the tests that cover it, the `.arbor/spec/` files for the area.
+- **Exemplar**: one file that already does this the way the codebase wants it, as `path:symbol`; the worker copies its pattern.
 - **Ruled out**: what you checked and rejected, and why.
 - **First step**: the first concrete change, or the test or command that shows the problem, when you have seen it in the code.
 - **Interfaces** to match or expose, verbatim; what is out of scope.

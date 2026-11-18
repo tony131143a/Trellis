@@ -6,7 +6,6 @@ import {
   detectProjectType,
   detectMonorepo,
   sanitizePkgName,
-  getProjectTypeDescription,
   type DetectedPackage,
 } from "../../src/utils/project-detector.js";
 
@@ -18,45 +17,6 @@ function assertPackages(result: DetectedPackage[] | null): DetectedPackage[] {
   if (result === null) throw new Error("unreachable");
   return result;
 }
-
-// =============================================================================
-// getProjectTypeDescription — pure function (EASY)
-// =============================================================================
-
-describe("getProjectTypeDescription", () => {
-  it("returns correct description for frontend", () => {
-    expect(getProjectTypeDescription("frontend")).toBe(
-      "Frontend project (UI/client-side)",
-    );
-  });
-
-  it("returns correct description for backend", () => {
-    expect(getProjectTypeDescription("backend")).toBe(
-      "Backend project (server-side/API)",
-    );
-  });
-
-  it("returns correct description for fullstack", () => {
-    expect(getProjectTypeDescription("fullstack")).toBe(
-      "Fullstack project (frontend + backend)",
-    );
-  });
-
-  it("returns correct description for unknown", () => {
-    expect(getProjectTypeDescription("unknown")).toBe(
-      "Unknown project type (defaults to fullstack)",
-    );
-  });
-
-  it("all descriptions are non-empty strings", () => {
-    const types = ["frontend", "backend", "fullstack", "unknown"] as const;
-    for (const t of types) {
-      const desc = getProjectTypeDescription(t);
-      expect(typeof desc).toBe("string");
-      expect(desc.length).toBeGreaterThan(0);
-    }
-  });
-});
 
 // =============================================================================
 // detectProjectType — needs temp directory (MEDIUM)

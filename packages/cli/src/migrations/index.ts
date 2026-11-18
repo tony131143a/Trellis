@@ -111,22 +111,6 @@ export function hasPendingMigrations(
 }
 
 /**
- * Get human-readable summary of pending migrations
- */
-export function getMigrationSummary(
-  fromVersion: string,
-  toVersion: string,
-): { renames: number; deletes: number; safeFileDeletes: number } {
-  const migrations = getMigrationsForVersion(fromVersion, toVersion);
-  return {
-    renames: migrations.filter((m) => m.type === "rename").length,
-    deletes: migrations.filter((m) => m.type === "delete").length,
-    safeFileDeletes: migrations.filter((m) => m.type === "safe-file-delete")
-      .length,
-  };
-}
-
-/**
  * Get all registered migration versions
  */
 export function getAllMigrationVersions(): string[] {

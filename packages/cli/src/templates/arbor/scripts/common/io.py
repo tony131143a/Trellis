@@ -34,8 +34,7 @@ def read_json(path: Path) -> dict | None:
         return json.loads(path.read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError, OSError, UnicodeDecodeError):
         # UnicodeDecodeError is not an OSError. Without it here a non-UTF-8
-        # session file raises out of a tolerant read, so the hook path fails
-        # instead of degrading to "no active task".
+        # file would raise out of a tolerant read instead of returning None.
         return None
 
 
@@ -109,8 +108,7 @@ def write_json(path: Path, data: dict) -> bool:
 
     The write is atomic: content goes to a temp file in the same directory
     and is then renamed over the target. A crash or Ctrl-C mid-write leaves
-    the existing file intact rather than truncated, so a corrupted task.json
-    can never make a task silently vanish from `task.py list`.
+    the existing file intact rather than truncated.
 
     Returns True on success, False on error.
     """

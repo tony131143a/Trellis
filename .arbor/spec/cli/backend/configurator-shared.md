@@ -3,7 +3,7 @@ sources:
   - packages/cli/src/configurators/shared.ts
   - packages/cli/src/configurators/index.ts
   - packages/cli/test/configurators/platforms.test.ts
-last_verified: 2026-11-16
+last_verified: 2026-11-18
 ---
 # Configurator Shared Helpers
 
@@ -19,7 +19,7 @@ between configurators reliably becomes a bug. What each platform installs is in
 - Platform-specific formatting (e.g. Claude Code's statusline injection) stays in the
   per-platform configurator.
 - `shared.ts` does not decide where a platform writes, read user input, touch the network,
-  mutate `types/ai-tools.ts:AI_TOOLS`, decide capability flags, or touch user-owned content
+  mutate `types/ai-tools.ts:AI_TOOLS`, or touch user-owned content
   (`.arbor/spec/`, `.arbor/tasks/`, `.arbor/workspace/`, `.arbor/.developer`).
 - Its only module state is `resolvedPythonCommand`; pass anything else through arguments.
   Tests that render without init call `resetResolvedPythonCommand`.

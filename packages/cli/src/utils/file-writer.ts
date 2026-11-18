@@ -8,10 +8,6 @@ import { toPosix } from "./posix.js";
 
 export type WriteMode = "ask" | "force" | "skip" | "append";
 
-export interface WriteOptions {
-  mode: WriteMode;
-}
-
 interface PromptAnswer {
   action: string;
 }
@@ -21,10 +17,6 @@ let globalWriteMode: WriteMode = "ask";
 
 export function setWriteMode(mode: WriteMode): void {
   globalWriteMode = mode;
-}
-
-export function getWriteMode(): WriteMode {
-  return globalWriteMode;
 }
 
 // ---------------------------------------------------------------------------

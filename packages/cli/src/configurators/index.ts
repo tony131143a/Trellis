@@ -1,7 +1,7 @@
 /**
  * Platform Registry — Single source of truth for platform functions and derived helpers
  *
- * All platform-specific lists (backup dirs, template dirs, configured platforms, etc.)
+ * All platform-specific lists (managed dirs, configured platforms, etc.)
  * are derived from AI_TOOLS in types/ai-tools.ts. Adding a new platform requires:
  * 1. Adding to AI_TOOLS (data)
  * 2. Creating `configurators/<platform>.ts` with a `collect<Platform>Templates()`
@@ -75,9 +75,6 @@ const PLATFORM_FUNCTIONS: Record<AITool, PlatformFunctions> = {
 /** All platform IDs */
 export const PLATFORM_IDS = Object.keys(AI_TOOLS) as AITool[];
 
-/** All platform config directory names (e.g., [".claude", ".starFactory"]) */
-export const CONFIG_DIRS = PLATFORM_IDS.map((id) => AI_TOOLS[id].configDir);
-
 /** All managed paths for every platform (primary configDir + extra managed paths). */
 export const PLATFORM_MANAGED_DIRS = PLATFORM_IDS.flatMap((id) =>
   getManagedPaths(id),
@@ -116,13 +113,6 @@ export function getConfiguredPlatforms(cwd: string): Set<AITool> {
 }
 
 /**
- * Get platform IDs that have Python hooks (for Windows encoding detection)
- */
-export function getPlatformsWithPythonHooks(): AITool[] {
-  return PLATFORM_IDS.filter((id) => AI_TOOLS[id].hasPythonHooks);
-}
-
-/**
  * Check if a path starts with any managed directory
  */
 export function isManagedPath(dirPath: string): boolean {
@@ -138,13 +128,6 @@ export function isManagedPath(dirPath: string): boolean {
  */
 export function isManagedRootDir(dirName: string): boolean {
   return ALL_MANAGED_DIRS.includes(dirName);
-}
-
-/**
- * Get all managed paths for a platform.
- */
-export function getPlatformManagedPaths(platformId: AITool): string[] {
-  return getManagedPaths(platformId);
 }
 
 /**

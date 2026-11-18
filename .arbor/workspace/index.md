@@ -15,10 +15,7 @@ workspace/
 |-- index.md              # This file - main index
 +-- {developer}/          # Per-developer directory
     |-- index.md          # Personal index with session history
-    |-- tasks/         # Task files
-    |   |-- *.json        # Active tasks
-    |   +-- archive/      # Archived tasks by month
-    +-- journal-N.md     # Journal files (sequential: 1, 2, 3...)
+    +-- journal-N.md      # Journal files (sequential: 1, 2, 3...)
 ```
 
 ---
@@ -38,7 +35,7 @@ workspace/
 Run the initialization script:
 
 ```bash
-python3 ./.trellis/scripts/init_developer.py <your-name>
+python3 ./.arbor/scripts/init_developer.py <your-name>
 ```
 
 This will:
@@ -51,12 +48,12 @@ This will:
 
 1. Get your developer name:
    ```bash
-   python3 ./.trellis/scripts/get_developer.py
+   python3 ./.arbor/scripts/get_developer.py
    ```
 
 2. Read your personal index:
    ```bash
-   cat .trellis/workspace/$(python3 ./.trellis/scripts/get_developer.py)/index.md
+   cat .arbor/workspace/$(python3 ./.arbor/scripts/get_developer.py)/index.md
    ```
 
 ---

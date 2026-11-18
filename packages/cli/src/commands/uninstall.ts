@@ -4,14 +4,15 @@
  *
  * The single source of truth for "what arbor wrote" is
  * `.arbor/.template-hashes.json`. Files outside that manifest are never
- * touched (e.g. user-added hooks under `.cursor/hooks/`).
+ * touched (e.g. user-added hooks under `.claude/hooks/`).
  *
  * Manifest-listed files split into two groups:
  *   A. Opaque content files (`.py` / `.md` / `.ts` / etc.) — unlinked outright.
- *   B. Structured config files (settings.json / hooks.json / config.toml /
- *      package.json) — passed through a scrubber that strips just the arbor
- *      fields, leaving user-added neighbors intact. If the scrubber says the
- *      file is fully empty afterwards, we delete it.
+ *   B. Structured files (`.claude/settings.json`, the hooks files of 0.x
+ *      installs, `AGENTS.md` / `CLAUDE.md`) — passed through a scrubber
+ *      that strips just the arbor hooks or managed block, leaving user-added
+ *      neighbors intact. If the scrubber says the file is fully empty
+ *      afterwards, we delete it.
  *
  * Whether the user has modified a manifest-listed file or not, it is removed
  * (per the PRD: "全删"). The `.arbor/` tree is removed unconditionally.

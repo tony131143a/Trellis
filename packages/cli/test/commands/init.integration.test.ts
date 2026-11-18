@@ -519,9 +519,8 @@ describe("init() integration", () => {
     expect(fs.existsSync(configPath)).toBe(true);
 
     const configContent = fs.readFileSync(configPath, "utf-8");
-    // Slice off only the auto-generated section so commented-out template
-    // examples (which legitimately mention `type: submodule`) do not pollute
-    // the assertion.
+    // Slice off only the auto-generated section so the commented-out
+    // template examples do not pollute the assertion.
     const generatedIdx = configContent.indexOf(
       "# Auto-detected monorepo packages",
     );
@@ -533,9 +532,29 @@ describe("init() integration", () => {
     expect(generated).toContain("backend:");
     expect(generated).toContain("path: frontend");
     expect(generated).toContain("path: backend");
-    // Polyrepo packages should be marked git: true, NOT type: submodule
+    // Polyrepo packages are marked git: true
     expect(generated).toContain("git: true");
-    expect(generated).not.toContain("type: submodule");
+  });
+
+  it("#20 submodule: writes the package path and no type key", async () => {
+    fs.writeFileSync(
+      path.join(tmpDir, ".gitmodules"),
+      '[submodule "docs"]\n\tpath = docs\n\turl = https://example.com/docs.git\n',
+    );
+    fs.mkdirSync(path.join(tmpDir, "docs"), { recursive: true });
+
+    await init({ yes: true });
+
+    const configContent = fs.readFileSync(
+      path.join(tmpDir, DIR_NAMES.WORKFLOW, "config.yaml"),
+      "utf-8",
+    );
+    const generated = configContent.slice(
+      configContent.indexOf("# Auto-detected monorepo packages"),
+    );
+    expect(generated).toBe(
+      "# Auto-detected monorepo packages\npackages:\n  docs:\n    path: docs\ndefault_package: docs\n",
+    );
   });
 
   it("#18 monorepo: re-init does not duplicate packages in config.yaml", async () => {

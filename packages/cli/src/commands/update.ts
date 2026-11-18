@@ -107,7 +107,6 @@ const PROTECTED_PATHS = [
   `${DIR_NAMES.WORKFLOW}/${DIR_NAMES.TASKS}`, // tasks/
   `${DIR_NAMES.WORKFLOW}/${DIR_NAMES.SPEC}`, // spec/
   `${DIR_NAMES.WORKFLOW}/.developer`,
-  `${DIR_NAMES.WORKFLOW}/.current-task`,
 ];
 
 function buildManagedBlockTemplate(
@@ -761,8 +760,8 @@ function analyzeChanges(
  * A genuinely customized file differs from its template, lands in
  * `changedFiles`, and is never seen by this function.
  *
- * That also leaves the mixed-ownership paths — `AGENTS.md`,
- * `.github/copilot-instructions.md`, `.arbor/config.yaml` — free to differ
+ * That also leaves the mixed-ownership paths — `AGENTS.md`, `CLAUDE.md`,
+ * `.arbor/config.yaml` — free to differ
  * from their recorded hash, which for them is the correct state: once the
  * repository has appended its own content they are no longer `unchanged`.
  */
@@ -980,11 +979,9 @@ const BACKUP_EXCLUDE_PATTERNS = [
   "/agent-traces/", // Agent traces (user data, legacy name)
   // Platform-native worktree dirs — these are full sub-repos the CLI
   // spawns for parallel sessions. Backing them up on every update would
-  // snapshot the entire nested working tree. Confirmed conventions:
-  //   Claude Code: .claude/worktrees/
-  //   Cursor CLI:  .cursor/worktrees/
-  //   Gemini CLI:  .gemini/worktrees/
-  // Matches any platform using the same convention (future-proof).
+  // snapshot the entire nested working tree. Claude Code uses
+  // .claude/worktrees/; the patterns match any platform using the same
+  // convention.
   "/worktrees/",
   "/worktree/",
 ];

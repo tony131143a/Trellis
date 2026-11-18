@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import {
+  CONTRACT,
   git,
   hasPython,
   orcaCalls,
@@ -238,6 +239,19 @@ describe.skipIf(!hasPython())("arbor 1.0 sync", { timeout: 180_000 }, () => {
     expect(out.next.kind).toBe("review");
     expect(out.next.text).toContain("arbor.py review starts one reviewer per repo");
     expect(p.run("status").stdout).toContain("next: review:");
+  });
+
+  it.each([
+    ["unchanged", "README.md", ["AC-1: `README.md` is unchanged since the task base; its check may pass on existing tests"]],
+    ["changed", "src/feature.txt", []],
+  ])("notes on the gate an auto check whose map file the writer left unchanged (%s)", (_name, file, notes) => {
+    p = setupProject({ contract: CONTRACT.replace("| `test -f src/feature.txt` | -    |", `| \`test -f src/feature.txt\` | ${file} |`) });
+    p.node("n1", { paths: "[src/**]", checks: "[AC-1]" });
+    p.sync();
+    work(p, "n1", { write: [{ path: "src/feature.txt", content: "f\n" }] });
+    const out = p.sync();
+    expect(out.repos["."].gate).toMatchObject({ green: true, notes });
+    for (const note of notes) expect(out.events).toContain(`  ${note}`);
   });
 
   it.each([

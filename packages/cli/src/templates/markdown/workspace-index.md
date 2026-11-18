@@ -15,10 +15,7 @@ workspace/
 |-- index.md              # This file - main index
 +-- {developer}/          # Per-developer directory
     |-- index.md          # Personal index with session history
-    |-- tasks/         # Task files
-    |   |-- *.json        # Active tasks
-    |   +-- archive/      # Archived tasks by month
-    +-- journal-N.md     # Journal files (sequential: 1, 2, 3...)
+    +-- journal-N.md      # Journal files (sequential: 1, 2, 3...)
 ```
 
 ---

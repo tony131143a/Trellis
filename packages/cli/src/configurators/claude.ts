@@ -1,4 +1,3 @@
-import { AI_TOOLS } from "../types/ai-tools.js";
 import {
   arborSkillTemplate,
   getSettingsTemplate,
@@ -47,7 +46,6 @@ function injectStatusLine(content: string): string {
  * The opt-in statusline is deliberately absent — see `configureClaude`.
  */
 export function collectClaudeTemplates(): Map<string, string> {
-  const ctx = AI_TOOLS["claude-code"].templateContext;
   const files = new Map<string, string>();
 
   // Map keys are logical paths used as cross-platform hash keys downstream.
@@ -62,13 +60,13 @@ export function collectClaudeTemplates(): Map<string, string> {
     name: "arbor",
     content: wrapWithSkillFrontmatter(
       "arbor",
-      resolvePlaceholders(arborSkillTemplate, ctx),
+      resolvePlaceholders(arborSkillTemplate),
     ),
   };
   for (const [filePath, content] of collectSkillTemplates(
     ".claude/skills",
-    [arborSkill, ...resolveSkills(ctx)],
-    resolveBundledSkills(ctx),
+    [arborSkill, ...resolveSkills()],
+    resolveBundledSkills(),
   )) {
     files.set(filePath, content);
   }

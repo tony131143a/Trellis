@@ -13,7 +13,7 @@ import {
 
 // Import markdown templates
 import {
-  agentProgressIndexContent,
+  workspaceIndexContent,
   // Backend structure (multi-doc)
   backendIndexContent,
   backendDirectoryStructureContent,
@@ -143,7 +143,7 @@ export async function createWorkflowStructure(
   ensureDir(path.join(cwd, PATHS.WORKSPACE));
   await writeFile(
     path.join(cwd, PATHS.WORKSPACE, "index.md"),
-    replacePythonCommandLiterals(agentProgressIndexContent),
+    replacePythonCommandLiterals(workspaceIndexContent),
   );
 
   // Create tasks/ directory

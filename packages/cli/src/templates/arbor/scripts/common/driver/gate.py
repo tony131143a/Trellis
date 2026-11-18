@@ -4,8 +4,6 @@ of the contract's Verification map, run in the task worktree.
 
 Gate commands come from ``gate.commands`` in ``.arbor/config.yaml`` and are
 reported as ``GATE-1``, ``GATE-2``, ...; map checks keep their criterion id.
-After a review fix the gate also runs the ``exec`` repro of every fixed
-CONFIRMED finding as ``REPRO-1``, ``REPRO-2``, ... (each must exit 0).
 
 A check that times out is killed with everything it started. From pytest's
 summary a check keeps the ids of its failed tests and its skip count, so a
@@ -14,6 +12,10 @@ gate can be compared with the gate of the task's base (``compare``).
 An auto check that is only gate commands joined by ``&&`` (the whole gate
 restated as a criterion) is not run again: it takes the result of those
 commands (``gate_parts``), and a node naming it leaves it to the gate.
+
+An auto check whose map ``file`` is unchanged since the task base may pass
+on tests that existed before; ``map_warnings`` names it, and the driver adds
+that to the gate's notes without turning the gate red.
 """
 
 from __future__ import annotations
@@ -149,10 +151,8 @@ def auto_checks(contract: Contract) -> list[tuple[str, str]]:
     return [(e.id, e.check) for e in contract.auto_checks() if e.check.strip()]
 
 
-def run_gate(gate_commands: list[str], contract: Contract, worktree: Path,
-             repros: Sequence[tuple[str, str]] = ()) -> GateResult:
-    """Gate commands first, then every auto map check, then the
-    ``(finding id, command)`` repros as ``REPRO-n``. An auto check that
+def run_gate(gate_commands: list[str], contract: Contract, worktree: Path) -> GateResult:
+    """Gate commands first, then every auto map check. An auto check that
     restates gate commands takes their result instead of running again."""
     checks = [
         run_check(f"GATE-{i}", command, worktree)
@@ -162,40 +162,27 @@ def run_gate(gate_commands: list[str], contract: Contract, worktree: Path,
     for cid, command in auto_checks(contract):
         numbers = gate_parts(command, gate_commands)
         checks.append(_restated(cid, command, numbers, gate) if numbers else run_check(cid, command, worktree))
-    checks += [run_check(f"REPRO-{i}", command, worktree)
-               for i, (_, command) in enumerate(repros, start=1)]
     return GateResult(checks)
 
 
 def map_warnings(contract: Contract, worktree: Path, base: str) -> list[str]:
-    """Warnings for auto checks that may pass without testing their criterion:
-    the map ``file`` is unchanged since the task base (``base..HEAD``), or
-    neither the check command, the file's path nor its text names the
-    criterion id (implement names tests after it, e.g. ``ac8`` for AC-8)."""
+    """Warnings for auto checks whose map ``file`` is unchanged since the
+    task base (``base..HEAD``): such a check may pass on tests that existed
+    before. Nothing when the diff cannot be read."""
     rc, out, _ = run_git(["diff", "--name-only", f"{base}..HEAD"], cwd=worktree)
-    changed = set(out.split()) if rc == 0 else None
+    if rc != 0:
+        return []
+    changed = set(out.split())
     warnings = []
     for e in contract.auto_checks():
         file = (e.file or "").split("::")[0].strip()  # a pytest node id names its file first
-        if not e.check.strip() or file in ("", "-", "—"):
-            continue
-        if changed is not None and file not in changed:
+        if e.check.strip() and file not in ("", "-", "—") and file not in changed:
             warnings.append(f"{e.id}: `{file}` is unchanged since the task base; its check may pass on existing tests")
-            continue
-        number = e.id.split("-", 1)[-1]
-        named = re.compile(rf"(?<![a-z0-9])ac[-_ ]?{re.escape(number)}(?!\d)", re.IGNORECASE)
-        try:
-            text = (worktree / file).read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            text = ""
-        if not any(named.search(x) for x in (e.check, file, text)):
-            warnings.append(f"{e.id}: no test in `{file}` names {e.id} and the check does not select one; "
-                            "it may pass on unrelated tests")
     return warnings
 
 
 def format_checks(checks: list[CheckResult]) -> str:
-    """Markdown block for reports and ``arbor gate`` output."""
+    """Markdown block of check results, printed with the driver's gate and baseline events."""
     lines: list[str] = []
     for c in checks:
         status = "pass" if c.passed else ("timeout" if c.exit_code is None else f"exit {c.exit_code}")

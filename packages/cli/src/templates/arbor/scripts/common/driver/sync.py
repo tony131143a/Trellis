@@ -32,7 +32,7 @@ from ..worktree import WorktreeError, add_worktree, is_ancestor, merge_no_ff, re
 from . import orca, plan
 from .executor import FALLBACK_TO_WRITE, ExecutorError, parse_timeout, utc_now
 from ..git import run_git
-from .gate import baseline_record, compare, format_checks, gate_parts, run_check, run_gate
+from .gate import baseline_record, compare, format_checks, gate_parts, map_warnings, run_check, run_gate
 from .lock import LockTimeout, task_lock
 from .prompt import worker_spec
 from .repos import DriverError, Task, create_integration, git, head, repo_keys, settings
@@ -417,19 +417,16 @@ def start(task: Task, contract: Contract, events: list[str]) -> int:
 # gate
 
 
-def _run_gate(task: Task, contract: Contract, key: str, wt: Path):
-    s = settings(task.main, task.config, key)
-    return run_gate(s.gate, replace(contract, verification_map=tuple(map_rows(task, contract, key))), wt)
-
-
 def gate(task: Task, contract: Contract, events: list[str]) -> None:
     for key, repo in sorted(task.data["repos"].items()):
         wt = Path(repo["worktree"])
         sha = head(wt)
         if (repo.get("gate") or {}).get("sha") == sha:
             continue
-        result = _run_gate(task, contract, key, wt)
+        scoped = replace(contract, verification_map=tuple(map_rows(task, contract, key)))
+        result = run_gate(settings(task.main, task.config, key).gate, scoped, wt)
         failing, notes = compare(result.checks, repo.get("baseline"))
+        notes += map_warnings(scoped, wt, repo["base"])
         with task.edit() as d:
             d["repos"][key]["gate"] = {"sha": sha, "green": not failing, "failing": failing, "notes": notes,
                                        "at": utc_now()}
@@ -532,6 +529,10 @@ def rounds_left(task: Task) -> int:
     return task.executor.review_rounds + task.data["allowance"]["rounds"] - task.data["rounds"]
 
 
+FIX_RULE = ("a blocker that is shown and names the criterion or the existing caller or test it breaks becomes a fix "
+            "node; the other findings are left for the user at finish")
+
+
 def next_step(task: Task) -> tuple[str, str]:
     d = task.data
     nodes = d["nodes"].values()
@@ -576,18 +577,18 @@ def next_step(task: Task) -> tuple[str, str]:
                  for k, h in heads.items()}
     if heads and all(reviewers.values()):
         reports = ", ".join(str(report_path(task, n, d["nodes"][n])) for ns in reviewers.values() for n in ns)
-        return "review", f"review: read {reports}; real findings become fix nodes, otherwise arbor.py review --pass"
+        return "review", f"review: read {reports}; {FIX_RULE}; then arbor.py review --pass"
     if rounds_left(task) <= 0:
         reviewed = {r["repo"]: r["head"] for r in (d.get("reviewers") or {}).values()}  # the latest per repo
         ranges = "; ".join(f"git -C {d['repos'][k]['worktree']} diff {reviewed.get(k, d['repos'][k]['base'])[:7]}"
                            f"..{h[:7]}" for k, h in heads.items())
         return "review", (f"review: no reviewer round left (executors.{task.executor.name}.review_rounds): read "
                           f"{ranges or 'the diff'} yourself (after a review: do the fixes answer its findings?); "
-                          "anything wrong becomes fix nodes; then arbor.py review --pass")
+                          f"{FIX_RULE}; then arbor.py review --pass")
     ranges = "; ".join(f"git -C {d['repos'][k]['worktree']} diff {d['repos'][k]['base'][:7]}..{h[:7]}"
                        for k, h in heads.items())
     return "review", ("review: arbor.py review starts one reviewer per repo (or review " + (ranges or "the diff")
-                      + " yourself when the diff is small); findings become fix nodes; then arbor.py review --pass")
+                      + f" yourself when the diff is small); {FIX_RULE}; then arbor.py review --pass")
 
 
 def output(task: Task, events: list[str], as_json: bool) -> None:

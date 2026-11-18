@@ -65,7 +65,7 @@ function setupRepo(tmp: string, autoCommit: boolean): void {
     throw new Error(`init_developer failed: ${r.stderr}`);
   }
 
-  // .arbor/.developer, .current-task, and .runtime/ are gitignored by
+  // .arbor/.developer and .runtime/ are gitignored by
   // design (session-local state) — commit everything else so a linked
   // worktree checkout has the scripts/config/journal/index.
   git(tmp, "add", "-A");

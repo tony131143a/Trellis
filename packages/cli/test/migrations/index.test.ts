@@ -7,7 +7,6 @@ import {
   getConfigSectionsAddedBetween,
   getMigrationMetadata,
   getMigrationsForVersion,
-  getMigrationSummary,
   hasPendingMigrations,
 } from "../../src/migrations/index.js";
 import { compareVersions } from "../../src/utils/compare-versions.js";
@@ -140,41 +139,6 @@ describe("hasPendingMigrations", () => {
   it("returns boolean type", () => {
     const result = hasPendingMigrations("0.1.0", "99.0.0");
     expect(typeof result).toBe("boolean");
-  });
-});
-
-// =============================================================================
-// getMigrationSummary — counts by type
-// =============================================================================
-
-describe("getMigrationSummary", () => {
-  it("returns object with renames, deletes, and safeFileDeletes counts", () => {
-    const summary = getMigrationSummary("0.1.0", "99.0.0");
-    expect(typeof summary.renames).toBe("number");
-    expect(typeof summary.deletes).toBe("number");
-    expect(typeof summary.safeFileDeletes).toBe("number");
-    expect(summary.renames).toBeGreaterThanOrEqual(0);
-    expect(summary.deletes).toBeGreaterThanOrEqual(0);
-    expect(summary.safeFileDeletes).toBeGreaterThanOrEqual(0);
-  });
-
-  it("returns zero counts for same version", () => {
-    const summary = getMigrationSummary("0.3.0-beta.16", "0.3.0-beta.16");
-    expect(summary.renames).toBe(0);
-    expect(summary.deletes).toBe(0);
-    expect(summary.safeFileDeletes).toBe(0);
-  });
-
-  it("counted types sum <= total migrations count", () => {
-    const from = "0.1.0";
-    const to = "99.0.0";
-    const summary = getMigrationSummary(from, to);
-    const migrations = getMigrationsForVersion(from, to);
-    // getMigrationSummary counts "rename", "delete", and "safe-file-delete"
-    // but not "rename-dir" — so sum may be less than total
-    expect(
-      summary.renames + summary.deletes + summary.safeFileDeletes,
-    ).toBeLessThanOrEqual(migrations.length);
   });
 });
 

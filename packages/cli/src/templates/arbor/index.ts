@@ -9,9 +9,10 @@
  *   ├── scripts/
  *   │   ├── __init__.py
  *   │   ├── common/           # Shared utilities (Python)
+ *   │   │   └── driver/       # The node driver behind arbor.py
  *   │   └── *.py              # Main scripts (Python)
- *   ├── config.yaml            # Arbor configuration
- *   ├── gitignore.txt         # .gitignore content
+ *   ├── config.yaml           # .arbor/config.yaml content
+ *   ├── gitignore.txt         # .arbor/.gitignore content
  *   └── gitattributes.txt     # project-root .gitattributes content
  */
 
@@ -37,7 +38,6 @@ export const commonConfig = readTemplate("scripts/common/config.py");
 export const commonIo = readTemplate("scripts/common/io.py");
 export const commonLog = readTemplate("scripts/common/log.py");
 export const commonGit = readTemplate("scripts/common/git.py");
-export const commonTypes = readTemplate("scripts/common/types.py");
 export const commonArborConfig = readTemplate("scripts/common/arbor_config.py");
 export const commonSafeCommit = readTemplate("scripts/common/safe_commit.py");
 export const commonSpecMeta = readTemplate("scripts/common/spec_meta.py");
@@ -90,7 +90,6 @@ export function getAllScripts(): Map<string, string> {
     ["common/io.py", commonIo],
     ["common/log.py", commonLog],
     ["common/git.py", commonGit],
-    ["common/types.py", commonTypes],
     ["common/arbor_config.py", commonArborConfig],
     ["common/safe_commit.py", commonSafeCommit],
     ["common/spec_meta.py", commonSpecMeta],

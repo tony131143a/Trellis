@@ -10,15 +10,9 @@ Use this command to improve test coverage after code changes.
 
 ## Source of Truth
 
-Discover and read unit-test specs:
+The packages are listed in the `packages:` section of `.arbor/config.yaml`; their unit-test specs live in `.arbor/spec/<package>/unit-test/` (for `cli`: `.arbor/spec/cli/unit-test/index.md`).
 
-```bash
-python3 ./.arbor/scripts/get_context.py --mode packages
-```
-
-Look for packages with `unit-test` spec layer in the output.
-
-For each found module, read its `index.md` and follow the **"Pre-Development Checklist"** section. Read all guideline files listed in the index.
+Read each unit-test `index.md` and follow its **"Pre-Development Checklist"** section. Read all guideline files listed in the index.
 
 > If this command conflicts with the unit-test specs, the specs win.
 

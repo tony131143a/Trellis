@@ -12,7 +12,6 @@ Sections (``## `` headings). Order is free; optional sections may be absent.
     ## Verification map     table: | id | kind | check | file | [repo |]
                             kind = auto | manual; auto → check is a shell command;
                             repo = where it runs (absent/empty: the task's repo)
-    ## Interface pins       bullets; may be the single line "existing interfaces"
 
 Other sections (e.g. the Partitions / Waves of arbor < 1.0) are ignored.
 
@@ -64,7 +63,6 @@ class Contract:
     scope_out: tuple[str, ...]
     criteria: tuple[Criterion, ...]
     verification_map: tuple[MapEntry, ...]
-    interface_pins: tuple[str, ...]
 
     def auto_checks(self) -> tuple[MapEntry, ...]:
         return tuple(e for e in self.verification_map if e.kind == "auto")
@@ -261,7 +259,6 @@ def parse_contract(text: str, path: Path) -> Contract:
         scope_out=tuple(scope_out),
         criteria=criteria,
         verification_map=_parse_map(sections.get("verification map", [])),
-        interface_pins=tuple(_bullets(sections.get("interface pins", []))),
     )
 
 
@@ -424,8 +421,4 @@ CONTRACT_TEMPLATE = """# {title}
 | AC-1 | auto   | `<command that fails before, passes after>` | <test file path> |
 
 <!-- optional last column | repo |: the package whose integration branch runs the check (empty: the task's repo) -->
-
-## Interface pins
-
-<!-- optional; signatures, paths, CLI / HTTP shapes the design fixes up front -->
 """

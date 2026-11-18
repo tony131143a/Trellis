@@ -53,8 +53,6 @@ from datetime import datetime
 from pathlib import Path
 
 from common.paths import (
-    DIR_TASKS,
-    DIR_WORKFLOW,
     FILE_JOURNAL_PREFIX,
     get_repo_root,
     get_developer,
@@ -89,11 +87,8 @@ MAX_SUBJECT_LEN = 500
 # Machine-readable record identity. An HTML comment renders as nothing, so the
 # human evidence in the entry is unchanged by its presence.
 MARKER_PREFIX = "<!-- arbor-session:"
-# Bumped when the fingerprint inputs change. Untagged markers are v1, whose
-# fingerprint mixed in the calendar date; see compute_record_fingerprint.
+# Bumped when the fingerprint inputs change.
 MARKER_VERSION = 2
-LEGACY_MARKER_RE = re.compile(r"^<!-- arbor-session: fp=([0-9a-f]{16}) -->$")
-ENTRY_DATE_RE = re.compile(r"^\*\*Date\*\*: (\d{4}-\d{2}-\d{2})\s*$")
 SESSION_HEADING_RE = re.compile(r"^## Session (\d+):", re.MULTILINE)
 
 # Recording states, in the order the operation walks them.
@@ -432,11 +427,6 @@ def _fingerprint_payload(
     }
 
 
-def _hash_payload(payload: dict) -> str:
-    encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()[:16]
-
-
 def compute_record_fingerprint(payload: dict) -> str:
     """Bounded fingerprint over the normalized semantic inputs of one record.
 
@@ -445,40 +435,21 @@ def compute_record_fingerprint(payload: dict) -> str:
     prose differ only if the caller says so, which is why an already-committed
     match is never adopted (see classify_record).
 
-    Deliberately date-free (v2). v1 mixed in the calendar date, which made a
-    record unfindable by its own retry across a midnight rollover: the journal
-    and index were already written, the commit had failed, and the recomputed
-    fingerprint no longer matched the marker sitting in the journal, so the
-    retry appended a second entry for one session.
-
-    Dropping the date cannot over-collapse two same-day sessions, because the
-    date was equal for both of them anyway. Across days it only ever separated
-    records with byte-identical prose, commits, branch and package — and a
-    *committed* record of that shape is already refused for reuse by
-    cmd_add_session, which steps to the next `generation` of the payload
-    rather than reusing the committed marker. What is left
-    is exactly the question this key should answer: is there an uncommitted
-    record in this worktree matching these inputs?
+    Deliberately date-free: a record stays findable by its own retry across a
+    midnight rollover, when the journal and index are already written and
+    only the commit failed. A *committed* record with the same inputs is
+    refused for reuse by add_session, which steps to the next `generation`
+    of the payload rather than reusing the committed marker. What is left is
+    exactly the question this key answers: is there an uncommitted record in
+    this worktree matching these inputs?
     """
-    return _hash_payload(payload)
-
-
-def compute_legacy_fingerprint(payload: dict, date: str) -> str:
-    """The v1 fingerprint, for resolving markers written before the change.
-
-    Lookup only — nothing writes this scheme any more.
-    """
-    return _hash_payload({**payload, "date": date})
+    encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()[:16]
 
 
 def render_marker(fingerprint: str) -> str:
     """Machine-readable record marker; renders as nothing in Markdown."""
     return f"{MARKER_PREFIX} v={MARKER_VERSION} fp={fingerprint} -->"
-
-
-def render_legacy_marker(fingerprint: str) -> str:
-    """The v1 marker form: no version tag. Read, never written."""
-    return f"{MARKER_PREFIX} fp={fingerprint} -->"
 
 
 # =============================================================================
@@ -495,9 +466,9 @@ def _repo_relative(repo_root: Path, path: Path) -> str | None:
 def _default_branch_local(repo_root: Path) -> str | None:
     """Resolve the default branch without ever touching the network.
 
-    `resolve_default_branch()` falls back to `git remote show origin`, which
-    can block on a fetch. Session recording is a hot path, so it stops at the
-    local symbolic ref and the two conventional names.
+    `git remote show origin` would know it too, but can block on a fetch.
+    Session recording is a hot path, so it stops at the local symbolic ref and
+    the two conventional names.
     """
     rc, out, _ = run_git(
         ["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"],
@@ -702,75 +673,6 @@ def index_has_session_row(index_file: Path, session_num: int) -> bool:
         if in_history and row_re.match(line):
             return True
     return False
-
-
-def _entry_date_at(lines: list[str], marker_index: int) -> str | None:
-    """The `**Date**:` value belonging to the entry whose marker is at `marker_index`.
-
-    `generate_session_content` renders it two lines below the marker. Scanning
-    a short window rather than a fixed offset keeps this working if blank-line
-    spacing around the header ever changes, and stops well before it could
-    reach the next entry.
-    """
-    for line in lines[marker_index + 1:marker_index + 6]:
-        match = ENTRY_DATE_RE.match(line.strip())
-        if match:
-            return match.group(1)
-    return None
-
-
-def resolve_effective_marker(
-    dev_dir: Path,
-    payload: dict,
-    marker: str,
-) -> tuple[str, str | None]:
-    """The marker this record actually carries, across both schemes.
-
-    Returns (marker, error). The v2 marker wins whenever an entry carries it,
-    which is every record written since the change and costs one scan.
-
-    Otherwise this looks for a pending record written under v1. Those markers
-    are only a hash, but the entry renders its own `**Date**:` line right
-    below, so the date that produced the v1 fingerprint is recoverable from
-    the entry itself: recompute with that date and compare against what is
-    actually written there. That is exact, and unlike a +/-1 day window it does
-    not quietly fail a retry resumed after a weekend.
-
-    Returning the v1 marker leaves the entry untouched — it is an in-flight
-    record about to be committed, and rewriting its marker mid-repair would
-    move it to a state the machine does not model.
-    """
-    if find_marker_entries(dev_dir, marker):
-        return marker, None
-
-    matches: set[str] = set()
-    for journal in sorted(dev_dir.glob(f"{FILE_JOURNAL_PREFIX}*.md")):
-        if not journal.is_file():
-            continue
-        try:
-            lines = journal.read_text(encoding="utf-8").splitlines()
-        except OSError:
-            continue
-        for i, line in enumerate(lines):
-            legacy = LEGACY_MARKER_RE.match(line.strip())
-            if not legacy:
-                continue
-            date = _entry_date_at(lines, i)
-            if date is None:
-                continue
-            if compute_legacy_fingerprint(payload, date) == legacy.group(1):
-                matches.add(line.strip())
-
-    if len(matches) > 1:
-        return "", (
-            f"found {len(matches)} pending journal entries matching this record "
-            "under the pre-versioning marker scheme. Refusing to guess which one "
-            "to resume — remove the duplicate entry or pass --idempotency-key to "
-            "record a new session."
-        )
-    if matches:
-        return matches.pop(), None
-    return marker, None
 
 
 def classify_record(
@@ -992,19 +894,6 @@ def update_index(
             continue
 
         if in_session_history:
-            # Migrate old 4/6-column headers to 5-column Branch-only history.
-            if re.match(
-                r"^\|\s*#\s*\|\s*Date\s*\|\s*Title\s*\|\s*Commits\s*\|\s*Branch\s*\|\s*Base Branch\s*\|\s*$",
-                line,
-            ):
-                new_lines.append("| # | Date | Title | Commits | Branch |")
-                continue
-            if re.match(r"^\|\s*#\s*\|\s*Date\s*\|\s*Title\s*\|\s*Commits\s*\|\s*Branch\s*\|\s*$", line):
-                new_lines.append("| # | Date | Title | Commits | Branch |")
-                continue
-            if re.match(r"^\|\s*#\s*\|\s*Date\s*\|\s*Title\s*\|\s*Commits\s*\|\s*$", line):
-                new_lines.append("| # | Date | Title | Commits | Branch |")
-                continue
             if re.match(r"^\|[-| ]+\|\s*$", line) and not header_written:
                 new_lines.append("|---|------|-------|---------|--------|")
                 new_lines.append(f"| {new_session} | {today} | {title} | {commit_display} | `{branch or '-'}` |")
@@ -1064,16 +953,12 @@ def _auto_commit_workspace(repo_root: Path) -> str:
         return COMMIT_BLOCKED
 
     commit_msg = get_session_commit_message(repo_root)
-    paths = [
-        p
-        for p in safe_arbor_paths_to_add(repo_root, task_name=None)
-        if not p.startswith(f"{DIR_WORKFLOW}/{DIR_TASKS}/")
-    ]
+    paths = safe_arbor_paths_to_add(repo_root)
     if not paths:
         print("[OK] No workspace changes to commit.", file=sys.stderr)
         return COMMIT_SKIPPED
 
-    success, _, err = safe_git_add(paths, repo_root)
+    success, err = safe_git_add(paths, repo_root)
     if not success:
         if err and "ignored by" in err.lower():
             print_gitignore_warning(paths)
@@ -1194,13 +1079,6 @@ def add_session(
         changes, extra_content, tests, next_steps, idempotency_key,
     )
     marker = render_marker(compute_record_fingerprint(payload))
-
-    # `today` is no longer a fingerprint input; a record has to be findable by
-    # its own retry after a date rollover. It still dates the rendered entry.
-    marker, resolve_error = resolve_effective_marker(dev_dir, payload, marker)
-    if resolve_error:
-        print(f"Error: {resolve_error}", file=sys.stderr)
-        return 1
 
     state, matched_file, matched_num, classify_error = classify_record(
         repo_root, dev_dir, index_file, marker
@@ -1466,7 +1344,7 @@ def main() -> int:
             print(f"Error: unknown package '{package}'. Available: {available}", file=sys.stderr)
             return 1
     else:
-        package = resolve_package(None, repo_root)
+        package = resolve_package(repo_root)
 
     branch = resolve_session_branch(repo_root, args.branch)
 

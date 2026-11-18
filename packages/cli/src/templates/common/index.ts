@@ -1,8 +1,8 @@
 /**
  * Common templates — single source of truth for all platforms.
  *
- * These templates contain {{placeholders}} that are resolved per-platform
- * by resolvePlaceholders() in configurators/shared.ts.
+ * These templates contain the {{PYTHON_CMD}} placeholder, resolved by
+ * resolvePlaceholders() in configurators/shared.ts.
  *
  * Directory structure:
  *   common/

@@ -1,18 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
   ALL_MANAGED_DIRS,
-  CONFIG_DIRS,
   PLATFORM_IDS,
   PLATFORM_MANAGED_DIRS,
   collectPlatformTemplates,
   getInitToolChoices,
-  getPlatformManagedPaths,
-  getPlatformsWithPythonHooks,
   isManagedPath,
   isManagedRootDir,
   resolveCliFlag,
 } from "../../src/configurators/index.js";
-import { AI_TOOLS, type AITool } from "../../src/types/ai-tools.js";
+import {
+  AI_TOOLS,
+  getManagedPaths,
+  type AITool,
+} from "../../src/types/ai-tools.js";
 
 // =============================================================================
 // Derived Constants
@@ -23,18 +24,6 @@ describe("PLATFORM_IDS", () => {
     const aiToolKeys = Object.keys(AI_TOOLS);
     expect(PLATFORM_IDS).toEqual(expect.arrayContaining(aiToolKeys));
     expect(PLATFORM_IDS).toHaveLength(aiToolKeys.length);
-  });
-});
-
-describe("CONFIG_DIRS", () => {
-  it("has same length as PLATFORM_IDS", () => {
-    expect(CONFIG_DIRS).toHaveLength(PLATFORM_IDS.length);
-  });
-
-  it("maps to AI_TOOLS configDir values in order", () => {
-    for (let i = 0; i < PLATFORM_IDS.length; i++) {
-      expect(CONFIG_DIRS[i]).toBe(AI_TOOLS[PLATFORM_IDS[i]].configDir);
-    }
   });
 });
 
@@ -121,8 +110,8 @@ describe("isManagedPath", () => {
 
 describe("isManagedRootDir", () => {
   it("matches all platform config dirs", () => {
-    for (const dir of CONFIG_DIRS) {
-      expect(isManagedRootDir(dir)).toBe(true);
+    for (const id of PLATFORM_IDS) {
+      expect(isManagedRootDir(AI_TOOLS[id].configDir)).toBe(true);
     }
   });
 
@@ -215,31 +204,6 @@ describe("getInitToolChoices", () => {
 });
 
 // =============================================================================
-// getPlatformsWithPythonHooks
-// =============================================================================
-
-describe("getPlatformsWithPythonHooks", () => {
-  const result = getPlatformsWithPythonHooks();
-
-  it("returns only platforms with hasPythonHooks: true", () => {
-    for (const id of result) {
-      expect(AI_TOOLS[id].hasPythonHooks).toBe(true);
-    }
-  });
-
-  it("includes all platforms with hasPythonHooks: true", () => {
-    const expected = PLATFORM_IDS.filter((id) => AI_TOOLS[id].hasPythonHooks);
-    expect(result).toEqual(expected);
-  });
-
-  it("returns a subset of PLATFORM_IDS", () => {
-    for (const id of result) {
-      expect(PLATFORM_IDS).toContain(id);
-    }
-  });
-});
-
-// =============================================================================
 // collectPlatformTemplates — path consistency
 // =============================================================================
 
@@ -266,7 +230,7 @@ describe("collectPlatformTemplates", () => {
     for (const id of PLATFORM_IDS) {
       const result = collectPlatformTemplates(id);
       if (result) {
-        const managedPaths = getPlatformManagedPaths(id);
+        const managedPaths = getManagedPaths(id);
         for (const [filePath] of result) {
           expect(
             managedPaths.some(

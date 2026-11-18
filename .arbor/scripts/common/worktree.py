@@ -1,16 +1,11 @@
 """
-Task and partition worktrees.
+Git worktrees of a task and its nodes.
 
-A started task owns one git worktree on its own branch; parallel partitions
-get sub-worktrees on sibling branches. Naming:
-
-    task branch       arbor/<task>               Orca workspace <task>
-    partition branch  arbor/<task>--<partition>  Orca workspace <task>-<partition>
-
-(`arbor/<task>/<partition>` is impossible: git cannot hold a ref `a/b` next
-to `a/b/c`.) Orca creates and removes every worktree (``orca worktree create``
-/ ``orca worktree rm``) and chooses its path; a worktree is found again by the
-branch it has checked out.
+Branch names start with ``worktree.branch_prefix`` (default ``arbor/``).
+Orca creates and removes every worktree (``orca worktree create`` /
+``orca worktree rm``) and chooses its path; a worktree is found again by the
+branch it has checked out. This module also merges a branch into a worktree
+and runs ``worktree.setup`` in a fresh one.
 """
 
 from __future__ import annotations
@@ -26,7 +21,6 @@ from .driver.executor import ExecutorError, resolve_executor
 from .git import main_worktree_root, run_git
 
 TASK_BRANCH_PREFIX = "arbor/"
-PARTITION_SEPARATOR = "--"
 SETUP_TAIL_LINES = 20
 
 
@@ -39,13 +33,6 @@ class MergeResult:
     ok: bool
     conflicts: list[str]
     sha: str | None
-
-
-@dataclass(frozen=True)
-class TaskWorktree:
-    path: Path
-    branch: str
-    base_sha: str
 
 
 def _worktree_entries(repo_root: Path) -> list[tuple[Path, str | None]]:
@@ -73,18 +60,6 @@ def _worktree_entries(repo_root: Path) -> list[tuple[Path, str | None]]:
     return entries
 
 
-def list_worktrees(repo_root: Path) -> list[Path]:
-    """Resolved roots of every non-bare worktree registered for this repo
-    (the main checkout included). Empty outside a git repository."""
-    roots: list[Path] = []
-    for path, _ in _worktree_entries(repo_root):
-        try:
-            roots.append(path.resolve())
-        except OSError:
-            pass
-    return roots
-
-
 def main_checkout(repo_root: Path) -> Path:
     """The main working tree, whether ``repo_root`` is it or a linked worktree."""
     return main_worktree_root(repo_root) or repo_root.resolve()
@@ -95,14 +70,6 @@ def branch_prefix(config: dict) -> str:
     branch namespace already holds ``arbor`` sets another prefix."""
     value = str(get_worktree_config(config).get("branch_prefix") or TASK_BRANCH_PREFIX).strip()
     return value if value.endswith("/") or value.endswith("-") else value + "/"
-
-
-def task_branch(task_name: str, prefix: str = TASK_BRANCH_PREFIX) -> str:
-    return f"{prefix}{task_name}"
-
-
-def partition_branch(task_name: str, partition: str, prefix: str = TASK_BRANCH_PREFIX) -> str:
-    return f"{prefix}{task_name}{PARTITION_SEPARATOR}{partition}"
 
 
 def is_ancestor(worktree: Path, commit: str, of: str = "HEAD") -> bool:
@@ -251,24 +218,3 @@ def merge_no_ff(into_worktree: Path, branch: str, message: str) -> MergeResult:
         run_git(["merge", "--abort"], cwd=into_worktree)
     return MergeResult(False, conflicts, None)
 
-
-def create_task_worktree(repo_root: Path, task_dir: Path, config: dict,
-                         start_point: str = "HEAD", parent: Path | None = None) -> TaskWorktree:
-    """Create ``<branch_prefix><task>`` at ``start_point`` (the current HEAD, or a
-    parent's integration branch) and its worktree, an Orca workspace under
-    ``parent`` (default: the main checkout). Refuses when the branch exists."""
-    name = task_dir.name
-    main = main_checkout(repo_root)
-    branch = task_branch(name, branch_prefix(config))
-
-    rc, out, err = run_git(["rev-parse", "--verify", f"{start_point}^{{commit}}"], cwd=repo_root)
-    if rc != 0:
-        raise WorktreeError(f"no commit to start from (git rev-parse {start_point}: {err.strip()})")
-    base_sha = out.strip()
-
-    rc, _, _ = run_git(["rev-parse", "--verify", "--quiet", f"refs/heads/{branch}"], cwd=main)
-    if rc == 0:
-        raise WorktreeError(f"branch {branch} already exists")
-
-    path = add_worktree(config, main, name, branch, base_sha, parent or main)
-    return TaskWorktree(path, branch, base_sha)
