@@ -107,7 +107,8 @@ if command == "worktree rm":
     common = git(path, "rev-parse", "--path-format=absolute", "--git-common-dir") if pathlib.Path(path).is_dir() else None
     if common is None or common.returncode:
         fail("selector_not_found", "selector_not_found")
-    done = git(pathlib.Path(common.stdout.strip()).parent, "worktree", "remove",
+    # Orca runs git in the repository it knows; the common dir stands in for it (a submodule's is .git/modules/<name>)
+    done = git(common.stdout.strip(), "worktree", "remove",
                *(["--force"] if "--force" in argv else []), path)
     if done.returncode:
         fail("runtime_error", "Failed to delete worktree at " + path + ". " + done.stderr.strip())

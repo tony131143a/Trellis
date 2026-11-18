@@ -469,14 +469,14 @@ function writeMonorepoConfig(cwd: string, packages: DetectedPackage[]): void {
   for (const pkg of packages) {
     lines.push(`  ${sanitizePkgName(pkg.name)}:`);
     lines.push(`    path: ${pkg.path}`);
-    if (pkg.isGitRepo) {
+    if (pkg.isGitRepo || pkg.isSubmodule) {
       lines.push("    git: true");
     }
   }
 
-  // Use first non-submodule package as default, fallback to first package
-  const defaultPkg =
-    packages.find((p) => !p.isSubmodule)?.name ?? packages[0]?.name;
+  // A task's nodes go to the default package's repository, so it is a package
+  // of this repository's own tree; with submodules only there is none.
+  const defaultPkg = packages.find((p) => !p.isSubmodule)?.name;
   if (defaultPkg) {
     lines.push(`default_package: ${defaultPkg}`);
   }

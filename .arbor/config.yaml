@@ -47,8 +47,8 @@ max_journal_lines: 2000
 #     path: packages/backend
 #   docs:
 #     path: docs-site
-#   # For polyrepo / meta-repo layouts (independent .git in each subdir),
-#   # mark the package with `git: true`. A node file names it as its `repo`;
+#   # For polyrepo / meta-repo layouts (independent .git in each subdir, or
+#   # a git submodule), mark the package with `git: true`. A node file names it as its `repo`;
 #   # the driver adds every repository a task touches to Orca itself.
 #   webapp:
 #     path: ./webapp

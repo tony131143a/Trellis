@@ -124,6 +124,14 @@ def review_pass(task: Task) -> int:
     return 0
 
 
+def _submodule(task: Task, key: str) -> str:
+    """The package's path when the control repository tracks it as a submodule, else ''."""
+    if key == ".":
+        return ""
+    path = Path(str(task.config["packages"][key]["path"])).as_posix()
+    return path if git(task.main, "ls-files", "--stage", "--", path).startswith("160000 ") else ""
+
+
 def _merge_commit(root: Path, tip: str, target: str) -> str:
     """The commit on ``target`` that brought ``tip`` in (``tip`` itself after a fast-forward)."""
     rc, out, _ = run_git(["rev-list", "--first-parent", "--merges", "--ancestry-path", f"{tip}..{target}"], cwd=root)
@@ -166,6 +174,10 @@ def finish(task: Task) -> int:
             for key, repo in unmerged:
                 print(f"  {key}: git -C {repo['root']} merge --no-ff {repo['branch']}"
                       f"   (with {repo['merge_target']} checked out in {repo['root']})")
+                link = _submodule(task, key)
+                if link:
+                    print(f"    then: git -C {task.main} commit -m \"{link}: {task.name}\" -- {link}"
+                          f"   ({link} is a submodule; the control repository records its commit)")
                 moved = drift(repo)
                 if moved:
                     print(f"    note: {moved}")

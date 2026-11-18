@@ -547,7 +547,7 @@ describe("init() integration", () => {
     expect(generated).toContain("git: true");
   });
 
-  it("#20 submodule: writes the package path and no type key", async () => {
+  it("#20 submodule: writes the package path and git: true, and no default package", async () => {
     fs.writeFileSync(
       path.join(tmpDir, ".gitmodules"),
       '[submodule "docs"]\n\tpath = docs\n\turl = https://example.com/docs.git\n',
@@ -564,7 +564,7 @@ describe("init() integration", () => {
       configContent.indexOf("# Auto-detected monorepo packages"),
     );
     expect(generated).toBe(
-      "# Auto-detected monorepo packages\npackages:\n  docs:\n    path: docs\ndefault_package: docs\n",
+      "# Auto-detected monorepo packages\npackages:\n  docs:\n    path: docs\n    git: true\n",
     );
   });
 
