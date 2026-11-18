@@ -129,9 +129,11 @@ def resolve_executor(config: dict) -> Executor:
         raise ExecutorError(f"executor {chosen!r} is not configured under executors:")
     unknown = sorted(set(spec) - EXECUTOR_KEYS)
     if unknown:
-        # An older driver must not quietly run every node on one agent because it misreads a newer config.
-        raise ExecutorError(f"executor {chosen!r}: unknown setting(s) {', '.join(unknown)} "
-                            f"(known: {', '.join(sorted(EXECUTOR_KEYS))}); is this driver older than the config?")
+        # Neither side may run quietly: a 0.x `roles:` would be ignored, and an older driver would
+        # run every node on one agent because it misreads a newer config.
+        raise ExecutorError(f"executor {chosen!r} in .arbor/config.yaml: unknown setting(s) {', '.join(unknown)} "
+                            f"(known: {', '.join(sorted(EXECUTOR_KEYS))}). Remove them (`agents:` replaces the "
+                            f"`roles:` of 0.x), or run `arbor update` when the config is newer than the scripts.")
     kind = str(spec.get("type") or "orca")
     if kind != "orca":
         raise ExecutorError(f"executor {chosen!r}: unknown type {kind!r} (nodes run as Orca workers only)")

@@ -153,6 +153,7 @@ describe.skipIf(!hasPython())("arbor 1.0 postmortem fixes", { timeout: 180_000 }
     const res = p.run("start");
     expect(res.status).toBe(1);
     expect(res.stderr).toContain("unknown setting(s) agentz");
+    expect(res.stderr).toContain("`agents:` replaces the `roles:` of 0.x");
   });
 
   it("allows review_rounds reviews (default 1), then leaves the fixes to the main agent", () => {
