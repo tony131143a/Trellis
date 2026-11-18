@@ -403,6 +403,18 @@ describe("initializeHashes", () => {
     expect(hashes).toHaveProperty(".arbor/scripts/common/task.py");
   });
 
+  it("leaves the driver's runtime records out of the manifest", () => {
+    const workers = path.join(tmpDir, ".arbor", ".runtime", "workers");
+    fs.mkdirSync(workers, { recursive: true });
+    fs.writeFileSync(path.join(workers, "n1.json"), "{}");
+
+    initializeHashes(tmpDir);
+
+    expect(loadHashes(tmpDir)).not.toHaveProperty(
+      ".arbor/.runtime/workers/n1.json",
+    );
+  });
+
   it("does not exclude generated update-spec skills from hashing", () => {
     fs.mkdirSync(path.join(tmpDir, ".arbor"), { recursive: true });
     const skillPath = path.join(

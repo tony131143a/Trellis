@@ -209,6 +209,7 @@ const EXCLUDE_FROM_HASH = [
   "tasks/", // Task files (user data)
   ".arbor/spec/", // User-customized spec files
   ".backup-", // Backup directories
+  ".runtime/", // Driver runtime records (worker logs, prompts)
 ];
 
 /**
