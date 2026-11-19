@@ -12,7 +12,7 @@ that is a directory of node files; every node runs as one Orca worker.
     review [--pass]                         write reviewer nodes / record the review of the HEADs
     finish                                  merge commands, then cleanup, archive, journal
     status [--json] [--all]                 no side effects
-    cancel <id> | retry <id> [--force] | rejudge <id> | resume | abandon [--reason "…"]
+    cancel <id> | retry <id> [--force] | rejudge <id> | accept <id> | resume | abandon [--reason "…"]
 
 The default task is the only one in planning or active state.
 Run from a linked worktree of the control repository, this script hands over
@@ -65,7 +65,8 @@ from common.driver.repos import SCHEMA, DriverError, Task, load_data, repo_keys,
 from common.arbor_config import read_arbor_config
 from common.io import read_json, write_json
 from common.paths import DIR_ARCHIVE, DIR_WORKFLOW, FILE_TASK_JSON
-from common.worktree import WorktreeError, main_checkout, remove_worktree
+from common.git import run_git
+from common.worktree import WorktreeError, is_ancestor, main_checkout, remove_worktree
 
 SLUG_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,59}")
 
@@ -261,8 +262,8 @@ def cmd_retry(args: argparse.Namespace) -> int:
     if rec is None or rec["status"] not in ("failed", "cancelled"):
         return refuse(f"{args.node} is not a failed or cancelled node")
     if rec.get("attempt", 1) >= 2 and not args.force:
-        return refuse(f"{args.node} already ran {rec['attempt']} times; arbor.py retry {args.node} --force, "
-                      "or change the plan")
+        return refuse(f"{args.node} already ran {rec['attempt']} times; finish it yourself in the integration "
+                      f"worktree and arbor.py accept {args.node}, arbor.py retry {args.node} --force, or change the plan")
     if plan.is_writer(rec) and rec.get("worktree") and Path(rec["worktree"]).exists():
         try:
             remove_worktree(task.config, settings(task.main, task.config, rec["repo"]).root, Path(rec["worktree"]),
@@ -283,21 +284,66 @@ def cmd_retry(args: argparse.Namespace) -> int:
 
 def cmd_rejudge(args: argparse.Namespace) -> int:
     """Judge a failed writer again on the worktree it left (after the plan or
-    the contract changed, or the commits were fixed by hand); merge it when good."""
+    the contract changed, or the commits were fixed by hand); merge it when good.
+    Its paths and checks are read again from its node file."""
     task = load_task(args.task)
     rec = task.data["nodes"].get(args.node)
     if rec is None or rec["status"] != "failed" or not plan.is_writer(rec):
         return refuse(f"{args.node} is not a failed writer node")
     if not rec.get("worktree") or not Path(rec["worktree"]).is_dir() or not rec.get("base"):
         return refuse(f"{args.node} has no worktree to judge (arbor.py retry {args.node})")
+    path = task.dir / "nodes" / f"{args.node}.md"
+    if not path.is_file():
+        return refuse(f"{path} is gone")
+    f = plan.read(path, sy.default_repo(task))
+    error = f.error or plan.check(f, sy.known(task, task.contract()))
+    if error or not f.paths or f.repo != rec["repo"]:
+        return refuse(f"{path}: " + (error or ("no paths" if not f.paths else f"repo is not {rec['repo']}")))
     events: list[str] = []
     with task.edit() as d:
-        d["nodes"][args.node].update(status="running", reason=None, ended=None, attention=None)
+        node = d["nodes"][args.node]
+        node.pop("changed_noted", None)
+        node.update(status="running", reason=None, ended=None, attention=None, paths=f.paths, checks=f.checks,
+                    **{plan.FROZEN: f.hash})
     sy.settle(task, task.contract(), [(args.node, None)], events)
     task.reload()
     for line in events:
         print(line)
     print(f"next: {sy.next_step(task)[1]}")
+    return 0
+
+
+def cmd_accept(args: argparse.Namespace) -> int:
+    """A failed writer the main agent finished with its own commits on the
+    integration branch: merged, judged with the rest by the gate and the review."""
+    task = load_task(args.task)
+    rec = task.data["nodes"].get(args.node)
+    if rec is None or rec["status"] != "failed" or not plan.is_writer(rec):
+        return refuse(f"{args.node} is not a failed writer node")
+    repo = task.data["repos"].get(rec["repo"])
+    if not repo:
+        return refuse(f"repo {rec['repo']} has no integration branch yet")
+    wt = Path(repo["worktree"])
+    if sy.git(wt, "status", "--porcelain"):
+        return refuse(f"{wt} has uncommitted or untracked files: commit the work first")
+    branch = rec.get("branch")
+    rc, tip, _ = run_git(["rev-parse", "--verify", "--quiet", f"refs/heads/{branch}"], cwd=wt) if branch else (1, "", "")
+    if rc == 0 and tip.strip() != rec.get("base") and not is_ancestor(wt, tip.strip()):
+        return refuse(f"{branch} has commits the integration branch lacks: git -C {wt} merge --no-ff {branch} "
+                      f"and arbor.py rejudge {args.node}, or arbor.py cancel {args.node}")
+    sha = sy.head(wt)
+    with task.edit() as d:
+        d["nodes"][args.node].update(status="merged", merged_sha=sha, accepted=True, reason=None, ended=utc_now(),
+                                     attention=None)
+        d["repos"][rec["repo"]]["head"] = sha
+    if rec.get("worktree") and Path(rec["worktree"]).exists():
+        try:
+            remove_worktree(task.config, settings(task.main, task.config, rec["repo"]).root, Path(rec["worktree"]),
+                            delete_branch=True)
+        except WorktreeError as e:
+            print(f"note: its worktree stays: {e}")
+    print(f"{args.node} accepted at {sha[:7]}: the gate and the review judge it on the integration branch")
+    print("next: arbor.py sync")
     return 0
 
 
@@ -353,7 +399,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--json", action="store_true")
     p.add_argument("--all", action="store_true")
     p.set_defaults(func=cmd_status)
-    for name, func in (("cancel", cmd_cancel), ("retry", cmd_retry), ("rejudge", cmd_rejudge)):
+    for name, func in (("cancel", cmd_cancel), ("retry", cmd_retry), ("rejudge", cmd_rejudge), ("accept", cmd_accept)):
         p = sub.add_parser(name)
         p.add_argument("node")
         if name == "retry":

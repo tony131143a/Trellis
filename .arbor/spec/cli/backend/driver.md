@@ -30,7 +30,10 @@ Python 3.9, stdlib only. Conventions shared with the other scripts are in
 - Tasks live in the control repo's main checkout (`find_main`), never in a worktree.
 - Any command on a `task.json` without `schema: 3` fails (`repos.load_data`).
 - Writers have `paths`; a node without `paths` is read-only (`plan.is_writer`).
-- Writers must commit inside their paths; read-only workers change and commit nothing.
+- Writers must commit all their work; a file changed outside their paths is merged and recorded
+  (`outside` on the node) for the reviewer. Read-only workers change and commit nothing.
+- The main agent may commit on an integration branch while no node runs; `accept` records a failed
+  node it finished that way. A gate runs only on a clean integration worktree.
 - The driver never interprets a report: it checks that one exists, echoes its first lines when a
   node fails and hands its path on. Findings, their severity and evidence are text for the main agent.
 

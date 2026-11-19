@@ -177,6 +177,60 @@ describe.skipIf(!hasPython())(
       expect(p.run("rejudge", "n1").status).toBe(1);
     });
 
+    it("rejudge reads the paths and checks of the node file again", () => {
+      p = setupProject();
+      p.node("n1", { paths: "[src/**]", checks: "[AC-1]" });
+      p.sync();
+      work(p, "n1", { write: [{ path: "src/other.txt", content: "x\n" }] });
+      expect(p.sync().nodes.n1.reason).toBe("checks red: AC-1");
+      p.node("n1", { paths: "[src/**, docs/**]" });
+      expect(p.ok("rejudge", "n1")).toContain("merged n1");
+      expect(p.taskJson().nodes.n1).toMatchObject({
+        status: "merged",
+        paths: ["src/**", "docs/**"],
+        checks: [],
+      });
+    });
+
+    it("accepts a failed node the main agent finished on the integration branch; downstream starts", () => {
+      p = setupProject();
+      p.node("n1", { paths: "[src/**]" });
+      p.node("n2", { paths: "[docs/**]", after: "[n1]" });
+      p.sync();
+      work(p, "n1", { settle: "failed" });
+      expect(p.sync().nodes.n1.status).toBe("failed");
+      const integration = p.taskJson().repos["."].worktree as string;
+      writeFile(integration, "src/feature.txt", "f\n");
+      let res = p.run("accept", "n1");
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain("commit the work first");
+      git(integration, "add", "-A");
+      git(integration, "commit", "-qm", "finish n1 by hand");
+      const sha = git(integration, "rev-parse", "HEAD");
+      expect(p.ok("accept", "n1")).toContain(
+        `n1 accepted at ${sha.slice(0, 7)}`,
+      );
+      expect(p.taskJson().nodes.n1).toMatchObject({
+        status: "merged",
+        merged_sha: sha,
+        accepted: true,
+      });
+      expect(p.sync().nodes.n2.status).toBe("running");
+      res = p.run("accept", "n1");
+      expect(res.status).toBe(1);
+    });
+
+    it("refuses to accept a failed node whose own commits are not on the integration branch", () => {
+      p = setupProject();
+      p.node("n1", { paths: "[src/**]", checks: "[AC-1]" });
+      p.sync();
+      work(p, "n1", { write: [{ path: "src/other.txt", content: "x\n" }] });
+      expect(p.sync().nodes.n1.status).toBe("failed");
+      const res = p.run("accept", "n1");
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain("has commits the integration branch lacks");
+    });
+
     it("retries a cancelled node", () => {
       p = setupProject();
       p.node("n1", { paths: "[src/**]" });
@@ -248,7 +302,7 @@ describe.skipIf(!hasPython())(
       const out = p.sync();
       const repo = p.taskJson().repos["."];
       expect(out.next.text).toContain(
-        `${repo.base.slice(0, 7)}..${repo.head.slice(0, 7)} yourself`,
+        `${repo.base.slice(0, 7)}..${repo.head.slice(0, 7)} checked by a read-only node with tier: review`,
       );
       expect(p.run("review").status).toBe(1);
     });

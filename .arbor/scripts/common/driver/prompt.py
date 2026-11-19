@@ -7,11 +7,11 @@ from pathlib import Path
 WRITER_RULES = """\
 - The brief hands over what the coordinator already found: anchors (path and symbol; line numbers are hints, earlier merges move them), an exemplar whose pattern to copy, causes ruled out, often the first change. Start there: open the anchors and confirm them; do not survey again what the brief or the reports below already cover. Where the code contradicts the brief, follow the code and say so in the report.
 - Match the conventions of the surrounding code.
-- Change only files inside your paths. If the work needs anything else, stop and say so in the report.
+- Finish the whole brief; a missing piece is never a reason to stop the rest. Your paths are the files this node owns. Where the work needs a file outside them and the change only adds (an enum constant, a dependency entry, a whitelist line, a fixture that must compile with your change), make it. Where it needs something that does not exist yet (another node's module, a decision), follow the contract's transition rules, else code against the narrowest interface that would do, with a fake in the tests, and go on. Never delete or rewrite what another node owns, and never change external behaviour the contract fixes: leave that part undone.
 - Commit your work on the current branch (subject "{task}/{node}: <summary>"). Leave nothing uncommitted or untracked.
 - Never push, merge, rebase, switch branches, run arbor.py or start other agents.
 - Do not ask questions: decide, and note the assumption in the report.
-- Finish by writing the report file (at most 30 lines: what changed, with the files and the interfaces as committed; the result of each check; where the brief was wrong or missing something; what the coordinator or a later node must know), then send Orca's worker_done once with --report-path set to it. When you are blocked, write why in the report and still send worker_done."""
+- Finish by writing the report file, then send Orca's worker_done once with --report-path set to it. Its first line is `gaps: <n>`; then, in at most 30 lines: what changed, with the files and the interfaces as committed; the files you changed outside your paths and why; the result of each check; where the brief was wrong or missing something; every gap, one line each: what is missing, `path:symbol`, the smallest change that closes it, and `needs the user` when only a person can decide it. When you are blocked, write why in the report and still send worker_done."""
 
 READER_RULES = """\
 - Start from the anchors the brief names and the reports below; do not survey again what they already cover. Match what you report to the code as it is.
@@ -25,6 +25,7 @@ Review a diff you did not write, against the contract. This is not a read-throug
 Diff: git diff {base}..{head}   (in this directory; read the surrounding code of every change, not only the hunks)
 Already green at {head}, do not just rerun them:
 {checks}
+Changed outside their node's paths (check that each change only adds and breaks no caller): {outside}
 
 Look for: behaviour that breaks an acceptance criterion or existing callers; wrong results on real inputs (boundaries, empty input, error paths, concurrency); acceptance criteria that no test or check really exercises; tests that cannot fail.
 Test your suspicions: run the code, a targeted test, or a scratch script or test you write for the purpose. Dependencies are installed here. Remove every scratch file afterwards.
@@ -70,7 +71,8 @@ def worker_spec(task: str, node: str, contract: Path, paths: list[str], checks: 
     return "\n".join(lines)
 
 
-def review_brief(contract: Path, workdir: Path, base: str, head: str, checks: list[tuple[str, str]]) -> str:
+def review_brief(contract: Path, workdir: Path, base: str, head: str, checks: list[tuple[str, str]],
+                 outside: list[str] | None = None) -> str:
     listed = "\n".join(f"{cid}: {command}" for cid, command in checks) or "(none)"
     return (f"Contract: {contract}\nWorktree: {workdir}\n\n"
-            + REVIEW_BRIEF.format(base=base, head=head, checks=listed))
+            + REVIEW_BRIEF.format(base=base, head=head, checks=listed, outside=", ".join(outside or []) or "(none)"))

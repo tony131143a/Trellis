@@ -199,7 +199,7 @@ describe.skipIf(!hasPython())(
       built();
       p.node("bad", { paths: "[lib/**]", title: "Add the lib" });
       p.sync();
-      work(p, "bad", { write: [{ path: "elsewhere/x", content: "x\n" }] });
+      work(p, "bad", { settle: "failed" });
       expect(p.sync().nodes.bad.status).toBe("failed");
       p.ok("retry", "bad");
       p.sync();
@@ -229,6 +229,43 @@ describe.skipIf(!hasPython())(
       );
     });
 
+    it("names files outside a node's paths to the reviewer; lists accepted nodes and the main agent's commits", () => {
+      built();
+      p.node("wide", { paths: "[lib/**]", title: "Add the lib" });
+      p.node("bad", { paths: "[docs/**]", title: "Add the docs" });
+      p.sync();
+      work(p, "wide", {
+        write: [
+          { path: "lib/x", content: "x\n" },
+          { path: "src/registry.txt", content: "x\n" },
+        ],
+      });
+      work(p, "bad", { settle: "failed" });
+      p.sync();
+      writeFile(wt(), "docs/a.md", "a\n");
+      git(wt(), "add", "-A");
+      git(wt(), "commit", "-qm", "docs by the main agent");
+      p.ok("accept", "bad");
+      p.sync();
+      p.ok("review");
+      expect(
+        fs.readFileSync(path.join(p.taskDir, "nodes/review-1.md"), "utf-8"),
+      ).toContain(
+        "Changed outside their node's paths (check that each change only adds and breaks no caller): src/registry.txt",
+      );
+      p.sync();
+      work(p, "review-1", { report: "findings: 0\n" });
+      p.sync();
+      p.ok("review", "--pass");
+      const out = p.ok("finish");
+      expect(out).toContain(
+        "  bad: Add the docs (finished by the main agent)\n",
+      );
+      expect(out).toContain(
+        `  .: 1 commit by the main agent (git -C ${wt()} log --first-parent --no-merges`,
+      );
+    });
+
     it("commits the move of a task directory that was already committed", () => {
       built({ commitTask: true });
       p.ok("review", "--pass");
@@ -254,7 +291,7 @@ describe.skipIf(!hasPython())(
       built();
       p.node("bad", { paths: "[lib/**]" });
       p.sync();
-      work(p, "bad", { write: [{ path: "elsewhere/x", content: "x\n" }] });
+      work(p, "bad", { settle: "failed" });
       expect(p.sync().nodes.bad.status).toBe("failed");
       const badWt = p.taskJson().nodes.bad.worktree;
       writeFile(badWt, "untracked.txt", "keep me\n");

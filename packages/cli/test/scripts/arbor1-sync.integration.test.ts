@@ -236,10 +236,7 @@ describe.skipIf(!hasPython())("arbor 1.0 sync", { timeout: 180_000 }, () => {
       `Reports to start from (what earlier workers found and changed; read them before the code):\n` +
         `${path.join(reports, "look.md")} (node look)\n${path.join(reports, "base.md")} (node base)\n`,
     );
-    work(p, "n1", {
-      write: [{ path: "docs/out", content: "x\n" }],
-      report: "tried src/b\n",
-    });
+    work(p, "n1", { report: "tried src/b\n", settle: "failed" });
     expect(p.sync().nodes.n1.status).toBe("failed");
     p.ok("retry", "n1");
     p.sync();
@@ -329,12 +326,114 @@ describe.skipIf(!hasPython())("arbor 1.0 sync", { timeout: 180_000 }, () => {
     },
   );
 
+  it("merges a writer that changed files outside its paths and records them for the review", () => {
+    p = setupProject();
+    p.node("n1", { paths: "[src/**]" });
+    p.sync();
+    work(p, "n1", {
+      write: [
+        { path: "src/a", content: "a\n" },
+        { path: "docs/x.md", content: "x\n" },
+      ],
+    });
+    const out = p.sync();
+    expect(out.nodes.n1).toMatchObject({
+      status: "merged",
+      outside: ["docs/x.md"],
+    });
+    expect(
+      out.events.some(
+        (e: string) =>
+          e.startsWith("merged n1 (") &&
+          e.endsWith("; outside its paths: docs/x.md"),
+      ),
+    ).toBe(true);
+  });
+
+  it("holds a failed node while another runs, then lists the whole round once", () => {
+    p = setupProject();
+    p.node("a", { paths: "[a/**]" });
+    p.node("b", { paths: "[b/**]" });
+    p.node("c", { paths: "[c/**]" });
+    p.sync();
+    work(p, "a", { settle: "failed" });
+    let out = p.sync();
+    expect(out.nodes.a.status).toBe("failed");
+    expect(out.next.kind).toBe("wait");
+    expect(out.next.text).toContain(
+      "(failed so far: a; they wait for the round to end)",
+    );
+    work(p, "b", { settle: "failed" });
+    work(p, "c", { write: [{ path: "c/x", content: "x\n" }] });
+    out = p.sync();
+    expect(out.next.kind).toBe("decide");
+    expect(out.next.text).toContain(
+      "the round is over: read every report of it first, then ask the user once",
+    );
+    expect(out.next.text).toContain("a: no commits");
+    expect(out.next.text).toContain("b: no commits");
+  });
+
+  it("does not fail a read-only node because the main agent committed on the integration branch before it", () => {
+    p = setupProject();
+    p.node("w", { paths: "[src/**]" });
+    p.sync();
+    work(p, "w", { write: [{ path: "src/a", content: "a\n" }] });
+    p.sync();
+    writeFile(integration(), "src/fix.txt", "fixed\n");
+    git(integration(), "add", "src/fix.txt");
+    git(integration(), "commit", "-qm", "fix by the main agent");
+    p.node("look", {}, "Read it.");
+    p.sync();
+    work(p, "look", { report: "fine\n" });
+    expect(p.sync().nodes.look.status).toBe("done");
+  });
+
+  it("does not gate an integration worktree with uncommitted or untracked files", () => {
+    p = setupProject();
+    p.node("n1", { paths: "[src/**]" });
+    p.sync();
+    work(p, "n1", { write: [{ path: "src/x", content: "x\n" }] });
+    const prepared = p.taskJson().repos["."].worktree as string;
+    writeFile(prepared, "stray.txt", "x\n");
+    let out = p.sync();
+    expect(out.repos["."].gate ?? null).toBeNull();
+    expect(
+      out.events.some(
+        (e: string) =>
+          e.startsWith("gate .: not run,") && e.includes("(stray.txt)"),
+      ),
+    ).toBe(true);
+    git(prepared, "add", "stray.txt");
+    git(prepared, "commit", "-qm", "keep it");
+    out = p.sync();
+    expect(out.repos["."].gate.sha).toBe(git(prepared, "rev-parse", "HEAD"));
+  });
+
+  it("sync --wait goes on past a merge, starts a node file written meanwhile, and returns once it is needed", async () => {
+    p = setupProject();
+    p.node("a", { paths: "[a/**]" });
+    p.node("b", { paths: "[b/**]" });
+    p.sync();
+    const waiting = runAsync(p, "sync", "--wait", "120s");
+    const until = async (what: string, ok: () => boolean) => {
+      for (let i = 0; i < 600 && !ok(); i++)
+        await new Promise((r) => setTimeout(r, 100));
+      expect(ok(), `${what}: ${JSON.stringify(p.taskJson().nodes)}`).toBe(true);
+    };
+    work(p, "a", { write: [{ path: "a/x", content: "x\n" }] });
+    await until("a merged", () => p.taskJson().nodes.a.status === "merged");
+    p.node("c", { paths: "[c/**]" });
+    await until("c started", () => p.taskJson().nodes.c?.status === "running");
+    work(p, "b", { write: [{ path: "b/x", content: "x\n" }] });
+    work(p, "c", { write: [{ path: "c/x", content: "x\n" }] });
+    const first = await waiting;
+    expect(first.status, first.stderr).toBe(0);
+    for (const line of ["merged a", "started c", "merged b", "merged c"])
+      expect(first.stdout).toContain(line);
+  });
+
   it.each([
-    [
-      "outside its paths",
-      { write: [{ path: "docs/x.md", content: "x\n" }] },
-      "outside its paths: docs/x.md",
-    ],
     [
       "no commits",
       { settle: "failed" as const },
@@ -360,7 +459,7 @@ describe.skipIf(!hasPython())("arbor 1.0 sync", { timeout: 180_000 }, () => {
     expect(fs.existsSync(out.nodes.n1.worktree)).toBe(true);
     expect(out.next.kind).toBe("decide");
     expect(out.next.text).toContain(
-      `n1: ${reason} (retry n1 | cancel n1 | edit or add nodes)`,
+      `n1: ${reason} (retry n1 | accept n1 | cancel n1 | edit or add nodes)`,
     );
   });
 
@@ -501,7 +600,7 @@ describe.skipIf(!hasPython())("arbor 1.0 sync", { timeout: 180_000 }, () => {
     p.node("n1", { paths: "[src/**]" });
     p.sync();
     work(p, "base", { write: [{ path: "base/x", content: "x\n" }] });
-    work(p, "n1", { write: [{ path: "docs/out", content: "x\n" }] });
+    work(p, "n1", { settle: "failed" });
     let out = p.sync();
     expect(out.nodes.n1.status).toBe("failed");
     const old = out.nodes.n1.worktree;
@@ -575,10 +674,7 @@ describe.skipIf(!hasPython())("arbor 1.0 sync", { timeout: 180_000 }, () => {
     });
     expect(out.next).toEqual({
       kind: "fix",
-      text: ". red on AC-1; add fix nodes (their brief names the failing check)".replace(
-        /^/,
-        "fix: ",
-      ),
+      text: `fix: . red on AC-1; fix every failure in the integration worktree (.: ${integration()}) and commit, then arbor.py sync (a fix node only for large independent work)`,
     });
     fs.appendFileSync(path.join(p.taskDir, "contract.md"), "\nmore\n");
     expect(p.ok("sync")).toContain(

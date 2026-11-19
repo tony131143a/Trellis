@@ -1,0 +1,10 @@
+{
+  "version": "1.1.0",
+  "description": "Workers finish the whole brief and report every gap; sync --wait wakes the main agent once a round is over; the main agent fixes in the integration worktree and records it with accept",
+  "breaking": false,
+  "recommendMigrate": false,
+  "changelog": "A writer no longer stops at the edge of its paths: it finishes the brief, makes additive changes outside them (a registry constant, a dependency, a whitelist line, a fixture), follows the contract's Transition rules for code that does not exist yet, and reports every gap; its report starts with `gaps: <n>`. The driver merges files changed outside a node's paths, names them in the merge event and in the reviewer's brief. `sync --wait` keeps merging and starting nodes (also nodes written or retried while it waits) and returns once the main agent is needed: a failed node waits until every running node has settled, so a round's failures are handled at once; an invalid node file, a worker waiting for a person and a failed start still return at once. The main agent fixes gaps, a red gate and review findings itself in the integration worktree; `arbor.py accept <id>` records a failed node it finished that way, and finish lists those nodes and the main agent's own commits. `rejudge` reads the node file's paths and checks again. A gate runs only on a clean integration worktree. A read-only node is no longer failed because the main agent committed on the integration branch before it started.",
+  "migrations": [],
+  "configSectionsAdded": [],
+  "migrationGuide": "Nothing to do: `arbor update` brings the new driver and skill, and a task started with 1.0 goes on with them."
+}

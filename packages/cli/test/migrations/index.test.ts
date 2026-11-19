@@ -445,8 +445,7 @@ describe("0.11.0 manifest", () => {
 // =============================================================================
 
 describe("1.0.0 manifest", () => {
-  it("is the package version, reached from 0.11.0, breaking, migrate recommended, deletes only", () => {
-    expect(VERSION).toBe("1.0.0");
+  it("is reached from 0.11.0, breaking, migrate recommended, deletes only", () => {
     expect(getAllMigrationVersions()).toContain("1.0.0");
     const migrations = getMigrationsForVersion("0.11.0", "1.0.0");
     expect(migrations.length).toBeGreaterThan(0);
@@ -464,5 +463,17 @@ describe("1.0.0 manifest", () => {
     ])
       expect(guide).toContain(term);
     expect(getConfigSectionsAddedBetween("0.11.0", "1.0.0")).toEqual([]);
+  });
+});
+
+describe("1.1.0 manifest", () => {
+  it("is the package version, reached from 1.0.0, not breaking, nothing to migrate", () => {
+    expect(VERSION).toBe("1.1.0");
+    expect(getAllMigrationVersions()).toContain("1.1.0");
+    expect(getMigrationsForVersion("1.0.0", "1.1.0")).toEqual([]);
+    const metadata = getMigrationMetadata("1.0.0", "1.1.0");
+    expect(metadata.breaking).toBe(false);
+    expect(metadata.recommendMigrate).toBe(false);
+    expect(getConfigSectionsAddedBetween("1.0.0", "1.1.0")).toEqual([]);
   });
 });

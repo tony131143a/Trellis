@@ -61,6 +61,7 @@ describe("arborSkillTemplate", () => {
       "arbor sync --wait",
       "nodes/<id>.md",
       "arbor review --pass",
+      "arbor accept <id>",
     ]) {
       expect(arborSkillTemplate).toContain(marker);
     }

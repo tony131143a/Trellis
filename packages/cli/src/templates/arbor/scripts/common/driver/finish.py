@@ -89,7 +89,8 @@ def review_write(task: Task) -> int:
         gate_cmds = settings(task.main, task.config, key).gate
         checks = [(f"GATE-{i}", c) for i, c in enumerate(gate_cmds, start=1)]
         checks += [(e.id, e.check) for e in map_rows(task, contract, key) if e.kind == "auto" and e.check]
-        brief = review_brief(task.dir / "contract.md", Path(repo["worktree"]), repo["base"], sha, checks)
+        outside = sorted({f for r in d["nodes"].values() if r.get("repo") == key for f in r.get("outside") or []})
+        brief = review_brief(task.dir / "contract.md", Path(repo["worktree"]), repo["base"], sha, checks, outside)
         front = [f"title: Review {key} {repo['base'][:7]}..{sha[:7]}", f"repo: {key}"]
         front += ["tier: review" if "review" in task.executor.tiers else "tier: write"]  # never `explore`
         path = nodes_dir / f"{nid}.md"
@@ -202,9 +203,18 @@ def corrections_and_reports(task: Task) -> None:
         if nid in reviewers:
             continue
         kinds = (["retried"] if rec.get("attempt", 1) > 1 else []) + (
-            ["added after the review"] if first is not None and rec["seq"] > first and plan.is_writer(rec) else [])
+            ["added after the review"] if first is not None and rec["seq"] > first and plan.is_writer(rec) else []) + (
+            ["finished by the main agent"] if rec.get("accepted") else [])
         if kinds:
             corrections.append(f"  {nid}: {rec.get('title') or nid} ({', '.join(kinds)})")
+    for key, repo in sorted(task.data["repos"].items()):  # nodes merge with --no-ff: the rest is the main agent's
+        wt = Path(repo["worktree"])
+        rc, out, _ = run_git(["log", "--first-parent", "--no-merges", "--format=%h %s", f"{repo['base']}..HEAD"],
+                             cwd=wt) if wt.is_dir() else (1, "", "")
+        if rc == 0 and out.strip():
+            count = len(out.strip().splitlines())
+            corrections.append(f"  {key}: {count} commit{'s' if count != 1 else ''} by the main agent "
+                               f"(git -C {wt} log --first-parent --no-merges {repo['base'][:7]}..HEAD)")
     if corrections:
         print("Corrections in this task:")
         print("\n".join(corrections))

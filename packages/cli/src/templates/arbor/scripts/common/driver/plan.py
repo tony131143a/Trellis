@@ -132,7 +132,7 @@ def canonical_tier(tier: str) -> str:
     return "write" if tier == "strong" else tier
 
 
-def _check(node: NodeFile, known: Known) -> str | None:
+def check(node: NodeFile, known: Known) -> str | None:
     if node.repo not in known.repos:
         return f"unknown repo {node.repo!r} (known: {', '.join(sorted(known.repos))})"
     if node.tier and canonical_tier(node.tier) not in known.tiers:
@@ -189,7 +189,7 @@ def update(nodes: dict, nodes_dir: Path, default_repo: str, known: Known) -> tup
     new_writers = 0
     for nid in sorted(open_ids):
         f = files[nid]
-        error = f.error or _check(f, known)
+        error = f.error or check(f, known)
         if not error:
             unknown = [d for d in f.after if d not in graph]
             error = (f"after: unknown node(s) {', '.join(unknown)}" if unknown

@@ -160,7 +160,7 @@ describe.skipIf(!hasPython())(
       });
       expect(out.repos["."].gate.green).toBe(true);
       expect(out.next.text).toBe(
-        "fix: web red on AC-2; add fix nodes (their brief names the failing check)",
+        `fix: web red on AC-2; fix every failure in the integration worktree (web: ${out.repos.web.worktree}) and commit, then arbor.py sync (a fix node only for large independent work)`,
       );
 
       p.node("w2", { repo: "web", paths: "[src/**]" });

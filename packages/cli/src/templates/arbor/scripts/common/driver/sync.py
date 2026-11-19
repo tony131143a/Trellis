@@ -4,8 +4,9 @@
     plan     read nodes/*.md into task.json
     mail     print Orca's messages for the task's Run
     observe  ask Orca about every running node
-    judge    a settled writer: commits, clean tree, paths, its checks
-    merge    good writers --no-ff into their repo's integration branch
+    judge    a settled writer: commits, clean tree, its checks
+    merge    good writers --no-ff into their repo's integration branch, noting
+             the files changed outside their paths
     start    every ready node, each in its own Orca worktree (writers)
     gate     each integration HEAD not gated yet, once nothing runs; compared
              with the gate of its base (``sync --wait`` runs that one while
@@ -175,17 +176,16 @@ def judge(task: Task, contract: Contract, rec: dict, detail: str | None) -> str 
         if not report_path(task, rec["id"], rec).read_text(encoding="utf-8", errors="replace").strip():
             return f"no report{why}"
         repo = task.data["repos"].get(rec["repo"])
+        # its HEAD may be where it started (the main agent may have committed before) or the latest merge
         if repo and Path(repo["worktree"]) == wt and (
-                git(wt, "status", "--porcelain") != rec.get("tree", "") or head(wt) != repo["head"]):
+                git(wt, "status", "--porcelain") != rec.get("tree", "")
+                or head(wt) not in (repo["head"], rec.get("base"))):
             return f"left changes in {wt}"
         return None
     if git(wt, "rev-list", "--count", f"{rec['base']}..HEAD") == "0":
         return f"no commits{why}"
     if not snapshot_refs(wt).clean:
         return "uncommitted changes"
-    outside = [f for f in changed_files(wt, f"{rec['base']}..HEAD") if not path_matches(f, rec["paths"])]
-    if outside:
-        return f"outside its paths: {', '.join(outside)}"
     gate_commands = settings(task.main, task.config, rec["repo"]).gate
     results = [run_check(cid, command, wt) for cid, command in node_checks(contract, rec)
                if not gate_parts(command, gate_commands)]  # the gate runs those after the merge
@@ -234,6 +234,8 @@ def merge(task: Task, nid: str, events: list[str]) -> None:
         repo = d["repos"][rec["repo"]]
         wt = Path(repo["worktree"])
         tip = git(wt, "rev-parse", rec["branch"])
+        outside = [f for f in changed_files(Path(rec["worktree"]), f"{rec['base']}..{tip}")
+                   if not path_matches(f, rec["paths"])]  # merged, and named to the reviewers
         if is_ancestor(wt, tip):
             sha = head(wt)  # merged by an earlier sync that stopped before it saved
         else:
@@ -245,8 +247,10 @@ def merge(task: Task, nid: str, events: list[str]) -> None:
                 return
             sha = result.sha
         rec.update(status="merged", merged_sha=sha, ended=utc_now(), attention=None)
+        if outside:
+            rec["outside"] = outside
         repo["head"] = sha
-    events.append(f"merged {nid} ({sha[:7]})")
+    events.append(f"merged {nid} ({sha[:7]})" + (f"; outside its paths: {', '.join(outside)}" if outside else ""))
     try:
         remove_worktree(task.config, Path(repo["root"]), Path(rec["worktree"]), delete_branch=True)
     except WorktreeError as e:
@@ -423,6 +427,12 @@ def gate(task: Task, contract: Contract, events: list[str]) -> None:
         sha = head(wt)
         if (repo.get("gate") or {}).get("sha") == sha:
             continue
+        dirty = git(wt, "status", "--porcelain")
+        if dirty:  # a gate is kept by its sha: it judges committed work only
+            files = ", ".join(line.split(maxsplit=1)[-1] for line in dirty.splitlines()[:10])
+            events.append(f"gate {key}: not run, {wt} has uncommitted or untracked files ({files}): "
+                          "commit, delete or ignore them, then arbor.py sync")
+            continue
         scoped = replace(contract, verification_map=tuple(map_rows(task, contract, key)))
         result = run_gate(settings(task.main, task.config, key).gate, scoped, wt)
         failing, notes = compare(result.checks, repo.get("baseline"))
@@ -511,16 +521,18 @@ def _heads(task: Task) -> dict[str, str]:
     return {key: head(Path(repo["worktree"])) for key, repo in sorted(task.data["repos"].items())}
 
 
-def attention(task: Task) -> list[tuple[str, str]]:
+def attention(task: Task) -> list[tuple[str, str, bool]]:
+    """(node, why, urgent). A failed node and one blocked by it wait for the round to end; an invalid node file,
+    a worker that needs someone and a failed start are urgent."""
     items = []
     for nid, rec in sorted(task.data["nodes"].items(), key=lambda kv: kv[1]["seq"]):
         status = rec["status"]
         if status in ("failed", "invalid"):
-            items.append((nid, str(rec.get("reason"))))
+            items.append((nid, str(rec.get("reason")), status == "invalid"))
         elif status in ("running", "pending") and rec.get("attention"):
-            items.append((nid, rec["attention"]))
+            items.append((nid, rec["attention"], status == "running"))
         elif status == "pending" and rec.get("start_error"):
-            items.append((nid, f"start failed: {rec['start_error']}; the next sync tries again"))
+            items.append((nid, f"start failed: {rec['start_error']}; the next sync tries again", True))
     return items
 
 
@@ -529,8 +541,9 @@ def rounds_left(task: Task) -> int:
     return task.executor.review_rounds + task.data["allowance"]["rounds"] - task.data["rounds"]
 
 
-FIX_RULE = ("a blocker that is shown and names the criterion or the existing caller or test it breaks becomes a fix "
-            "node; the other findings are left for the user at finish")
+FIX_RULE = ("fix every blocker that is shown and names the criterion or the existing caller or test it breaks, all "
+            "in one pass in the integration worktree (a fix node only for large independent work); the other "
+            "findings are left for the user at finish")
 
 
 def next_step(task: Task) -> tuple[str, str]:
@@ -541,9 +554,16 @@ def next_step(task: Task) -> tuple[str, str]:
     if d.get("stopped"):
         return "stopped", f"ask the user: the {d['stopped']} budget is used up; arbor.py resume grants more"
     items = attention(task)
-    if items:
-        listed = "; ".join(f"{nid}: {why} (retry {nid} | cancel {nid} | edit or add nodes)" for nid, why in items)
-        return "decide", f"decide: {listed}"
+    running = any(r["status"] == "running" for r in nodes)
+    urgent = [i for i in items if i[2]]
+    if urgent or (items and not running):
+        shown = urgent if running else items
+        held = [nid for nid, _, u in items if not u] if running else []
+        listed = "; ".join(f"{nid}: {why} (retry {nid} | {'accept ' + nid + ' | ' if d['nodes'][nid]['status'] == 'failed' else ''}"
+                           f"cancel {nid} | edit or add nodes)" for nid, why, _ in shown)
+        return "decide", ("decide: " + ("" if running else "the round is over: read every report of it first, "
+                                        "then ask the user once; ") + listed
+                          + (f" (held for the end of the round: {', '.join(held)})" if held else ""))
     inline = [(nid, r) for nid, r in sorted(d["nodes"].items(), key=lambda kv: kv[1]["seq"])
               if r["status"] == "running" and r.get("inline")]
     if inline:
@@ -553,8 +573,10 @@ def next_step(task: Task) -> tuple[str, str]:
                           "(one each, in parallel; the model after the agent id is the sub-agent's model): " + listed
                           + ". The report file must hold the result (write it yourself when the sub-agent only returns "
                           "text); then arbor.py sync")
-    if any(r["status"] == "running" for r in nodes):
-        return "wait", 'wait: run "arbor.py sync --wait" in the background and end your turn'
+    if running:
+        held = [nid for nid, _, _ in items]
+        return "wait", ('wait: run "arbor.py sync --wait" in the background and end your turn'
+                        + (f" (failed so far: {', '.join(held)}; they wait for the round to end)" if held else ""))
     contract = task.dir / "contract.md"
     if d["status"] == "planning":
         return "contract", f"contract: fill {contract}, get the user's approval, then arbor.py start"
@@ -567,7 +589,9 @@ def next_step(task: Task) -> tuple[str, str]:
     red = [(k, g) for k, g in sorted(gates.items()) if g.get("sha") == heads[k] and not g.get("green")]
     if red:
         listed = "; ".join(f"{k} red on {', '.join(g.get('failing') or [])}" for k, g in red)
-        return "fix", f"fix: {listed}; add fix nodes (their brief names the failing check)"
+        where = "; ".join(f"{k}: {d['repos'][k]['worktree']}" for k, _ in red)
+        return "fix", (f"fix: {listed}; fix every failure in the integration worktree ({where}) and commit, then "
+                       "arbor.py sync (a fix node only for large independent work)")
     if any(g.get("sha") != heads[k] for k, g in gates.items()):
         return "sync", "sync: arbor.py sync gates the integration branches"
     if (d.get("review") or {}).get("heads") == heads:
@@ -582,9 +606,9 @@ def next_step(task: Task) -> tuple[str, str]:
         reviewed = {r["repo"]: r["head"] for r in (d.get("reviewers") or {}).values()}  # the latest per repo
         ranges = "; ".join(f"git -C {d['repos'][k]['worktree']} diff {reviewed.get(k, d['repos'][k]['base'])[:7]}"
                            f"..{h[:7]}" for k, h in heads.items())
-        return "review", (f"review: no reviewer round left (executors.{task.executor.name}.review_rounds): read "
-                          f"{ranges or 'the diff'} yourself (after a review: do the fixes answer its findings?); "
-                          f"{FIX_RULE}; then arbor.py review --pass")
+        return "review", (f"review: no reviewer round left (executors.{task.executor.name}.review_rounds): have "
+                          f"{ranges or 'the diff'} checked by a read-only node with tier: review (after a review: "
+                          f"do the fixes answer its findings?); {FIX_RULE}; then arbor.py review --pass")
     ranges = "; ".join(f"git -C {d['repos'][k]['worktree']} diff {d['repos'][k]['base'][:7]}..{h[:7]}"
                        for k, h in heads.items())
     return "review", ("review: arbor.py review starts one reviewer per repo (or review " + (ranges or "the diff")
@@ -609,16 +633,21 @@ def output(task: Task, events: list[str], as_json: bool) -> None:
 # the pass
 
 
-def wait(task: Task, duration: str | None) -> None:
-    """Poll the running nodes until one is no longer running, or the deadline."""
-    seconds = parse_timeout(duration) if duration else (task.executor.timeout or 3600)
-    deadline = time.monotonic() + (seconds or 0)
+def _stamp(task: Task) -> list[tuple[str, int]]:
+    nodes_dir = task.dir / "nodes"
+    return sorted((p.name, p.stat().st_mtime_ns) for p in nodes_dir.glob("*.md")) if nodes_dir.is_dir() else []
+
+
+def wait(task: Task, deadline: float, stamp: list[tuple[str, int]]) -> None:
+    """Poll the running nodes until one is no longer running, a node file changed, a node is ready to start
+    (a retry), or the deadline. ``stamp``: the node files the last pass read."""
     executor = task.executor
     checked = 0.0  # the last look for a worker that never started (one a minute)
     while time.monotonic() < deadline:
         task.reload()
         running = [r for r in task.data["nodes"].values() if r["status"] == "running" and not r.get("inline")]
-        if not running:
+        if not running or _stamp(task) != stamp or plan.ready(
+                task.data["nodes"], executor.max_parallel, writers=task.data["status"] == "active")[0]:
             return
         look = time.monotonic() - checked >= 60
         checked = time.monotonic() if look else checked
@@ -666,13 +695,24 @@ def run(task: Task, wait_for: str | None, waiting: bool, as_json: bool) -> int:
     guard = task.runtime("sync", task.name)
     try:
         with task_lock(guard, timeout=0):
-            events = []
-            if waiting:
+            events: list[str] = []
+            if not waiting:
+                events += sync_pass(task)
+            else:  # until the main agent is needed: merges and starts go on, failures wait for the round
+                seconds = parse_timeout(wait_for) if wait_for else (task.executor.timeout or 3600)
+                deadline = time.monotonic() + (seconds or 0)
                 baseline(task, events)
-                wait(task, wait_for)
-            events += sync_pass(task)
+                stamp = _stamp(task)
+                while True:
+                    began = time.monotonic()
+                    wait(task, deadline, stamp)
+                    stamp = _stamp(task)  # what this pass reads
+                    events += sync_pass(task)
+                    if next_step(task)[0] != "wait" or time.monotonic() >= deadline:
+                        break
+                    time.sleep(max(0.0, min(POLL_S - (time.monotonic() - began), deadline - time.monotonic())))
     except LockTimeout:
-        print("another sync is running")
+        print("another sync is running; it reads node edits and retries within 10 s")
         return 0
     output(task, events, as_json)
     return 0
